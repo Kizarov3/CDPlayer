@@ -4,7 +4,7 @@ A tactile, CD-inspired **Java desktop app**. Load a local track, press play, and
 
 ## Run locally
 
-Requires a **Java Development Kit (JDK) 8+**—no framework or package install needed.
+Requires a **Java Development Kit (JDK) 8+**-no framework or package install needed.
 
 ```bash
 ./run.sh
