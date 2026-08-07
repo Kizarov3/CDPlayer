@@ -71,8 +71,7 @@ public final class CDPlayer extends JFrame {
   private File temporaryAudio;
   private boolean adjusting;
   private final Timer clock = new Timer(70, this::tick);
-  private static final Pattern ID_FIELD = Pattern.compile("\\\"id\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
-  private static final Pattern RELEASE_GROUP_ID = Pattern.compile("\\\"release-group\\\"\\s*:\\s*\\{\\s*\\\"id\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
+  private static final Pattern ITUNES_COVER = Pattern.compile("\\\"artworkUrl100\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
 
   public static void main(String[] args) {
     SwingUtilities.invokeLater(() -> {
@@ -178,19 +177,13 @@ public final class CDPlayer extends JFrame {
     Thread lookup = new Thread(() -> {
       try {
         String encoded = URLEncoder.encode(query, "UTF-8");
-        String json = fetchText("https://musicbrainz.org/ws/2/recording/?query=" + encoded + "&fmt=json&limit=1");
-        int releasesStart = json.indexOf("\"releases\""); BufferedImage image = releasesStart < 0 ? null : findCoverIn(json.substring(releasesStart), ID_FIELD, "release");
-        if (image == null) image = findCoverIn(json, RELEASE_GROUP_ID, "release-group");
+        String json = fetchText("https://itunes.apple.com/search?term=" + encoded + "&entity=song&limit=1");
+        Matcher match = ITUNES_COVER.matcher(json); BufferedImage image = match.find() ? fetchImage(match.group(1).replace("\\/", "/").replace("100x100bb", "600x600bb")) : null;
         final BufferedImage foundCover = image;
-        SwingUtilities.invokeLater(() -> { if (requestedFile.equals(loadedFile)) { disc.setLookingUp(false); if (foundCover != null) { disc.setCover(foundCover); source.setText("MUSICBRAINZ COVER ART · " + extension(requestedFile).toUpperCase()); } else source.setText("COVER NOT FOUND · " + extension(requestedFile).toUpperCase()); } });
+        SwingUtilities.invokeLater(() -> { if (requestedFile.equals(loadedFile)) { disc.setLookingUp(false); if (foundCover != null) { disc.setCover(foundCover); source.setText("ITUNES COVER ART · " + extension(requestedFile).toUpperCase()); } else source.setText("COVER NOT FOUND · " + extension(requestedFile).toUpperCase()); } });
       } catch (Exception ignored) { SwingUtilities.invokeLater(() -> { if (requestedFile.equals(loadedFile)) { disc.setLookingUp(false); source.setText("COVER LOOKUP UNAVAILABLE · " + extension(requestedFile).toUpperCase()); } }); }
     }, "cdplayer-cover-lookup");
     lookup.setDaemon(true); lookup.start();
-  }
-  private static BufferedImage findCoverIn(String json, Pattern pattern, String kind) {
-    Matcher match = pattern.matcher(json); int attempts = 0;
-    while (match.find() && attempts++ < 12) { try { BufferedImage image = fetchImage("https://coverartarchive.org/" + kind + "/" + match.group(1) + "/front-250"); if (image != null) return image; } catch (IOException unavailable) { /* Try the next public release. */ } }
-    return null;
   }
   private static String fetchText(String location) throws IOException { HttpURLConnection connection = open(location); try (InputStream stream = connection.getInputStream()) { return new String(readAll(stream), StandardCharsets.UTF_8); } finally { connection.disconnect(); } }
   private static BufferedImage fetchImage(String location) throws IOException { HttpURLConnection connection = open(location); try (InputStream stream = connection.getInputStream()) { return ImageIO.read(stream); } finally { connection.disconnect(); } }
@@ -232,11 +225,11 @@ public final class CDPlayer extends JFrame {
     void setLookingUp(boolean value) { lookingUp = value; repaint(); }
     protected void paintComponent(Graphics raw) {
       super.paintComponent(raw); Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-      int side = Math.min(330, Math.min(getWidth(), getHeight()) - 165), x = (getWidth()-side)/2, y = (getHeight()-side)/2 + 24, centerX = getWidth()/2, centerY = y + side/2;
-      int caseSide = side + 72, caseX = centerX - caseSide / 2, caseY = centerY - caseSide / 2;
+      int side = Math.min(225, Math.min(getWidth(), getHeight()) - 185), x = (getWidth()-side)/2, y = (getHeight()-side)/2 + 24, centerX = getWidth()/2, centerY = y + side/2;
+      int caseSide = side + 50, caseX = centerX - caseSide / 2, caseY = centerY - caseSide / 2;
       g.setColor(new Color(226,239,224, 22)); g.fillRoundRect(caseX, caseY, caseSide, caseSide, 9, 9); g.setColor(new Color(216,255,66, 105)); g.setStroke(new BasicStroke(2)); g.drawRoundRect(caseX, caseY, caseSide, caseSide, 9, 9);
       g.setColor(new Color(255,255,255,48)); g.setStroke(new BasicStroke(1)); g.drawLine(caseX + 8, caseY + 8, caseX + caseSide - 8, caseY + 8); g.drawLine(caseX + 8, caseY + caseSide - 8, caseX + caseSide - 8, caseY + caseSide - 8);
-      if (cover != null) { g.setColor(new Color(0,0,0,105)); g.fillRoundRect(caseX + 15, caseY + 15, 72, 72, 4, 4); g.drawImage(cover, caseX + 18, caseY + 18, 66, 66, null); g.setColor(LIME); g.drawRect(caseX + 17, caseY + 17, 67, 67); }
+      if (cover != null) { g.setColor(new Color(0,0,0,105)); g.fillRoundRect(caseX + 13, caseY + 13, 56, 56, 4, 4); g.drawImage(cover, caseX + 16, caseY + 16, 50, 50, null); g.setColor(LIME); g.drawRect(caseX + 15, caseY + 15, 51, 51); }
       g.setColor(new Color(216,255,66, 27)); g.setStroke(new BasicStroke(1)); g.drawOval(centerX-side/2-16, centerY-side/2-16, side+32, side+32); g.drawOval(centerX-side/2+32, centerY-side/2+32, side-64, side-64);
       g.setColor(new Color(216,255,66, 30)); g.fill(new Ellipse2D.Double(x+40,y+55,side-80,side-80));
       AffineTransform old = g.getTransform(); g.rotate(angle, centerX, centerY);
