@@ -19,18 +19,3 @@ Choose an audio file with the **Load a track** button, or drag one onto the play
 Drop several songs or an entire folder to create a queue. CDPlayer scans folders for supported audio, plays them in order, and includes Shuffle and Repeat controls.
 
 CDPlayer prioritizes embedded album artwork and song tags (artist, title, album) from the audio file itself, so the displayed cover is the one packaged with the track. When no embedded art is available, it searches Apple’s iTunes catalogue using the tagged artist and title. The artwork updates for each new song.
-
-## Share with friends
-
-This project is ready for a GitHub repository. From this directory:
-
-```bash
-git add .
-git commit -m "Create CDPlayer"
-# Create an empty GitHub repo, then:
-git remote add origin https://github.com/kizarov3/CDPlayer.git
-git branch -M main
-git push -u origin main
-```
-
-Friends can clone the repository and run `./run.sh` with a JDK installed.
