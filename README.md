@@ -1,4 +1,4 @@
-# CD like Player
+# CDPlayer
 
 A tactile, CD-inspired music player built with Java and plain browser APIs. Drop in a local audio file, press play, and the disc spins like a real one.
 
@@ -22,12 +22,11 @@ This project is ready for a GitHub repository. From this directory:
 
 ```bash
 git add .
-git commit -m "Create CD like Player"
+git commit -m "Create CDPlayer"
 # Create an empty GitHub repo, then:
-git remote add origin https://github.com/YOUR-USERNAME/cd-like-player.git
+git remote add origin https://github.com/YOUR-USERNAME/CDPlayer.git
 git branch -M main
 git push -u origin main
 ```
 
 For a public live version, publish the `public` folder with any static host (GitHub Pages, Netlify, or Vercel). The Java server is only needed for local development.
-

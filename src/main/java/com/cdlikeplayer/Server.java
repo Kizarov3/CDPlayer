@@ -13,7 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
-/** Tiny dependency-free development server for CD like Player. */
+/** Tiny dependency-free development server for CDPlayer. */
 public final class Server {
   private static final Map<String, String> TYPES = new HashMap<String, String>();
   static {
