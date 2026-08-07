@@ -28,7 +28,7 @@ This project is ready for a GitHub repository. From this directory:
 git add .
 git commit -m "Create CDPlayer"
 # Create an empty GitHub repo, then:
-git remote add origin https://github.com/YOUR-USERNAME/CDPlayer.git
+git remote add origin https://github.com/kizarov3/CDPlayer.git
 git branch -M main
 git push -u origin main
 ```

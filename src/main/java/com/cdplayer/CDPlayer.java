@@ -33,6 +33,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -75,6 +77,7 @@ public final class CDPlayer extends JFrame {
   private final JLabel queueNext = label("DROP SONGS OR A FOLDER TO BUILD A QUEUE", 9, new Color(97, 110, 95));
   private final List<File> queue = new ArrayList<File>();
   private int queueIndex = -1;
+  private final Map<File, SongDetails> metadataCache = new HashMap<File, SongDetails>();
   private boolean shuffle;
   private boolean repeat;
   private Clip clip;
@@ -127,9 +130,8 @@ public final class CDPlayer extends JFrame {
 
   private JPanel header() {
     JPanel bar = new JPanel(new BorderLayout()); bar.setOpaque(false); bar.setPreferredSize(new Dimension(0, 53));
-    JLabel brand = label("C   CD\n    PLAYER", 11, TEXT); brand.setFont(new Font(Font.MONOSPACED, Font.BOLD, 11));
+    JLabel brand = label("CD\n    PLAYER", 11, TEXT); brand.setFont(new Font(Font.MONOSPACED, Font.BOLD, 11));
     bar.add(brand, BorderLayout.WEST); status.setHorizontalAlignment(SwingConstants.CENTER); bar.add(status, BorderLayout.CENTER);
-    JLabel about = label("STANDALONE JAVA APP  ↗", 10, TEXT); about.setHorizontalAlignment(SwingConstants.RIGHT); bar.add(about, BorderLayout.EAST);
     return bar;
   }
 
@@ -170,9 +172,31 @@ public final class CDPlayer extends JFrame {
   }
   private void collectAudio(File item, List<File> songs) { if (item.isDirectory()) { File[] children = item.listFiles(); if (children != null) for (File child : children) collectAudio(child, songs); } else if (isSupportedAudio(item)) songs.add(item); }
   private static boolean isSupportedAudio(File item) { String type = extension(item); return "wav".equals(type) || "wave".equals(type) || "aif".equals(type) || "aiff".equals(type) || "au".equals(type) || "flac".equals(type) || "m4a".equals(type); }
-  private void updateQueueUI() { if (queue.isEmpty() || queueIndex < 0) { queueInfo.setText("QUEUE EMPTY"); queueNext.setText("DROP SONGS OR A FOLDER TO BUILD A QUEUE"); return; } queueInfo.setText("QUEUE " + (queueIndex + 1) + " / " + queue.size() + (shuffle ? " · SHUFFLED" : "")); int next = nextIndex(); queueNext.setText(next >= 0 && next != queueIndex ? "UP NEXT · " + displayName(queue.get(next)) : (repeat ? "REPEATING THIS TRACK" : "END OF QUEUE")); }
+  private void updateQueueUI() {
+    if (queue.isEmpty() || queueIndex < 0) { queueInfo.setText("QUEUE EMPTY"); queueNext.setText("DROP SONGS OR A FOLDER TO BUILD A QUEUE"); return; }
+    queueInfo.setText("QUEUE " + (queueIndex + 1) + " / " + queue.size() + (shuffle ? " · SHUFFLED" : ""));
+    int next = nextIndex();
+    queueNext.setText(next >= 0 && next != queueIndex ? "UP NEXT · " + queueDisplay(queue.get(next)) : (repeat ? "REPEATING THIS TRACK" : "END OF QUEUE"));
+  }
   private int nextIndex() { if (queue.isEmpty()) return -1; if (shuffle && queue.size() > 1) { int next; do { next = ThreadLocalRandom.current().nextInt(queue.size()); } while (next == queueIndex); return next; } return queueIndex + 1 < queue.size() ? queueIndex + 1 : -1; }
   private static String displayName(File file) { return file.getName().replaceFirst("\\.[^.]+$", "").replace('_', ' ').replace('-', ' '); }
+
+  private SongDetails getSongDetails(File file) {
+    SongDetails details = metadataCache.get(file);
+    if (details == null) {
+      details = inspectSong(file);
+      metadataCache.put(file, details);
+    }
+    return details;
+  }
+
+  private String queueDisplay(File file) {
+    try {
+      SongDetails d = getSongDetails(file);
+      if (d != null && d.artist != null && !d.artist.trim().isEmpty()) return d.artist + " · " + d.title;
+    } catch (Exception ignored) { }
+    return displayName(file);
+  }
   private void load(File file) {
     try {
       if (clip != null) { Clip previousClip = clip; clip = null; previousClip.stop(); previousClip.close(); }
@@ -181,6 +205,7 @@ public final class CDPlayer extends JFrame {
       AudioInputStream stream = AudioSystem.getAudioInputStream(playable); Clip openedClip = AudioSystem.getClip(); openedClip.open(stream); clip = openedClip; loadedFile = file;
       openedClip.addLineListener(event -> { if (event.getType() == LineEvent.Type.STOP && openedClip.getMicrosecondPosition() >= openedClip.getMicrosecondLength()) SwingUtilities.invokeLater(() -> trackFinished(openedClip)); });
       SongDetails details = inspectSong(file);
+      metadataCache.put(file, details);
       String name = details.title;
       track.setText("<html>" + escape(name) + "</html>"); source.setText("LOCAL AUDIO FILE · " + file.getName().substring(file.getName().lastIndexOf('.') + 1).toUpperCase());
       length.setText(format(clip.getMicrosecondLength())); elapsed.setText("0:00"); progress.setValue(0); status.setText("●  TRACK LOADED");
