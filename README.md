@@ -18,7 +18,7 @@ Choose an audio file with the **Load a track** button, or drag one onto the play
 
 Drop several songs or an entire folder to create a queue. CDPlayer scans folders for supported audio, plays them in order, and includes Shuffle and Repeat controls.
 
-When a track is loaded, CDPlayer searches Apple’s iTunes catalogue for a matching song cover. The artwork is shown on the CD label and updates for each new song. If no match is found, the player keeps its original CD design.
+CDPlayer prioritizes embedded album artwork and song tags (artist, title, album) from the audio file itself, so the displayed cover is the one packaged with the track. When no embedded art is available, it searches Apple’s iTunes catalogue using the tagged artist and title. The artwork updates for each new song.
 
 ## Share with friends
 

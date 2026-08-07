@@ -180,10 +180,15 @@ public final class CDPlayer extends JFrame {
       File playable = prepareAudio(file);
       AudioInputStream stream = AudioSystem.getAudioInputStream(playable); Clip openedClip = AudioSystem.getClip(); openedClip.open(stream); clip = openedClip; loadedFile = file;
       openedClip.addLineListener(event -> { if (event.getType() == LineEvent.Type.STOP && openedClip.getMicrosecondPosition() >= openedClip.getMicrosecondLength()) SwingUtilities.invokeLater(() -> trackFinished(openedClip)); });
-      String name = displayName(file);
+      SongDetails details = inspectSong(file);
+      String name = details.title;
       track.setText("<html>" + escape(name) + "</html>"); source.setText("LOCAL AUDIO FILE · " + file.getName().substring(file.getName().lastIndexOf('.') + 1).toUpperCase());
       length.setText(format(clip.getMicrosecondLength())); elapsed.setText("0:00"); progress.setValue(0); status.setText("●  TRACK LOADED");
-      disc.setCover(null); disc.setLookingUp(true); findCover(name, file); updateQueueUI();
+      disc.setCover(details.embeddedCover); disc.setLookingUp(details.embeddedCover == null && details.hasArtist());
+      if (details.embeddedCover != null) source.setText("EMBEDDED ALBUM ART · " + extension(file).toUpperCase());
+      else if (details.hasArtist()) findCover(details.lookupQuery(), file);
+      else source.setText("NO EMBEDDED COVER · ADD SONG METADATA");
+      updateQueueUI();
       clip.start(); setPlaying(true);
     } catch (Exception error) { status.setText("●  INSTALL FFMPEG FOR FLAC / M4A"); }
   }
@@ -202,6 +207,33 @@ public final class CDPlayer extends JFrame {
   }
   private void deleteTemporaryAudio() { if (temporaryAudio != null) { temporaryAudio.delete(); temporaryAudio = null; } }
   private static String extension(File file) { String name = file.getName(); int dot = name.lastIndexOf('.'); return dot < 0 ? "" : name.substring(dot + 1).toLowerCase(); }
+  private static SongDetails inspectSong(File file) {
+    String fallbackTitle = displayName(file).replaceFirst("^\\s*\\d{1,3}[ ._-]+", "");
+    String title = null, artist = null, album = null;
+    try {
+      Process probe = new ProcessBuilder("ffprobe", "-v", "error", "-show_entries", "format_tags=title,artist,album", "-of", "default=noprint_wrappers=1", file.getAbsolutePath()).redirectErrorStream(true).start();
+      String tags = new String(readAll(probe.getInputStream()), StandardCharsets.UTF_8); probe.waitFor();
+      for (String line : tags.split("\\R")) { int equals = line.indexOf('='); if (equals < 1) continue; String key = line.substring(0, equals).toLowerCase(); String value = line.substring(equals + 1).trim(); if ("tag:title".equals(key)) title = value; else if ("tag:artist".equals(key)) artist = value; else if ("tag:album".equals(key)) album = value; }
+    } catch (Exception ignored) { /* FFmpeg metadata is optional. */ }
+    BufferedImage embeddedCover = extractEmbeddedCover(file);
+    return new SongDetails(title == null || title.isEmpty() ? fallbackTitle : title, artist, album, embeddedCover);
+  }
+  private static BufferedImage extractEmbeddedCover(File file) {
+    File image = null;
+    try {
+      image = File.createTempFile("cdplayer-art-", ".jpg");
+      Process extract = new ProcessBuilder("ffmpeg", "-nostdin", "-y", "-v", "error", "-i", file.getAbsolutePath(), "-map", "0:v:0", "-frames:v", "1", image.getAbsolutePath()).redirectErrorStream(true).start();
+      readAll(extract.getInputStream()); if (extract.waitFor() == 0 && image.length() > 0) return ImageIO.read(image);
+    } catch (Exception ignored) { /* No embedded artwork is normal. */ }
+    finally { if (image != null) image.delete(); }
+    return null;
+  }
+  private static final class SongDetails {
+    final String title, artist, album; final BufferedImage embeddedCover;
+    SongDetails(String title, String artist, String album, BufferedImage embeddedCover) { this.title = title; this.artist = artist; this.album = album; this.embeddedCover = embeddedCover; }
+    boolean hasArtist() { return artist != null && !artist.trim().isEmpty(); }
+    String lookupQuery() { return artist + " " + title + (album == null || album.trim().isEmpty() ? "" : " " + album); }
+  }
   private void findCover(final String query, final File requestedFile) {
     Thread lookup = new Thread(() -> {
       try {
