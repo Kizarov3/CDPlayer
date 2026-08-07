@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#080909" />
+  <title>CD like Player</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app-shell" id="dropZone">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="CD like Player home"><span class="brand-mark">C</span><span>CD LIKE<br>PLAYER</span></a>
+      <div class="status"><i></i><span id="statusText">READY TO PLAY</span></div>
+      <button class="about" id="aboutButton">HOW IT WORKS <span>↗</span></button>
+    </header>
+
+    <section class="player" aria-label="Music player">
+      <div class="disc-stage" id="discStage">
+        <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+        <div class="cd" id="cd" aria-hidden="true">
+          <div class="cd-rings"></div>
+          <div class="cd-copy"><span>CD LIKE PLAYER</span><b>01</b><span class="side-b">SIDE A</span></div>
+          <div class="hub"><div></div></div>
+        </div>
+        <div class="glow"></div>
+      </div>
+
+      <div class="info-panel">
+        <p class="eyebrow">NOW PLAYING <span class="sound-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span></p>
+        <h1 id="trackTitle">Pick a track<br><em>to get started.</em></h1>
+        <p class="artist" id="trackArtist">YOUR MUSIC LIBRARY</p>
+        <div class="progress-area">
+          <input id="progress" type="range" min="0" max="100" value="0" aria-label="Track progress" />
+          <div class="time"><span id="currentTime">0:00</span><span id="duration">0:00</span></div>
+        </div>
+        <div class="controls">
+          <button class="round-btn" id="previous" aria-label="Previous track">↶</button>
+          <button class="play-btn" id="play" aria-label="Play"><span class="play-icon"></span></button>
+          <button class="round-btn" id="next" aria-label="Next track">↷</button>
+          <label class="load-btn" for="fileInput">LOAD A TRACK <span>+</span></label>
+          <input id="fileInput" type="file" accept="audio/*" hidden />
+        </div>
+      </div>
+    </section>
+    <p class="drop-hint">DROP AN AUDIO FILE ANYWHERE · IT STAYS ON YOUR DEVICE</p>
+  </main>
+
+  <div class="modal" id="modal" aria-hidden="true"><div class="modal-card"><button id="closeModal" aria-label="Close">×</button><p class="eyebrow">A LITTLE MAGIC</p><h2>A CD player,<br>for right now.</h2><p>Load a song from your device and press play. The disc only spins when the music does — just like the real thing.</p></div></div>
+  <audio id="audio"></audio>
+  <script src="app.js"></script>
+</body>
+</html>
+
