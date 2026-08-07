@@ -40,6 +40,7 @@ import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.UIManager;
+import javax.swing.plaf.basic.BasicSliderUI;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
 /** A standalone, dependency-free Java desktop music player. */
@@ -113,12 +114,13 @@ public final class CDPlayer extends JFrame {
 
   private JPanel playerPanel() {
     JPanel panel = new JPanel(); panel.setOpaque(false); panel.setLayout(new javax.swing.BoxLayout(panel, javax.swing.BoxLayout.Y_AXIS));
-    JLabel now = label("NOW PLAYING", 11, LIME); now.setAlignmentX(Component.LEFT_ALIGNMENT); panel.add(now);
+    JPanel nowRow = new JPanel(); nowRow.setOpaque(false); nowRow.setAlignmentX(Component.LEFT_ALIGNMENT); nowRow.setLayout(new javax.swing.BoxLayout(nowRow, javax.swing.BoxLayout.X_AXIS));
+    JLabel now = label("NOW PLAYING", 11, LIME); nowRow.add(now); nowRow.add(javax.swing.Box.createHorizontalStrut(10)); nowRow.add(new SignalMeter()); panel.add(nowRow);
     panel.add(javax.swing.Box.createVerticalStrut(16));
     track.setForeground(TEXT); track.setFont(new Font("SansSerif", Font.BOLD, 32)); track.setAlignmentX(Component.LEFT_ALIGNMENT); panel.add(track);
     panel.add(javax.swing.Box.createVerticalStrut(16)); source.setAlignmentX(Component.LEFT_ALIGNMENT); panel.add(source);
     panel.add(javax.swing.Box.createVerticalStrut(45));
-    progress.setOpaque(false); progress.setAlignmentX(Component.LEFT_ALIGNMENT); progress.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
+    progress.setOpaque(false); progress.setUI(new LimeSliderUI(progress)); progress.setAlignmentX(Component.LEFT_ALIGNMENT); progress.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
     progress.addChangeListener(e -> { if (clip != null && progress.getValueIsAdjusting()) adjusting = true; else if (clip != null && adjusting) { clip.setMicrosecondPosition((long) (clip.getMicrosecondLength() * progress.getValue() / 1000.0)); adjusting = false; } });
     panel.add(progress);
     JPanel times = new JPanel(new BorderLayout()); times.setOpaque(false); times.setMaximumSize(new Dimension(Integer.MAX_VALUE, 18)); times.add(elapsed, BorderLayout.WEST); times.add(length, BorderLayout.EAST); panel.add(times);
@@ -167,8 +169,26 @@ public final class CDPlayer extends JFrame {
   private static String format(long micros) { long seconds = micros / 1_000_000L; return String.format("%d:%02d", seconds / 60, seconds % 60); }
   private static String escape(String value) { return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"); }
   private static JLabel label(String value, int size, Color color) { JLabel result = new JLabel("<html>" + value.replace("\n", "<br>") + "</html>"); result.setForeground(color); result.setFont(new Font(Font.MONOSPACED, Font.PLAIN, size)); return result; }
-  private static JButton roundButton(String caption, int size, boolean primary) { JButton button = new JButton(caption); button.setFont(new Font("SansSerif", Font.PLAIN, primary ? 24 : 19)); button.setForeground(primary ? INK : LIME); button.setBackground(primary ? LIME : new Color(22, 29, 20)); button.setFocusPainted(false); button.setBorder(BorderFactory.createLineBorder(primary ? LIME : new Color(125, 150, 56))); button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); button.setPreferredSize(new Dimension(size, size)); button.setMaximumSize(new Dimension(size, size)); return button; }
+  private static JButton roundButton(String caption, int size, boolean primary) { return new TransportButton(caption, size, primary); }
   private static JButton textButton(String caption) { JButton button = new JButton(caption); button.setFont(new Font(Font.MONOSPACED, Font.BOLD, 10)); button.setForeground(LIME); button.setOpaque(false); button.setContentAreaFilled(false); button.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, LIME)); button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); return button; }
+
+  private static final class TransportButton extends JButton {
+    private final boolean primary;
+    TransportButton(String caption, int size, boolean primary) { super(caption); this.primary = primary; setFont(new Font("SansSerif", Font.PLAIN, primary ? 24 : 19)); setForeground(primary ? INK : LIME); setFocusPainted(false); setBorderPainted(false); setContentAreaFilled(false); setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); setPreferredSize(new Dimension(size, size)); setMaximumSize(new Dimension(size, size)); }
+    protected void paintComponent(Graphics raw) { Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON); int pad = primary ? 1 : 3, width = getWidth() - pad * 2, height = getHeight() - pad * 2; if (primary) { g.setColor(getModel().isPressed() ? new Color(188,226,48) : LIME); g.fillOval(pad, pad, width, height); g.setColor(new Color(255,255,255,95)); g.setStroke(new BasicStroke(1)); g.drawOval(pad + 2, pad + 2, width - 4, height - 4); } else { g.setColor(new Color(216,255,66, getModel().isRollover() ? 80 : 38)); g.fillOval(pad, pad, width, height); g.setColor(new Color(216,255,66, 175)); g.setStroke(new BasicStroke(1)); g.drawOval(pad, pad, width - 1, height - 1); } String text = getText(); g.setFont(getFont()); java.awt.FontMetrics metrics = g.getFontMetrics(); g.setColor(getForeground()); g.drawString(text, (getWidth() - metrics.stringWidth(text)) / 2, (getHeight() - metrics.getHeight()) / 2 + metrics.getAscent()); g.dispose(); }
+  }
+
+  private static final class LimeSliderUI extends BasicSliderUI {
+    LimeSliderUI(JSlider slider) { super(slider); }
+    public void paintTrack(Graphics raw) { Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON); int y = trackRect.y + trackRect.height / 2 - 2; g.setColor(new Color(255,255,255,24)); g.fillRoundRect(trackRect.x, y, trackRect.width, 4, 4, 4); int fill = thumbRect.x + thumbRect.width / 2 - trackRect.x; g.setColor(LIME); g.fillRoundRect(trackRect.x, y, Math.max(0, fill), 4, 4, 4); g.dispose(); }
+    public void paintThumb(Graphics raw) { Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON); g.setColor(new Color(216,255,66,55)); g.fillOval(thumbRect.x - 4, thumbRect.y - 4, thumbRect.width + 8, thumbRect.height + 8); g.setColor(TEXT); g.fillOval(thumbRect.x, thumbRect.y, thumbRect.width, thumbRect.height); g.dispose(); }
+    protected Dimension getThumbSize() { return new Dimension(13, 13); }
+  }
+
+  private static final class SignalMeter extends JPanel {
+    SignalMeter() { setOpaque(false); setPreferredSize(new Dimension(24, 12)); setMaximumSize(new Dimension(24, 12)); }
+    protected void paintComponent(Graphics raw) { Graphics2D g = (Graphics2D) raw.create(); g.setColor(LIME); for (int i = 0; i < 4; i++) { int height = 4 + (i % 3) * 3; g.fillRect(i * 5, (12 - height) / 2, 2, height); } g.dispose(); }
+  }
 
   private static final class DiscView extends JPanel {
     private double angle; private boolean spinning; private final Timer motion = new Timer(16, e -> { angle += .1; repaint(); });
@@ -180,9 +200,10 @@ public final class CDPlayer extends JFrame {
       g.setColor(new Color(216,255,66, 27)); g.setStroke(new BasicStroke(1)); g.drawOval(centerX-side/2-22, centerY-side/2-22, side+44, side+44); g.drawOval(centerX-side/2+43, centerY-side/2+43, side-86, side-86);
       g.setColor(new Color(216,255,66, 30)); g.fill(new Ellipse2D.Double(x+40,y+55,side-80,side-80));
       AffineTransform old = g.getTransform(); g.rotate(angle, centerX, centerY);
-      g.setPaint(new GradientPaint(x, y, new Color(230,255,125), x+side, y+side, new Color(55,74,20), true)); g.fillOval(x, y, side, side);
-      g.setColor(new Color(0,0,0,80)); for(int r=side/2-9; r>side/8; r-=7) g.drawOval(centerX-r,centerY-r,r*2,r*2);
-      g.setColor(new Color(208,239,91)); g.fillOval(centerX-side/6, centerY-side/6, side/3, side/3); g.setColor(INK); g.fillOval(centerX-side/15, centerY-side/15, side/7, side/7);
+      g.setPaint(new GradientPaint(x, y, new Color(237,255,135), x+side, y+side, new Color(45,61,15), true)); g.fillOval(x, y, side, side);
+      g.setColor(new Color(0,0,0,88)); for(int r=side/2-9; r>side/8; r-=7) g.drawOval(centerX-r,centerY-r,r*2,r*2);
+      g.setColor(new Color(255,255,255,42)); g.setStroke(new BasicStroke(Math.max(1, side / 140))); g.drawArc(x+side/13,y+side/13,side*11/13,side*11/13,198,92);
+      g.setColor(new Color(208,239,91)); g.fillOval(centerX-side/6, centerY-side/6, side/3, side/3); g.setColor(new Color(247,255,190)); g.drawOval(centerX-side/6, centerY-side/6, side/3, side/3); g.setColor(INK); g.fillOval(centerX-side/15, centerY-side/15, side/7, side/7);
       g.setColor(new Color(18,27,10)); g.setFont(new Font(Font.MONOSPACED, Font.BOLD, Math.max(9, side/35))); g.drawString("CDPLAYER", x+side/6, y+side/3); g.drawString("SIDE A", x+side/2, y+side*3/4); g.setFont(new Font("SansSerif", Font.BOLD, side/9)); g.drawString("01", x+side/4, y+side*2/3);
       g.setTransform(old); if (!spinning) { g.setColor(new Color(9,11,11,92)); g.fillOval(x,y,side,side); } g.dispose();
     }
