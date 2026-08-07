@@ -60,6 +60,14 @@ public final class CDPlayer extends JFrame {
   private boolean adjusting;
   private final Timer clock = new Timer(70, this::tick);
 
+  public static void main(String[] args) {
+    SwingUtilities.invokeLater(() -> {
+      try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); }
+      catch (Exception ignored) { }
+      new CDPlayer().setVisible(true);
+    });
+  }
+
   public CDPlayer() {
     super("CDPlayer");
     setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
