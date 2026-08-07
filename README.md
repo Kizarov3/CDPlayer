@@ -1,20 +1,20 @@
 # CDPlayer
 
-A tactile, CD-inspired music player built with Java and plain browser APIs. Drop in a local audio file, press play, and the disc spins like a real one.
+A tactile, CD-inspired **Java desktop app**. Load a local track, press play, and the CD spins like a real one. It does not use a browser or HTML.
 
 ## Run locally
 
-Requires **Java 8+**—no framework or package install needed.
+Requires a **Java Development Kit (JDK) 8+**—no framework or package install needed.
 
 ```bash
 ./run.sh
 ```
 
-Then open [http://localhost:8080](http://localhost:8080).
+The CDPlayer desktop window opens directly.
 
 ## Use it
 
-Choose an audio file with the **Load a track** button, or drag one anywhere onto the player. Audio stays in the browser and is never uploaded.
+Choose an audio file with the **Load a track** button, or drag one onto the player. Audio stays on your device and is never uploaded. The built-in Java audio engine supports WAV, AIFF, and AU files.
 
 ## Share with friends
 
@@ -29,4 +29,4 @@ git branch -M main
 git push -u origin main
 ```
 
-For a public live version, publish the `public` folder with any static host (GitHub Pages, Netlify, or Vercel). The Java server is only needed for local development.
+Friends can clone the repository and run `./run.sh` with a JDK installed.
