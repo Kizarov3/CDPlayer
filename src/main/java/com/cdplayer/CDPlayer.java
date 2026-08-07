@@ -72,6 +72,7 @@ public final class CDPlayer extends JFrame {
   private boolean adjusting;
   private final Timer clock = new Timer(70, this::tick);
   private static final Pattern ID_FIELD = Pattern.compile("\\\"id\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
+  private static final Pattern RELEASE_GROUP_ID = Pattern.compile("\\\"release-group\\\"\\s*:\\s*\\{\\s*\\\"id\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
 
   public static void main(String[] args) {
     SwingUtilities.invokeLater(() -> {
@@ -154,7 +155,7 @@ public final class CDPlayer extends JFrame {
       String name = file.getName().replaceFirst("\\.[^.]+$", "").replace('_', ' ').replace('-', ' ');
       track.setText("<html>" + escape(name) + "</html>"); source.setText("LOCAL AUDIO FILE · " + file.getName().substring(file.getName().lastIndexOf('.') + 1).toUpperCase());
       length.setText(format(clip.getMicrosecondLength())); elapsed.setText("0:00"); progress.setValue(0); status.setText("●  TRACK LOADED");
-      disc.setCover(null); findCover(name, file);
+      disc.setCover(null); disc.setLookingUp(true); findCover(name, file);
       clip.start(); setPlaying(true);
     } catch (Exception error) { status.setText("●  INSTALL FFMPEG FOR FLAC / M4A"); }
   }
@@ -176,15 +177,20 @@ public final class CDPlayer extends JFrame {
   private void findCover(final String query, final File requestedFile) {
     Thread lookup = new Thread(() -> {
       try {
-        String encoded = URLEncoder.encode("recording:\"" + query + "\"", "UTF-8");
+        String encoded = URLEncoder.encode(query, "UTF-8");
         String json = fetchText("https://musicbrainz.org/ws/2/recording/?query=" + encoded + "&fmt=json&limit=1");
-        int releasesStart = json.indexOf("\"releases\""); if (releasesStart < 0) return;
-        Matcher match = ID_FIELD.matcher(json.substring(releasesStart)); BufferedImage image = null; int attempts = 0;
-        while (match.find() && attempts++ < 6 && image == null) { try { image = fetchImage("https://coverartarchive.org/release/" + match.group(1) + "/front-250"); } catch (IOException unavailable) { /* Try another release for this recording. */ } }
-        if (image != null) { final BufferedImage foundCover = image; SwingUtilities.invokeLater(() -> { if (requestedFile.equals(loadedFile)) { disc.setCover(foundCover); source.setText("MUSICBRAINZ COVER ART · " + extension(requestedFile).toUpperCase()); } }); }
-      } catch (Exception ignored) { /* Artwork is optional; music playback remains local. */ }
+        int releasesStart = json.indexOf("\"releases\""); BufferedImage image = releasesStart < 0 ? null : findCoverIn(json.substring(releasesStart), ID_FIELD, "release");
+        if (image == null) image = findCoverIn(json, RELEASE_GROUP_ID, "release-group");
+        final BufferedImage foundCover = image;
+        SwingUtilities.invokeLater(() -> { if (requestedFile.equals(loadedFile)) { disc.setLookingUp(false); if (foundCover != null) { disc.setCover(foundCover); source.setText("MUSICBRAINZ COVER ART · " + extension(requestedFile).toUpperCase()); } else source.setText("COVER NOT FOUND · " + extension(requestedFile).toUpperCase()); } });
+      } catch (Exception ignored) { SwingUtilities.invokeLater(() -> { if (requestedFile.equals(loadedFile)) { disc.setLookingUp(false); source.setText("COVER LOOKUP UNAVAILABLE · " + extension(requestedFile).toUpperCase()); } }); }
     }, "cdplayer-cover-lookup");
     lookup.setDaemon(true); lookup.start();
+  }
+  private static BufferedImage findCoverIn(String json, Pattern pattern, String kind) {
+    Matcher match = pattern.matcher(json); int attempts = 0;
+    while (match.find() && attempts++ < 12) { try { BufferedImage image = fetchImage("https://coverartarchive.org/" + kind + "/" + match.group(1) + "/front-250"); if (image != null) return image; } catch (IOException unavailable) { /* Try the next public release. */ } }
+    return null;
   }
   private static String fetchText(String location) throws IOException { HttpURLConnection connection = open(location); try (InputStream stream = connection.getInputStream()) { return new String(readAll(stream), StandardCharsets.UTF_8); } finally { connection.disconnect(); } }
   private static BufferedImage fetchImage(String location) throws IOException { HttpURLConnection connection = open(location); try (InputStream stream = connection.getInputStream()) { return ImageIO.read(stream); } finally { connection.disconnect(); } }
@@ -219,16 +225,17 @@ public final class CDPlayer extends JFrame {
   }
 
   private static final class DiscView extends JPanel {
-    private double angle; private boolean spinning; private BufferedImage cover; private final Timer motion = new Timer(16, e -> { angle += .1; repaint(); });
+    private double angle; private boolean spinning; private boolean lookingUp; private BufferedImage cover; private final Timer motion = new Timer(16, e -> { angle += .1; repaint(); });
     DiscView() { setOpaque(false); setPreferredSize(new Dimension(520, 520)); }
     void setSpinning(boolean value) { spinning = value; if (value) motion.start(); else motion.stop(); repaint(); }
     void setCover(BufferedImage image) { cover = image; repaint(); }
+    void setLookingUp(boolean value) { lookingUp = value; repaint(); }
     protected void paintComponent(Graphics raw) {
       super.paintComponent(raw); Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
       int side = Math.min(330, Math.min(getWidth(), getHeight()) - 165), x = (getWidth()-side)/2, y = (getHeight()-side)/2 + 24, centerX = getWidth()/2, centerY = y + side/2;
       int caseSide = side + 72, caseX = centerX - caseSide / 2, caseY = centerY - caseSide / 2;
-      g.setColor(new Color(226,239,224, 14)); g.fillRoundRect(caseX, caseY, caseSide, caseSide, 9, 9); g.setColor(new Color(216,255,66, 53)); g.drawRoundRect(caseX, caseY, caseSide, caseSide, 9, 9);
-      g.setColor(new Color(255,255,255,20)); g.drawLine(caseX + 8, caseY + 8, caseX + caseSide - 8, caseY + 8); g.drawLine(caseX + 8, caseY + caseSide - 8, caseX + caseSide - 8, caseY + caseSide - 8);
+      g.setColor(new Color(226,239,224, 22)); g.fillRoundRect(caseX, caseY, caseSide, caseSide, 9, 9); g.setColor(new Color(216,255,66, 105)); g.setStroke(new BasicStroke(2)); g.drawRoundRect(caseX, caseY, caseSide, caseSide, 9, 9);
+      g.setColor(new Color(255,255,255,48)); g.setStroke(new BasicStroke(1)); g.drawLine(caseX + 8, caseY + 8, caseX + caseSide - 8, caseY + 8); g.drawLine(caseX + 8, caseY + caseSide - 8, caseX + caseSide - 8, caseY + caseSide - 8);
       if (cover != null) { g.setColor(new Color(0,0,0,105)); g.fillRoundRect(caseX + 15, caseY + 15, 72, 72, 4, 4); g.drawImage(cover, caseX + 18, caseY + 18, 66, 66, null); g.setColor(LIME); g.drawRect(caseX + 17, caseY + 17, 67, 67); }
       g.setColor(new Color(216,255,66, 27)); g.setStroke(new BasicStroke(1)); g.drawOval(centerX-side/2-16, centerY-side/2-16, side+32, side+32); g.drawOval(centerX-side/2+32, centerY-side/2+32, side-64, side-64);
       g.setColor(new Color(216,255,66, 30)); g.fill(new Ellipse2D.Double(x+40,y+55,side-80,side-80));
@@ -239,6 +246,7 @@ public final class CDPlayer extends JFrame {
       int labelSize = side / 3, labelX = centerX - labelSize / 2, labelY = centerY - labelSize / 2;
       g.setColor(new Color(208,239,91)); g.fillOval(labelX, labelY, labelSize, labelSize);
       if (cover != null) { java.awt.Shape oldClip = g.getClip(); g.setClip(new Ellipse2D.Double(labelX, labelY, labelSize, labelSize)); g.drawImage(cover, labelX, labelY, labelSize, labelSize, null); g.setClip(oldClip); }
+      else if (lookingUp) { g.setColor(new Color(15,19,10)); g.fillOval(labelX, labelY, labelSize, labelSize); g.setColor(LIME); g.setFont(new Font(Font.MONOSPACED, Font.BOLD, Math.max(7, side / 34))); String loading = "FETCHING"; int textWidth = g.getFontMetrics().stringWidth(loading); g.drawString(loading, centerX - textWidth / 2, centerY + side / 42); }
       g.setColor(new Color(247,255,190)); g.drawOval(labelX, labelY, labelSize, labelSize); g.setColor(INK); g.fillOval(centerX-side/15, centerY-side/15, side/7, side/7);
       g.setColor(new Color(18,27,10)); g.setFont(new Font(Font.MONOSPACED, Font.BOLD, Math.max(9, side/35))); g.drawString("CDPLAYER", x+side/6, y+side/3); g.drawString("SIDE A", x+side/2, y+side*3/4); g.setFont(new Font("SansSerif", Font.BOLD, side/9)); g.drawString("01", x+side/4, y+side*2/3);
       g.setTransform(old); if (!spinning) { g.setColor(new Color(9,11,11,92)); g.fillOval(x,y,side,side); } g.dispose();
