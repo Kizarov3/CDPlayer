@@ -16,6 +16,8 @@ The CDPlayer desktop window opens directly.
 
 Choose an audio file with the **Load a track** button, or drag one onto the player. Audio stays on your device and is never uploaded. WAV, AIFF, and AU work with Java directly. FLAC and M4A are automatically converted for playback with [FFmpeg](https://ffmpeg.org/), which must be installed and available on your system path (`brew install ffmpeg` on macOS).
 
+Drop several songs or an entire folder to create a queue. CDPlayer scans folders for supported audio, plays them in order, and includes Shuffle and Repeat controls.
+
 When a track is loaded, CDPlayer searches Apple’s iTunes catalogue for a matching song cover. The artwork is shown on the CD label and updates for each new song. If no match is found, the player keeps its original CD design.
 
 ## Share with friends

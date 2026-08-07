@@ -31,6 +31,9 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.imageio.ImageIO;
@@ -66,6 +69,14 @@ public final class CDPlayer extends JFrame {
   private final JLabel length = label("0:00", 10, MUTED);
   private final JSlider progress = new JSlider(0, 1000, 0);
   private final JButton play = roundButton("▶", 68, true);
+  private final JButton shuffleButton = textButton("SHUFFLE OFF");
+  private final JButton repeatButton = textButton("REPEAT OFF");
+  private final JLabel queueInfo = label("QUEUE EMPTY", 10, MUTED);
+  private final JLabel queueNext = label("DROP SONGS OR A FOLDER TO BUILD A QUEUE", 9, new Color(97, 110, 95));
+  private final List<File> queue = new ArrayList<File>();
+  private int queueIndex = -1;
+  private boolean shuffle;
+  private boolean repeat;
   private Clip clip;
   private File loadedFile;
   private File temporaryAudio;
@@ -93,7 +104,7 @@ public final class CDPlayer extends JFrame {
         try {
           event.acceptDrop(event.getDropAction());
           List<File> files = (List<File>) event.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
-          if (!files.isEmpty()) load(files.get(0));
+          if (!files.isEmpty()) addToQueue(files);
         } catch (Exception ignored) { status.setText("●  COULDN'T LOAD THAT FILE"); }
       }
     }));
@@ -136,25 +147,43 @@ public final class CDPlayer extends JFrame {
     JPanel times = new JPanel(new BorderLayout()); times.setOpaque(false); times.setMaximumSize(new Dimension(Integer.MAX_VALUE, 18)); times.add(elapsed, BorderLayout.WEST); times.add(length, BorderLayout.EAST); panel.add(times);
     panel.add(javax.swing.Box.createVerticalStrut(22));
     JPanel controls = new JPanel(); controls.setOpaque(false); controls.setLayout(new javax.swing.BoxLayout(controls, javax.swing.BoxLayout.X_AXIS)); controls.setAlignmentX(Component.LEFT_ALIGNMENT);
-    JButton back = roundButton("↶", 42, false); back.addActionListener(e -> seek(-10)); controls.add(back); controls.add(javax.swing.Box.createHorizontalStrut(13));
+    JButton back = roundButton("↶", 42, false); back.setToolTipText("Previous track"); back.addActionListener(e -> previousTrack()); controls.add(back); controls.add(javax.swing.Box.createHorizontalStrut(13));
     play.addActionListener(e -> toggle()); controls.add(play); controls.add(javax.swing.Box.createHorizontalStrut(13));
-    JButton forward = roundButton("↷", 42, false); forward.addActionListener(e -> seek(10)); controls.add(forward); controls.add(javax.swing.Box.createHorizontalGlue());
+    JButton forward = roundButton("↷", 42, false); forward.setToolTipText("Next track"); forward.addActionListener(e -> nextTrack()); controls.add(forward); controls.add(javax.swing.Box.createHorizontalGlue());
     JButton load = textButton("LOAD A TRACK  +"); load.addActionListener(e -> choose()); controls.add(load); panel.add(controls);
+    panel.add(javax.swing.Box.createVerticalStrut(21));
+    JPanel modes = new JPanel(); modes.setOpaque(false); modes.setAlignmentX(Component.LEFT_ALIGNMENT); modes.setLayout(new javax.swing.BoxLayout(modes, javax.swing.BoxLayout.X_AXIS));
+    shuffleButton.addActionListener(e -> { shuffle = !shuffle; shuffleButton.setText(shuffle ? "SHUFFLE ON" : "SHUFFLE OFF"); updateQueueUI(); }); modes.add(shuffleButton); modes.add(javax.swing.Box.createHorizontalStrut(18));
+    repeatButton.addActionListener(e -> { repeat = !repeat; repeatButton.setText(repeat ? "REPEAT ON" : "REPEAT OFF"); updateQueueUI(); }); modes.add(repeatButton); panel.add(modes);
+    panel.add(javax.swing.Box.createVerticalStrut(18));
+    JPanel queueCard = new JPanel(); queueCard.setOpaque(false); queueCard.setAlignmentX(Component.LEFT_ALIGNMENT); queueCard.setLayout(new javax.swing.BoxLayout(queueCard, javax.swing.BoxLayout.Y_AXIS)); queueCard.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(216, 255, 66, 50)));
+    queueInfo.setAlignmentX(Component.LEFT_ALIGNMENT); queueNext.setAlignmentX(Component.LEFT_ALIGNMENT); queueCard.add(javax.swing.Box.createVerticalStrut(9)); queueCard.add(queueInfo); queueCard.add(javax.swing.Box.createVerticalStrut(5)); queueCard.add(queueNext); panel.add(queueCard);
     return panel;
   }
 
-  private void choose() { JFileChooser chooser = new JFileChooser(); chooser.setFileFilter(new FileNameExtensionFilter("Audio files (WAV, AIFF, AU, FLAC, M4A)", "wav", "wave", "aif", "aiff", "au", "flac", "m4a")); if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) load(chooser.getSelectedFile()); }
+  private void choose() { JFileChooser chooser = new JFileChooser(); chooser.setMultiSelectionEnabled(true); chooser.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES); chooser.setFileFilter(new FileNameExtensionFilter("Audio files (WAV, AIFF, AU, FLAC, M4A)", "wav", "wave", "aif", "aiff", "au", "flac", "m4a")); if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) { File[] selected = chooser.getSelectedFiles(); if (selected.length == 0) selected = new File[] { chooser.getSelectedFile() }; addToQueue(java.util.Arrays.asList(selected)); } }
+  private void addToQueue(List<File> dropped) {
+    List<File> songs = new ArrayList<File>(); for (File item : dropped) collectAudio(item, songs); Collections.sort(songs, (left, right) -> left.getName().compareToIgnoreCase(right.getName()));
+    if (songs.isEmpty()) { status.setText("●  NO SUPPORTED AUDIO FOUND"); return; }
+    queue.addAll(songs); status.setText("●  ADDED " + songs.size() + " TO QUEUE"); updateQueueUI();
+    if (queueIndex < 0) { queueIndex = 0; load(queue.get(queueIndex)); }
+  }
+  private void collectAudio(File item, List<File> songs) { if (item.isDirectory()) { File[] children = item.listFiles(); if (children != null) for (File child : children) collectAudio(child, songs); } else if (isSupportedAudio(item)) songs.add(item); }
+  private static boolean isSupportedAudio(File item) { String type = extension(item); return "wav".equals(type) || "wave".equals(type) || "aif".equals(type) || "aiff".equals(type) || "au".equals(type) || "flac".equals(type) || "m4a".equals(type); }
+  private void updateQueueUI() { if (queue.isEmpty() || queueIndex < 0) { queueInfo.setText("QUEUE EMPTY"); queueNext.setText("DROP SONGS OR A FOLDER TO BUILD A QUEUE"); return; } queueInfo.setText("QUEUE " + (queueIndex + 1) + " / " + queue.size() + (shuffle ? " · SHUFFLED" : "")); int next = nextIndex(); queueNext.setText(next >= 0 && next != queueIndex ? "UP NEXT · " + displayName(queue.get(next)) : (repeat ? "REPEATING THIS TRACK" : "END OF QUEUE")); }
+  private int nextIndex() { if (queue.isEmpty()) return -1; if (shuffle && queue.size() > 1) { int next; do { next = ThreadLocalRandom.current().nextInt(queue.size()); } while (next == queueIndex); return next; } return queueIndex + 1 < queue.size() ? queueIndex + 1 : -1; }
+  private static String displayName(File file) { return file.getName().replaceFirst("\\.[^.]+$", "").replace('_', ' ').replace('-', ' '); }
   private void load(File file) {
     try {
-      if (clip != null) { clip.stop(); clip.close(); }
+      if (clip != null) { Clip previousClip = clip; clip = null; previousClip.stop(); previousClip.close(); }
       deleteTemporaryAudio();
       File playable = prepareAudio(file);
-      AudioInputStream stream = AudioSystem.getAudioInputStream(playable); clip = AudioSystem.getClip(); clip.open(stream); loadedFile = file;
-      clip.addLineListener(event -> { if (event.getType() == LineEvent.Type.STOP && clip.getMicrosecondPosition() >= clip.getMicrosecondLength()) SwingUtilities.invokeLater(() -> setPlaying(false)); });
-      String name = file.getName().replaceFirst("\\.[^.]+$", "").replace('_', ' ').replace('-', ' ');
+      AudioInputStream stream = AudioSystem.getAudioInputStream(playable); Clip openedClip = AudioSystem.getClip(); openedClip.open(stream); clip = openedClip; loadedFile = file;
+      openedClip.addLineListener(event -> { if (event.getType() == LineEvent.Type.STOP && openedClip.getMicrosecondPosition() >= openedClip.getMicrosecondLength()) SwingUtilities.invokeLater(() -> trackFinished(openedClip)); });
+      String name = displayName(file);
       track.setText("<html>" + escape(name) + "</html>"); source.setText("LOCAL AUDIO FILE · " + file.getName().substring(file.getName().lastIndexOf('.') + 1).toUpperCase());
       length.setText(format(clip.getMicrosecondLength())); elapsed.setText("0:00"); progress.setValue(0); status.setText("●  TRACK LOADED");
-      disc.setCover(null); disc.setLookingUp(true); findCover(name, file);
+      disc.setCover(null); disc.setLookingUp(true); findCover(name, file); updateQueueUI();
       clip.start(); setPlaying(true);
     } catch (Exception error) { status.setText("●  INSTALL FFMPEG FOR FLAC / M4A"); }
   }
@@ -190,6 +219,9 @@ public final class CDPlayer extends JFrame {
   private static HttpURLConnection open(String location) throws IOException { HttpURLConnection connection = (HttpURLConnection) new URL(location).openConnection(); connection.setRequestProperty("User-Agent", "CDPlayer/1.0 (open cover lookup)"); connection.setConnectTimeout(5000); connection.setReadTimeout(8000); return connection; }
   private static byte[] readAll(InputStream stream) throws IOException { java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream(); byte[] buffer = new byte[4096]; int count; while ((count = stream.read(buffer)) >= 0) output.write(buffer, 0, count); return output.toByteArray(); }
   private void toggle() { if (clip == null) { choose(); return; } if (clip.isRunning()) { clip.stop(); setPlaying(false); } else { clip.start(); setPlaying(true); } }
+  private void trackFinished(Clip finishedClip) { if (clip != finishedClip) return; if (repeat) { clip.setMicrosecondPosition(0); clip.start(); setPlaying(true); } else if (!nextTrack()) setPlaying(false); }
+  private boolean nextTrack() { int next = nextIndex(); if (next < 0) return false; queueIndex = next; load(queue.get(queueIndex)); return true; }
+  private void previousTrack() { if (clip != null && clip.getMicrosecondPosition() > 5_000_000L) { clip.setMicrosecondPosition(0); return; } if (queueIndex > 0) { queueIndex--; load(queue.get(queueIndex)); } else if (clip != null) clip.setMicrosecondPosition(0); }
   private void seek(int seconds) { if (clip == null) return; long target = Math.max(0, Math.min(clip.getMicrosecondLength(), clip.getMicrosecondPosition() + seconds * 1_000_000L)); clip.setMicrosecondPosition(target); }
   private void tick(ActionEvent event) { if (clip == null || adjusting) return; long duration = clip.getMicrosecondLength(); long position = clip.getMicrosecondPosition(); progress.setValue(duration == 0 ? 0 : (int) (position * 1000 / duration)); elapsed.setText(format(position)); }
   private void setPlaying(boolean playing) { disc.setSpinning(playing); play.setText(playing ? "Ⅱ" : "▶"); status.setText(playing ? "●  NOW SPINNING" : (loadedFile == null ? "●  READY TO PLAY" : "●  PAUSED")); if (playing) clock.start(); else clock.stop(); }
