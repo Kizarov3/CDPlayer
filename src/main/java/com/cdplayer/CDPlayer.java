@@ -23,6 +23,7 @@ import java.awt.event.ActionEvent;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Ellipse2D;
 import java.io.File;
+import java.io.IOException;
 import java.util.List;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
@@ -57,6 +58,7 @@ public final class CDPlayer extends JFrame {
   private final JButton play = roundButton("▶", 68, true);
   private Clip clip;
   private File loadedFile;
+  private File temporaryAudio;
   private boolean adjusting;
   private final Timer clock = new Timer(70, this::tick);
 
@@ -96,7 +98,7 @@ public final class CDPlayer extends JFrame {
     constraints.gridx = 0; constraints.weightx = 1.1; body.add(disc, constraints);
     constraints.gridx = 1; constraints.weightx = .9; constraints.insets = new Insets(40, 25, 30, 10); body.add(playerPanel(), constraints);
     root.add(body, BorderLayout.CENTER);
-    JLabel hint = label("DROP A WAV, AIFF OR AU FILE ANYWHERE · IT STAYS ON YOUR DEVICE", 10, new Color(97, 110, 95));
+    JLabel hint = label("DROP WAV, AIFF, AU, FLAC OR M4A · IT STAYS ON YOUR DEVICE", 10, new Color(97, 110, 95));
     hint.setHorizontalAlignment(SwingConstants.CENTER); root.add(hint, BorderLayout.SOUTH);
     return root;
   }
@@ -129,18 +131,35 @@ public final class CDPlayer extends JFrame {
     return panel;
   }
 
-  private void choose() { JFileChooser chooser = new JFileChooser(); chooser.setFileFilter(new FileNameExtensionFilter("Audio files (WAV, AIFF, AU)", "wav", "wave", "aif", "aiff", "au")); if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) load(chooser.getSelectedFile()); }
+  private void choose() { JFileChooser chooser = new JFileChooser(); chooser.setFileFilter(new FileNameExtensionFilter("Audio files (WAV, AIFF, AU, FLAC, M4A)", "wav", "wave", "aif", "aiff", "au", "flac", "m4a")); if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) load(chooser.getSelectedFile()); }
   private void load(File file) {
     try {
       if (clip != null) { clip.stop(); clip.close(); }
-      AudioInputStream stream = AudioSystem.getAudioInputStream(file); clip = AudioSystem.getClip(); clip.open(stream); loadedFile = file;
+      deleteTemporaryAudio();
+      File playable = prepareAudio(file);
+      AudioInputStream stream = AudioSystem.getAudioInputStream(playable); clip = AudioSystem.getClip(); clip.open(stream); loadedFile = file;
       clip.addLineListener(event -> { if (event.getType() == LineEvent.Type.STOP && clip.getMicrosecondPosition() >= clip.getMicrosecondLength()) SwingUtilities.invokeLater(() -> setPlaying(false)); });
       String name = file.getName().replaceFirst("\\.[^.]+$", "").replace('_', ' ').replace('-', ' ');
       track.setText("<html>" + escape(name) + "</html>"); source.setText("LOCAL AUDIO FILE · " + file.getName().substring(file.getName().lastIndexOf('.') + 1).toUpperCase());
       length.setText(format(clip.getMicrosecondLength())); elapsed.setText("0:00"); progress.setValue(0); status.setText("●  TRACK LOADED");
       clip.start(); setPlaying(true);
-    } catch (Exception error) { status.setText("●  USE WAV, AIFF OR AU AUDIO"); }
+    } catch (Exception error) { status.setText("●  INSTALL FFMPEG FOR FLAC / M4A"); }
   }
+  private File prepareAudio(File sourceFile) throws Exception {
+    String extension = extension(sourceFile);
+    if (!"flac".equals(extension) && !"m4a".equals(extension)) return sourceFile;
+    temporaryAudio = File.createTempFile("cdplayer-", ".wav"); temporaryAudio.deleteOnExit();
+    Process process;
+    try {
+      process = new ProcessBuilder("ffmpeg", "-nostdin", "-y", "-v", "error", "-i", sourceFile.getAbsolutePath(), "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2", temporaryAudio.getAbsolutePath()).inheritIO().start();
+    } catch (IOException missingFfmpeg) {
+      deleteTemporaryAudio(); throw new IOException("FFmpeg was not found", missingFfmpeg);
+    }
+    if (process.waitFor() != 0 || !temporaryAudio.isFile() || temporaryAudio.length() == 0) { deleteTemporaryAudio(); throw new IOException("FFmpeg could not decode this audio file"); }
+    return temporaryAudio;
+  }
+  private void deleteTemporaryAudio() { if (temporaryAudio != null) { temporaryAudio.delete(); temporaryAudio = null; } }
+  private static String extension(File file) { String name = file.getName(); int dot = name.lastIndexOf('.'); return dot < 0 ? "" : name.substring(dot + 1).toLowerCase(); }
   private void toggle() { if (clip == null) { choose(); return; } if (clip.isRunning()) { clip.stop(); setPlaying(false); } else { clip.start(); setPlaying(true); } }
   private void seek(int seconds) { if (clip == null) return; long target = Math.max(0, Math.min(clip.getMicrosecondLength(), clip.getMicrosecondPosition() + seconds * 1_000_000L)); clip.setMicrosecondPosition(target); }
   private void tick(ActionEvent event) { if (clip == null || adjusting) return; long duration = clip.getMicrosecondLength(); long position = clip.getMicrosecondPosition(); progress.setValue(duration == 0 ? 0 : (int) (position * 1000 / duration)); elapsed.setText(format(position)); }

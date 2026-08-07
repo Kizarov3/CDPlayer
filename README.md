@@ -14,7 +14,7 @@ The CDPlayer desktop window opens directly.
 
 ## Use it
 
-Choose an audio file with the **Load a track** button, or drag one onto the player. Audio stays on your device and is never uploaded. The built-in Java audio engine supports WAV, AIFF, and AU files.
+Choose an audio file with the **Load a track** button, or drag one onto the player. Audio stays on your device and is never uploaded. WAV, AIFF, and AU work with Java directly. FLAC and M4A are automatically converted for playback with [FFmpeg](https://ffmpeg.org/), which must be installed and available on your system path (`brew install ffmpeg` on macOS).
 
 ## Share with friends
 
