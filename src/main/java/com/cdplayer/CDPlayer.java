@@ -50,6 +50,7 @@ import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JSlider;
+import javax.swing.JScrollPane;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
@@ -78,6 +79,8 @@ public final class CDPlayer extends JFrame {
   private final List<File> queue = new ArrayList<File>();
   private int queueIndex = -1;
   private final Map<File, SongDetails> metadataCache = new HashMap<File, SongDetails>();
+  // Panel that lists all queued songs; displayed under queue headers.
+  private final JPanel queueList = new JPanel();
   private boolean shuffle;
   private boolean repeat;
   private Clip clip;
@@ -159,7 +162,12 @@ public final class CDPlayer extends JFrame {
     repeatButton.addActionListener(e -> { repeat = !repeat; repeatButton.setText(repeat ? "REPEAT ON" : "REPEAT OFF"); updateQueueUI(); }); modes.add(repeatButton); panel.add(modes);
     panel.add(javax.swing.Box.createVerticalStrut(18));
     JPanel queueCard = new JPanel(); queueCard.setOpaque(false); queueCard.setAlignmentX(Component.LEFT_ALIGNMENT); queueCard.setLayout(new javax.swing.BoxLayout(queueCard, javax.swing.BoxLayout.Y_AXIS)); queueCard.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(216, 255, 66, 50)));
-    queueInfo.setAlignmentX(Component.LEFT_ALIGNMENT); queueNext.setAlignmentX(Component.LEFT_ALIGNMENT); queueCard.add(javax.swing.Box.createVerticalStrut(9)); queueCard.add(queueInfo); queueCard.add(javax.swing.Box.createVerticalStrut(5)); queueCard.add(queueNext); panel.add(queueCard);
+    queueInfo.setAlignmentX(Component.LEFT_ALIGNMENT); queueNext.setAlignmentX(Component.LEFT_ALIGNMENT); queueCard.add(javax.swing.Box.createVerticalStrut(9)); queueCard.add(queueInfo); queueCard.add(javax.swing.Box.createVerticalStrut(5)); queueCard.add(queueNext);
+    // prepare the queue list container (scrollable)
+    queueList.setOpaque(false); queueList.setLayout(new javax.swing.BoxLayout(queueList, javax.swing.BoxLayout.Y_AXIS));
+    JScrollPane queueScroll = new JScrollPane(queueList); queueScroll.setOpaque(false); queueScroll.getViewport().setOpaque(false); queueScroll.setBorder(null); queueScroll.setAlignmentX(Component.LEFT_ALIGNMENT); queueScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 150));
+    queueCard.add(javax.swing.Box.createVerticalStrut(8)); queueCard.add(queueScroll);
+    panel.add(queueCard);
     return panel;
   }
 
@@ -177,6 +185,17 @@ public final class CDPlayer extends JFrame {
     queueInfo.setText("QUEUE " + (queueIndex + 1) + " / " + queue.size() + (shuffle ? " · SHUFFLED" : ""));
     int next = nextIndex();
     queueNext.setText(next >= 0 && next != queueIndex ? "UP NEXT · " + queueDisplay(queue.get(next)) : (repeat ? "REPEATING THIS TRACK" : "END OF QUEUE"));
+    // rebuild the full queue list UI
+    queueList.removeAll();
+    for (int i = 0; i < queue.size(); i++) {
+      File f = queue.get(i);
+      boolean active = i == queueIndex;
+      JLabel entry = label((i + 1) + ". " + escape(queueDisplay(f)), 10, active ? LIME : MUTED);
+      if (active) entry.setFont(new Font("SansSerif", Font.BOLD, 10));
+      entry.setAlignmentX(Component.LEFT_ALIGNMENT);
+      queueList.add(entry);
+    }
+    queueList.revalidate(); queueList.repaint();
   }
   private int nextIndex() { if (queue.isEmpty()) return -1; if (shuffle && queue.size() > 1) { int next; do { next = ThreadLocalRandom.current().nextInt(queue.size()); } while (next == queueIndex); return next; } return queueIndex + 1 < queue.size() ? queueIndex + 1 : -1; }
   private static String displayName(File file) { return file.getName().replaceFirst("\\.[^.]+$", "").replace('_', ' ').replace('-', ' '); }
