@@ -61,12 +61,16 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 
 /** A standalone, dependency-free Java desktop music player. */
 public final class CDPlayer extends JFrame {
-  private static final Color BG = new Color(10, 11, 16);
-  private static final Color CARD = new Color(19, 20, 28);
-  private static final Color ACCENT = new Color(130, 110, 255);
-  private static final Color ACCENT2 = new Color(0, 214, 182);
-  private static final Color TEXT = new Color(240, 241, 247);
-  private static final Color MUTED = new Color(134, 138, 158);
+  private static final Color[] RED_THEME = { new Color(17, 17, 19), new Color(31, 31, 34), new Color(196, 20, 28), new Color(180, 186, 194), new Color(232, 233, 236), new Color(138, 142, 148) };
+  private static final Color[] BLUE_THEME = { new Color(10, 11, 16), new Color(19, 20, 28), new Color(130, 110, 255), new Color(0, 214, 182), new Color(240, 241, 247), new Color(134, 138, 158) };
+  private static Color BG = RED_THEME[0];
+  private static Color CARD = RED_THEME[1];
+  private static Color ACCENT = RED_THEME[2];
+  private static Color ACCENT2 = RED_THEME[3];
+  private static Color TEXT = RED_THEME[4];
+  private static Color MUTED = RED_THEME[5];
+  private boolean redTheme = true;
+  private Timer themeAnim;
   private final DiscView disc = new DiscView();
   private final JLabel status = label("●  READY TO PLAY", 11, ACCENT);
   private final JLabel track = new JLabel("Pick a track to get started.");
@@ -77,8 +81,11 @@ public final class CDPlayer extends JFrame {
   private final JButton play = roundButton("▶", 68, true);
   private final JButton shuffleButton = textButton("SHUFFLE OFF");
   private final JButton repeatButton = textButton("REPEAT OFF");
+  private final JButton themeToggle = textButton("BLUE THEME");
+  private final JLabel brandLabel = new JLabel("by kizarka");
+  private final JLabel nowPlayingLabel = new JLabel("NOW PLAYING");
   private final JLabel queueInfo = label("QUEUE EMPTY", 10, MUTED);
-  private final JLabel queueNext = label("DROP SONGS OR A FOLDER TO BUILD A QUEUE", 9, new Color(97, 110, 95));
+  private final JLabel queueNext = label("DROP SONGS OR A FOLDER TO BUILD A QUEUE", 9, MUTED);
   private final VisualizerBars visualizer = new VisualizerBars();
   private final List<File> queue = new ArrayList<File>();
   private int queueIndex = -1;
@@ -141,41 +148,79 @@ public final class CDPlayer extends JFrame {
     actionMap.put(name, new javax.swing.AbstractAction() { public void actionPerformed(ActionEvent e) { action.accept(e); } });
   }
 
+  private void switchTheme() {
+    redTheme = !redTheme;
+    themeToggle.setText(redTheme ? "BLUE THEME" : "RED THEME");
+    Color[] from = { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED };
+    Color[] to = redTheme ? RED_THEME : BLUE_THEME;
+    if (themeAnim != null && themeAnim.isRunning()) themeAnim.stop();
+    int steps = 18;
+    int[] step = { 0 };
+    themeAnim = new Timer(16, e -> {
+      step[0]++;
+      float t = Math.min(1f, step[0] / (float) steps);
+      BG = lerp(from[0], to[0], t); CARD = lerp(from[1], to[1], t); ACCENT = lerp(from[2], to[2], t);
+      ACCENT2 = lerp(from[3], to[3], t); TEXT = lerp(from[4], to[4], t); MUTED = lerp(from[5], to[5], t);
+      applyThemeColors();
+      getContentPane().repaint();
+      if (t >= 1f) { ((Timer) e.getSource()).stop(); updateQueueUI(); }
+    });
+    themeAnim.start();
+  }
+
+  private void applyThemeColors() {
+    status.setForeground(ACCENT); track.setForeground(TEXT); source.setForeground(MUTED);
+    elapsed.setForeground(MUTED); length.setForeground(MUTED); queueInfo.setForeground(MUTED); queueNext.setForeground(MUTED);
+    brandLabel.setForeground(TEXT); nowPlayingLabel.setForeground(ACCENT2);
+  }
+
+  private static Color lerp(Color a, Color b, float t) {
+    int r = Math.round(a.getRed() + (b.getRed() - a.getRed()) * t);
+    int g = Math.round(a.getGreen() + (b.getGreen() - a.getGreen()) * t);
+    int bl = Math.round(a.getBlue() + (b.getBlue() - a.getBlue()) * t);
+    return new Color(r, g, bl);
+  }
+
   private JPanel createContent() {
-    JPanel root = new JPanel(new BorderLayout());
-    root.setBackground(BG); root.setBorder(BorderFactory.createEmptyBorder(32, 64, 28, 64));
-    root.add(header(), BorderLayout.NORTH);
+    JPanel root = new BrushedMetalPanel();
+    root.setBorder(BorderFactory.createEmptyBorder(32, 64, 28, 64));
+    JPanel headerBlock = new JPanel(new BorderLayout()); headerBlock.setOpaque(false);
+    headerBlock.add(header(), BorderLayout.NORTH); headerBlock.add(new BarbedDivider(), BorderLayout.SOUTH);
+    root.add(headerBlock, BorderLayout.NORTH);
     JPanel body = new JPanel(new GridBagLayout()); body.setOpaque(false);
     GridBagConstraints constraints = new GridBagConstraints();
     constraints.gridy = 0; constraints.weighty = 1; constraints.fill = GridBagConstraints.BOTH;
     constraints.gridx = 0; constraints.weightx = 1; constraints.insets = new Insets(10, 0, 10, 44); body.add(disc, constraints);
     constraints.gridx = 1; constraints.weightx = 1.05; constraints.insets = new Insets(36, 0, 20, 0); body.add(playerPanel(), constraints);
     root.add(body, BorderLayout.CENTER);
-    JLabel hint = label("DROP WAV · AIFF · AU · FLAC · M4A — SPACE/K PLAY · J/L PREV/NEXT · ←/→ SKIP 15S", 10, new Color(90, 94, 112));
+    JLabel hint = label("DROP WAV · AIFF · AU · FLAC · M4A · MP3 — SPACE/K PLAY · J/L PREV/NEXT · ←/→ SKIP 15S", 10, new Color(120, 122, 126));
     hint.setHorizontalAlignment(SwingConstants.CENTER); hint.setBorder(BorderFactory.createEmptyBorder(18, 0, 0, 0)); root.add(hint, BorderLayout.SOUTH);
     return root;
   }
 
   private JPanel header() {
     JPanel bar = new JPanel(new BorderLayout()); bar.setOpaque(false); bar.setPreferredSize(new Dimension(0, 56));
-    JLabel brand = new JLabel("by kizarka"); brand.setFont(new Font("SansSerif", Font.BOLD, 19)); brand.setForeground(TEXT);
-    bar.add(brand, BorderLayout.WEST);
+    brandLabel.setFont(new Font("SansSerif", Font.BOLD | Font.ITALIC, 20)); brandLabel.setForeground(TEXT);
+    bar.add(brandLabel, BorderLayout.WEST);
     JPanel statusPill = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0)) {
-      protected void paintComponent(Graphics raw) { Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON); g.setColor(new Color(255,255,255,14)); g.fillRoundRect(0, 0, getWidth(), getHeight(), getHeight(), getHeight()); g.dispose(); super.paintComponent(raw); }
+      protected void paintComponent(Graphics raw) { Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON); g.setColor(new Color(0,0,0,90)); g.fillRoundRect(0, 0, getWidth(), getHeight(), 4, 4); g.setColor(new Color(255,255,255,30)); g.setStroke(new BasicStroke(1)); g.drawRoundRect(0, 0, getWidth()-1, getHeight()-1, 4, 4); g.dispose(); super.paintComponent(raw); }
     };
     statusPill.setOpaque(false); statusPill.setBorder(BorderFactory.createEmptyBorder(6, 16, 6, 16)); statusPill.add(status);
     JPanel center = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0)); center.setOpaque(false); center.add(statusPill);
     bar.add(center, BorderLayout.CENTER);
+    themeToggle.addActionListener(e -> switchTheme());
+    JPanel east = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0)); east.setOpaque(false); east.add(themeToggle);
+    bar.add(east, BorderLayout.EAST);
     return bar;
   }
 
   private JPanel playerPanel() {
     JPanel panel = new JPanel(); panel.setOpaque(false); panel.setLayout(new javax.swing.BoxLayout(panel, javax.swing.BoxLayout.Y_AXIS));
     JPanel nowRow = new JPanel(); nowRow.setOpaque(false); nowRow.setAlignmentX(Component.LEFT_ALIGNMENT); nowRow.setLayout(new javax.swing.BoxLayout(nowRow, javax.swing.BoxLayout.X_AXIS));
-    JLabel now = label("NOW PLAYING", 10, ACCENT2); now.setFont(new Font("SansSerif", Font.BOLD, 11)); nowRow.add(now); nowRow.add(javax.swing.Box.createHorizontalStrut(12)); nowRow.add(visualizer); panel.add(nowRow);
+    JLabel now = nowPlayingLabel; now.setText("NOW PLAYING"); now.setForeground(ACCENT2); now.setFont(new Font("SansSerif", Font.BOLD, 11)); nowRow.add(now); nowRow.add(javax.swing.Box.createHorizontalStrut(12)); nowRow.add(visualizer); panel.add(nowRow);
     panel.add(javax.swing.Box.createVerticalStrut(14));
-    track.setForeground(TEXT); track.setFont(new Font("SansSerif", Font.BOLD, 34)); track.setAlignmentX(Component.LEFT_ALIGNMENT); panel.add(track);
-    panel.add(javax.swing.Box.createVerticalStrut(10)); source.setAlignmentX(Component.LEFT_ALIGNMENT); source.setFont(new Font("SansSerif", Font.PLAIN, 12)); panel.add(source);
+    track.setForeground(TEXT); track.setFont(new Font("SansSerif", Font.BOLD, 34)); track.setAlignmentX(Component.LEFT_ALIGNMENT); track.setPreferredSize(new Dimension(460, 44)); track.setMaximumSize(new Dimension(460, 44)); track.setMinimumSize(new Dimension(460, 44)); panel.add(track);
+    panel.add(javax.swing.Box.createVerticalStrut(10)); source.setAlignmentX(Component.LEFT_ALIGNMENT); source.setFont(new Font("SansSerif", Font.PLAIN, 12)); source.setPreferredSize(new Dimension(460, 16)); source.setMaximumSize(new Dimension(460, 16)); source.setMinimumSize(new Dimension(460, 16)); panel.add(source);
     panel.add(javax.swing.Box.createVerticalStrut(38));
     progress.setOpaque(false); progress.setUI(new AccentSliderUI(progress)); progress.setAlignmentX(Component.LEFT_ALIGNMENT); progress.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20)); progress.setFocusable(false);
     progress.addChangeListener(e -> { if (clip != null && progress.getValueIsAdjusting()) adjusting = true; else if (clip != null && adjusting) { clip.setMicrosecondPosition((long) (clip.getMicrosecondLength() * progress.getValue() / 1000.0)); adjusting = false; } });
@@ -204,7 +249,7 @@ public final class CDPlayer extends JFrame {
     return panel;
   }
 
-  private void choose() { JFileChooser chooser = new JFileChooser(); chooser.setMultiSelectionEnabled(true); chooser.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES); chooser.setFileFilter(new FileNameExtensionFilter("Audio files (WAV, AIFF, AU, FLAC, M4A)", "wav", "wave", "aif", "aiff", "au", "flac", "m4a")); if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) { File[] selected = chooser.getSelectedFiles(); if (selected.length == 0) selected = new File[] { chooser.getSelectedFile() }; addToQueue(java.util.Arrays.asList(selected)); } }
+  private void choose() { JFileChooser chooser = new JFileChooser(); chooser.setMultiSelectionEnabled(true); chooser.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES); chooser.setFileFilter(new FileNameExtensionFilter("Audio files (WAV, AIFF, AU, FLAC, M4A, MP3)", "wav", "wave", "aif", "aiff", "au", "flac", "m4a", "mp3")); if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) { File[] selected = chooser.getSelectedFiles(); if (selected.length == 0) selected = new File[] { chooser.getSelectedFile() }; addToQueue(java.util.Arrays.asList(selected)); } }
   private void addToQueue(List<File> dropped) {
     List<File> songs = new ArrayList<File>(); for (File item : dropped) collectAudio(item, songs); Collections.sort(songs, (left, right) -> left.getName().compareToIgnoreCase(right.getName()));
     if (songs.isEmpty()) { status.setText("●  NO SUPPORTED AUDIO FOUND"); return; }
@@ -212,7 +257,7 @@ public final class CDPlayer extends JFrame {
     if (queueIndex < 0) { queueIndex = 0; load(queue.get(queueIndex)); }
   }
   private void collectAudio(File item, List<File> songs) { if (item.isDirectory()) { File[] children = item.listFiles(); if (children != null) for (File child : children) collectAudio(child, songs); } else if (isSupportedAudio(item)) songs.add(item); }
-  private static boolean isSupportedAudio(File item) { String type = extension(item); return "wav".equals(type) || "wave".equals(type) || "aif".equals(type) || "aiff".equals(type) || "au".equals(type) || "flac".equals(type) || "m4a".equals(type); }
+  private static boolean isSupportedAudio(File item) { String type = extension(item); return "wav".equals(type) || "wave".equals(type) || "aif".equals(type) || "aiff".equals(type) || "au".equals(type) || "flac".equals(type) || "m4a".equals(type) || "mp3".equals(type); }
   private void updateQueueUI() {
     if (queue.isEmpty() || queueIndex < 0) { queueInfo.setText("QUEUE EMPTY"); queueNext.setText("DROP SONGS OR A FOLDER TO BUILD A QUEUE"); return; }
     queueInfo.setText("QUEUE " + (queueIndex + 1) + " / " + queue.size() + (shuffle ? " · SHUFFLED" : ""));
@@ -267,7 +312,7 @@ public final class CDPlayer extends JFrame {
       SongDetails details = inspectSong(file);
       metadataCache.put(file, details);
       String name = details.title;
-      track.setText("<html>" + escape(name) + "</html>"); source.setText("LOCAL AUDIO FILE · " + file.getName().substring(file.getName().lastIndexOf('.') + 1).toUpperCase());
+      track.setText("<html>" + escape(ellipsize(track, name, 456)) + "</html>"); source.setText("LOCAL AUDIO FILE · " + file.getName().substring(file.getName().lastIndexOf('.') + 1).toUpperCase());
       length.setText(format(clip.getMicrosecondLength())); elapsed.setText("0:00"); progress.setValue(0); status.setText("●  TRACK LOADED");
       disc.setCover(details.embeddedCover); disc.setLookingUp(details.embeddedCover == null && details.hasArtist());
       if (details.embeddedCover != null) source.setText("EMBEDDED ALBUM ART · " + extension(file).toUpperCase());
@@ -279,7 +324,7 @@ public final class CDPlayer extends JFrame {
   }
   private File prepareAudio(File sourceFile) throws Exception {
     String extension = extension(sourceFile);
-    if (!"flac".equals(extension) && !"m4a".equals(extension)) return sourceFile;
+    if (!"flac".equals(extension) && !"m4a".equals(extension) && !"mp3".equals(extension)) return sourceFile;
     temporaryAudio = File.createTempFile("cdplayer-", ".wav"); temporaryAudio.deleteOnExit();
     Process process;
     try {
@@ -409,6 +454,19 @@ public final class CDPlayer extends JFrame {
     } catch (Exception ignored) { return 0L; }
   }
   private static String escape(String value) { return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"); }
+  private static String ellipsize(JLabel label, String text, int maxWidth) {
+    java.awt.FontMetrics metrics = label.getFontMetrics(label.getFont());
+    if (metrics.stringWidth(text) <= maxWidth) return text;
+    int ellipsisWidth = metrics.stringWidth("…");
+    StringBuilder builder = new StringBuilder();
+    int width = 0;
+    for (int i = 0; i < text.length(); i++) {
+      int charWidth = metrics.charWidth(text.charAt(i));
+      if (width + charWidth + ellipsisWidth > maxWidth) break;
+      builder.append(text.charAt(i)); width += charWidth;
+    }
+    return builder.toString() + "…";
+  }
   private static JLabel label(String value, int size, Color color) { JLabel result = new JLabel("<html>" + value.replace("\n", "<br>") + "</html>"); result.setForeground(color); result.setFont(new Font("SansSerif", Font.BOLD, size)); return result; }
   private static JButton roundButton(String caption, int size, boolean primary) { return new TransportButton(caption, size, primary); }
   private static JButton textButton(String caption) { return new PillButton(caption); }
@@ -441,6 +499,37 @@ public final class CDPlayer extends JFrame {
     public void paintTrack(Graphics raw) { Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON); int y = trackRect.y + trackRect.height / 2 - 1; g.setColor(new Color(255,255,255,18)); g.fillRoundRect(trackRect.x, y, trackRect.width, 3, 3, 3); int fill = thumbRect.x + thumbRect.width / 2 - trackRect.x; g.setPaint(new GradientPaint(trackRect.x, y, ACCENT, trackRect.x + Math.max(1, fill), y, ACCENT2)); g.fillRoundRect(trackRect.x, y, Math.max(0, fill), 3, 3, 3); g.dispose(); }
     public void paintThumb(Graphics raw) { Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON); g.setColor(new Color(255,255,255,35)); g.fillOval(thumbRect.x - 3, thumbRect.y - 3, thumbRect.width + 6, thumbRect.height + 6); g.setColor(TEXT); g.fillOval(thumbRect.x, thumbRect.y, thumbRect.width, thumbRect.height); g.dispose(); }
     protected Dimension getThumbSize() { return new Dimension(11, 11); }
+  }
+
+  private static final class BrushedMetalPanel extends JPanel {
+    BrushedMetalPanel() { super(new BorderLayout()); setOpaque(true); }
+    protected void paintComponent(Graphics raw) {
+      Graphics2D g = (Graphics2D) raw.create(); int w = getWidth(), h = getHeight();
+      g.setPaint(new GradientPaint(0, 0, new Color(28, 28, 31), 0, h, new Color(9, 9, 10)));
+      g.fillRect(0, 0, w, h);
+      g.setColor(new Color(255, 255, 255, 6));
+      for (int lineY = 0; lineY < h; lineY += 3) g.drawLine(0, lineY, w, lineY);
+      g.setPaint(new GradientPaint(0, 0, new Color(0, 0, 0, 130), 0, h * 0.18f, new Color(0, 0, 0, 0)));
+      g.fillRect(0, 0, w, (int) (h * 0.18f));
+      g.dispose();
+    }
+  }
+
+  private static final class BarbedDivider extends JPanel {
+    BarbedDivider() { setOpaque(false); setPreferredSize(new Dimension(0, 14)); }
+    protected void paintComponent(Graphics raw) {
+      Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      int w = getWidth(), midY = getHeight() / 2;
+      g.setColor(new Color(255, 255, 255, 40)); g.setStroke(new BasicStroke(1.5f)); g.drawLine(0, midY, w, midY);
+      g.setColor(ACCENT);
+      for (int spikeX = 12; spikeX < w; spikeX += 26) {
+        int[] xs = { spikeX - 4, spikeX, spikeX + 4 }; int[] ys = { midY, midY - 6, midY };
+        g.fillPolygon(xs, ys, 3);
+        g.setColor(new Color(255, 255, 255, 60)); g.drawLine(spikeX - 3, midY - 1, spikeX, midY - 5);
+        g.setColor(ACCENT);
+      }
+      g.dispose();
+    }
   }
 
   private static final class VisualizerBars extends JPanel {
