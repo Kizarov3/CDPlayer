@@ -45,24 +45,6 @@ java -cp out com.cdplayer.CDPlayer
 - Metadata display for artist, title, album, and track time
 - Embedded album artwork support
 
-## Build and Package
-
-### Build from source
-
-```bash
-javac -d out $(find src -name '*.java')
-```
-
-### Windows launcher
-
-On a Windows machine, run:
-
-```cmd
-build-windows-exe.bat
-```
-
-This creates a runnable folder in dist\\windows with a Java launcher and a batch file. A true native .exe installer can be made later with Launch4j or Inno Setup.
-
 ## License
 
 This project is licensed under the GNU General Public License v3.0 (GPL-3.0). See [LICENSE](LICENSE) for details.
