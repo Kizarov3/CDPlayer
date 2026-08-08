@@ -16,19 +16,24 @@ CDPlayer is a Java desktop app that recreates the tactile feel of a physical CD 
 - Java Development Kit (JDK) 8 or newer
 - Optional: FFmpeg for FLAC/M4A playback
 
-### Run the app
+### Run on Windows
 
-On macOS and Linux:
+```cmd
+run.bat
+```
+
+### Run on macOS and Linux
 
 ```bash
 chmod +x ./run.sh
 ./run.sh
 ```
 
-On Windows:
+### Run manually
 
-```cmd
-run.bat
+```bash
+javac -d out $(find src -name '*.java')
+java -cp out com.cdplayer.CDPlayer
 ```
 
 ## Features
