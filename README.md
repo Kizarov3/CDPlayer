@@ -36,20 +36,20 @@ The easiest way is with **Homebrew**. Open Terminal and run:
 brew install ffmpeg
 ```
 
-#### Linux
-### Fedora
+### Linux
+#### Fedora
 
 ```bash
 sudo dnf install ffmpeg
 ```
 
-### Arch
+#### Arch
 
 ```bash
 sudo pacman -S ffmpeg
 ```
 
-### Debian / Ubuntu:
+#### Debian / Ubuntu:
 
 ```bash
 sudo apt install ffmpeg
