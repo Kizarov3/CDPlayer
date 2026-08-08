@@ -5,16 +5,55 @@ CDPlayer is a Java desktop app that recreates the tactile feel of a physical CD 
 ## About
 
 - Built with Java and native Swing/AWT desktop UI
-- Plays local audio files directly, with optional FFmpeg support for FLAC and M4A
+- Plays local audio files directly, with FFmpeg support for FLAC and M4A
 - Includes queue management, shuffle, repeat, metadata display, and album artwork
 - Works on Windows, macOS, and Linux
-
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Quick Start
 
 ### Prerequisites
 
 - Java Development Kit (JDK) 8 or newer
-- Optional: FFmpeg for FLAC/M4A playback
+- **FFmpeg** for FLAC/M4A playback
+
+### Installing FFmpeg
+
+FFmpeg is required to play audio in player
+
+#### Windows
+
+The easiest way is with **WinGet**. Open Command Prompt or PowerShell and run:
+
+```powershell
+winget install Gyan.FFmpeg
+```
+
+#### MacOS
+
+The easiest way is with **Homebrew**. Open Terminal and run:
+
+```bash
+brew install ffmpeg
+```
+
+#### Linux
+### Fedora
+
+```bash
+sudo dnf install ffmpeg
+```
+
+### Arch
+
+```bash
+sudo pacman -S ffmpeg
+```
+
+### Debian / Ubuntu:
+
+```bash
+sudo apt install ffmpeg
+```
 
 ### Run the released app
 
