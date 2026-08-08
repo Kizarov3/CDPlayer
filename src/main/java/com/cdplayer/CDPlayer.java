@@ -267,12 +267,19 @@ public final class CDPlayer extends JFrame {
     queueList.removeAll();
     for (int i = 0; i < queue.size(); i++) {
       File f = queue.get(i);
+      int index = i;
       boolean active = i == queueIndex;
       JPanel row = new JPanel(new BorderLayout(8, 0)); row.setOpaque(false); row.setAlignmentX(Component.LEFT_ALIGNMENT); row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 18));
       JLabel entry = label((i + 1) + ". " + escape(queueDisplay(f)), 10, active ? ACCENT : MUTED);
       if (active) entry.setFont(new Font("SansSerif", Font.BOLD, 10));
       JLabel durationLabel = label(formatDuration(getDuration(f)), 10, active ? ACCENT2 : MUTED);
       row.add(entry, BorderLayout.CENTER); row.add(durationLabel, BorderLayout.EAST);
+      row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); row.setToolTipText("Play " + queueDisplay(f));
+      row.addMouseListener(new java.awt.event.MouseAdapter() {
+        public void mouseClicked(java.awt.event.MouseEvent e) { queueIndex = index; load(f); }
+        public void mouseEntered(java.awt.event.MouseEvent e) { if (index != queueIndex) { entry.setForeground(TEXT); durationLabel.setForeground(TEXT); } }
+        public void mouseExited(java.awt.event.MouseEvent e) { if (index != queueIndex) { entry.setForeground(MUTED); durationLabel.setForeground(MUTED); } }
+      });
       queueList.add(row);
       if (i < queue.size() - 1) queueList.add(javax.swing.Box.createVerticalStrut(3));
     }
