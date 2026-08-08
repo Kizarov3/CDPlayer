@@ -61,15 +61,20 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 
 /** A standalone, dependency-free Java desktop music player. */
 public final class CDPlayer extends JFrame {
-  private static final Color[] RED_THEME = { new Color(17, 17, 19), new Color(31, 31, 34), new Color(196, 20, 28), new Color(180, 186, 194), new Color(232, 233, 236), new Color(138, 142, 148) };
-  private static final Color[] BLUE_THEME = { new Color(10, 11, 16), new Color(19, 20, 28), new Color(130, 110, 255), new Color(0, 214, 182), new Color(240, 241, 247), new Color(134, 138, 158) };
-  private static Color BG = RED_THEME[0];
-  private static Color CARD = RED_THEME[1];
-  private static Color ACCENT = RED_THEME[2];
-  private static Color ACCENT2 = RED_THEME[3];
-  private static Color TEXT = RED_THEME[4];
-  private static Color MUTED = RED_THEME[5];
-  private boolean redTheme = true;
+  private static final Theme[] THEMES = {
+    new Theme("RED", new Color(17, 17, 19), new Color(31, 31, 34), new Color(196, 20, 28), new Color(180, 186, 194), new Color(232, 233, 236), new Color(138, 142, 148)),
+    new Theme("BLUE", new Color(10, 11, 16), new Color(19, 20, 28), new Color(130, 110, 255), new Color(0, 214, 182), new Color(240, 241, 247), new Color(134, 138, 158)),
+    new Theme("SUNSET", new Color(24, 15, 18), new Color(38, 24, 28), new Color(255, 106, 61), new Color(255, 71, 133), new Color(250, 238, 230), new Color(176, 148, 142)),
+    new Theme("FOREST", new Color(11, 17, 14), new Color(20, 30, 24), new Color(52, 199, 123), new Color(178, 214, 58), new Color(230, 240, 228), new Color(128, 148, 130)),
+    new Theme("VAPOR", new Color(13, 11, 22), new Color(24, 20, 38), new Color(56, 220, 232), new Color(190, 90, 232), new Color(238, 236, 250), new Color(150, 142, 172)),
+  };
+  private static Color BG = THEMES[0].bg;
+  private static Color CARD = THEMES[0].card;
+  private static Color ACCENT = THEMES[0].accent;
+  private static Color ACCENT2 = THEMES[0].accent2;
+  private static Color TEXT = THEMES[0].text;
+  private static Color MUTED = THEMES[0].muted;
+  private int currentThemeIndex = 0;
   private Timer themeAnim;
   private final DiscView disc = new DiscView();
   private final JLabel status = label("●  READY TO PLAY", 11, ACCENT);
@@ -81,8 +86,8 @@ public final class CDPlayer extends JFrame {
   private final JButton play = roundButton("▶", 68, true);
   private final JButton shuffleButton = textButton("SHUFFLE OFF");
   private final JButton repeatButton = textButton("REPEAT OFF");
-  private final JButton themeToggle = textButton("BLUE THEME");
-  private final JLabel brandLabel = new JLabel("by kizarka");
+  private final JButton themeButton = textButton("THEME: " + THEMES[0].name);
+  private final JLabel brandLabel = new JLabel("W A V E L E N G T H");
   private final JLabel nowPlayingLabel = new JLabel("NOW PLAYING");
   private final JLabel queueInfo = label("QUEUE EMPTY", 10, MUTED);
   private final JLabel queueNext = label("DROP SONGS OR A FOLDER TO BUILD A QUEUE", 9, MUTED);
@@ -103,29 +108,6 @@ public final class CDPlayer extends JFrame {
   private AudioFormat audioFormat;
   private final Timer clock = new Timer(70, this::tick);
   private static final Pattern ITUNES_COVER = Pattern.compile("\\\"artworkUrl100\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
-
-  private static String findFFmpeg() {
-    String[] paths = {
-        "ffmpeg",
-        "/opt/homebrew/bin/ffmpeg",
-        "/usr/local/bin/ffmpeg"
-    };
-
-    for (String path : paths) {
-      try {
-        Process process = new ProcessBuilder(path, "-version")
-            .redirectErrorStream(true)
-            .start();
-
-        if (process.waitFor() == 0) {
-          return path;
-        }
-      } catch (Exception ignored) {
-      }
-    }
-
-    return null;
-  }
 
   public static void main(String[] args) {
     SwingUtilities.invokeLater(() -> {
@@ -171,19 +153,38 @@ public final class CDPlayer extends JFrame {
     actionMap.put(name, new javax.swing.AbstractAction() { public void actionPerformed(ActionEvent e) { action.accept(e); } });
   }
 
-  private void switchTheme() {
-    redTheme = !redTheme;
-    themeToggle.setText(redTheme ? "BLUE THEME" : "RED THEME");
-    Color[] from = { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED };
-    Color[] to = redTheme ? RED_THEME : BLUE_THEME;
+  private void showThemeMenu() {
+    javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
+    menu.setBackground(CARD); menu.setBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 30)));
+    for (int i = 0; i < THEMES.length; i++) {
+      Theme theme = THEMES[i]; int index = i;
+      javax.swing.JMenuItem item = new javax.swing.JMenuItem(theme.name, new SwatchIcon(theme.accent, theme.accent2));
+      item.setFont(new Font("SansSerif", Font.BOLD, 11));
+      item.setForeground(index == currentThemeIndex ? ACCENT : TEXT);
+      item.setBackground(CARD); item.setOpaque(true);
+      item.setIconTextGap(10); item.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 16));
+      item.addActionListener(e -> switchToTheme(index));
+      menu.add(item);
+    }
+    menu.show(themeButton, 0, themeButton.getHeight() + 6);
+  }
+
+  private void switchToTheme(int index) {
+    if (index == currentThemeIndex) return;
+    Theme from = THEMES[currentThemeIndex];
+    Theme to = THEMES[index];
+    currentThemeIndex = index;
+    themeButton.setText("THEME: " + to.name);
+    Color[] fromColors = { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED };
+    Color[] toColors = { to.bg, to.card, to.accent, to.accent2, to.text, to.muted };
     if (themeAnim != null && themeAnim.isRunning()) themeAnim.stop();
     int steps = 18;
     int[] step = { 0 };
     themeAnim = new Timer(16, e -> {
       step[0]++;
       float t = Math.min(1f, step[0] / (float) steps);
-      BG = lerp(from[0], to[0], t); CARD = lerp(from[1], to[1], t); ACCENT = lerp(from[2], to[2], t);
-      ACCENT2 = lerp(from[3], to[3], t); TEXT = lerp(from[4], to[4], t); MUTED = lerp(from[5], to[5], t);
+      BG = lerp(fromColors[0], toColors[0], t); CARD = lerp(fromColors[1], toColors[1], t); ACCENT = lerp(fromColors[2], toColors[2], t);
+      ACCENT2 = lerp(fromColors[3], toColors[3], t); TEXT = lerp(fromColors[4], toColors[4], t); MUTED = lerp(fromColors[5], toColors[5], t);
       applyThemeColors();
       getContentPane().repaint();
       if (t >= 1f) { ((Timer) e.getSource()).stop(); updateQueueUI(); }
@@ -231,8 +232,8 @@ public final class CDPlayer extends JFrame {
     statusPill.setOpaque(false); statusPill.setBorder(BorderFactory.createEmptyBorder(6, 16, 6, 16)); statusPill.add(status);
     JPanel center = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0)); center.setOpaque(false); center.add(statusPill);
     bar.add(center, BorderLayout.CENTER);
-    themeToggle.addActionListener(e -> switchTheme());
-    JPanel east = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0)); east.setOpaque(false); east.add(themeToggle);
+    themeButton.addActionListener(e -> showThemeMenu());
+    JPanel east = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0)); east.setOpaque(false); east.add(themeButton);
     bar.add(east, BorderLayout.EAST);
     return bar;
   }
@@ -352,17 +353,36 @@ public final class CDPlayer extends JFrame {
       clip.start(); setPlaying(true);
     } catch (Exception error) { status.setText("●  INSTALL FFMPEG FOR FLAC / M4A"); }
   }
+  private static final Map<String, String> BINARY_PATH_CACHE = new HashMap<String, String>();
+  /**
+   * Resolves a binary like "ffmpeg" or "ffprobe" to an absolute path when possible.
+   * This matters because a packaged macOS .app launched from Finder/LaunchServices does NOT
+   * inherit the PATH set up in the user's shell profile (.zshrc/.bash_profile) — it only gets a
+   * minimal default PATH. Since Homebrew installs to /opt/homebrew/bin (Apple Silicon) or
+   * /usr/local/bin (Intel), a plain "ffmpeg" ProcessBuilder call that works fine from a terminal
+   * or from `java CDPlayer` can silently fail to find the binary once bundled into a .app.
+   */
+  private static String resolveBinary(String name) {
+    String cached = BINARY_PATH_CACHE.get(name);
+    if (cached != null) return cached;
+    String[] candidates = {
+      "/opt/homebrew/bin/" + name,   // Homebrew on Apple Silicon
+      "/usr/local/bin/" + name,      // Homebrew on Intel Macs
+      "/opt/local/bin/" + name,      // MacPorts
+      "/usr/bin/" + name,
+      "/bin/" + name,
+    };
+    for (String candidate : candidates) { if (new File(candidate).canExecute()) { BINARY_PATH_CACHE.put(name, candidate); return candidate; } }
+    BINARY_PATH_CACHE.put(name, name); // fall back to relying on PATH (e.g. on Linux/Windows or a terminal launch)
+    return name;
+  }
   private File prepareAudio(File sourceFile) throws Exception {
     String extension = extension(sourceFile);
     if (!"flac".equals(extension) && !"m4a".equals(extension) && !"mp3".equals(extension)) return sourceFile;
     temporaryAudio = File.createTempFile("cdplayer-", ".wav"); temporaryAudio.deleteOnExit();
     Process process;
-    String ffmpegPath = findFFmpeg();
     try {
-      if (ffmpegPath == null) {
-        throw new IOException("FFmpeg was not found");
-      }
-      process = new ProcessBuilder(ffmpegPath, "-nostdin", "-y", "-v", "error", "-i", sourceFile.getAbsolutePath(), "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2", temporaryAudio.getAbsolutePath()).inheritIO().start();
+      process = new ProcessBuilder(resolveBinary("ffmpeg"), "-nostdin", "-y", "-v", "error", "-i", sourceFile.getAbsolutePath(), "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2", temporaryAudio.getAbsolutePath()).inheritIO().start();
     } catch (IOException missingFfmpeg) {
       deleteTemporaryAudio(); throw new IOException("FFmpeg was not found", missingFfmpeg);
     }
@@ -375,7 +395,7 @@ public final class CDPlayer extends JFrame {
     String fallbackTitle = displayName(file).replaceFirst("^\\s*\\d{1,3}[ ._-]+", "");
     String title = null, artist = null, album = null;
     try {
-      Process probe = new ProcessBuilder("ffprobe", "-v", "error", "-show_entries", "format_tags=title,artist,album", "-of", "default=noprint_wrappers=1", file.getAbsolutePath()).redirectErrorStream(true).start();
+      Process probe = new ProcessBuilder(resolveBinary("ffprobe"), "-v", "error", "-show_entries", "format_tags=title,artist,album", "-of", "default=noprint_wrappers=1", file.getAbsolutePath()).redirectErrorStream(true).start();
       String tags = new String(readAll(probe.getInputStream()), StandardCharsets.UTF_8); probe.waitFor();
       for (String line : tags.split("\\R")) { int equals = line.indexOf('='); if (equals < 1) continue; String key = line.substring(0, equals).toLowerCase(); String value = line.substring(equals + 1).trim(); if ("tag:title".equals(key)) title = value; else if ("tag:artist".equals(key)) artist = value; else if ("tag:album".equals(key)) album = value; }
     } catch (Exception ignored) { /* FFmpeg metadata is optional. */ }
@@ -386,7 +406,7 @@ public final class CDPlayer extends JFrame {
     File image = null;
     try {
       image = File.createTempFile("cdplayer-art-", ".jpg");
-      Process extract = new ProcessBuilder("ffmpeg", "-nostdin", "-y", "-v", "error", "-i", file.getAbsolutePath(), "-map", "0:v:0", "-frames:v", "1", image.getAbsolutePath()).redirectErrorStream(true).start();
+      Process extract = new ProcessBuilder(resolveBinary("ffmpeg"), "-nostdin", "-y", "-v", "error", "-i", file.getAbsolutePath(), "-map", "0:v:0", "-frames:v", "1", image.getAbsolutePath()).redirectErrorStream(true).start();
       readAll(extract.getInputStream()); if (extract.waitFor() == 0 && image.length() > 0) return ImageIO.read(image);
     } catch (Exception ignored) { /* No embedded artwork is normal. */ }
     finally { if (image != null) image.delete(); }
@@ -414,8 +434,7 @@ public final class CDPlayer extends JFrame {
   private static BufferedImage fetchImage(String location) throws IOException { HttpURLConnection connection = open(location); try (InputStream stream = connection.getInputStream()) { return ImageIO.read(stream); } finally { connection.disconnect(); } }
   private static HttpURLConnection open(String location) throws IOException { HttpURLConnection connection = (HttpURLConnection) new URL(location).openConnection(); connection.setRequestProperty("User-Agent", "CDPlayer/1.0 (open cover lookup)"); connection.setConnectTimeout(5000); connection.setReadTimeout(8000); return connection; }
   private static byte[] readAll(InputStream stream) throws IOException { java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream(); byte[] buffer = new byte[4096]; int count; while ((count = stream.read(buffer)) >= 0) output.write(buffer, 0, count); return output.toByteArray(); }
-  private void toggle() { if (clip == null) { if (shouldOpenChooser(queueIndex, queue.size())) { choose(); } else { load(queue.get(queueIndex)); } return; } if (clip.isRunning()) { clip.stop(); setPlaying(false); } else { clip.start(); setPlaying(true); } }
-  static boolean shouldOpenChooser(int queueIndex, int queueSize) { return queueIndex < 0 || queueIndex >= queueSize; }
+  private void toggle() { if (clip == null) { choose(); return; } if (clip.isRunning()) { clip.stop(); setPlaying(false); } else { clip.start(); setPlaying(true); } }
   private void trackFinished(Clip finishedClip) { if (clip != finishedClip) return; if (repeat) { clip.setMicrosecondPosition(0); clip.start(); setPlaying(true); } else if (!nextTrack()) setPlaying(false); }
   private boolean nextTrack() { int next = nextIndex(); if (next < 0) return false; queueIndex = next; load(queue.get(queueIndex)); return true; }
   private void previousTrack() { if (clip != null && clip.getMicrosecondPosition() > 5_000_000L) { clip.setMicrosecondPosition(0); return; } if (queueIndex > 0) { queueIndex--; load(queue.get(queueIndex)); } else if (clip != null) clip.setMicrosecondPosition(0); }
@@ -482,7 +501,7 @@ public final class CDPlayer extends JFrame {
       if (frames > 0 && format.getFrameRate() > 0) return (long) (frames / format.getFrameRate() * 1_000_000L);
     } catch (Exception ignored) { /* not natively decodable, e.g. flac/m4a; fall through to ffprobe */ }
     try {
-      Process probe = new ProcessBuilder("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file.getAbsolutePath()).redirectErrorStream(true).start();
+      Process probe = new ProcessBuilder(resolveBinary("ffprobe"), "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file.getAbsolutePath()).redirectErrorStream(true).start();
       String output = new String(readAll(probe.getInputStream()), StandardCharsets.UTF_8).trim();
       probe.waitFor();
       return (long) (Double.parseDouble(output) * 1_000_000L);
@@ -563,6 +582,26 @@ public final class CDPlayer extends JFrame {
         g.setColor(new Color(255, 255, 255, 60)); g.drawLine(spikeX - 3, midY - 1, spikeX, midY - 5);
         g.setColor(ACCENT);
       }
+      g.dispose();
+    }
+  }
+
+  private static final class Theme {
+    final String name; final Color bg, card, accent, accent2, text, muted;
+    Theme(String name, Color bg, Color card, Color accent, Color accent2, Color text, Color muted) {
+      this.name = name; this.bg = bg; this.card = card; this.accent = accent; this.accent2 = accent2; this.text = text; this.muted = muted;
+    }
+  }
+
+  private static final class SwatchIcon implements javax.swing.Icon {
+    private final Color a, b;
+    SwatchIcon(Color a, Color b) { this.a = a; this.b = b; }
+    public int getIconWidth() { return 14; }
+    public int getIconHeight() { return 14; }
+    public void paintIcon(Component c, Graphics raw, int x, int y) {
+      Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      g.setPaint(new GradientPaint(x, y, a, x + 14, y + 14, b)); g.fillOval(x, y, 14, 14);
+      g.setColor(new Color(255, 255, 255, 60)); g.setStroke(new BasicStroke(1)); g.drawOval(x, y, 13, 13);
       g.dispose();
     }
   }
