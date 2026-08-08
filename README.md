@@ -38,7 +38,7 @@ java -cp out com.cdplayer.CDPlayer
 
 ## Features
 
-- Local audio playback for WAV, AIFF, and AU files
+- Local audio playback for WAV, AIFF, MP3 and AU files
 - Optional FLAC/M4A support through FFmpeg
 - Drag and drop files or folders into the queue
 - Shuffle and repeat controls
