@@ -83,6 +83,7 @@ public final class CDPlayer extends JFrame {
   private final List<File> queue = new ArrayList<File>();
   private int queueIndex = -1;
   private final Map<File, SongDetails> metadataCache = new HashMap<File, SongDetails>();
+  private final Map<File, Long> durationCache = new HashMap<File, Long>();
   // Panel that lists all queued songs; displayed under queue headers.
   private final JPanel queueList = new JPanel();
   private boolean shuffle;
@@ -120,6 +121,24 @@ public final class CDPlayer extends JFrame {
         } catch (Exception ignored) { status.setText("●  COULDN'T LOAD THAT FILE"); }
       }
     }));
+    bindKeys();
+  }
+
+  private void bindKeys() {
+    javax.swing.JRootPane root = getRootPane();
+    javax.swing.InputMap inputMap = root.getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW);
+    javax.swing.ActionMap actionMap = root.getActionMap();
+    bindKey(inputMap, actionMap, "LEFT", "skipBack15", e -> seek(-15));
+    bindKey(inputMap, actionMap, "RIGHT", "skipForward15", e -> seek(15));
+    bindKey(inputMap, actionMap, "SPACE", "togglePlaySpace", e -> toggle());
+    bindKey(inputMap, actionMap, "K", "togglePlayK", e -> toggle());
+    bindKey(inputMap, actionMap, "J", "previousTrackJ", e -> previousTrack());
+    bindKey(inputMap, actionMap, "L", "nextTrackL", e -> nextTrack());
+  }
+
+  private static void bindKey(javax.swing.InputMap inputMap, javax.swing.ActionMap actionMap, String key, String name, java.util.function.Consumer<ActionEvent> action) {
+    inputMap.put(javax.swing.KeyStroke.getKeyStroke(key), name);
+    actionMap.put(name, new javax.swing.AbstractAction() { public void actionPerformed(ActionEvent e) { action.accept(e); } });
   }
 
   private JPanel createContent() {
@@ -132,14 +151,14 @@ public final class CDPlayer extends JFrame {
     constraints.gridx = 0; constraints.weightx = 1; constraints.insets = new Insets(10, 0, 10, 44); body.add(disc, constraints);
     constraints.gridx = 1; constraints.weightx = 1.05; constraints.insets = new Insets(36, 0, 20, 0); body.add(playerPanel(), constraints);
     root.add(body, BorderLayout.CENTER);
-    JLabel hint = label("DROP WAV · AIFF · AU · FLAC · M4A — STAYS ON YOUR DEVICE", 10, new Color(90, 94, 112));
+    JLabel hint = label("DROP WAV · AIFF · AU · FLAC · M4A — SPACE/K PLAY · J/L PREV/NEXT · ←/→ SKIP 15S", 10, new Color(90, 94, 112));
     hint.setHorizontalAlignment(SwingConstants.CENTER); hint.setBorder(BorderFactory.createEmptyBorder(18, 0, 0, 0)); root.add(hint, BorderLayout.SOUTH);
     return root;
   }
 
   private JPanel header() {
     JPanel bar = new JPanel(new BorderLayout()); bar.setOpaque(false); bar.setPreferredSize(new Dimension(0, 56));
-    JLabel brand = new JLabel("Wavelength"); brand.setFont(new Font("SansSerif", Font.BOLD, 19)); brand.setForeground(TEXT);
+    JLabel brand = new JLabel("by kizarka"); brand.setFont(new Font("SansSerif", Font.BOLD, 19)); brand.setForeground(TEXT);
     bar.add(brand, BorderLayout.WEST);
     JPanel statusPill = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0)) {
       protected void paintComponent(Graphics raw) { Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON); g.setColor(new Color(255,255,255,14)); g.fillRoundRect(0, 0, getWidth(), getHeight(), getHeight(), getHeight()); g.dispose(); super.paintComponent(raw); }
@@ -158,7 +177,7 @@ public final class CDPlayer extends JFrame {
     track.setForeground(TEXT); track.setFont(new Font("SansSerif", Font.BOLD, 34)); track.setAlignmentX(Component.LEFT_ALIGNMENT); panel.add(track);
     panel.add(javax.swing.Box.createVerticalStrut(10)); source.setAlignmentX(Component.LEFT_ALIGNMENT); source.setFont(new Font("SansSerif", Font.PLAIN, 12)); panel.add(source);
     panel.add(javax.swing.Box.createVerticalStrut(38));
-    progress.setOpaque(false); progress.setUI(new AccentSliderUI(progress)); progress.setAlignmentX(Component.LEFT_ALIGNMENT); progress.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20));
+    progress.setOpaque(false); progress.setUI(new AccentSliderUI(progress)); progress.setAlignmentX(Component.LEFT_ALIGNMENT); progress.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20)); progress.setFocusable(false);
     progress.addChangeListener(e -> { if (clip != null && progress.getValueIsAdjusting()) adjusting = true; else if (clip != null && adjusting) { clip.setMicrosecondPosition((long) (clip.getMicrosecondLength() * progress.getValue() / 1000.0)); adjusting = false; } });
     panel.add(progress);
     JPanel times = new JPanel(new BorderLayout()); times.setOpaque(false); times.setMaximumSize(new Dimension(Integer.MAX_VALUE, 16)); elapsed.setFont(new Font("SansSerif", Font.PLAIN, 11)); length.setFont(new Font("SansSerif", Font.PLAIN, 11)); times.add(elapsed, BorderLayout.WEST); times.add(length, BorderLayout.EAST); panel.add(times);
@@ -204,10 +223,13 @@ public final class CDPlayer extends JFrame {
     for (int i = 0; i < queue.size(); i++) {
       File f = queue.get(i);
       boolean active = i == queueIndex;
+      JPanel row = new JPanel(new BorderLayout(8, 0)); row.setOpaque(false); row.setAlignmentX(Component.LEFT_ALIGNMENT); row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 18));
       JLabel entry = label((i + 1) + ". " + escape(queueDisplay(f)), 10, active ? ACCENT : MUTED);
       if (active) entry.setFont(new Font("SansSerif", Font.BOLD, 10));
-      entry.setAlignmentX(Component.LEFT_ALIGNMENT);
-      queueList.add(entry);
+      JLabel durationLabel = label(formatDuration(getDuration(f)), 10, active ? ACCENT2 : MUTED);
+      row.add(entry, BorderLayout.CENTER); row.add(durationLabel, BorderLayout.EAST);
+      queueList.add(row);
+      if (i < queue.size() - 1) queueList.add(javax.swing.Box.createVerticalStrut(3));
     }
     queueList.revalidate(); queueList.repaint();
   }
@@ -365,6 +387,27 @@ public final class CDPlayer extends JFrame {
     return levels;
   }
   private static String format(long micros) { long seconds = micros / 1_000_000L; return String.format("%d:%02d", seconds / 60, seconds % 60); }
+  private static String formatDuration(long micros) { return micros <= 0 ? "--:--" : format(micros); }
+  private long getDuration(File file) {
+    Long cached = durationCache.get(file);
+    if (cached != null) return cached;
+    long micros = probeDuration(file);
+    durationCache.put(file, micros);
+    return micros;
+  }
+  private static long probeDuration(File file) {
+    try (AudioInputStream stream = AudioSystem.getAudioInputStream(file)) {
+      AudioFormat format = stream.getFormat();
+      long frames = stream.getFrameLength();
+      if (frames > 0 && format.getFrameRate() > 0) return (long) (frames / format.getFrameRate() * 1_000_000L);
+    } catch (Exception ignored) { /* not natively decodable, e.g. flac/m4a; fall through to ffprobe */ }
+    try {
+      Process probe = new ProcessBuilder("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file.getAbsolutePath()).redirectErrorStream(true).start();
+      String output = new String(readAll(probe.getInputStream()), StandardCharsets.UTF_8).trim();
+      probe.waitFor();
+      return (long) (Double.parseDouble(output) * 1_000_000L);
+    } catch (Exception ignored) { return 0L; }
+  }
   private static String escape(String value) { return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"); }
   private static JLabel label(String value, int size, Color color) { JLabel result = new JLabel("<html>" + value.replace("\n", "<br>") + "</html>"); result.setForeground(color); result.setFont(new Font("SansSerif", Font.BOLD, size)); return result; }
   private static JButton roundButton(String caption, int size, boolean primary) { return new TransportButton(caption, size, primary); }
@@ -428,8 +471,22 @@ public final class CDPlayer extends JFrame {
     void setLookingUp(boolean value) { lookingUp = value; repaint(); }
     protected void paintComponent(Graphics raw) {
       super.paintComponent(raw); Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-      int side = Math.min(360, Math.min(getWidth(), getHeight()) - 40);
+      int side = Math.min(300, Math.min(getWidth(), getHeight()) - 40);
       int x = (getWidth() - side) / 2, y = (getHeight() - side) / 2, centerX = x + side / 2, centerY = y + side / 2;
+
+      // jewel case backdrop behind the disc
+      int caseSide = side + 60, caseX = centerX - caseSide / 2, caseY = centerY - caseSide / 2;
+      g.setColor(new Color(255, 255, 255, 14)); g.fillRoundRect(caseX, caseY, caseSide, caseSide, 12, 12);
+      g.setColor(new Color(ACCENT.getRed(), ACCENT.getGreen(), ACCENT.getBlue(), 95)); g.setStroke(new BasicStroke(1.6f)); g.drawRoundRect(caseX, caseY, caseSide, caseSide, 12, 12);
+      g.setColor(new Color(255, 255, 255, 26)); g.setStroke(new BasicStroke(1));
+      g.drawLine(caseX + 10, caseY + 10, caseX + caseSide - 10, caseY + 10);
+      g.drawLine(caseX + 10, caseY + caseSide - 10, caseX + caseSide - 10, caseY + caseSide - 10);
+      if (cover != null) {
+        int thumb = 58;
+        g.setColor(new Color(0, 0, 0, 120)); g.fillRoundRect(caseX + 14, caseY + 14, thumb, thumb, 6, 6);
+        g.drawImage(cover, caseX + 17, caseY + 17, thumb - 6, thumb - 6, null);
+        g.setColor(ACCENT2); g.setStroke(new BasicStroke(1.2f)); g.drawRoundRect(caseX + 16, caseY + 16, thumb - 4, thumb - 4, 5, 5);
+      }
 
       // ambient glow ring, pulses while playing
       if (spinning) {
