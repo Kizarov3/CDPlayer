@@ -18,7 +18,7 @@ CDPlayer is a Java desktop app that recreates the tactile feel of a physical CD 
 
 ### Installing FFmpeg
 
-FFmpeg is required to play audio in player
+
 
 #### Windows
 
