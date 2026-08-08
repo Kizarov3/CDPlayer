@@ -104,6 +104,29 @@ public final class CDPlayer extends JFrame {
   private final Timer clock = new Timer(70, this::tick);
   private static final Pattern ITUNES_COVER = Pattern.compile("\\\"artworkUrl100\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
 
+  private static String findFFmpeg() {
+    String[] paths = {
+        "ffmpeg",
+        "/opt/homebrew/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg"
+    };
+
+    for (String path : paths) {
+      try {
+        Process process = new ProcessBuilder(path, "-version")
+            .redirectErrorStream(true)
+            .start();
+
+        if (process.waitFor() == 0) {
+          return path;
+        }
+      } catch (Exception ignored) {
+      }
+    }
+
+    return null;
+  }
+
   public static void main(String[] args) {
     SwingUtilities.invokeLater(() -> {
       try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); }
@@ -334,8 +357,12 @@ public final class CDPlayer extends JFrame {
     if (!"flac".equals(extension) && !"m4a".equals(extension) && !"mp3".equals(extension)) return sourceFile;
     temporaryAudio = File.createTempFile("cdplayer-", ".wav"); temporaryAudio.deleteOnExit();
     Process process;
+    String ffmpegPath = findFFmpeg();
     try {
-      process = new ProcessBuilder("ffmpeg", "-nostdin", "-y", "-v", "error", "-i", sourceFile.getAbsolutePath(), "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2", temporaryAudio.getAbsolutePath()).inheritIO().start();
+      if (ffmpegPath == null) {
+        throw new IOException("FFmpeg was not found");
+      }
+      process = new ProcessBuilder(ffmpegPath, "-nostdin", "-y", "-v", "error", "-i", sourceFile.getAbsolutePath(), "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2", temporaryAudio.getAbsolutePath()).inheritIO().start();
     } catch (IOException missingFfmpeg) {
       deleteTemporaryAudio(); throw new IOException("FFmpeg was not found", missingFfmpeg);
     }
