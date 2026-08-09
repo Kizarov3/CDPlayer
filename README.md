@@ -6,8 +6,8 @@ CDPlayer is a Java desktop app that recreates the tactile feel of a physical CD 
 
 - Built with plain Java and native Swing/AWT — no external UI framework, single self-contained app
 - Plays local audio files, with FFmpeg handling the formats Java can't decode natively
-- Full queue management: drag-and-drop, shuffle, repeat, crossfade, and per-track removal
-- Six built-in visual themes, including an animated snow/Christmas theme
+- Full queue management: drag-and-drop, shuffle, repeat, crossfade, volume, and per-track removal — queue is saved automatically and restored next launch
+- Nine built-in animated themes, each with its own falling/drifting particle effect and a matching reactive visualizer
 - Automatic metadata and album art, with an online lookup fallback when a file has none
 - Works on Windows, macOS, and Linux
 
@@ -31,21 +31,32 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - Drag and drop individual files or whole folders (recursively) to build a queue
 - Shuffle and repeat modes
 - Adjustable crossfade (0–15s) between tracks using an equal-power fade curve, so the transition doesn't dip in volume
+- Volume slider with live gain control, correctly blended into an in-progress crossfade instead of fighting it
 - Keyboard shortcuts: `Space` / `K` play-pause, `J` / `L` previous/next track, `←` / `→` skip 15 seconds
 
 **Queue**
 - Full queue list with per-track duration, click-to-play, and a hover-to-reveal remove (×) button
+- One-click **Clear Queue** button, disabled automatically when there's nothing to clear
 - "Up next" preview and live queue position (e.g. `QUEUE 3 / 10`)
+- The queue and current track are saved when you close the app and restored next launch — ready to play, but not auto-started
 
 **Now playing**
 - Spinning disc animation inside a jewel-case backdrop, with your album art on the disc label and case thumbnail
-- Live audio visualizer bars that react to the actual decoded waveform, not a fake animation
+- Live audio visualizer that reacts to the actual decoded waveform, not a fake animation — its shape changes with the active theme (see below)
 - Metadata display (artist, title, album) read from the file's tags, with the filename as a fallback
 - Embedded album art extraction, with automatic iTunes/Deezer cover lookup when a file has none
 
 **Themes**
-- Six built-in themes — RED, BLUE, SUNSET, FOREST, VAPOR, SNOW — with a smooth animated color transition when switching
-- The SNOW theme adds gently falling snow across the whole window and swaps the bar visualizer for a small animated Christmas tree whose ornament lights pulse with the music, just like the normal visualizer bars
+- Nine built-in themes — RED, BLUE, SUNSET, FOREST, GALAXY, OCEAN, MATRIX, AUTUMN, SNOW — with a smooth animated color transition when switching
+- Five of them replace the plain bar visualizer with a themed, audio-reactive shape driven by the exact same levels the bars use:
+  - **SNOW** — gently falling snow across the whole window; visualizer becomes a small pine tree whose ornament lights pulse with the music
+  - **GALAXY** — a twinkling starfield with the occasional shooting star; visualizer becomes a 5-star constellation that brightens with the beat
+  - **OCEAN** — rising bubbles with a soft light shimmer sweeping across the water; visualizer becomes a pair of reactive wave layers
+  - **MATRIX** — falling green code rain; visualizer becomes a miniature version of the same rain, column heights driven by the audio
+  - **AUTUMN** — drifting, tumbling autumn leaves; visualizer becomes a small branch whose leaves brighten and grow with the music
+
+**First launch**
+- A one-time welcome dialog covers drag-and-drop, keyboard shortcuts, themes, the FFmpeg requirement, and queue persistence — shown once, then never again
 
 ## Quick Start
 
