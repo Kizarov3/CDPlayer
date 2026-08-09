@@ -63,10 +63,11 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 public final class CDPlayer extends JFrame {
   private static final Theme[] THEMES = {
     new Theme("RED", new Color(17, 17, 19), new Color(31, 31, 34), new Color(196, 20, 28), new Color(180, 186, 194), new Color(232, 233, 236), new Color(138, 142, 148)),
-    new Theme("BLUE", new Color(10, 11, 16), new Color(19, 20, 28), new Color(130, 110, 255), new Color(0, 214, 182), new Color(240, 241, 247), new Color(134, 138, 158)),
+    new Theme("BLUE", new Color(6, 10, 22), new Color(13, 19, 36), new Color(46, 116, 255), new Color(150, 210, 255), new Color(232, 240, 250), new Color(120, 134, 160)),
     new Theme("SUNSET", new Color(24, 15, 18), new Color(38, 24, 28), new Color(255, 106, 61), new Color(255, 71, 133), new Color(250, 238, 230), new Color(176, 148, 142)),
     new Theme("FOREST", new Color(11, 17, 14), new Color(20, 30, 24), new Color(52, 199, 123), new Color(178, 214, 58), new Color(230, 240, 228), new Color(128, 148, 130)),
     new Theme("VAPOR", new Color(13, 11, 22), new Color(24, 20, 38), new Color(56, 220, 232), new Color(190, 90, 232), new Color(238, 236, 250), new Color(150, 142, 172)),
+    new Theme("SNOW", new Color(8, 12, 24), new Color(16, 22, 38), new Color(214, 44, 54), new Color(38, 150, 84), new Color(245, 247, 250), new Color(140, 150, 172)),
   };
   private static Color BG = THEMES[0].bg;
   private static Color CARD = THEMES[0].card;
@@ -87,11 +88,15 @@ public final class CDPlayer extends JFrame {
   private final JButton shuffleButton = textButton("SHUFFLE OFF");
   private final JButton repeatButton = textButton("REPEAT OFF");
   private final JButton themeButton = textButton("THEME: " + THEMES[0].name);
-  private final JLabel brandLabel = new JLabel("W A V E L E N G T H");
+  private final JLabel brandLabel = new JLabel("by kizarka");
   private final JLabel nowPlayingLabel = new JLabel("NOW PLAYING");
   private final JLabel queueInfo = label("QUEUE EMPTY", 10, MUTED);
   private final JLabel queueNext = label("DROP SONGS OR A FOLDER TO BUILD A QUEUE", 9, MUTED);
+  private final JLabel crossfadeTitle = new JLabel("CROSSFADE");
+  private final JSlider crossfadeSlider = new JSlider(0, 15, 0);
+  private final JLabel crossfadeValueLabel = new JLabel("OFF");
   private final VisualizerBars visualizer = new VisualizerBars();
+  private final SnowOverlay snowOverlay = new SnowOverlay();
   private final List<File> queue = new ArrayList<File>();
   private int queueIndex = -1;
   private final Map<File, SongDetails> metadataCache = new HashMap<File, SongDetails>();
@@ -104,10 +109,12 @@ public final class CDPlayer extends JFrame {
   private File loadedFile;
   private File temporaryAudio;
   private boolean adjusting;
+  private boolean crossfadeStarted;
   private byte[] rawAudio;
   private AudioFormat audioFormat;
   private final Timer clock = new Timer(70, this::tick);
   private static final Pattern ITUNES_COVER = Pattern.compile("\\\"artworkUrl100\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
+  private static final Pattern DEEZER_COVER = Pattern.compile("\\\"cover_xl\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
 
   public static void main(String[] args) {
     SwingUtilities.invokeLater(() -> {
@@ -124,6 +131,8 @@ public final class CDPlayer extends JFrame {
     setSize(1120, 700);
     setLocationByPlatform(true);
     setContentPane(createContent());
+    getRootPane().setGlassPane(snowOverlay);
+    snowOverlay.setVisible(false);
     setDropTarget(new DropTarget(this, new DropTargetAdapter() {
       @SuppressWarnings("unchecked") public void drop(DropTargetDropEvent event) {
         try {
@@ -175,6 +184,9 @@ public final class CDPlayer extends JFrame {
     Theme to = THEMES[index];
     currentThemeIndex = index;
     themeButton.setText("THEME: " + to.name);
+    boolean holiday = "SNOW".equals(to.name);
+    snowOverlay.setActive(holiday);
+    visualizer.setTreeMode(holiday);
     Color[] fromColors = { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED };
     Color[] toColors = { to.bg, to.card, to.accent, to.accent2, to.text, to.muted };
     if (themeAnim != null && themeAnim.isRunning()) themeAnim.stop();
@@ -195,7 +207,7 @@ public final class CDPlayer extends JFrame {
   private void applyThemeColors() {
     status.setForeground(ACCENT); track.setForeground(TEXT); source.setForeground(MUTED);
     elapsed.setForeground(MUTED); length.setForeground(MUTED); queueInfo.setForeground(MUTED); queueNext.setForeground(MUTED);
-    brandLabel.setForeground(TEXT); nowPlayingLabel.setForeground(ACCENT2);
+    brandLabel.setForeground(TEXT); nowPlayingLabel.setForeground(ACCENT2); crossfadeTitle.setForeground(MUTED); crossfadeValueLabel.setForeground(MUTED);
   }
 
   private static Color lerp(Color a, Color b, float t) {
@@ -262,6 +274,16 @@ public final class CDPlayer extends JFrame {
     JPanel modes = new JPanel(); modes.setOpaque(false); modes.setAlignmentX(Component.LEFT_ALIGNMENT); modes.setLayout(new javax.swing.BoxLayout(modes, javax.swing.BoxLayout.X_AXIS));
     shuffleButton.addActionListener(e -> { shuffle = !shuffle; shuffleButton.setText(shuffle ? "SHUFFLE ON" : "SHUFFLE OFF"); updateQueueUI(); }); modes.add(shuffleButton); modes.add(javax.swing.Box.createHorizontalStrut(10));
     repeatButton.addActionListener(e -> { repeat = !repeat; repeatButton.setText(repeat ? "REPEAT ON" : "REPEAT OFF"); updateQueueUI(); }); modes.add(repeatButton); panel.add(modes);
+    panel.add(javax.swing.Box.createVerticalStrut(18));
+    JPanel crossfadeRow = new JPanel(); crossfadeRow.setOpaque(false); crossfadeRow.setAlignmentX(Component.LEFT_ALIGNMENT); crossfadeRow.setLayout(new javax.swing.BoxLayout(crossfadeRow, javax.swing.BoxLayout.X_AXIS));
+    crossfadeTitle.setFont(new Font("SansSerif", Font.BOLD, 10)); crossfadeTitle.setForeground(MUTED);
+    crossfadeSlider.setOpaque(false); crossfadeSlider.setUI(new AccentSliderUI(crossfadeSlider)); crossfadeSlider.setFocusable(false);
+    crossfadeSlider.setPreferredSize(new Dimension(120, 20)); crossfadeSlider.setMaximumSize(new Dimension(120, 20));
+    crossfadeValueLabel.setFont(new Font("SansSerif", Font.BOLD, 10)); crossfadeValueLabel.setForeground(MUTED); crossfadeValueLabel.setPreferredSize(new Dimension(28, 16));
+    crossfadeSlider.addChangeListener(e -> { int v = crossfadeSlider.getValue(); crossfadeValueLabel.setText(v == 0 ? "OFF" : v + "S"); });
+    crossfadeSlider.setToolTipText("Crossfade between tracks (0 = off, up to 15s)");
+    crossfadeRow.add(crossfadeTitle); crossfadeRow.add(javax.swing.Box.createHorizontalStrut(10)); crossfadeRow.add(crossfadeSlider); crossfadeRow.add(javax.swing.Box.createHorizontalStrut(8)); crossfadeRow.add(crossfadeValueLabel); crossfadeRow.add(javax.swing.Box.createHorizontalGlue());
+    panel.add(crossfadeRow);
     panel.add(javax.swing.Box.createVerticalStrut(22));
     JPanel queueCard = new JPanel(); queueCard.setOpaque(false); queueCard.setAlignmentX(Component.LEFT_ALIGNMENT); queueCard.setLayout(new javax.swing.BoxLayout(queueCard, javax.swing.BoxLayout.Y_AXIS)); queueCard.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(255, 255, 255, 22)));
     queueInfo.setAlignmentX(Component.LEFT_ALIGNMENT); queueNext.setAlignmentX(Component.LEFT_ALIGNMENT); queueCard.add(javax.swing.Box.createVerticalStrut(9)); queueCard.add(queueInfo); queueCard.add(javax.swing.Box.createVerticalStrut(5)); queueCard.add(queueNext);
@@ -283,7 +305,11 @@ public final class CDPlayer extends JFrame {
   private void collectAudio(File item, List<File> songs) { if (item.isDirectory()) { File[] children = item.listFiles(); if (children != null) for (File child : children) collectAudio(child, songs); } else if (isSupportedAudio(item)) songs.add(item); }
   private static boolean isSupportedAudio(File item) { String type = extension(item); return "wav".equals(type) || "wave".equals(type) || "aif".equals(type) || "aiff".equals(type) || "au".equals(type) || "flac".equals(type) || "m4a".equals(type) || "mp3".equals(type); }
   private void updateQueueUI() {
-    if (queue.isEmpty() || queueIndex < 0) { queueInfo.setText("QUEUE EMPTY"); queueNext.setText("DROP SONGS OR A FOLDER TO BUILD A QUEUE"); return; }
+    if (queue.isEmpty() || queueIndex < 0) {
+      queueInfo.setText("QUEUE EMPTY"); queueNext.setText("DROP SONGS OR A FOLDER TO BUILD A QUEUE");
+      queueList.removeAll(); queueList.revalidate(); queueList.repaint();
+      return;
+    }
     queueInfo.setText("QUEUE " + (queueIndex + 1) + " / " + queue.size() + (shuffle ? " · SHUFFLED" : ""));
     int next = nextIndex();
     queueNext.setText(next >= 0 && next != queueIndex ? "UP NEXT · " + queueDisplay(queue.get(next)) : (repeat ? "REPEATING THIS TRACK" : "END OF QUEUE"));
@@ -297,12 +323,20 @@ public final class CDPlayer extends JFrame {
       JLabel entry = label((i + 1) + ". " + escape(queueDisplay(f)), 10, active ? ACCENT : MUTED);
       if (active) entry.setFont(new Font("SansSerif", Font.BOLD, 10));
       JLabel durationLabel = label(formatDuration(getDuration(f)), 10, active ? ACCENT2 : MUTED);
-      row.add(entry, BorderLayout.CENTER); row.add(durationLabel, BorderLayout.EAST);
+      java.awt.CardLayout eastCards = new java.awt.CardLayout();
+      JPanel eastPanel = new JPanel(eastCards); eastPanel.setOpaque(false);
+      eastPanel.add(durationLabel, "duration");
+      JButton closeButton = new JButton("×"); closeButton.setFont(new Font("SansSerif", Font.BOLD, 13)); closeButton.setForeground(MUTED);
+      closeButton.setFocusPainted(false); closeButton.setBorderPainted(false); closeButton.setContentAreaFilled(false); closeButton.setOpaque(false);
+      closeButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); closeButton.setMargin(new Insets(0, 6, 0, 0)); closeButton.setToolTipText("Remove from queue");
+      closeButton.addActionListener(e -> removeFromQueue(index));
+      eastPanel.add(closeButton, "close");
+      row.add(entry, BorderLayout.CENTER); row.add(eastPanel, BorderLayout.EAST);
       row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); row.setToolTipText("Play " + queueDisplay(f));
       row.addMouseListener(new java.awt.event.MouseAdapter() {
         public void mouseClicked(java.awt.event.MouseEvent e) { queueIndex = index; load(f); }
-        public void mouseEntered(java.awt.event.MouseEvent e) { if (index != queueIndex) { entry.setForeground(TEXT); durationLabel.setForeground(TEXT); } }
-        public void mouseExited(java.awt.event.MouseEvent e) { if (index != queueIndex) { entry.setForeground(MUTED); durationLabel.setForeground(MUTED); } }
+        public void mouseEntered(java.awt.event.MouseEvent e) { if (index != queueIndex) entry.setForeground(TEXT); eastCards.show(eastPanel, "close"); }
+        public void mouseExited(java.awt.event.MouseEvent e) { if (index != queueIndex) entry.setForeground(MUTED); eastCards.show(eastPanel, "duration"); }
       });
       queueList.add(row);
       if (i < queue.size() - 1) queueList.add(javax.swing.Box.createVerticalStrut(3));
@@ -330,7 +364,10 @@ public final class CDPlayer extends JFrame {
   }
   private void load(File file) {
     try {
-      if (clip != null) { Clip previousClip = clip; clip = null; previousClip.stop(); previousClip.close(); }
+      Clip outgoing = clip;
+      int fadeSeconds = crossfadeSlider.getValue();
+      boolean doCrossfade = outgoing != null && outgoing.isRunning() && fadeSeconds > 0;
+      if (!doCrossfade && outgoing != null) { clip = null; outgoing.stop(); outgoing.close(); }
       deleteTemporaryAudio();
       File playable = prepareAudio(file);
       AudioInputStream decodedStream = AudioSystem.getAudioInputStream(playable);
@@ -338,20 +375,55 @@ public final class CDPlayer extends JFrame {
       AudioFormat format = decodedStream.getFormat();
       decodedStream.close();
       AudioInputStream clipStream = new AudioInputStream(new java.io.ByteArrayInputStream(audioBytes), format, audioBytes.length / Math.max(1, format.getFrameSize()));
-      Clip openedClip = AudioSystem.getClip(); openedClip.open(clipStream); clip = openedClip; loadedFile = file; rawAudio = audioBytes; audioFormat = format;
+      Clip openedClip = AudioSystem.getClip(); openedClip.open(clipStream); clip = openedClip; loadedFile = file; rawAudio = audioBytes; audioFormat = format; crossfadeStarted = false;
       openedClip.addLineListener(event -> { if (event.getType() == LineEvent.Type.STOP && openedClip.getMicrosecondPosition() >= openedClip.getMicrosecondLength()) SwingUtilities.invokeLater(() -> trackFinished(openedClip)); });
       SongDetails details = inspectSong(file);
       metadataCache.put(file, details);
       String name = details.title;
       track.setText("<html>" + escape(ellipsize(track, name, 456)) + "</html>"); source.setText("LOCAL AUDIO FILE · " + file.getName().substring(file.getName().lastIndexOf('.') + 1).toUpperCase());
       length.setText(format(clip.getMicrosecondLength())); elapsed.setText("0:00"); progress.setValue(0); status.setText("●  TRACK LOADED");
-      disc.setCover(details.embeddedCover); disc.setLookingUp(details.embeddedCover == null && details.hasArtist());
+      boolean canLookUp = details.embeddedCover == null && details.title != null && !details.title.trim().isEmpty();
+      disc.setCover(details.embeddedCover); disc.setLookingUp(canLookUp);
       if (details.embeddedCover != null) source.setText("EMBEDDED ALBUM ART · " + extension(file).toUpperCase());
-      else if (details.hasArtist()) findCover(details.lookupQuery(), file);
+      else if (canLookUp) findCover(details.lookupQuery(), file);
       else source.setText("NO EMBEDDED COVER · ADD SONG METADATA");
       updateQueueUI();
-      clip.start(); setPlaying(true);
+      setLinearGain(openedClip, doCrossfade ? 0f : 1f);
+      openedClip.start(); setPlaying(true);
+      if (doCrossfade) { status.setText("●  CROSSFADING"); startCrossfade(outgoing, openedClip, fadeSeconds); }
     } catch (Exception error) { status.setText("●  INSTALL FFMPEG FOR FLAC / M4A"); }
+  }
+  /** Sets a Clip's volume (0..1, linear) via its MASTER_GAIN control, converting to decibels. Silently no-ops if the control isn't available on this line. */
+  private static void setLinearGain(Clip target, float volume) {
+    try {
+      if (!target.isControlSupported(javax.sound.sampled.FloatControl.Type.MASTER_GAIN)) return;
+      javax.sound.sampled.FloatControl gainControl = (javax.sound.sampled.FloatControl) target.getControl(javax.sound.sampled.FloatControl.Type.MASTER_GAIN);
+      float clamped = Math.max(0.0001f, Math.min(1f, volume));
+      float decibels = (float) (20 * Math.log10(clamped));
+      decibels = Math.max(gainControl.getMinimum(), Math.min(gainControl.getMaximum(), decibels));
+      gainControl.setValue(decibels);
+    } catch (Exception ignored) { /* gain control unsupported on this line/platform */ }
+  }
+  /** Fades `outgoing` out and `incoming` in over `seconds` using an equal-power curve, then stops/closes the outgoing clip. Equal-power (cos/sin, not linear 1-t/t) keeps the combined perceived loudness roughly constant through the transition, instead of dipping in the middle — this is the same principle Spotify's crossfade (and most professional DJ mixers) use. */
+  private void startCrossfade(final Clip outgoing, final Clip incoming, int seconds) {
+    final long durationMillis = seconds * 1000L;
+    final long startTime = System.currentTimeMillis();
+    setLinearGain(outgoing, 1f); setLinearGain(incoming, 0f);
+    Timer fade = new Timer(30, null);
+    fade.addActionListener(e -> {
+      long elapsedMillis = System.currentTimeMillis() - startTime;
+      float t = Math.min(1f, elapsedMillis / (float) durationMillis);
+      double angle = t * (Math.PI / 2.0);
+      float outGain = (float) Math.cos(angle);   // 1 -> 0, equal-power taper
+      float inGain = (float) Math.sin(angle);    // 0 -> 1, equal-power taper
+      setLinearGain(outgoing, outGain); setLinearGain(incoming, inGain);
+      if (t >= 1f) {
+        ((Timer) e.getSource()).stop();
+        try { outgoing.stop(); outgoing.close(); } catch (Exception ignored) { }
+        if (clip == incoming) { setLinearGain(incoming, 1f); status.setText("●  NOW SPINNING"); }
+      }
+    });
+    fade.start();
   }
   private static final Map<String, String> BINARY_PATH_CACHE = new HashMap<String, String>();
   /**
@@ -406,8 +478,8 @@ public final class CDPlayer extends JFrame {
     File image = null;
     try {
       image = File.createTempFile("cdplayer-art-", ".jpg");
-      Process extract = new ProcessBuilder(resolveBinary("ffmpeg"), "-nostdin", "-y", "-v", "error", "-i", file.getAbsolutePath(), "-map", "0:v:0", "-frames:v", "1", image.getAbsolutePath()).redirectErrorStream(true).start();
-      readAll(extract.getInputStream()); if (extract.waitFor() == 0 && image.length() > 0) return ImageIO.read(image);
+      Process extract = new ProcessBuilder(resolveBinary("ffmpeg"), "-nostdin", "-y", "-v", "error", "-i", file.getAbsolutePath(), "-map", "0:v:0", "-frames:v", "1", "-pix_fmt", "yuvj420p", image.getAbsolutePath()).redirectErrorStream(true).start();
+      readAll(extract.getInputStream()); if (extract.waitFor() == 0 && image.length() > 0) { BufferedImage decoded = ImageIO.read(image); if (decoded != null) return decoded; }
     } catch (Exception ignored) { /* No embedded artwork is normal. */ }
     finally { if (image != null) image.delete(); }
     return null;
@@ -416,19 +488,46 @@ public final class CDPlayer extends JFrame {
     final String title, artist, album; final BufferedImage embeddedCover;
     SongDetails(String title, String artist, String album, BufferedImage embeddedCover) { this.title = title; this.artist = artist; this.album = album; this.embeddedCover = embeddedCover; }
     boolean hasArtist() { return artist != null && !artist.trim().isEmpty(); }
-    String lookupQuery() { return artist + " " + title + (album == null || album.trim().isEmpty() ? "" : " " + album); }
+    String lookupQuery() { return (hasArtist() ? artist + " " : "") + title; }
   }
   private void findCover(final String query, final File requestedFile) {
     Thread lookup = new Thread(() -> {
+      String sourceLabel = null;
+      BufferedImage foundCover = null;
+      boolean networkError = false;
       try {
-        String encoded = URLEncoder.encode(query, "UTF-8");
-        String json = fetchText("https://itunes.apple.com/search?term=" + encoded + "&entity=song&limit=1");
-        Matcher match = ITUNES_COVER.matcher(json); BufferedImage image = match.find() ? fetchImage(match.group(1).replace("\\/", "/").replace("100x100bb", "600x600bb")) : null;
-        final BufferedImage foundCover = image;
-        SwingUtilities.invokeLater(() -> { if (requestedFile.equals(loadedFile)) { disc.setLookingUp(false); if (foundCover != null) { disc.setCover(foundCover); source.setText("ITUNES COVER ART · " + extension(requestedFile).toUpperCase()); } else source.setText("COVER NOT FOUND · " + extension(requestedFile).toUpperCase()); } });
-      } catch (Exception ignored) { SwingUtilities.invokeLater(() -> { if (requestedFile.equals(loadedFile)) { disc.setLookingUp(false); source.setText("COVER LOOKUP UNAVAILABLE · " + extension(requestedFile).toUpperCase()); } }); }
+        foundCover = searchITunesCover(query);
+        if (foundCover != null) sourceLabel = "ITUNES";
+      } catch (Exception ignored) { networkError = true; }
+      if (foundCover == null) {
+        try {
+          foundCover = searchDeezerCover(query);
+          if (foundCover != null) sourceLabel = "DEEZER";
+        } catch (Exception ignored) { networkError = true; }
+      }
+      final BufferedImage cover = foundCover; final String label = sourceLabel; final boolean hadNetworkError = networkError && cover == null;
+      SwingUtilities.invokeLater(() -> {
+        if (!requestedFile.equals(loadedFile)) return;
+        disc.setLookingUp(false);
+        if (cover != null) { disc.setCover(cover); source.setText(label + " COVER ART · " + extension(requestedFile).toUpperCase()); }
+        else source.setText((hadNetworkError ? "COVER LOOKUP UNAVAILABLE · " : "COVER NOT FOUND · ") + extension(requestedFile).toUpperCase());
+      });
     }, "cdplayer-cover-lookup");
     lookup.setDaemon(true); lookup.start();
+  }
+  private static BufferedImage searchITunesCover(String query) throws IOException {
+    String encoded = URLEncoder.encode(query, "UTF-8");
+    String json = fetchText("https://itunes.apple.com/search?term=" + encoded + "&entity=song&limit=1");
+    Matcher match = ITUNES_COVER.matcher(json);
+    if (!match.find()) return null;
+    return fetchImage(match.group(1).replace("\\/", "/").replace("100x100bb", "600x600bb"));
+  }
+  private static BufferedImage searchDeezerCover(String query) throws IOException {
+    String encoded = URLEncoder.encode(query, "UTF-8");
+    String json = fetchText("https://api.deezer.com/search?q=" + encoded + "&limit=1");
+    Matcher match = DEEZER_COVER.matcher(json);
+    if (!match.find()) return null;
+    return fetchImage(match.group(1).replace("\\/", "/"));
   }
   private static String fetchText(String location) throws IOException { HttpURLConnection connection = open(location); try (InputStream stream = connection.getInputStream()) { return new String(readAll(stream), StandardCharsets.UTF_8); } finally { connection.disconnect(); } }
   private static BufferedImage fetchImage(String location) throws IOException { HttpURLConnection connection = open(location); try (InputStream stream = connection.getInputStream()) { return ImageIO.read(stream); } finally { connection.disconnect(); } }
@@ -438,8 +537,38 @@ public final class CDPlayer extends JFrame {
   private void trackFinished(Clip finishedClip) { if (clip != finishedClip) return; if (repeat) { clip.setMicrosecondPosition(0); clip.start(); setPlaying(true); } else if (!nextTrack()) setPlaying(false); }
   private boolean nextTrack() { int next = nextIndex(); if (next < 0) return false; queueIndex = next; load(queue.get(queueIndex)); return true; }
   private void previousTrack() { if (clip != null && clip.getMicrosecondPosition() > 5_000_000L) { clip.setMicrosecondPosition(0); return; } if (queueIndex > 0) { queueIndex--; load(queue.get(queueIndex)); } else if (clip != null) clip.setMicrosecondPosition(0); }
+  private void removeFromQueue(int index) {
+    if (index < 0 || index >= queue.size()) return;
+    queue.remove(index);
+    if (queue.isEmpty()) {
+      queueIndex = -1;
+      if (clip != null) { Clip closingClip = clip; clip = null; closingClip.stop(); closingClip.close(); }
+      track.setText("Pick a track to get started."); source.setText("YOUR MUSIC LIBRARY");
+      elapsed.setText("0:00"); length.setText("0:00"); progress.setValue(0);
+      disc.setCover(null); disc.setLookingUp(false); loadedFile = null; setPlaying(false);
+      status.setText("●  QUEUE EMPTY");
+      updateQueueUI();
+    } else if (index == queueIndex) {
+      queueIndex = Math.min(index, queue.size() - 1);
+      load(queue.get(queueIndex)); // load() also refreshes the queue UI
+    } else {
+      if (index < queueIndex) queueIndex--;
+      updateQueueUI();
+    }
+  }
   private void seek(int seconds) { if (clip == null) return; long target = Math.max(0, Math.min(clip.getMicrosecondLength(), clip.getMicrosecondPosition() + seconds * 1_000_000L)); clip.setMicrosecondPosition(target); long duration = clip.getMicrosecondLength(); progress.setValue(duration == 0 ? 0 : (int) (target * 1000 / duration)); elapsed.setText(format(target)); }
-  private void tick(ActionEvent event) { if (clip == null || adjusting) return; long duration = clip.getMicrosecondLength(); long position = clip.getMicrosecondPosition(); progress.setValue(duration == 0 ? 0 : (int) (position * 1000 / duration)); elapsed.setText(format(position)); double[] levels = computeLevels(5, 90); visualizer.setLevels(levels != null ? levels : fallbackLevels()); }
+  private void tick(ActionEvent event) {
+    if (clip == null || adjusting) return;
+    long duration = clip.getMicrosecondLength(); long position = clip.getMicrosecondPosition();
+    progress.setValue(duration == 0 ? 0 : (int) (position * 1000 / duration)); elapsed.setText(format(position));
+    double[] levels = computeLevels(5, 90); visualizer.setLevels(levels != null ? levels : fallbackLevels());
+    int fadeSeconds = crossfadeSlider.getValue();
+    if (!crossfadeStarted && fadeSeconds > 0 && duration > 0 && duration - position <= fadeSeconds * 1_000_000L) {
+      int next = nextIndex();
+      if (next >= 0) { crossfadeStarted = true; queueIndex = next; load(queue.get(queueIndex)); }
+      else if (repeat && loadedFile != null) { crossfadeStarted = true; load(loadedFile); } // seamless loop crossfade back into the same track
+    }
+  }
   private void setPlaying(boolean playing) { disc.setSpinning(playing); play.setText(playing ? "Ⅱ" : "▶"); status.setText(playing ? "●  NOW SPINNING" : (loadedFile == null ? "●  READY TO PLAY" : "●  PAUSED")); visualizer.setActive(playing); if (playing) clock.start(); else clock.stop(); }
   private double[] computeLevels(int bars, int windowMillis) {
     try {
@@ -608,13 +737,29 @@ public final class CDPlayer extends JFrame {
 
   private static final class VisualizerBars extends JPanel {
     private static final int BARS = 5;
+    private static final Color[] LIGHT_COLORS = { new Color(232, 64, 64), new Color(255, 205, 80), new Color(96, 190, 255), new Color(120, 220, 120), new Color(255, 150, 220) };
+    private static final Dimension BAR_SIZE = new Dimension(42, 16);
+    private static final Dimension TREE_SIZE = new Dimension(34, 32);
     private final double[] levels = new double[BARS];
     private boolean active;
-    VisualizerBars() { setOpaque(false); setPreferredSize(new Dimension(42, 16)); setMaximumSize(new Dimension(42, 16)); }
+    private boolean treeMode;
+    VisualizerBars() { setOpaque(false); setPreferredSize(BAR_SIZE); setMaximumSize(BAR_SIZE); }
     void setActive(boolean value) { active = value; if (!value) java.util.Arrays.fill(levels, 0); repaint(); }
     void setLevels(double[] fresh) { for (int i = 0; i < BARS && i < fresh.length; i++) levels[i] = levels[i] * 0.35 + fresh[i] * 0.65; repaint(); }
+    /** Swaps the bar meter for a small pine-tree meter whose ornament lights react to the same audio levels the bars use. */
+    void setTreeMode(boolean value) {
+      if (treeMode == value) return;
+      treeMode = value;
+      Dimension size = treeMode ? TREE_SIZE : BAR_SIZE;
+      setPreferredSize(size); setMaximumSize(size);
+      revalidate(); repaint();
+    }
     protected void paintComponent(Graphics raw) {
       Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      if (treeMode) paintTree(g); else paintBars(g);
+      g.dispose();
+    }
+    private void paintBars(Graphics2D g) {
       int barWidth = 4, gap = 3, totalWidth = BARS * barWidth + (BARS - 1) * gap, startX = (getWidth() - totalWidth) / 2;
       for (int i = 0; i < BARS; i++) {
         double level = active ? Math.max(0.1, levels[i]) : 0.1;
@@ -622,8 +767,81 @@ public final class CDPlayer extends JFrame {
         g.setColor(i % 2 == 0 ? ACCENT : ACCENT2);
         g.fillRoundRect(startX + i * (barWidth + gap), getHeight() - barHeight, barWidth, barHeight, 2, 2);
       }
+    }
+    private static final double[][] LIGHT_POSITIONS = { { 0.30, 0.42 }, { 0.68, 0.42 }, { 0.22, 0.64 }, { 0.78, 0.64 }, { 0.5, 0.82 } };
+    private void paintTree(Graphics2D g) {
+      int w = getWidth(), h = getHeight(), cx = w / 2;
+      int trunkW = Math.max(3, w / 8), trunkH = Math.max(3, h / 7);
+      g.setColor(new Color(96, 62, 40));
+      g.fillRect(cx - trunkW / 2, h - trunkH, trunkW, trunkH);
+      int tiers = 3, topY = 1, bottomY = h - trunkH + 1, tierHeight = (bottomY - topY) / tiers;
+      g.setColor(ACCENT2.darker());
+      for (int t = 0; t < tiers; t++) {
+        int tierTop = topY + t * tierHeight * 3 / 5;
+        int tierBottom = topY + (t + 1) * tierHeight + (t == tiers - 1 ? 2 : 0);
+        int halfWidth = (w / 2) * (t + 2) / (tiers + 1);
+        g.fillPolygon(new int[] { cx, cx - halfWidth, cx + halfWidth }, new int[] { tierTop, tierBottom, tierBottom }, 3);
+      }
+      g.setColor(new Color(255, 214, 90));
+      g.fillOval(cx - 2, topY - 1, 4, 4);
+      // ornament lights react to the same levels[] the bar meter uses, brightening/growing with the signal instead of growing taller
+      for (int i = 0; i < BARS; i++) {
+        double level = active ? Math.max(0.12, levels[i]) : 0.12;
+        int lx = (int) (LIGHT_POSITIONS[i][0] * w), ly = (int) (LIGHT_POSITIONS[i][1] * h);
+        double glow = 1.4 + level * 3.2;
+        Color base = LIGHT_COLORS[i % LIGHT_COLORS.length];
+        int alpha = Math.min(255, (int) (110 + level * 145));
+        g.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(), alpha));
+        g.fillOval((int) (lx - glow), (int) (ly - glow), (int) (glow * 2), (int) (glow * 2));
+      }
+    }
+  }
+
+  /** Full-window overlay (installed as the frame's glass pane) that animates gently falling snow for the SNOW theme. Mouse events pass through untouched because {@link #contains} always reports false. */
+  private static final class SnowOverlay extends JPanel {
+    private static final int FLAKE_COUNT = 90;
+    private final double[] x = new double[FLAKE_COUNT];
+    private final double[] y = new double[FLAKE_COUNT];
+    private final double[] fallSpeed = new double[FLAKE_COUNT];
+    private final double[] driftPhase = new double[FLAKE_COUNT];
+    private final double[] radius = new double[FLAKE_COUNT];
+    private final Timer timer = new Timer(35, null);
+    private boolean seeded;
+    SnowOverlay() { setOpaque(false); timer.addActionListener(e -> { advance(); repaint(); }); }
+    void setActive(boolean value) {
+      setVisible(value);
+      if (value) { if (!seeded) seed(); timer.start(); } else timer.stop();
+    }
+    private void seed() {
+      seeded = true;
+      int w = Math.max(1, getWidth()), h = Math.max(1, getHeight());
+      for (int i = 0; i < FLAKE_COUNT; i++) {
+        x[i] = ThreadLocalRandom.current().nextDouble() * w;
+        y[i] = ThreadLocalRandom.current().nextDouble() * h;
+        fallSpeed[i] = 0.6 + ThreadLocalRandom.current().nextDouble() * 1.6;
+        driftPhase[i] = ThreadLocalRandom.current().nextDouble() * Math.PI * 2;
+        radius[i] = 1.2 + ThreadLocalRandom.current().nextDouble() * 2.3;
+      }
+    }
+    private void advance() {
+      int w = Math.max(1, getWidth()), h = Math.max(1, getHeight());
+      for (int i = 0; i < FLAKE_COUNT; i++) {
+        y[i] += fallSpeed[i];
+        x[i] += Math.sin((y[i] * 0.02) + driftPhase[i]) * 0.6;
+        if (y[i] > h) { y[i] = -4; x[i] = ThreadLocalRandom.current().nextDouble() * w; }
+        if (x[i] < -4) x[i] = w + 4; else if (x[i] > w + 4) x[i] = -4;
+      }
+    }
+    protected void paintComponent(Graphics raw) {
+      Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      g.setColor(new Color(255, 255, 255, 220));
+      for (int i = 0; i < FLAKE_COUNT; i++) {
+        double r = radius[i];
+        g.fillOval((int) (x[i] - r), (int) (y[i] - r), (int) (r * 2), (int) (r * 2));
+      }
       g.dispose();
     }
+    public boolean contains(int px, int py) { return false; }
   }
 
   private static final class DiscView extends JPanel {
