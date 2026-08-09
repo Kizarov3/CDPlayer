@@ -103,6 +103,8 @@ public final class CDPlayer extends JFrame {
   private final Map<File, Long> durationCache = new HashMap<File, Long>();
   // Panel that lists all queued songs; displayed under queue headers.
   private final JPanel queueList = new JPanel();
+  private final List<QueueRowUI> queueRows = new ArrayList<QueueRowUI>();
+  private int hoveredQueueIndex = -1;
   private boolean shuffle;
   private boolean repeat;
   private Clip clip;
@@ -290,6 +292,9 @@ public final class CDPlayer extends JFrame {
     // prepare the queue list container (scrollable)
     queueList.setOpaque(false); queueList.setLayout(new javax.swing.BoxLayout(queueList, javax.swing.BoxLayout.Y_AXIS));
     JScrollPane queueScroll = new JScrollPane(queueList); queueScroll.setOpaque(false); queueScroll.getViewport().setOpaque(false); queueScroll.setBorder(null); queueScroll.setAlignmentX(Component.LEFT_ALIGNMENT); queueScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 150));
+    // queueList isn't a Scrollable, so the default per-notch unit increment is a sluggish 1px; scale it to roughly one row (18px row + 3px gap) per notch.
+    queueScroll.getVerticalScrollBar().setUnitIncrement(21);
+    queueScroll.getVerticalScrollBar().setBlockIncrement(126);
     queueCard.add(javax.swing.Box.createVerticalStrut(8)); queueCard.add(queueScroll);
     panel.add(queueCard);
     return panel;
@@ -305,6 +310,7 @@ public final class CDPlayer extends JFrame {
   private void collectAudio(File item, List<File> songs) { if (item.isDirectory()) { File[] children = item.listFiles(); if (children != null) for (File child : children) collectAudio(child, songs); } else if (isSupportedAudio(item)) songs.add(item); }
   private static boolean isSupportedAudio(File item) { String type = extension(item); return "wav".equals(type) || "wave".equals(type) || "aif".equals(type) || "aiff".equals(type) || "au".equals(type) || "flac".equals(type) || "m4a".equals(type) || "mp3".equals(type); }
   private void updateQueueUI() {
+    queueRows.clear(); hoveredQueueIndex = -1;
     if (queue.isEmpty() || queueIndex < 0) {
       queueInfo.setText("QUEUE EMPTY"); queueNext.setText("DROP SONGS OR A FOLDER TO BUILD A QUEUE");
       queueList.removeAll(); queueList.revalidate(); queueList.repaint();
@@ -329,19 +335,51 @@ public final class CDPlayer extends JFrame {
       JButton closeButton = new JButton("×"); closeButton.setFont(new Font("SansSerif", Font.BOLD, 13)); closeButton.setForeground(MUTED);
       closeButton.setFocusPainted(false); closeButton.setBorderPainted(false); closeButton.setContentAreaFilled(false); closeButton.setOpaque(false);
       closeButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); closeButton.setMargin(new Insets(0, 6, 0, 0)); closeButton.setToolTipText("Remove from queue");
+      closeButton.setFocusable(false);
       closeButton.addActionListener(e -> removeFromQueue(index));
       eastPanel.add(closeButton, "close");
       row.add(entry, BorderLayout.CENTER); row.add(eastPanel, BorderLayout.EAST);
       row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); row.setToolTipText("Play " + queueDisplay(f));
+      queueRows.add(new QueueRowUI(entry, eastCards, eastPanel, index));
       row.addMouseListener(new java.awt.event.MouseAdapter() {
         public void mouseClicked(java.awt.event.MouseEvent e) { queueIndex = index; load(f); }
-        public void mouseEntered(java.awt.event.MouseEvent e) { if (index != queueIndex) entry.setForeground(TEXT); eastCards.show(eastPanel, "close"); }
-        public void mouseExited(java.awt.event.MouseEvent e) { if (index != queueIndex) entry.setForeground(MUTED); eastCards.show(eastPanel, "duration"); }
+        // Swing's per-component enter/exit events aren't reliable when the cursor moves quickly between sibling
+        // rows — a row can be "entered" without a matching "exited" ever reaching its previous neighbor, leaving
+        // multiple rows stuck highlighted. Rebuilding every row's hover state from scratch on each entry is
+        // self-healing: at most one row can ever end up highlighted, regardless of missed exit events.
+        public void mouseEntered(java.awt.event.MouseEvent e) { setHoveredQueueRow(index); }
+        // The row and its children (duration label / close button) each fire their own enter/exit pair as the
+        // cursor crosses between them, so a naive mouseExited here would hide the button the instant the pointer
+        // reaches it. getMousePosition() considers descendants, so this only fires once the pointer has actually
+        // left the whole row.
+        public void mouseExited(java.awt.event.MouseEvent e) {
+          if (row.getMousePosition() != null) return;
+          clearHoveredQueueRow(index);
+        }
       });
       queueList.add(row);
       if (i < queue.size() - 1) queueList.add(javax.swing.Box.createVerticalStrut(3));
     }
     queueList.revalidate(); queueList.repaint();
+  }
+  /** Highlights exactly one queue row and its remove button, forcing every other row back to its resting state. */
+  private void setHoveredQueueRow(int index) {
+    hoveredQueueIndex = index;
+    for (QueueRowUI row : queueRows) {
+      boolean hovered = row.index == index;
+      boolean active = row.index == queueIndex;
+      row.entry.setForeground(active ? ACCENT : (hovered ? TEXT : MUTED));
+      row.cards.show(row.eastPanel, hovered ? "close" : "duration");
+    }
+  }
+  private void clearHoveredQueueRow(int index) {
+    if (hoveredQueueIndex != index) return;
+    hoveredQueueIndex = -1;
+    for (QueueRowUI row : queueRows) {
+      if (row.index != index) continue;
+      row.entry.setForeground(row.index == queueIndex ? ACCENT : MUTED);
+      row.cards.show(row.eastPanel, "duration");
+    }
   }
   private int nextIndex() { if (queue.isEmpty()) return -1; if (shuffle && queue.size() > 1) { int next; do { next = ThreadLocalRandom.current().nextInt(queue.size()); } while (next == queueIndex); return next; } return queueIndex + 1 < queue.size() ? queueIndex + 1 : -1; }
   private static String displayName(File file) { return file.getName().replaceFirst("\\.[^.]+$", "").replace('_', ' ').replace('-', ' '); }
@@ -489,6 +527,11 @@ public final class CDPlayer extends JFrame {
     SongDetails(String title, String artist, String album, BufferedImage embeddedCover) { this.title = title; this.artist = artist; this.album = album; this.embeddedCover = embeddedCover; }
     boolean hasArtist() { return artist != null && !artist.trim().isEmpty(); }
     String lookupQuery() { return (hasArtist() ? artist + " " : "") + title; }
+  }
+  /** Handle onto one queue-list row's live components, kept around so hover state can be recomputed for every row on demand. */
+  private static final class QueueRowUI {
+    final JLabel entry; final java.awt.CardLayout cards; final JPanel eastPanel; final int index;
+    QueueRowUI(JLabel entry, java.awt.CardLayout cards, JPanel eastPanel, int index) { this.entry = entry; this.cards = cards; this.eastPanel = eastPanel; this.index = index; }
   }
   private void findCover(final String query, final File requestedFile) {
     Thread lookup = new Thread(() -> {
@@ -655,13 +698,13 @@ public final class CDPlayer extends JFrame {
   private static JButton textButton(String caption) { return new PillButton(caption); }
 
   private static final class PillButton extends JButton {
-    PillButton(String caption) { super(caption); setFont(new Font("SansSerif", Font.BOLD, 11)); setForeground(TEXT); setFocusPainted(false); setBorderPainted(false); setContentAreaFilled(false); setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); setBorder(BorderFactory.createEmptyBorder(8, 16, 8, 16)); setAlignmentY(Component.CENTER_ALIGNMENT); }
+    PillButton(String caption) { super(caption); setFont(new Font("SansSerif", Font.BOLD, 11)); setForeground(TEXT); setFocusPainted(false); setFocusable(false); setBorderPainted(false); setContentAreaFilled(false); setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); setBorder(BorderFactory.createEmptyBorder(8, 16, 8, 16)); setAlignmentY(Component.CENTER_ALIGNMENT); }
     protected void paintComponent(Graphics raw) { Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON); boolean on = getText().endsWith("ON"); int arc = getHeight(); if (on) { g.setPaint(new GradientPaint(0, 0, ACCENT, getWidth(), getHeight(), ACCENT2)); g.fillRoundRect(0, 0, getWidth(), getHeight(), arc, arc); } else { g.setColor(new Color(255,255,255, getModel().isRollover() ? 20 : 12)); g.fillRoundRect(0, 0, getWidth(), getHeight(), arc, arc); g.setColor(new Color(255,255,255,26)); g.setStroke(new BasicStroke(1)); g.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, arc, arc); } g.dispose(); setForeground(on ? BG : MUTED); super.paintComponent(raw); }
   }
 
   private static final class TransportButton extends JButton {
     private final boolean primary;
-    TransportButton(String caption, int size, boolean primary) { super(caption); this.primary = primary; setFont(new Font("SansSerif", Font.PLAIN, primary ? 24 : 18)); setForeground(primary ? BG : TEXT); setFocusPainted(false); setBorderPainted(false); setContentAreaFilled(false); setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); setPreferredSize(new Dimension(size, size)); setMaximumSize(new Dimension(size, size)); }
+    TransportButton(String caption, int size, boolean primary) { super(caption); this.primary = primary; setFont(new Font("SansSerif", Font.PLAIN, primary ? 24 : 18)); setForeground(primary ? BG : TEXT); setFocusPainted(false); setFocusable(false); setBorderPainted(false); setContentAreaFilled(false); setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); setPreferredSize(new Dimension(size, size)); setMaximumSize(new Dimension(size, size)); }
     protected void paintComponent(Graphics raw) {
       Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
       int width = getWidth(), height = getHeight();
@@ -682,6 +725,21 @@ public final class CDPlayer extends JFrame {
     public void paintTrack(Graphics raw) { Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON); int y = trackRect.y + trackRect.height / 2 - 1; g.setColor(new Color(255,255,255,18)); g.fillRoundRect(trackRect.x, y, trackRect.width, 3, 3, 3); int fill = thumbRect.x + thumbRect.width / 2 - trackRect.x; g.setPaint(new GradientPaint(trackRect.x, y, ACCENT, trackRect.x + Math.max(1, fill), y, ACCENT2)); g.fillRoundRect(trackRect.x, y, Math.max(0, fill), 3, 3, 3); g.dispose(); }
     public void paintThumb(Graphics raw) { Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON); g.setColor(new Color(255,255,255,35)); g.fillOval(thumbRect.x - 3, thumbRect.y - 3, thumbRect.width + 6, thumbRect.height + 6); g.setColor(TEXT); g.fillOval(thumbRect.x, thumbRect.y, thumbRect.width, thumbRect.height); g.dispose(); }
     protected Dimension getThumbSize() { return new Dimension(11, 11); }
+    // BasicSliderUI's default track click only nudges the thumb by one block increment toward the click,
+    // instead of jumping straight to it, which feels laggy for a scrub bar. Map the value directly to the
+    // cursor's x position on press and while dragging, so the thumb always sits exactly under the cursor.
+    protected TrackListener createTrackListener(JSlider slider) {
+      return new TrackListener() {
+        public void mousePressed(java.awt.event.MouseEvent e) { scrubTo(e); }
+        public void mouseDragged(java.awt.event.MouseEvent e) { scrubTo(e); }
+        public void mouseReleased(java.awt.event.MouseEvent e) { scrubTo(e); slider.setValueIsAdjusting(false); }
+        private void scrubTo(java.awt.event.MouseEvent e) {
+          if (!slider.isEnabled()) return;
+          slider.setValueIsAdjusting(true);
+          slider.setValue(valueForXPosition(e.getX()));
+        }
+      };
+    }
   }
 
   private static final class BrushedMetalPanel extends JPanel {
