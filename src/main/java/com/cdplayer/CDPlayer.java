@@ -87,6 +87,7 @@ public final class CDPlayer extends JFrame {
   private final JButton play = roundButton("▶", 68, true);
   private final JButton shuffleButton = textButton("SHUFFLE OFF");
   private final JButton repeatButton = textButton("REPEAT OFF");
+  private final JButton clearQueueButton = textButton("CLEAR QUEUE");
   private final JButton themeButton = textButton("THEME: " + THEMES[0].name);
   private final JLabel brandLabel = new JLabel("by kizarka");
   private final JLabel nowPlayingLabel = new JLabel("NOW PLAYING");
@@ -117,6 +118,7 @@ public final class CDPlayer extends JFrame {
   private final Timer clock = new Timer(70, this::tick);
   private static final Pattern ITUNES_COVER = Pattern.compile("\\\"artworkUrl100\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
   private static final Pattern DEEZER_COVER = Pattern.compile("\\\"cover_xl\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
+  private static final File QUEUE_STATE_FILE = new File(System.getProperty("user.home"), ".cdplayer/queue.txt");
 
   public static void main(String[] args) {
     SwingUtilities.invokeLater(() -> {
@@ -145,6 +147,8 @@ public final class CDPlayer extends JFrame {
       }
     }));
     bindKeys();
+    Runtime.getRuntime().addShutdownHook(new Thread(this::saveQueueState, "cdplayer-save-queue"));
+    restoreQueueState();
   }
 
   private void bindKeys() {
@@ -275,7 +279,8 @@ public final class CDPlayer extends JFrame {
     panel.add(javax.swing.Box.createVerticalStrut(26));
     JPanel modes = new JPanel(); modes.setOpaque(false); modes.setAlignmentX(Component.LEFT_ALIGNMENT); modes.setLayout(new javax.swing.BoxLayout(modes, javax.swing.BoxLayout.X_AXIS));
     shuffleButton.addActionListener(e -> { shuffle = !shuffle; shuffleButton.setText(shuffle ? "SHUFFLE ON" : "SHUFFLE OFF"); updateQueueUI(); }); modes.add(shuffleButton); modes.add(javax.swing.Box.createHorizontalStrut(10));
-    repeatButton.addActionListener(e -> { repeat = !repeat; repeatButton.setText(repeat ? "REPEAT ON" : "REPEAT OFF"); updateQueueUI(); }); modes.add(repeatButton); panel.add(modes);
+    repeatButton.addActionListener(e -> { repeat = !repeat; repeatButton.setText(repeat ? "REPEAT ON" : "REPEAT OFF"); updateQueueUI(); }); modes.add(repeatButton); modes.add(javax.swing.Box.createHorizontalStrut(10));
+    clearQueueButton.addActionListener(e -> clearQueue()); modes.add(clearQueueButton); panel.add(modes);
     panel.add(javax.swing.Box.createVerticalStrut(18));
     JPanel crossfadeRow = new JPanel(); crossfadeRow.setOpaque(false); crossfadeRow.setAlignmentX(Component.LEFT_ALIGNMENT); crossfadeRow.setLayout(new javax.swing.BoxLayout(crossfadeRow, javax.swing.BoxLayout.X_AXIS));
     crossfadeTitle.setFont(new Font("SansSerif", Font.BOLD, 10)); crossfadeTitle.setForeground(MUTED);
@@ -311,6 +316,7 @@ public final class CDPlayer extends JFrame {
   private static boolean isSupportedAudio(File item) { String type = extension(item); return "wav".equals(type) || "wave".equals(type) || "aif".equals(type) || "aiff".equals(type) || "au".equals(type) || "flac".equals(type) || "m4a".equals(type) || "mp3".equals(type); }
   private void updateQueueUI() {
     queueRows.clear(); hoveredQueueIndex = -1;
+    clearQueueButton.setEnabled(!queue.isEmpty());
     if (queue.isEmpty() || queueIndex < 0) {
       queueInfo.setText("QUEUE EMPTY"); queueNext.setText("DROP SONGS OR A FOLDER TO BUILD A QUEUE");
       queueList.removeAll(); queueList.revalidate(); queueList.repaint();
@@ -400,7 +406,8 @@ public final class CDPlayer extends JFrame {
     } catch (Exception ignored) { }
     return displayName(file);
   }
-  private void load(File file) {
+  private void load(File file) { load(file, true); }
+  private void load(File file, boolean autoPlay) {
     try {
       Clip outgoing = clip;
       int fadeSeconds = crossfadeSlider.getValue();
@@ -427,8 +434,12 @@ public final class CDPlayer extends JFrame {
       else source.setText("NO EMBEDDED COVER · ADD SONG METADATA");
       updateQueueUI();
       setLinearGain(openedClip, doCrossfade ? 0f : 1f);
-      openedClip.start(); setPlaying(true);
-      if (doCrossfade) { status.setText("●  CROSSFADING"); startCrossfade(outgoing, openedClip, fadeSeconds); }
+      if (autoPlay) {
+        openedClip.start(); setPlaying(true);
+        if (doCrossfade) { status.setText("●  CROSSFADING"); startCrossfade(outgoing, openedClip, fadeSeconds); }
+      } else {
+        setPlaying(false); // restored from a saved session: track is ready, but wait for the user to press play
+      }
     } catch (Exception error) { status.setText("●  INSTALL FFMPEG FOR FLAC / M4A"); }
   }
   /** Sets a Clip's volume (0..1, linear) via its MASTER_GAIN control, converting to decibels. Silently no-ops if the control isn't available on this line. */
@@ -584,12 +595,7 @@ public final class CDPlayer extends JFrame {
     if (index < 0 || index >= queue.size()) return;
     queue.remove(index);
     if (queue.isEmpty()) {
-      queueIndex = -1;
-      if (clip != null) { Clip closingClip = clip; clip = null; closingClip.stop(); closingClip.close(); }
-      track.setText("Pick a track to get started."); source.setText("YOUR MUSIC LIBRARY");
-      elapsed.setText("0:00"); length.setText("0:00"); progress.setValue(0);
-      disc.setCover(null); disc.setLookingUp(false); loadedFile = null; setPlaying(false);
-      status.setText("●  QUEUE EMPTY");
+      resetPlaybackToIdle("●  QUEUE EMPTY");
       updateQueueUI();
     } else if (index == queueIndex) {
       queueIndex = Math.min(index, queue.size() - 1);
@@ -598,6 +604,54 @@ public final class CDPlayer extends JFrame {
       if (index < queueIndex) queueIndex--;
       updateQueueUI();
     }
+  }
+  private void clearQueue() {
+    if (queue.isEmpty()) return;
+    queue.clear();
+    resetPlaybackToIdle("●  QUEUE CLEARED");
+    updateQueueUI();
+  }
+  /** Stops and releases the current clip and resets the now-playing UI back to its empty-queue state. */
+  private void resetPlaybackToIdle(String statusMessage) {
+    queueIndex = -1;
+    if (clip != null) { Clip closingClip = clip; clip = null; closingClip.stop(); closingClip.close(); }
+    deleteTemporaryAudio();
+    track.setText("Pick a track to get started."); source.setText("YOUR MUSIC LIBRARY");
+    elapsed.setText("0:00"); length.setText("0:00"); progress.setValue(0);
+    disc.setCover(null); disc.setLookingUp(false); loadedFile = null; setPlaying(false);
+    status.setText(statusMessage);
+  }
+  /** Persists the queue (as absolute file paths) and current track index so the session can resume next launch. Runs on a JVM shutdown hook, so it must not touch anything the EDT might still be mutating concurrently — by the time shutdown hooks run for EXIT_ON_CLOSE, the EDT thread is the one blocked inside System.exit(), so nothing else is mutating `queue`/`queueIndex` at this point. */
+  private void saveQueueState() {
+    try {
+      File parent = QUEUE_STATE_FILE.getParentFile();
+      if (parent != null) parent.mkdirs();
+      StringBuilder content = new StringBuilder();
+      content.append(queueIndex).append('\n');
+      for (File file : queue) content.append(file.getAbsolutePath()).append('\n');
+      java.nio.file.Files.write(QUEUE_STATE_FILE.toPath(), content.toString().getBytes(StandardCharsets.UTF_8));
+    } catch (Exception ignored) { /* best-effort persistence; a failed save just means an empty queue next launch */ }
+  }
+  /** Restores a queue saved by {@link #saveQueueState()}. Tracks that were moved or deleted since the last session are silently skipped rather than failing the whole restore. */
+  private void restoreQueueState() {
+    try {
+      if (!QUEUE_STATE_FILE.isFile()) return;
+      List<String> lines = java.nio.file.Files.readAllLines(QUEUE_STATE_FILE.toPath(), StandardCharsets.UTF_8);
+      if (lines.isEmpty()) return;
+      int savedIndex = Integer.parseInt(lines.get(0).trim());
+      List<File> restored = new ArrayList<File>();
+      for (int i = 1; i < lines.size(); i++) {
+        String path = lines.get(i).trim();
+        if (path.isEmpty()) continue;
+        File file = new File(path);
+        if (file.isFile()) restored.add(file);
+      }
+      if (restored.isEmpty()) return;
+      queue.addAll(restored);
+      queueIndex = Math.max(0, Math.min(savedIndex, queue.size() - 1));
+      updateQueueUI();
+      load(queue.get(queueIndex), false);
+    } catch (Exception ignored) { /* corrupt or unreadable state file; just start with an empty queue */ }
   }
   private void seek(int seconds) { if (clip == null) return; long target = Math.max(0, Math.min(clip.getMicrosecondLength(), clip.getMicrosecondPosition() + seconds * 1_000_000L)); clip.setMicrosecondPosition(target); long duration = clip.getMicrosecondLength(); progress.setValue(duration == 0 ? 0 : (int) (target * 1000 / duration)); elapsed.setText(format(target)); }
   private void tick(ActionEvent event) {
@@ -699,7 +753,16 @@ public final class CDPlayer extends JFrame {
 
   private static final class PillButton extends JButton {
     PillButton(String caption) { super(caption); setFont(new Font("SansSerif", Font.BOLD, 11)); setForeground(TEXT); setFocusPainted(false); setFocusable(false); setBorderPainted(false); setContentAreaFilled(false); setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); setBorder(BorderFactory.createEmptyBorder(8, 16, 8, 16)); setAlignmentY(Component.CENTER_ALIGNMENT); }
-    protected void paintComponent(Graphics raw) { Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON); boolean on = getText().endsWith("ON"); int arc = getHeight(); if (on) { g.setPaint(new GradientPaint(0, 0, ACCENT, getWidth(), getHeight(), ACCENT2)); g.fillRoundRect(0, 0, getWidth(), getHeight(), arc, arc); } else { g.setColor(new Color(255,255,255, getModel().isRollover() ? 20 : 12)); g.fillRoundRect(0, 0, getWidth(), getHeight(), arc, arc); g.setColor(new Color(255,255,255,26)); g.setStroke(new BasicStroke(1)); g.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, arc, arc); } g.dispose(); setForeground(on ? BG : MUTED); super.paintComponent(raw); }
+    protected void paintComponent(Graphics raw) {
+      Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      boolean on = getText().endsWith("ON"); int arc = getHeight();
+      if (on) { g.setPaint(new GradientPaint(0, 0, ACCENT, getWidth(), getHeight(), ACCENT2)); g.fillRoundRect(0, 0, getWidth(), getHeight(), arc, arc); }
+      else { g.setColor(new Color(255,255,255, getModel().isRollover() ? 20 : 12)); g.fillRoundRect(0, 0, getWidth(), getHeight(), arc, arc); g.setColor(new Color(255,255,255,26)); g.setStroke(new BasicStroke(1)); g.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, arc, arc); }
+      g.dispose();
+      Color base = on ? BG : MUTED;
+      setForeground(isEnabled() ? base : new Color(base.getRed(), base.getGreen(), base.getBlue(), 100));
+      super.paintComponent(raw);
+    }
   }
 
   private static final class TransportButton extends JButton {
