@@ -95,6 +95,9 @@ public final class CDPlayer extends JFrame {
   private final JLabel crossfadeTitle = new JLabel("CROSSFADE");
   private final JSlider crossfadeSlider = new JSlider(0, 15, 0);
   private final JLabel crossfadeValueLabel = new JLabel("OFF");
+  private final JLabel volumeTitle = new JLabel("VOLUME");
+  private final JSlider volumeSlider = new JSlider(0, 100, 100);
+  private final JLabel volumeValueLabel = new JLabel("100%");
   private final VisualizerBars visualizer = new VisualizerBars();
   private final SnowOverlay snowOverlay = new SnowOverlay();
   private final List<File> queue = new ArrayList<File>();
@@ -112,6 +115,8 @@ public final class CDPlayer extends JFrame {
   private File temporaryAudio;
   private boolean adjusting;
   private boolean crossfadeStarted;
+  private boolean crossfading;
+  private float volume = 1f;
   private byte[] rawAudio;
   private AudioFormat audioFormat;
   private final Timer clock = new Timer(70, this::tick);
@@ -210,6 +215,7 @@ public final class CDPlayer extends JFrame {
     status.setForeground(ACCENT); track.setForeground(TEXT); source.setForeground(MUTED);
     elapsed.setForeground(MUTED); length.setForeground(MUTED); queueInfo.setForeground(MUTED); queueNext.setForeground(MUTED);
     brandLabel.setForeground(TEXT); nowPlayingLabel.setForeground(ACCENT2); crossfadeTitle.setForeground(MUTED); crossfadeValueLabel.setForeground(MUTED);
+    volumeTitle.setForeground(MUTED); volumeValueLabel.setForeground(MUTED);
   }
 
   private static Color lerp(Color a, Color b, float t) {
@@ -286,6 +292,23 @@ public final class CDPlayer extends JFrame {
     crossfadeSlider.setToolTipText("Crossfade between tracks (0 = off, up to 15s)");
     crossfadeRow.add(crossfadeTitle); crossfadeRow.add(javax.swing.Box.createHorizontalStrut(10)); crossfadeRow.add(crossfadeSlider); crossfadeRow.add(javax.swing.Box.createHorizontalStrut(8)); crossfadeRow.add(crossfadeValueLabel); crossfadeRow.add(javax.swing.Box.createHorizontalGlue());
     panel.add(crossfadeRow);
+    panel.add(javax.swing.Box.createVerticalStrut(10));
+    JPanel volumeRow = new JPanel(); volumeRow.setOpaque(false); volumeRow.setAlignmentX(Component.LEFT_ALIGNMENT); volumeRow.setLayout(new javax.swing.BoxLayout(volumeRow, javax.swing.BoxLayout.X_AXIS));
+    volumeTitle.setFont(new Font("SansSerif", Font.BOLD, 10)); volumeTitle.setForeground(MUTED);
+    volumeSlider.setOpaque(false); volumeSlider.setUI(new AccentSliderUI(volumeSlider)); volumeSlider.setFocusable(false);
+    volumeSlider.setPreferredSize(new Dimension(120, 20)); volumeSlider.setMaximumSize(new Dimension(120, 20));
+    volumeValueLabel.setFont(new Font("SansSerif", Font.BOLD, 10)); volumeValueLabel.setForeground(MUTED); volumeValueLabel.setPreferredSize(new Dimension(36, 16));
+    volumeSlider.addChangeListener(e -> {
+      int v = volumeSlider.getValue();
+      volume = v / 100f;
+      volumeValueLabel.setText(v + "%");
+      // While a crossfade is actively running, its own timer recomputes both clips' gain from the live volume
+      // field every tick, so it self-corrects on its own. Only apply directly when nothing else is driving gain.
+      if (clip != null && !crossfading) setLinearGain(clip, volume);
+    });
+    volumeSlider.setToolTipText("Playback volume");
+    volumeRow.add(volumeTitle); volumeRow.add(javax.swing.Box.createHorizontalStrut(10)); volumeRow.add(volumeSlider); volumeRow.add(javax.swing.Box.createHorizontalStrut(8)); volumeRow.add(volumeValueLabel); volumeRow.add(javax.swing.Box.createHorizontalGlue());
+    panel.add(volumeRow);
     panel.add(javax.swing.Box.createVerticalStrut(22));
     JPanel queueCard = new JPanel(); queueCard.setOpaque(false); queueCard.setAlignmentX(Component.LEFT_ALIGNMENT); queueCard.setLayout(new javax.swing.BoxLayout(queueCard, javax.swing.BoxLayout.Y_AXIS)); queueCard.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(255, 255, 255, 22)));
     queueInfo.setAlignmentX(Component.LEFT_ALIGNMENT); queueNext.setAlignmentX(Component.LEFT_ALIGNMENT); queueCard.add(javax.swing.Box.createVerticalStrut(9)); queueCard.add(queueInfo); queueCard.add(javax.swing.Box.createVerticalStrut(5)); queueCard.add(queueNext);
@@ -426,7 +449,7 @@ public final class CDPlayer extends JFrame {
       else if (canLookUp) findCover(details.lookupQuery(), file);
       else source.setText("NO EMBEDDED COVER · ADD SONG METADATA");
       updateQueueUI();
-      setLinearGain(openedClip, doCrossfade ? 0f : 1f);
+      setLinearGain(openedClip, doCrossfade ? 0f : volume);
       openedClip.start(); setPlaying(true);
       if (doCrossfade) { status.setText("●  CROSSFADING"); startCrossfade(outgoing, openedClip, fadeSeconds); }
     } catch (Exception error) { status.setText("●  INSTALL FFMPEG FOR FLAC / M4A"); }
@@ -446,7 +469,8 @@ public final class CDPlayer extends JFrame {
   private void startCrossfade(final Clip outgoing, final Clip incoming, int seconds) {
     final long durationMillis = seconds * 1000L;
     final long startTime = System.currentTimeMillis();
-    setLinearGain(outgoing, 1f); setLinearGain(incoming, 0f);
+    crossfading = true;
+    setLinearGain(outgoing, volume); setLinearGain(incoming, 0f);
     Timer fade = new Timer(30, null);
     fade.addActionListener(e -> {
       long elapsedMillis = System.currentTimeMillis() - startTime;
@@ -454,11 +478,13 @@ public final class CDPlayer extends JFrame {
       double angle = t * (Math.PI / 2.0);
       float outGain = (float) Math.cos(angle);   // 1 -> 0, equal-power taper
       float inGain = (float) Math.sin(angle);    // 0 -> 1, equal-power taper
-      setLinearGain(outgoing, outGain); setLinearGain(incoming, inGain);
+      // scaled by the live volume field so dragging the volume slider mid-crossfade is picked up on the next tick
+      setLinearGain(outgoing, outGain * volume); setLinearGain(incoming, inGain * volume);
       if (t >= 1f) {
         ((Timer) e.getSource()).stop();
         try { outgoing.stop(); outgoing.close(); } catch (Exception ignored) { }
-        if (clip == incoming) { setLinearGain(incoming, 1f); status.setText("●  NOW SPINNING"); }
+        crossfading = false;
+        if (clip == incoming) { setLinearGain(incoming, volume); status.setText("●  NOW SPINNING"); }
       }
     });
     fade.start();
