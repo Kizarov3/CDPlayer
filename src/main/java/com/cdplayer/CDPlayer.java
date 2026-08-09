@@ -66,7 +66,10 @@ public final class CDPlayer extends JFrame {
     new Theme("BLUE", new Color(6, 10, 22), new Color(13, 19, 36), new Color(46, 116, 255), new Color(150, 210, 255), new Color(232, 240, 250), new Color(120, 134, 160)),
     new Theme("SUNSET", new Color(24, 15, 18), new Color(38, 24, 28), new Color(255, 106, 61), new Color(255, 71, 133), new Color(250, 238, 230), new Color(176, 148, 142)),
     new Theme("FOREST", new Color(11, 17, 14), new Color(20, 30, 24), new Color(52, 199, 123), new Color(178, 214, 58), new Color(230, 240, 228), new Color(128, 148, 130)),
-    new Theme("VAPOR", new Color(13, 11, 22), new Color(24, 20, 38), new Color(56, 220, 232), new Color(190, 90, 232), new Color(238, 236, 250), new Color(150, 142, 172)),
+    new Theme("GALAXY", new Color(7, 7, 18), new Color(14, 14, 30), new Color(150, 120, 255), new Color(90, 200, 255), new Color(238, 236, 250), new Color(140, 140, 172)),
+    new Theme("OCEAN", new Color(4, 14, 20), new Color(9, 24, 33), new Color(40, 190, 210), new Color(60, 130, 220), new Color(226, 246, 250), new Color(110, 152, 166)),
+    new Theme("MATRIX", new Color(4, 8, 5), new Color(9, 15, 10), new Color(64, 230, 120), new Color(140, 255, 170), new Color(214, 250, 224), new Color(96, 140, 108)),
+    new Theme("AUTUMN", new Color(20, 12, 8), new Color(34, 21, 14), new Color(224, 122, 40), new Color(200, 60, 46), new Color(250, 236, 220), new Color(168, 132, 108)),
     new Theme("SNOW", new Color(8, 12, 24), new Color(16, 22, 38), new Color(214, 44, 54), new Color(38, 150, 84), new Color(245, 247, 250), new Color(140, 150, 172)),
   };
   private static Color BG = THEMES[0].bg;
@@ -84,7 +87,7 @@ public final class CDPlayer extends JFrame {
   private final JLabel elapsed = label("0:00", 10, MUTED);
   private final JLabel length = label("0:00", 10, MUTED);
   private final JSlider progress = new JSlider(0, 1000, 0);
-  private final JButton play = roundButton("▶", 68, true);
+  private final TransportButton play = new TransportButton(Glyph.PLAY, 68, true);
   private final JButton shuffleButton = textButton("SHUFFLE OFF");
   private final JButton repeatButton = textButton("REPEAT OFF");
   private final JButton clearQueueButton = textButton("CLEAR QUEUE");
@@ -100,7 +103,7 @@ public final class CDPlayer extends JFrame {
   private final JSlider volumeSlider = new JSlider(0, 100, 100);
   private final JLabel volumeValueLabel = new JLabel("100%");
   private final VisualizerBars visualizer = new VisualizerBars();
-  private final SnowOverlay snowOverlay = new SnowOverlay();
+  private final ThemeOverlay themeOverlay = new ThemeOverlay();
   private final List<File> queue = new ArrayList<File>();
   private int queueIndex = -1;
   private final Map<File, SongDetails> metadataCache = new HashMap<File, SongDetails>();
@@ -124,24 +127,31 @@ public final class CDPlayer extends JFrame {
   private static final Pattern ITUNES_COVER = Pattern.compile("\\\"artworkUrl100\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
   private static final Pattern DEEZER_COVER = Pattern.compile("\\\"cover_xl\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
   private static final File QUEUE_STATE_FILE = new File(System.getProperty("user.home"), ".cdplayer/queue.txt");
+  private static final File ONBOARDING_FLAG_FILE = new File(System.getProperty("user.home"), ".cdplayer/onboarded");
 
   public static void main(String[] args) {
     SwingUtilities.invokeLater(() -> {
       try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); }
       catch (Exception ignored) { }
-      new CDPlayer().setVisible(true);
+      CDPlayer player = new CDPlayer();
+      player.setVisible(true);
+      player.showOnboardingIfNeeded();
     });
   }
 
   public CDPlayer() {
     super("CDPlayer");
     setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-    setMinimumSize(new Dimension(760, 560));
-    setSize(1120, 700);
+    // The vertical stack of labels/sliders/buttons/queue-card genuinely needs ~720px of content height at its
+    // component minimums (measured directly via Swing's own getMinimumSize()) — the previous 560 floor was
+    // already smaller than that, so under any layout pressure something in the column had to overflow/clip
+    // rather than shrink further. Both figures below give real headroom above that requirement.
+    setMinimumSize(new Dimension(760, 785));
+    setSize(1120, 820);
     setLocationByPlatform(true);
     setContentPane(createContent());
-    getRootPane().setGlassPane(snowOverlay);
-    snowOverlay.setVisible(false);
+    getRootPane().setGlassPane(themeOverlay);
+    themeOverlay.setVisible(false);
     setDropTarget(new DropTarget(this, new DropTargetAdapter() {
       @SuppressWarnings("unchecked") public void drop(DropTargetDropEvent event) {
         try {
@@ -173,6 +183,76 @@ public final class CDPlayer extends JFrame {
     actionMap.put(name, new javax.swing.AbstractAction() { public void actionPerformed(ActionEvent e) { action.accept(e); } });
   }
 
+  /** Shows a one-time welcome dialog on the very first launch, gated by a marker file — never shown again once dismissed, on this machine. */
+  private void showOnboardingIfNeeded() {
+    if (ONBOARDING_FLAG_FILE.isFile()) return;
+    javax.swing.JDialog dialog = new javax.swing.JDialog(this, true);
+    dialog.setUndecorated(true);
+    dialog.setContentPane(buildOnboardingCard(dialog));
+    dialog.getRootPane().setBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 40), 1));
+    dialog.pack();
+    dialog.setLocationRelativeTo(this);
+    javax.swing.JRootPane root = dialog.getRootPane();
+    root.getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW).put(javax.swing.KeyStroke.getKeyStroke("ESCAPE"), "closeOnboarding");
+    root.getActionMap().put("closeOnboarding", new javax.swing.AbstractAction() { public void actionPerformed(ActionEvent e) { dialog.dispose(); } });
+    dialog.addWindowListener(new java.awt.event.WindowAdapter() { public void windowClosed(java.awt.event.WindowEvent e) { markOnboarded(); } });
+    dialog.setVisible(true); // blocks (modal) until the dialog is dismissed via the button or Escape
+  }
+  private static void markOnboarded() {
+    try {
+      File parent = ONBOARDING_FLAG_FILE.getParentFile();
+      if (parent != null) parent.mkdirs();
+      ONBOARDING_FLAG_FILE.createNewFile();
+    } catch (Exception ignored) { /* best-effort; worst case the welcome dialog just shows again next launch */ }
+  }
+  private JPanel buildOnboardingCard(javax.swing.JDialog dialog) {
+    JPanel card = new JPanel();
+    card.setLayout(new javax.swing.BoxLayout(card, javax.swing.BoxLayout.Y_AXIS));
+    card.setBackground(CARD);
+    card.setOpaque(true);
+    card.setBorder(BorderFactory.createEmptyBorder(30, 34, 26, 34));
+
+    JLabel title = label("WELCOME TO CDPLAYER", 18, ACCENT);
+    title.setAlignmentX(Component.LEFT_ALIGNMENT);
+    card.add(title);
+    card.add(javax.swing.Box.createVerticalStrut(6));
+    JLabel subtitle = label("A few things worth knowing before you dive in", 11, MUTED);
+    subtitle.setAlignmentX(Component.LEFT_ALIGNMENT);
+    card.add(subtitle);
+    card.add(javax.swing.Box.createVerticalStrut(20));
+
+    String[] tips = {
+      "Drag & drop audio files or a whole folder onto the window to build your queue",
+      "SPACE / K play or pause &middot; J / L previous / next &middot; &larr; / &rarr; skip 15 seconds",
+      "Click THEME to explore nine animated themes, each with its own audio visualizer",
+      "FFmpeg is required for MP3, FLAC, and M4A playback, and for reading cover art / tags",
+      "Your queue is saved automatically and restored the next time you open the app",
+    };
+    for (String tip : tips) {
+      JPanel row = new JPanel(new BorderLayout(10, 0));
+      row.setOpaque(false);
+      row.setAlignmentX(Component.LEFT_ALIGNMENT);
+      row.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+      JLabel dot = new JLabel("●"); dot.setForeground(ACCENT2); dot.setFont(new Font("SansSerif", Font.PLAIN, 9)); dot.setVerticalAlignment(SwingConstants.TOP); dot.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
+      JLabel text = new JLabel("<html><body style='width:340px'>" + tip + "</body></html>");
+      text.setForeground(TEXT); text.setFont(new Font("SansSerif", Font.PLAIN, 12));
+      row.add(dot, BorderLayout.WEST); row.add(text, BorderLayout.CENTER);
+      card.add(row);
+      card.add(javax.swing.Box.createVerticalStrut(10));
+    }
+    card.add(javax.swing.Box.createVerticalStrut(8));
+
+    JButton gotIt = textButton("GOT IT");
+    gotIt.addActionListener(e -> dialog.dispose());
+    JPanel buttonRow = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0));
+    buttonRow.setOpaque(false);
+    buttonRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+    buttonRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+    buttonRow.add(gotIt);
+    card.add(buttonRow);
+    return card;
+  }
+
   private void showThemeMenu() {
     javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
     menu.setBackground(CARD); menu.setBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 30)));
@@ -195,9 +275,8 @@ public final class CDPlayer extends JFrame {
     Theme to = THEMES[index];
     currentThemeIndex = index;
     themeButton.setText("THEME: " + to.name);
-    boolean holiday = "SNOW".equals(to.name);
-    snowOverlay.setActive(holiday);
-    visualizer.setTreeMode(holiday);
+    themeOverlay.setMode(ThemeOverlay.Mode.forTheme(to.name));
+    visualizer.setMode(VisualizerBars.Mode.forTheme(to.name));
     Color[] fromColors = { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED };
     Color[] toColors = { to.bg, to.card, to.accent, to.accent2, to.text, to.muted };
     if (themeAnim != null && themeAnim.isRunning()) themeAnim.stop();
@@ -276,11 +355,11 @@ public final class CDPlayer extends JFrame {
     JPanel times = new JPanel(new BorderLayout()); times.setOpaque(false); times.setMaximumSize(new Dimension(Integer.MAX_VALUE, 16)); elapsed.setFont(new Font("SansSerif", Font.PLAIN, 11)); length.setFont(new Font("SansSerif", Font.PLAIN, 11)); times.add(elapsed, BorderLayout.WEST); times.add(length, BorderLayout.EAST); panel.add(times);
     panel.add(javax.swing.Box.createVerticalStrut(28));
     JPanel controls = new JPanel(); controls.setOpaque(false); controls.setLayout(new javax.swing.BoxLayout(controls, javax.swing.BoxLayout.X_AXIS)); controls.setAlignmentX(Component.LEFT_ALIGNMENT);
-    JButton skipBack = roundButton("-15", 36, false); skipBack.setFont(new Font("SansSerif", Font.BOLD, 10)); skipBack.setToolTipText("Back 15 seconds"); skipBack.addActionListener(e -> seek(-15)); controls.add(skipBack); controls.add(javax.swing.Box.createHorizontalStrut(10));
-    JButton back = roundButton("↶", 44, false); back.setToolTipText("Previous track"); back.addActionListener(e -> previousTrack()); controls.add(back); controls.add(javax.swing.Box.createHorizontalStrut(16));
+    JButton skipBack = roundButton(Glyph.SKIP_BACK_15, 36, false); skipBack.setToolTipText("Back 15 seconds"); skipBack.addActionListener(e -> seek(-15)); controls.add(skipBack); controls.add(javax.swing.Box.createHorizontalStrut(10));
+    JButton back = roundButton(Glyph.PREVIOUS_TRACK, 44, false); back.setToolTipText("Previous track"); back.addActionListener(e -> previousTrack()); controls.add(back); controls.add(javax.swing.Box.createHorizontalStrut(16));
     play.addActionListener(e -> toggle()); controls.add(play); controls.add(javax.swing.Box.createHorizontalStrut(16));
-    JButton forward = roundButton("↷", 44, false); forward.setToolTipText("Next track"); forward.addActionListener(e -> nextTrack()); controls.add(forward); controls.add(javax.swing.Box.createHorizontalStrut(10));
-    JButton skipForward = roundButton("+15", 36, false); skipForward.setFont(new Font("SansSerif", Font.BOLD, 10)); skipForward.setToolTipText("Forward 15 seconds"); skipForward.addActionListener(e -> seek(15)); controls.add(skipForward); controls.add(javax.swing.Box.createHorizontalGlue());
+    JButton forward = roundButton(Glyph.NEXT_TRACK, 44, false); forward.setToolTipText("Next track"); forward.addActionListener(e -> nextTrack()); controls.add(forward); controls.add(javax.swing.Box.createHorizontalStrut(10));
+    JButton skipForward = roundButton(Glyph.SKIP_FORWARD_15, 36, false); skipForward.setToolTipText("Forward 15 seconds"); skipForward.addActionListener(e -> seek(15)); controls.add(skipForward); controls.add(javax.swing.Box.createHorizontalGlue());
     JButton load = textButton("LOAD A TRACK  +"); load.addActionListener(e -> choose()); controls.add(load); panel.add(controls);
     panel.add(javax.swing.Box.createVerticalStrut(26));
     JPanel modes = new JPanel(); modes.setOpaque(false); modes.setAlignmentX(Component.LEFT_ALIGNMENT); modes.setLayout(new javax.swing.BoxLayout(modes, javax.swing.BoxLayout.X_AXIS));
@@ -319,7 +398,13 @@ public final class CDPlayer extends JFrame {
     queueInfo.setAlignmentX(Component.LEFT_ALIGNMENT); queueNext.setAlignmentX(Component.LEFT_ALIGNMENT); queueCard.add(javax.swing.Box.createVerticalStrut(9)); queueCard.add(queueInfo); queueCard.add(javax.swing.Box.createVerticalStrut(5)); queueCard.add(queueNext);
     // prepare the queue list container (scrollable)
     queueList.setOpaque(false); queueList.setLayout(new javax.swing.BoxLayout(queueList, javax.swing.BoxLayout.Y_AXIS));
-    JScrollPane queueScroll = new JScrollPane(queueList); queueScroll.setOpaque(false); queueScroll.getViewport().setOpaque(false); queueScroll.setBorder(null); queueScroll.setAlignmentX(Component.LEFT_ALIGNMENT); queueScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 150));
+    JScrollPane queueScroll = new JScrollPane(queueList); queueScroll.setOpaque(false); queueScroll.getViewport().setOpaque(false); queueScroll.setBorder(null); queueScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
+    // Only a maximumSize was set here before, with no floor — under vertical space pressure BoxLayout is free to
+    // shrink this toward the look-and-feel's own tiny computed minimum for an empty scroll pane (the same failure
+    // mode the transport buttons had). Locking a minimum height keeps a few queue rows visible no matter what.
+    queueScroll.setMinimumSize(new Dimension(1, 90));
+    queueScroll.setPreferredSize(new Dimension(1, 150));
+    queueScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 150));
     // queueList isn't a Scrollable, so the default per-notch unit increment is a sluggish 1px; scale it to roughly one row (18px row + 3px gap) per notch.
     queueScroll.getVerticalScrollBar().setUnitIncrement(21);
     queueScroll.getVerticalScrollBar().setBlockIncrement(126);
@@ -692,7 +777,7 @@ public final class CDPlayer extends JFrame {
       else if (repeat && loadedFile != null) { crossfadeStarted = true; load(loadedFile); } // seamless loop crossfade back into the same track
     }
   }
-  private void setPlaying(boolean playing) { disc.setSpinning(playing); play.setText(playing ? "Ⅱ" : "▶"); status.setText(playing ? "●  NOW SPINNING" : (loadedFile == null ? "●  READY TO PLAY" : "●  PAUSED")); visualizer.setActive(playing); if (playing) clock.start(); else clock.stop(); }
+  private void setPlaying(boolean playing) { disc.setSpinning(playing); play.setGlyph(playing ? Glyph.PAUSE : Glyph.PLAY); status.setText(playing ? "●  NOW SPINNING" : (loadedFile == null ? "●  READY TO PLAY" : "●  PAUSED")); visualizer.setActive(playing); if (playing) clock.start(); else clock.stop(); }
   private double[] computeLevels(int bars, int windowMillis) {
     try {
       if (rawAudio == null || audioFormat == null || clip == null) return null;
@@ -774,7 +859,9 @@ public final class CDPlayer extends JFrame {
     return builder.toString() + "…";
   }
   private static JLabel label(String value, int size, Color color) { JLabel result = new JLabel("<html>" + value.replace("\n", "<br>") + "</html>"); result.setForeground(color); result.setFont(new Font("SansSerif", Font.BOLD, size)); return result; }
-  private static JButton roundButton(String caption, int size, boolean primary) { return new TransportButton(caption, size, primary); }
+  private static JButton roundButton(Glyph glyph, int size, boolean primary) { return new TransportButton(glyph, size, primary); }
+  /** Which vector icon a TransportButton draws. PLAY/PAUSE are swapped on the same button as playback toggles. */
+  private enum Glyph { PLAY, PAUSE, PREVIOUS_TRACK, NEXT_TRACK, SKIP_BACK_15, SKIP_FORWARD_15 }
   private static JButton textButton(String caption) { return new PillButton(caption); }
 
   private static final class PillButton extends JButton {
@@ -793,7 +880,19 @@ public final class CDPlayer extends JFrame {
 
   private static final class TransportButton extends JButton {
     private final boolean primary;
-    TransportButton(String caption, int size, boolean primary) { super(caption); this.primary = primary; setFont(new Font("SansSerif", Font.PLAIN, primary ? 24 : 18)); setForeground(primary ? BG : TEXT); setFocusPainted(false); setFocusable(false); setBorderPainted(false); setContentAreaFilled(false); setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); setPreferredSize(new Dimension(size, size)); setMaximumSize(new Dimension(size, size)); }
+    private Glyph glyph;
+    TransportButton(Glyph glyph, int size, boolean primary) {
+      this.glyph = glyph; this.primary = primary;
+      setForeground(primary ? BG : TEXT); setFocusPainted(false); setFocusable(false); setBorderPainted(false); setContentAreaFilled(false); setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+      // Locking min = preferred = max is required, not just preferred+max: this button has no text, so the
+      // look-and-feel's own computed minimum size can be small and arbitrary (observed varying run-to-run on
+      // Aqua), and BoxLayout is free to shrink a component down to its minimumSize under space pressure. Without
+      // an explicit minimum matching the intended square size, that shrink could squash the circle into an oval.
+      Dimension fixed = new Dimension(size, size);
+      setMinimumSize(fixed); setPreferredSize(fixed); setMaximumSize(fixed);
+    }
+    /** Swaps which icon is drawn without needing a new button (used to flip PLAY/PAUSE in place). */
+    void setGlyph(Glyph value) { if (glyph == value) return; glyph = value; repaint(); }
     protected void paintComponent(Graphics raw) {
       Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
       int width = getWidth(), height = getHeight();
@@ -805,7 +904,74 @@ public final class CDPlayer extends JFrame {
         g.setColor(new Color(255,255,255, getModel().isRollover() ? 22 : 12)); g.fillOval(0, 0, width, height);
         g.setColor(new Color(255,255,255, 30)); g.setStroke(new BasicStroke(1)); g.drawOval(0, 0, width - 1, height - 1);
       }
-      String text = getText(); g.setFont(getFont()); java.awt.FontMetrics metrics = g.getFontMetrics(); g.setColor(getForeground()); g.drawString(text, (getWidth() - metrics.stringWidth(text)) / 2, (getHeight() - metrics.getHeight()) / 2 + metrics.getAscent()); g.dispose();
+      g.setColor(getForeground());
+      drawGlyph(g, width, height);
+      g.dispose();
+    }
+    private void drawGlyph(Graphics2D g, int w, int h) {
+      switch (glyph) {
+        case PLAY: drawPlay(g, w, h); break;
+        case PAUSE: drawPause(g, w, h); break;
+        case PREVIOUS_TRACK: drawTrackSkip(g, w, h, false); break;
+        case NEXT_TRACK: drawTrackSkip(g, w, h, true); break;
+        case SKIP_BACK_15: drawSeek15(g, w, h, false); break;
+        case SKIP_FORWARD_15: drawSeek15(g, w, h, true); break;
+      }
+    }
+    private static void drawPlay(Graphics2D g, int w, int h) {
+      int cx = w / 2, cy = h / 2;
+      int triW = (int) (w * 0.34), triH = (int) (h * 0.40);
+      int nudge = (int) (w * 0.04); // triangles read as optically off-center; nudge right to compensate
+      int left = cx - triW / 2 + nudge, right = left + triW;
+      g.fillPolygon(new int[] { left, left, right }, new int[] { cy - triH / 2, cy + triH / 2, cy }, 3);
+    }
+    private static void drawPause(Graphics2D g, int w, int h) {
+      int cx = w / 2, cy = h / 2;
+      int barW = Math.max(2, (int) (w * 0.11)), barH = (int) (h * 0.38), gap = (int) (w * 0.12);
+      g.fillRoundRect(cx - gap / 2 - barW, cy - barH / 2, barW, barH, 2, 2);
+      g.fillRoundRect(cx + gap / 2, cy - barH / 2, barW, barH, 2, 2);
+    }
+    /** Previous/next track: a filled triangle chevron plus the trailing bar of a classic media "skip" icon. */
+    private static void drawTrackSkip(Graphics2D g, int w, int h, boolean forward) {
+      int cx = w / 2, cy = h / 2;
+      int barW = Math.max(2, (int) (w * 0.09)), barH = (int) (h * 0.42);
+      int triW = (int) (w * 0.26), triH = (int) (h * 0.42);
+      int dir = forward ? 1 : -1;
+      int barX = cx + dir * (int) (w * 0.20) - (forward ? 0 : barW);
+      g.fillRoundRect(barX, cy - barH / 2, barW, barH, 2, 2);
+      int triNearX = cx - dir * (int) (w * 0.06); // triangle edge nearer to center
+      int triFarX = triNearX + dir * triW;         // triangle apex, pointing away from center
+      g.fillPolygon(new int[] { triFarX, triNearX, triNearX }, new int[] { cy, cy - triH / 2, cy + triH / 2 }, 3);
+    }
+    /** Skip back/forward 15s: a partial ring with an arrowhead showing rotation direction, "15" in the middle — the same shape apps like Overcast/Apple Podcasts use for their skip controls. */
+    private static void drawSeek15(Graphics2D g, int w, int h, boolean forward) {
+      double cx = w / 2.0, cy = h / 2.0;
+      // r is deliberately well inside the button's own radius (min(w,h)/2): the arrowhead tip extends past r by
+      // arrowLen, and needs to still land inside the circular button background instead of poking outside it.
+      double r = Math.min(w, h) * 0.30;
+      int gapHalf = 35; // degrees of gap on each side of top-center, so the ring reads as "open" at the top
+      float ringWidth = Math.max(1.4f, w * 0.045f);
+      g.setStroke(new BasicStroke(ringWidth, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+      int diameter = (int) (r * 2);
+      int arcX = (int) (cx - r), arcY = (int) (cy - r);
+      double endAngleDeg;
+      if (forward) { g.drawArc(arcX, arcY, diameter, diameter, 90 - gapHalf, -(360 - 2 * gapHalf)); endAngleDeg = 90 + gapHalf; }
+      else { g.drawArc(arcX, arcY, diameter, diameter, 90 + gapHalf, 360 - 2 * gapHalf); endAngleDeg = 90 - gapHalf; }
+      double rad = Math.toRadians(endAngleDeg);
+      double px = cx + r * Math.cos(rad), py = cy - r * Math.sin(rad);
+      // tangent direction at this point, walking the ring the same way it was just drawn (clockwise for forward, counter-clockwise for back)
+      double dx = forward ? Math.sin(rad) : -Math.sin(rad);
+      double dy = forward ? Math.cos(rad) : -Math.cos(rad);
+      double arrowLen = r * 0.45, arrowHalf = r * 0.40;
+      double tipX = px + dx * arrowLen, tipY = py + dy * arrowLen;
+      double perpX = -dy, perpY = dx;
+      int[] xs = { (int) tipX, (int) (px + perpX * arrowHalf), (int) (px - perpX * arrowHalf) };
+      int[] ys = { (int) tipY, (int) (py + perpY * arrowHalf), (int) (py - perpY * arrowHalf) };
+      g.fillPolygon(xs, ys, 3);
+      g.setFont(new Font("SansSerif", Font.BOLD, Math.max(8, (int) (w * 0.30))));
+      java.awt.FontMetrics fm = g.getFontMetrics();
+      String label = "15";
+      g.drawString(label, (int) (cx - fm.stringWidth(label) / 2.0), (int) (cy + fm.getAscent() / 2.0) - 1);
     }
   }
 
@@ -883,34 +1049,55 @@ public final class CDPlayer extends JFrame {
   }
 
   private static final class VisualizerBars extends JPanel {
-    private static final int BARS = 5;
+    enum Mode {
+      BARS, TREE, CONSTELLATION, WAVES, MATRIX_RAIN, LEAVES;
+      static Mode forTheme(String themeName) {
+        switch (themeName) {
+          case "SNOW": return TREE;
+          case "GALAXY": return CONSTELLATION;
+          case "OCEAN": return WAVES;
+          case "MATRIX": return MATRIX_RAIN;
+          case "AUTUMN": return LEAVES;
+          default: return BARS;
+        }
+      }
+    }
+    private static final int BARS_COUNT = 5;
     private static final Color[] LIGHT_COLORS = { new Color(232, 64, 64), new Color(255, 205, 80), new Color(96, 190, 255), new Color(120, 220, 120), new Color(255, 150, 220) };
+    private static final Color[] LEAF_COLORS = { new Color(224, 122, 40), new Color(200, 60, 46), new Color(230, 176, 60), new Color(180, 90, 40), new Color(214, 140, 70) };
     private static final Dimension BAR_SIZE = new Dimension(42, 16);
-    private static final Dimension TREE_SIZE = new Dimension(34, 32);
-    private final double[] levels = new double[BARS];
+    private static final Dimension CUSTOM_SIZE = new Dimension(34, 32);
+    private final double[] levels = new double[BARS_COUNT];
     private boolean active;
-    private boolean treeMode;
+    private Mode mode = Mode.BARS;
     VisualizerBars() { setOpaque(false); setPreferredSize(BAR_SIZE); setMaximumSize(BAR_SIZE); }
     void setActive(boolean value) { active = value; if (!value) java.util.Arrays.fill(levels, 0); repaint(); }
-    void setLevels(double[] fresh) { for (int i = 0; i < BARS && i < fresh.length; i++) levels[i] = levels[i] * 0.35 + fresh[i] * 0.65; repaint(); }
-    /** Swaps the bar meter for a small pine-tree meter whose ornament lights react to the same audio levels the bars use. */
-    void setTreeMode(boolean value) {
-      if (treeMode == value) return;
-      treeMode = value;
-      Dimension size = treeMode ? TREE_SIZE : BAR_SIZE;
+    void setLevels(double[] fresh) { for (int i = 0; i < BARS_COUNT && i < fresh.length; i++) levels[i] = levels[i] * 0.35 + fresh[i] * 0.65; repaint(); }
+    /** Swaps the bar meter for a theme-specific reactive shape, all driven by the same levels[] the plain bars use. */
+    void setMode(Mode value) {
+      if (mode == value) return;
+      mode = value;
+      Dimension size = mode == Mode.BARS ? BAR_SIZE : CUSTOM_SIZE;
       setPreferredSize(size); setMaximumSize(size);
       revalidate(); repaint();
     }
+    private double level(int i) { double floor = mode == Mode.TREE || mode == Mode.LEAVES ? 0.12 : 0.1; return active ? Math.max(floor, levels[i]) : floor; }
     protected void paintComponent(Graphics raw) {
       Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-      if (treeMode) paintTree(g); else paintBars(g);
+      switch (mode) {
+        case TREE: paintTree(g); break;
+        case CONSTELLATION: paintConstellation(g); break;
+        case WAVES: paintWaves(g); break;
+        case MATRIX_RAIN: paintMatrixRain(g); break;
+        case LEAVES: paintLeaves(g); break;
+        default: paintBars(g); break;
+      }
       g.dispose();
     }
     private void paintBars(Graphics2D g) {
-      int barWidth = 4, gap = 3, totalWidth = BARS * barWidth + (BARS - 1) * gap, startX = (getWidth() - totalWidth) / 2;
-      for (int i = 0; i < BARS; i++) {
-        double level = active ? Math.max(0.1, levels[i]) : 0.1;
-        int barHeight = Math.max(2, (int) (level * getHeight()));
+      int barWidth = 4, gap = 3, totalWidth = BARS_COUNT * barWidth + (BARS_COUNT - 1) * gap, startX = (getWidth() - totalWidth) / 2;
+      for (int i = 0; i < BARS_COUNT; i++) {
+        int barHeight = Math.max(2, (int) (level(i) * getHeight()));
         g.setColor(i % 2 == 0 ? ACCENT : ACCENT2);
         g.fillRoundRect(startX + i * (barWidth + gap), getHeight() - barHeight, barWidth, barHeight, 2, 2);
       }
@@ -932,61 +1119,281 @@ public final class CDPlayer extends JFrame {
       g.setColor(new Color(255, 214, 90));
       g.fillOval(cx - 2, topY - 1, 4, 4);
       // ornament lights react to the same levels[] the bar meter uses, brightening/growing with the signal instead of growing taller
-      for (int i = 0; i < BARS; i++) {
-        double level = active ? Math.max(0.12, levels[i]) : 0.12;
+      for (int i = 0; i < BARS_COUNT; i++) {
         int lx = (int) (LIGHT_POSITIONS[i][0] * w), ly = (int) (LIGHT_POSITIONS[i][1] * h);
-        double glow = 1.4 + level * 3.2;
-        Color base = LIGHT_COLORS[i % LIGHT_COLORS.length];
-        int alpha = Math.min(255, (int) (110 + level * 145));
+        paintGlow(g, lx, ly, level(i), LIGHT_COLORS[i % LIGHT_COLORS.length]);
+      }
+    }
+    /** A small fixed constellation (5 stars, zigzag like Cassiopeia) whose stars brighten/grow with the levels[] and whose connecting lines glow brighter with the average level. */
+    private static final double[][] STAR_POSITIONS = { { 0.10, 0.60 }, { 0.32, 0.30 }, { 0.54, 0.58 }, { 0.76, 0.28 }, { 0.94, 0.55 } };
+    private void paintConstellation(Graphics2D g) {
+      int w = getWidth(), h = getHeight();
+      int[] xs = new int[BARS_COUNT], ys = new int[BARS_COUNT];
+      double avg = 0;
+      for (int i = 0; i < BARS_COUNT; i++) { xs[i] = (int) (STAR_POSITIONS[i][0] * w); ys[i] = (int) (STAR_POSITIONS[i][1] * h); avg += level(i); }
+      avg /= BARS_COUNT;
+      g.setStroke(new BasicStroke(1f));
+      g.setColor(new Color(ACCENT2.getRed(), ACCENT2.getGreen(), ACCENT2.getBlue(), (int) (60 + avg * 140)));
+      for (int i = 0; i < BARS_COUNT - 1; i++) g.drawLine(xs[i], ys[i], xs[i + 1], ys[i + 1]);
+      for (int i = 0; i < BARS_COUNT; i++) paintGlow(g, xs[i], ys[i], level(i), i % 2 == 0 ? ACCENT : ACCENT2);
+    }
+    private void paintGlow(Graphics2D g, int cx, int cy, double level, Color base) {
+      double glow = 1.4 + level * 3.2;
+      int alpha = Math.min(255, (int) (110 + level * 145));
+      g.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(), alpha));
+      g.fillOval((int) (cx - glow), (int) (cy - glow), (int) (glow * 2), (int) (glow * 2));
+    }
+    /** Two stacked sine-wave "water" layers confined to the lower part of the canvas; each of the 5 x-segments' amplitude tracks one entry of levels[]. */
+    private void paintWaves(Graphics2D g) {
+      int w = getWidth(), h = getHeight();
+      double t = System.nanoTime() / 4e8;
+      paintWaveLayer(g, w, h, t, 0.80, ACCENT2, 110);
+      paintWaveLayer(g, w, h, t + 1.7, 0.92, ACCENT, 170);
+    }
+    private void paintWaveLayer(Graphics2D g, int w, int h, double t, double baseline, Color color, int alpha) {
+      int segments = BARS_COUNT;
+      int pointsPerSegment = 6;
+      int totalPoints = segments * pointsPerSegment + 1;
+      int[] xs = new int[totalPoints + 2], ys = new int[totalPoints + 2];
+      for (int p = 0; p <= totalPoints - 1; p++) {
+        double frac = p / (double) (totalPoints - 1);
+        // blend linearly between adjacent segments' levels instead of jumping discretely at each boundary,
+        // so the amplitude flows smoothly across the width instead of reading as faceted mountain peaks
+        double segPos = frac * segments - 0.5;
+        int segA = Math.max(0, Math.min(segments - 1, (int) Math.floor(segPos)));
+        int segB = Math.max(0, Math.min(segments - 1, segA + 1));
+        double blend = Math.max(0, Math.min(1, segPos - Math.floor(segPos)));
+        double lvl = level(segA) + (level(segB) - level(segA)) * blend;
+        double amp = 0.6 + lvl * (h * 0.075);
+        double x = frac * w;
+        double y = h * baseline + Math.sin(frac * Math.PI * 1.6 + t) * amp;
+        xs[p] = (int) x; ys[p] = (int) y;
+      }
+      xs[totalPoints] = w; ys[totalPoints] = h;
+      xs[totalPoints + 1] = 0; ys[totalPoints + 1] = h;
+      g.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), alpha));
+      g.fillPolygon(xs, ys, totalPoints + 2);
+    }
+    /** A miniature version of the falling-code overlay: a few columns whose height/brightness reacts to levels[]. */
+    private void paintMatrixRain(Graphics2D g) {
+      int w = getWidth(), h = getHeight();
+      int columns = BARS_COUNT;
+      int colWidth = w / columns;
+      g.setFont(new Font(Font.MONOSPACED, Font.BOLD, Math.max(8, colWidth)));
+      java.util.concurrent.ThreadLocalRandom random = ThreadLocalRandom.current();
+      for (int i = 0; i < columns; i++) {
+        double lvl = level(i);
+        int glyphCount = 1 + (int) (lvl * 4);
+        int cx = i * colWidth + colWidth / 2;
+        for (int j = 0; j < glyphCount; j++) {
+          int alpha = Math.max(40, 255 - j * 70);
+          g.setColor(new Color(ACCENT.getRed(), ACCENT.getGreen(), ACCENT.getBlue(), Math.min(255, (int) (alpha * (0.5 + lvl * 0.6)))));
+          char glyph = (char) ('0' + random.nextInt(10));
+          int cy = h - j * (h / 6) - 3;
+          java.awt.FontMetrics fm = g.getFontMetrics();
+          g.drawString(String.valueOf(glyph), cx - fm.charWidth(glyph) / 2, cy);
+        }
+      }
+    }
+    /** A small swaying branch with a handful of leaves that brighten/grow with levels[], mirroring the Christmas-tree lights but for Autumn. */
+    private void paintLeaves(Graphics2D g) {
+      int w = getWidth(), h = getHeight(), cx = w / 2;
+      g.setColor(new Color(96, 62, 40));
+      g.setStroke(new BasicStroke(Math.max(1.5f, w * 0.05f)));
+      g.drawLine(cx, h - 2, cx, (int) (h * 0.25));
+      g.drawLine(cx, (int) (h * 0.55), (int) (w * 0.18), (int) (h * 0.35));
+      g.drawLine(cx, (int) (h * 0.45), (int) (w * 0.82), (int) (h * 0.28));
+      for (int i = 0; i < BARS_COUNT; i++) {
+        int lx = (int) (LIGHT_POSITIONS[i][0] * w), ly = (int) (LIGHT_POSITIONS[i][1] * h);
+        double lvl = level(i);
+        double leafSize = 2.2 + lvl * 3.6;
+        Color base = LEAF_COLORS[i % LEAF_COLORS.length];
+        int alpha = Math.min(255, (int) (140 + lvl * 115));
         g.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(), alpha));
-        g.fillOval((int) (lx - glow), (int) (ly - glow), (int) (glow * 2), (int) (glow * 2));
+        g.fillOval((int) (lx - leafSize), (int) (ly - leafSize * 0.7), (int) (leafSize * 2), (int) (leafSize * 1.4));
       }
     }
   }
 
-  /** Full-window overlay (installed as the frame's glass pane) that animates gently falling snow for the SNOW theme. Mouse events pass through untouched because {@link #contains} always reports false. */
-  private static final class SnowOverlay extends JPanel {
-    private static final int FLAKE_COUNT = 90;
-    private final double[] x = new double[FLAKE_COUNT];
-    private final double[] y = new double[FLAKE_COUNT];
-    private final double[] fallSpeed = new double[FLAKE_COUNT];
-    private final double[] driftPhase = new double[FLAKE_COUNT];
-    private final double[] radius = new double[FLAKE_COUNT];
+  /**
+   * Full-window overlay (installed as the frame's glass pane) that animates a theme-specific particle effect:
+   * falling snow, a twinkling starfield with shooting stars, rising ocean bubbles with a light shimmer, falling
+   * code rain, or drifting autumn leaves. Mouse events pass through untouched because {@link #contains} always
+   * reports false.
+   */
+  private static final class ThemeOverlay extends JPanel {
+    enum Mode {
+      NONE, SNOW, GALAXY, OCEAN, MATRIX, AUTUMN;
+      static Mode forTheme(String themeName) { try { return valueOf(themeName); } catch (IllegalArgumentException notMatched) { return NONE; } }
+    }
+    private static final int PARTICLE_COUNT = 140;
+    private static final int MATRIX_COLUMN_WIDTH = 16;
+    private static final Color[] LEAF_PALETTE = { new Color(224, 122, 40), new Color(200, 60, 46), new Color(230, 176, 60), new Color(180, 90, 40), new Color(214, 140, 70) };
+    private final double[] x = new double[PARTICLE_COUNT];
+    private final double[] y = new double[PARTICLE_COUNT];
+    private final double[] speed = new double[PARTICLE_COUNT];
+    private final double[] phase = new double[PARTICLE_COUNT];
+    private final double[] size = new double[PARTICLE_COUNT];
+    private final double[] spin = new double[PARTICLE_COUNT]; // rotation angle (AUTUMN); unused otherwise
+    private final List<double[]> shootingStars = new ArrayList<double[]>(); // each entry: {x, y, vx, vy, life}
     private final Timer timer = new Timer(35, null);
-    private boolean seeded;
-    SnowOverlay() { setOpaque(false); timer.addActionListener(e -> { advance(); repaint(); }); }
-    void setActive(boolean value) {
-      setVisible(value);
-      if (value) { if (!seeded) seed(); timer.start(); } else timer.stop();
+    private Mode mode = Mode.NONE;
+    private double clock;
+    ThemeOverlay() { setOpaque(false); timer.addActionListener(e -> { advance(); repaint(); }); }
+    void setMode(Mode value) {
+      if (mode == value) return;
+      mode = value;
+      boolean active = mode != Mode.NONE;
+      setVisible(active);
+      if (active) { seed(); timer.start(); } else timer.stop();
     }
     private void seed() {
-      seeded = true;
       int w = Math.max(1, getWidth()), h = Math.max(1, getHeight());
-      for (int i = 0; i < FLAKE_COUNT; i++) {
-        x[i] = ThreadLocalRandom.current().nextDouble() * w;
-        y[i] = ThreadLocalRandom.current().nextDouble() * h;
-        fallSpeed[i] = 0.6 + ThreadLocalRandom.current().nextDouble() * 1.6;
-        driftPhase[i] = ThreadLocalRandom.current().nextDouble() * Math.PI * 2;
-        radius[i] = 1.2 + ThreadLocalRandom.current().nextDouble() * 2.3;
+      ThreadLocalRandom r = ThreadLocalRandom.current();
+      shootingStars.clear();
+      for (int i = 0; i < PARTICLE_COUNT; i++) {
+        switch (mode) {
+          case SNOW:
+            x[i] = r.nextDouble() * w; y[i] = r.nextDouble() * h;
+            speed[i] = 0.6 + r.nextDouble() * 1.6; phase[i] = r.nextDouble() * Math.PI * 2; size[i] = 1.2 + r.nextDouble() * 2.3;
+            break;
+          case OCEAN:
+            x[i] = r.nextDouble() * w; y[i] = r.nextDouble() * h;
+            speed[i] = 0.3 + r.nextDouble() * 0.9; phase[i] = r.nextDouble() * Math.PI * 2; size[i] = 1.4 + r.nextDouble() * 2.8;
+            break;
+          case AUTUMN:
+            x[i] = r.nextDouble() * w; y[i] = r.nextDouble() * h;
+            speed[i] = 0.4 + r.nextDouble() * 1.0; phase[i] = r.nextDouble() * Math.PI * 2; size[i] = 2.6 + r.nextDouble() * 2.6; spin[i] = r.nextDouble() * Math.PI * 2;
+            break;
+          case GALAXY:
+            x[i] = r.nextDouble() * w; y[i] = r.nextDouble() * h;
+            speed[i] = 0.4 + r.nextDouble() * 1.6; phase[i] = r.nextDouble() * Math.PI * 2; size[i] = 0.6 + r.nextDouble() * 1.6;
+            break;
+          case MATRIX:
+            // fixed column positions (independent of current width) so a later resize doesn't leave gaps
+            x[i] = i * MATRIX_COLUMN_WIDTH; y[i] = -r.nextDouble() * h - 20;
+            speed[i] = 2 + r.nextDouble() * 4;
+            break;
+          default: break;
+        }
       }
     }
     private void advance() {
+      clock += 0.035;
       int w = Math.max(1, getWidth()), h = Math.max(1, getHeight());
-      for (int i = 0; i < FLAKE_COUNT; i++) {
-        y[i] += fallSpeed[i];
-        x[i] += Math.sin((y[i] * 0.02) + driftPhase[i]) * 0.6;
-        if (y[i] > h) { y[i] = -4; x[i] = ThreadLocalRandom.current().nextDouble() * w; }
-        if (x[i] < -4) x[i] = w + 4; else if (x[i] > w + 4) x[i] = -4;
+      switch (mode) {
+        case SNOW: fall(w, h, 1, true); break;
+        case OCEAN: fall(w, h, -1, true); break;
+        case AUTUMN: fall(w, h, 1, true); for (int i = 0; i < PARTICLE_COUNT; i++) spin[i] += 0.02 + speed[i] * 0.015; break;
+        case GALAXY: advanceShootingStars(w, h); break;
+        case MATRIX: advanceMatrix(h); break;
+        default: break;
       }
     }
+    private void fall(int w, int h, int direction, boolean drift) {
+      ThreadLocalRandom r = ThreadLocalRandom.current();
+      for (int i = 0; i < PARTICLE_COUNT; i++) {
+        y[i] += speed[i] * direction;
+        if (drift) x[i] += Math.sin((y[i] * 0.02) + phase[i]) * 0.6;
+        if (direction > 0 && y[i] > h) { y[i] = -4; x[i] = r.nextDouble() * w; }
+        else if (direction < 0 && y[i] < -4) { y[i] = h + 4; x[i] = r.nextDouble() * w; }
+        if (x[i] < -6) x[i] = w + 6; else if (x[i] > w + 6) x[i] = -6;
+      }
+    }
+    private void advanceMatrix(int h) {
+      ThreadLocalRandom r = ThreadLocalRandom.current();
+      for (int i = 0; i < PARTICLE_COUNT; i++) {
+        y[i] += speed[i];
+        if (y[i] > h + 160) y[i] = -r.nextDouble() * h * 0.6 - 20;
+      }
+    }
+    private void advanceShootingStars(int w, int h) {
+      if (shootingStars.size() < 2 && ThreadLocalRandom.current().nextDouble() < 0.012) {
+        ThreadLocalRandom r = ThreadLocalRandom.current();
+        double vx = 6 + r.nextDouble() * 5, vy = 3 + r.nextDouble() * 2.5;
+        shootingStars.add(new double[] { r.nextDouble() * w * 0.5, r.nextDouble() * h * 0.4, vx, vy, 1.0 });
+      }
+      for (double[] s : shootingStars) { s[0] += s[2]; s[1] += s[3]; s[4] -= 0.02; }
+      shootingStars.removeIf(s -> s[4] <= 0 || s[0] > w + 40 || s[1] > h + 40);
+    }
     protected void paintComponent(Graphics raw) {
+      if (mode == Mode.NONE) return;
       Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-      g.setColor(new Color(255, 255, 255, 220));
-      for (int i = 0; i < FLAKE_COUNT; i++) {
-        double r = radius[i];
-        g.fillOval((int) (x[i] - r), (int) (y[i] - r), (int) (r * 2), (int) (r * 2));
+      switch (mode) {
+        case SNOW: paintSnow(g); break;
+        case OCEAN: paintOcean(g); break;
+        case AUTUMN: paintAutumn(g); break;
+        case GALAXY: paintGalaxy(g); break;
+        case MATRIX: paintMatrix(g); break;
+        default: break;
       }
       g.dispose();
+    }
+    private void paintSnow(Graphics2D g) {
+      g.setColor(new Color(255, 255, 255, 220));
+      for (int i = 0; i < PARTICLE_COUNT; i++) { double r = size[i]; g.fillOval((int) (x[i] - r), (int) (y[i] - r), (int) (r * 2), (int) (r * 2)); }
+    }
+    private void paintOcean(Graphics2D g) {
+      int w = Math.max(1, getWidth()), h = Math.max(1, getHeight());
+      // a soft light band sweeps across the water periodically, built from two abutting gradients (fade-in then fade-out)
+      double period = 6.0;
+      double t = (clock % period) / period;
+      float bandCenter = (float) (t * (w + 300) - 150);
+      Graphics2D sg = (Graphics2D) g.create();
+      sg.setPaint(new GradientPaint(bandCenter - 90, 0, new Color(255, 255, 255, 0), bandCenter, 0, new Color(255, 255, 255, 35)));
+      sg.fillRect((int) (bandCenter - 90), 0, 90, h);
+      sg.setPaint(new GradientPaint(bandCenter, 0, new Color(255, 255, 255, 35), bandCenter + 90, 0, new Color(255, 255, 255, 0)));
+      sg.fillRect((int) bandCenter, 0, 90, h);
+      sg.dispose();
+      for (int i = 0; i < PARTICLE_COUNT; i++) {
+        double r = size[i];
+        g.setColor(new Color(210, 245, 250, 60));
+        g.fillOval((int) (x[i] - r), (int) (y[i] - r), (int) (r * 2), (int) (r * 2));
+        g.setColor(new Color(255, 255, 255, 140));
+        g.setStroke(new BasicStroke(1f));
+        g.drawOval((int) (x[i] - r), (int) (y[i] - r), (int) (r * 2), (int) (r * 2));
+      }
+    }
+    private void paintAutumn(Graphics2D g) {
+      for (int i = 0; i < PARTICLE_COUNT; i++) {
+        Graphics2D lg = (Graphics2D) g.create();
+        lg.translate(x[i], y[i]);
+        lg.rotate(spin[i]);
+        double r = size[i];
+        Color c = LEAF_PALETTE[i % LEAF_PALETTE.length];
+        lg.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 210));
+        lg.fillOval((int) -r, (int) (-r * 0.6), (int) (r * 2), (int) (r * 1.2));
+        lg.dispose();
+      }
+    }
+    private void paintGalaxy(Graphics2D g) {
+      for (int i = 0; i < PARTICLE_COUNT; i++) {
+        double twinkle = 0.5 + 0.5 * Math.sin(clock * (0.6 + speed[i]) + phase[i]);
+        double r = size[i] * (0.7 + twinkle * 0.5);
+        g.setColor(new Color(255, 255, 255, Math.min(255, (int) (80 + twinkle * 175))));
+        g.fillOval((int) (x[i] - r), (int) (y[i] - r), (int) (r * 2), (int) (r * 2));
+      }
+      g.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+      for (double[] s : shootingStars) {
+        double sx = s[0], sy = s[1], vx = s[2], vy = s[3], life = s[4];
+        double norm = Math.hypot(vx, vy), len = 26;
+        g.setColor(new Color(255, 255, 255, Math.max(0, Math.min(255, (int) (life * 230)))));
+        g.drawLine((int) sx, (int) sy, (int) (sx - vx / norm * len), (int) (sy - vy / norm * len));
+      }
+    }
+    private void paintMatrix(Graphics2D g) {
+      int w = getWidth(), h = getHeight(), trailLength = 10, lineHeight = 16;
+      g.setFont(new Font(Font.MONOSPACED, Font.BOLD, 14));
+      ThreadLocalRandom r = ThreadLocalRandom.current();
+      for (int i = 0; i < PARTICLE_COUNT; i++) {
+        if (x[i] > w) continue;
+        for (int j = 0; j < trailLength; j++) {
+          double gy = y[i] - j * lineHeight;
+          if (gy < -lineHeight || gy > h + lineHeight) continue;
+          g.setColor(j == 0 ? new Color(224, 255, 224, 255) : new Color(ACCENT.getRed(), ACCENT.getGreen(), ACCENT.getBlue(), Math.max(0, 200 - j * 22)));
+          g.drawString(String.valueOf((char) ('0' + r.nextInt(10))), (float) x[i], (float) gy);
+        }
+      }
     }
     public boolean contains(int px, int py) { return false; }
   }
