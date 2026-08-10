@@ -81,6 +81,7 @@ public final class CDPlayer extends JFrame {
   private static Color MUTED = THEMES[0].muted;
   private int currentThemeIndex = 0;
   private Timer themeAnim;
+  private Timer nowPlayingFadeTimer;
   private final DiscView disc = new DiscView();
   private final JLabel status = label("●  READY TO PLAY", 11, ACCENT);
   private final JLabel track = new JLabel("Pick a track to get started.");
@@ -300,14 +301,77 @@ public final class CDPlayer extends JFrame {
       settingsDialog.setUndecorated(true);
       javax.swing.JRootPane root = settingsDialog.getRootPane();
       root.getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW).put(javax.swing.KeyStroke.getKeyStroke("ESCAPE"), "closeSettings");
-      root.getActionMap().put("closeSettings", new javax.swing.AbstractAction() { public void actionPerformed(ActionEvent e) { settingsDialog.setVisible(false); } });
+      root.getActionMap().put("closeSettings", new javax.swing.AbstractAction() { public void actionPerformed(ActionEvent e) { closeSettingsDialog(); } });
     }
     settingsDialog.setContentPane(buildSettingsPanel(settingsDialog));
     settingsDialog.getRootPane().setBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 40), 1));
     settingsDialog.pack();
     settingsDialog.setLocationRelativeTo(this);
-    settingsDialog.setVisible(true);
+    animateDialogIn(settingsDialog);
     settingsDialog.toFront();
+  }
+  private void closeSettingsDialog() { animateDialogOut(settingsDialog); }
+  private Timer dialogAnimTimer;
+  private Boolean opacitySupported; // cached per-run: whether the platform lets an undecorated Window fade via setOpacity
+  private boolean opacitySupported() {
+    if (opacitySupported == null) {
+      try {
+        opacitySupported = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice()
+            .isWindowTranslucencySupported(java.awt.GraphicsDevice.WindowTranslucency.TRANSLUCENT);
+      } catch (Exception ignored) { opacitySupported = false; }
+    }
+    return opacitySupported;
+  }
+  /** Grows the dialog from 90% to 100% size (eased) around its own center, fading it in if the platform supports window translucency, instead of it just popping into existence. */
+  private void animateDialogIn(javax.swing.JDialog dialog) {
+    if (dialogAnimTimer != null && dialogAnimTimer.isRunning()) dialogAnimTimer.stop();
+    java.awt.Rectangle target = dialog.getBounds();
+    int cx = target.x + target.width / 2, cy = target.y + target.height / 2;
+    boolean fade = opacitySupported();
+    if (fade) dialog.setOpacity(0f);
+    int startW = Math.round(target.width * 0.9f), startH = Math.round(target.height * 0.9f);
+    dialog.setBounds(cx - startW / 2, cy - startH / 2, startW, startH); // start at the animation's t=0 size, not the full target size, so it doesn't flash full-size for one frame before shrinking
+    dialog.setVisible(true);
+    final int steps = 10;
+    final int[] step = { 0 };
+    dialogAnimTimer = new Timer(12, null);
+    dialogAnimTimer.addActionListener(e -> {
+      step[0]++;
+      float t = Math.min(1f, step[0] / (float) steps);
+      float eased = 1f - (float) Math.pow(1f - t, 3); // ease-out cubic
+      float s = 0.9f + 0.1f * eased;
+      int w = Math.round(target.width * s), h = Math.round(target.height * s);
+      dialog.setBounds(cx - w / 2, cy - h / 2, w, h);
+      if (fade) dialog.setOpacity(eased);
+      if (t >= 1f) { ((Timer) e.getSource()).stop(); dialog.setBounds(target); if (fade) dialog.setOpacity(1f); }
+    });
+    dialogAnimTimer.start();
+  }
+  /** Reverse of {@link #animateDialogIn}: shrinks and fades the dialog out, then actually hides it. */
+  private void animateDialogOut(javax.swing.JDialog dialog) {
+    if (dialog == null || !dialog.isVisible()) return;
+    if (dialogAnimTimer != null && dialogAnimTimer.isRunning()) dialogAnimTimer.stop();
+    java.awt.Rectangle target = dialog.getBounds();
+    int cx = target.x + target.width / 2, cy = target.y + target.height / 2;
+    boolean fade = opacitySupported();
+    final int steps = 8;
+    final int[] step = { 0 };
+    dialogAnimTimer = new Timer(12, null);
+    dialogAnimTimer.addActionListener(e -> {
+      step[0]++;
+      float t = Math.min(1f, step[0] / (float) steps);
+      float s = 1f - 0.1f * t;
+      int w = Math.round(target.width * s), h = Math.round(target.height * s);
+      dialog.setBounds(cx - w / 2, cy - h / 2, w, h);
+      if (fade) dialog.setOpacity(1f - t);
+      if (t >= 1f) {
+        ((Timer) e.getSource()).stop();
+        dialog.setVisible(false);
+        dialog.setBounds(target); // restore full size/opacity so the next animateDialogIn starts from a clean state
+        if (fade) dialog.setOpacity(1f);
+      }
+    });
+    dialogAnimTimer.start();
   }
   private JPanel buildSettingsPanel(javax.swing.JDialog dialog) {
     JPanel card = new JPanel();
@@ -362,7 +426,7 @@ public final class CDPlayer extends JFrame {
     card.add(javax.swing.Box.createVerticalStrut(22));
 
     JButton close = textButton("CLOSE");
-    close.addActionListener(e -> dialog.setVisible(false));
+    close.addActionListener(e -> closeSettingsDialog());
     JPanel buttonRow = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0));
     buttonRow.setOpaque(false); buttonRow.setAlignmentX(Component.LEFT_ALIGNMENT); buttonRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
     buttonRow.add(close);
@@ -739,6 +803,7 @@ public final class CDPlayer extends JFrame {
       metadataCache.put(file, details);
       String name = details.title;
       setTrackTitle(name); source.setText("LOCAL AUDIO FILE · " + file.getName().substring(file.getName().lastIndexOf('.') + 1).toUpperCase());
+      fadeInNowPlaying();
       length.setText(format(opened.getMicrosecondLength())); elapsed.setText("0:00"); progress.setValue(0); status.setText("●  TRACK LOADED");
       boolean canLookUp = details.embeddedCover == null && details.title != null && !details.title.trim().isEmpty();
       disc.setCover(details.embeddedCover); disc.setLookingUp(canLookUp);
@@ -973,7 +1038,7 @@ public final class CDPlayer extends JFrame {
       else if (repeat && loadedFile != null) { crossfadeStarted = true; load(loadedFile, true, true); } // seamless loop crossfade back into the same track
     }
   }
-  private void setPlaying(boolean playing) { disc.setSpinning(playing); play.setGlyph(playing ? Glyph.PAUSE : Glyph.PLAY); status.setText(playing ? "●  NOW SPINNING" : (loadedFile == null ? "●  READY TO PLAY" : "●  PAUSED")); visualizer.setActive(playing); if (playing) clock.start(); else clock.stop(); }
+  private void setPlaying(boolean playing) { disc.setSpinning(playing); play.setGlyph(playing ? Glyph.PAUSE : Glyph.PLAY); play.pulse(); status.setText(playing ? "●  NOW SPINNING" : (loadedFile == null ? "●  READY TO PLAY" : "●  PAUSED")); visualizer.setActive(playing); if (playing) clock.start(); else clock.stop(); }
   private double[] computeLevels(int bars, int windowMillis) {
     try {
       if (rawAudio == null || audioFormat == null || player == null) return null;
@@ -1055,6 +1120,23 @@ public final class CDPlayer extends JFrame {
     track.setFont(font);
     track.setText("<html>" + escape(ellipsize(track, name, maxWidth)) + "</html>");
   }
+  /** Fades the track title and source labels in from transparent to their current (already-themed) color, so a new track's info eases into view instead of just snapping into place. Captures each label's own foreground as the fade target, so it stays correct under whatever theme is active. */
+  private void fadeInNowPlaying() {
+    if (nowPlayingFadeTimer != null && nowPlayingFadeTimer.isRunning()) nowPlayingFadeTimer.stop();
+    final Color trackColor = track.getForeground(), sourceColor = source.getForeground();
+    final int steps = 10;
+    final int[] step = { 0 };
+    nowPlayingFadeTimer = new Timer(16, null);
+    nowPlayingFadeTimer.addActionListener(e -> {
+      step[0]++;
+      float t = Math.min(1f, step[0] / (float) steps);
+      int alpha = (int) (255 * t);
+      track.setForeground(new Color(trackColor.getRed(), trackColor.getGreen(), trackColor.getBlue(), alpha));
+      source.setForeground(new Color(sourceColor.getRed(), sourceColor.getGreen(), sourceColor.getBlue(), alpha));
+      if (t >= 1f) ((Timer) e.getSource()).stop();
+    });
+    nowPlayingFadeTimer.start();
+  }
   private static String ellipsize(JLabel label, String text, int maxWidth) {
     java.awt.FontMetrics metrics = label.getFontMetrics(label.getFont());
     if (metrics.stringWidth(text) <= maxWidth) return text;
@@ -1074,15 +1156,102 @@ public final class CDPlayer extends JFrame {
   private enum Glyph { PLAY, PAUSE, PREVIOUS_TRACK, NEXT_TRACK, SKIP_BACK_15, SKIP_FORWARD_15, SHUFFLE, REPEAT }
   private static JButton textButton(String caption) { return new PillButton(caption); }
 
+  /**
+   * A small, reusable 0..1 progress value that eases toward 1 while its owning button is hovered and back to 0
+   * when the pointer leaves, driven by a short-lived Timer (auto-stops once the target is reached, so it costs
+   * nothing while idle) instead of every button rolling its own copy of the same fade logic. Buttons read
+   * {@link #value()} in paintComponent to blend their hover-highlight alpha instead of snapping between two
+   * fixed alpha constants.
+   */
+  private static final class HoverFade {
+    private float value;
+    private boolean lastHovered;
+    private Timer timer;
+    private final javax.swing.AbstractButton owner;
+    HoverFade(javax.swing.AbstractButton owner) { this.owner = owner; owner.getModel().addChangeListener(e -> update()); }
+    private void update() {
+      boolean hovered = owner.getModel().isRollover();
+      if (hovered == lastHovered) return;
+      lastHovered = hovered;
+      if (timer != null && timer.isRunning()) timer.stop();
+      final float start = value, target = hovered ? 1f : 0f;
+      final int steps = 6; // hover fades are subtle and frequent, so keep them quick and cheap
+      final int[] step = { 0 };
+      timer = new Timer(14, null);
+      timer.addActionListener(e -> {
+        step[0]++;
+        float t = Math.min(1f, step[0] / (float) steps);
+        value = start + (target - start) * t;
+        owner.repaint();
+        if (t >= 1f) ((Timer) e.getSource()).stop();
+      });
+      timer.start();
+    }
+    float value() { return value; }
+  }
+
   private static final class PillButton extends JButton {
-    PillButton(String caption) { super(caption); setFont(new Font("SansSerif", Font.BOLD, 11)); setForeground(TEXT); setFocusPainted(false); setFocusable(false); setBorderPainted(false); setContentAreaFilled(false); setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); setBorder(BorderFactory.createEmptyBorder(8, 16, 8, 16)); setAlignmentY(Component.CENTER_ALIGNMENT); }
+    private final HoverFade hover = new HoverFade(this);
+    private float onProgress; // 0 = off-look, 1 = on-look (gradient) — only meaningful for on/off toggle buttons like Mono Audio
+    private float scale = 1f;
+    private Timer transitionTimer, pulseTimer;
+    PillButton(String caption) {
+      super(caption); setFont(new Font("SansSerif", Font.BOLD, 11)); setForeground(TEXT); setFocusPainted(false); setFocusable(false); setBorderPainted(false); setContentAreaFilled(false); setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); setBorder(BorderFactory.createEmptyBorder(8, 16, 8, 16)); setAlignmentY(Component.CENTER_ALIGNMENT);
+      onProgress = isOn(caption) ? 1f : 0f;
+    }
+    private static boolean isOn(String text) { return text != null && text.endsWith("ON"); }
+    /** Detects an ON/OFF text flip (used by the Mono Audio toggle) and eases the fill between the two looks instead of it snapping, mirroring {@link ModeIconButton}. Buttons whose text never ends in "ON"/"OFF" (Load a Track, Clear Queue, Close, the theme name) are unaffected — wasOn == nowOn == false throughout. */
+    public void setText(String text) {
+      boolean wasOn = isOn(getText());
+      super.setText(text);
+      boolean nowOn = isOn(text);
+      if (wasOn != nowOn) { animateTransition(nowOn); pulse(); }
+    }
+    private void animateTransition(boolean on) {
+      if (transitionTimer != null && transitionTimer.isRunning()) transitionTimer.stop();
+      final float start = onProgress, target = on ? 1f : 0f;
+      final int steps = 10;
+      final int[] step = { 0 };
+      transitionTimer = new Timer(12, null);
+      transitionTimer.addActionListener(e -> {
+        step[0]++;
+        float t = Math.min(1f, step[0] / (float) steps);
+        onProgress = start + (target - start) * t;
+        repaint();
+        if (t >= 1f) ((Timer) e.getSource()).stop();
+      });
+      transitionTimer.start();
+    }
+    private void pulse() {
+      if (pulseTimer != null && pulseTimer.isRunning()) pulseTimer.stop();
+      final int steps = 8;
+      final int[] step = { 0 };
+      pulseTimer = new Timer(12, null);
+      pulseTimer.addActionListener(e -> {
+        step[0]++;
+        float t = Math.min(1f, step[0] / (float) steps);
+        scale = 1f - 0.08f * (float) Math.sin(Math.PI * t); // a touch subtler than the round icon buttons' pulse — this shape reads busier when squished
+        repaint();
+        if (t >= 1f) { ((Timer) e.getSource()).stop(); scale = 1f; }
+      });
+      pulseTimer.start();
+    }
     protected void paintComponent(Graphics raw) {
       Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-      boolean on = getText().endsWith("ON"); int arc = getHeight();
-      if (on) { g.setPaint(new GradientPaint(0, 0, ACCENT, getWidth(), getHeight(), ACCENT2)); g.fillRoundRect(0, 0, getWidth(), getHeight(), arc, arc); }
-      else { g.setColor(new Color(255,255,255, getModel().isRollover() ? 20 : 12)); g.fillRoundRect(0, 0, getWidth(), getHeight(), arc, arc); g.setColor(new Color(255,255,255,26)); g.setStroke(new BasicStroke(1)); g.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, arc, arc); }
+      int w = getWidth(), h = getHeight(), arc = h;
+      if (scale != 1f) { g.translate(w / 2.0, h / 2.0); g.scale(scale, scale); g.translate(-w / 2.0, -h / 2.0); }
+      int offAlpha = 12 + Math.round(8 * hover.value());
+      g.setColor(new Color(255, 255, 255, offAlpha)); g.fillRoundRect(0, 0, w, h, arc, arc);
+      g.setColor(new Color(255, 255, 255, 26)); g.setStroke(new BasicStroke(1)); g.drawRoundRect(0, 0, w - 1, h - 1, arc, arc);
+      if (onProgress > 0f) {
+        java.awt.Composite original = g.getComposite();
+        g.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, onProgress));
+        g.setPaint(new GradientPaint(0, 0, ACCENT, w, h, ACCENT2));
+        g.fillRoundRect(0, 0, w, h, arc, arc);
+        g.setComposite(original);
+      }
       g.dispose();
-      Color base = on ? BG : MUTED;
+      Color base = lerp(MUTED, BG, onProgress);
       setForeground(isEnabled() ? base : new Color(base.getRed(), base.getGreen(), base.getBlue(), 100));
       super.paintComponent(raw);
     }
@@ -1090,7 +1259,10 @@ public final class CDPlayer extends JFrame {
 
   private static final class TransportButton extends JButton {
     private final boolean primary;
+    private final HoverFade hover = new HoverFade(this);
     private Glyph glyph;
+    private float scale = 1f;
+    private Timer pulseTimer;
     TransportButton(Glyph glyph, int size, boolean primary) {
       this.glyph = glyph; this.primary = primary;
       setForeground(primary ? BG : TEXT); setFocusPainted(false); setFocusable(false); setBorderPainted(false); setContentAreaFilled(false); setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
@@ -1103,15 +1275,31 @@ public final class CDPlayer extends JFrame {
     }
     /** Swaps which icon is drawn without needing a new button (used to flip PLAY/PAUSE in place). */
     void setGlyph(Glyph value) { if (glyph == value) return; glyph = value; repaint(); }
+    /** A quick squish-and-recover scale animation, played whenever playback toggles, so the button reacts instead of the icon just silently flipping. */
+    void pulse() {
+      if (pulseTimer != null && pulseTimer.isRunning()) pulseTimer.stop();
+      final int steps = 8;
+      final int[] step = { 0 };
+      pulseTimer = new Timer(12, null);
+      pulseTimer.addActionListener(e -> {
+        step[0]++;
+        float t = Math.min(1f, step[0] / (float) steps);
+        scale = 1f - 0.12f * (float) Math.sin(Math.PI * t); // dips to 0.88 at the midpoint, back to 1.0 at the end
+        repaint();
+        if (t >= 1f) { ((Timer) e.getSource()).stop(); scale = 1f; }
+      });
+      pulseTimer.start();
+    }
     protected void paintComponent(Graphics raw) {
       Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
       int width = getWidth(), height = getHeight();
+      if (scale != 1f) { g.translate(width / 2.0, height / 2.0); g.scale(scale, scale); g.translate(-width / 2.0, -height / 2.0); }
       if (primary) {
         if (getModel().isPressed()) g.setPaint(new GradientPaint(0, 0, ACCENT.darker(), width, height, ACCENT2.darker()));
         else g.setPaint(new GradientPaint(0, 0, ACCENT, width, height, ACCENT2));
         g.fillOval(0, 0, width, height);
       } else {
-        g.setColor(new Color(255,255,255, getModel().isRollover() ? 22 : 12)); g.fillOval(0, 0, width, height);
+        g.setColor(new Color(255,255,255, 12 + Math.round(10 * hover.value()))); g.fillOval(0, 0, width, height);
         g.setColor(new Color(255,255,255, 30)); g.setStroke(new BasicStroke(1)); g.drawOval(0, 0, width - 1, height - 1);
       }
       g.setColor(getForeground());
@@ -1219,8 +1407,12 @@ public final class CDPlayer extends JFrame {
   }
   /** A circular toggle button for the shuffle/repeat modes: gradient-filled when on, translucent outline when off — mirrors {@link TransportButton}'s style but tracks a persistent on/off state instead of momentary presses. */
   private static final class ModeIconButton extends JButton {
+    private final HoverFade hover = new HoverFade(this);
     private final Glyph glyph;
     private boolean on;
+    private float onProgress; // 0 = fully off, 1 = fully on; animates between them instead of snapping
+    private float scale = 1f;
+    private Timer transitionTimer, pulseTimer;
     ModeIconButton(Glyph glyph, String tooltip) {
       this.glyph = glyph;
       setToolTipText(tooltip);
@@ -1229,16 +1421,59 @@ public final class CDPlayer extends JFrame {
       Dimension fixed = new Dimension(40, 40);
       setMinimumSize(fixed); setPreferredSize(fixed); setMaximumSize(fixed);
     }
-    void setOn(boolean value) { if (on == value) return; on = value; repaint(); }
+    void setOn(boolean value) {
+      if (on == value) return;
+      on = value;
+      animateTransition();
+      pulse();
+    }
+    /** Eases onProgress toward the new on/off state instead of the fill just snapping between the two looks. */
+    private void animateTransition() {
+      if (transitionTimer != null && transitionTimer.isRunning()) transitionTimer.stop();
+      final float start = onProgress, target = on ? 1f : 0f;
+      final int steps = 10;
+      final int[] step = { 0 };
+      transitionTimer = new Timer(12, null);
+      transitionTimer.addActionListener(e -> {
+        step[0]++;
+        float t = Math.min(1f, step[0] / (float) steps);
+        onProgress = start + (target - start) * t;
+        repaint();
+        if (t >= 1f) ((Timer) e.getSource()).stop();
+      });
+      transitionTimer.start();
+    }
+    /** Same squish-and-recover feedback as the transport buttons, played on every toggle. */
+    private void pulse() {
+      if (pulseTimer != null && pulseTimer.isRunning()) pulseTimer.stop();
+      final int steps = 8;
+      final int[] step = { 0 };
+      pulseTimer = new Timer(12, null);
+      pulseTimer.addActionListener(e -> {
+        step[0]++;
+        float t = Math.min(1f, step[0] / (float) steps);
+        scale = 1f - 0.12f * (float) Math.sin(Math.PI * t);
+        repaint();
+        if (t >= 1f) { ((Timer) e.getSource()).stop(); scale = 1f; }
+      });
+      pulseTimer.start();
+    }
     protected void paintComponent(Graphics raw) {
       Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
       int w = getWidth(), h = getHeight();
-      if (on) { g.setPaint(new GradientPaint(0, 0, ACCENT, w, h, ACCENT2)); g.fillOval(0, 0, w, h); }
-      else {
-        g.setColor(new Color(255, 255, 255, getModel().isRollover() ? 22 : 12)); g.fillOval(0, 0, w, h);
-        g.setColor(new Color(255, 255, 255, 30)); g.setStroke(new BasicStroke(1)); g.drawOval(0, 0, w - 1, h - 1);
+      if (scale != 1f) { g.translate(w / 2.0, h / 2.0); g.scale(scale, scale); g.translate(-w / 2.0, -h / 2.0); }
+      // Off-state look is always drawn first; the gradient fades in over it via onProgress, so both endpoints
+      // match the original instant on/off rendering exactly, with a smooth crossfade in between.
+      g.setColor(new Color(255, 255, 255, 12 + Math.round(10 * hover.value()))); g.fillOval(0, 0, w, h);
+      g.setColor(new Color(255, 255, 255, 30)); g.setStroke(new BasicStroke(1)); g.drawOval(0, 0, w - 1, h - 1);
+      if (onProgress > 0f) {
+        java.awt.Composite original = g.getComposite();
+        g.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, onProgress));
+        g.setPaint(new GradientPaint(0, 0, ACCENT, w, h, ACCENT2));
+        g.fillOval(0, 0, w, h);
+        g.setComposite(original);
       }
-      g.setColor(on ? BG : TEXT);
+      g.setColor(lerp(TEXT, BG, onProgress));
       if (glyph == Glyph.SHUFFLE) drawShuffleGlyph(g, w, h); else drawRepeatGlyph(g, w, h);
       g.dispose();
     }
