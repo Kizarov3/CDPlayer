@@ -368,6 +368,11 @@ public final class CDPlayer extends JFrame {
     buttonRow.setOpaque(false); buttonRow.setAlignmentX(Component.LEFT_ALIGNMENT); buttonRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
     buttonRow.add(close);
     card.add(buttonRow);
+    card.add(javax.swing.Box.createVerticalStrut(18));
+    JPanel githubRow = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0));
+    githubRow.setOpaque(false); githubRow.setAlignmentX(Component.LEFT_ALIGNMENT); githubRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
+    githubRow.add(new GitHubLinkButton("Kizarov3"));
+    card.add(githubRow);
     return card;
   }
   /** Applies the mono toggle to the live player (takes effect within ~20ms, on the pump thread's next chunk) and persists the choice for the next track load. */
@@ -1205,6 +1210,46 @@ public final class CDPlayer extends JFrame {
       g.setColor(on ? BG : TEXT);
       if (glyph == Glyph.SHUFFLE) drawShuffleGlyph(g, w, h); else drawRepeatGlyph(g, w, h);
       g.dispose();
+    }
+  }
+
+  /** A small "icon + username" link that opens the GitHub profile in the system browser — the URL itself is never shown, just the icon and handle. */
+  private static final class GitHubLinkButton extends JPanel {
+    private boolean hovered;
+    GitHubLinkButton(String username) {
+      super(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 6, 0));
+      setOpaque(false);
+      JLabel icon = new JLabel() {
+        protected void paintComponent(Graphics raw) {
+          Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+          g.setColor(hovered ? TEXT : MUTED);
+          drawCatGlyph(g, getWidth(), getHeight());
+          g.dispose();
+        }
+      };
+      icon.setPreferredSize(new Dimension(15, 15));
+      JLabel name = new JLabel(username);
+      name.setFont(new Font("SansSerif", Font.BOLD, 11));
+      name.setForeground(MUTED);
+      add(icon); add(name);
+      setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+      setToolTipText("Open GitHub profile");
+      addMouseListener(new java.awt.event.MouseAdapter() {
+        public void mouseClicked(java.awt.event.MouseEvent e) {
+          try { java.awt.Desktop.getDesktop().browse(new java.net.URI("https://github.com/" + username)); } catch (Exception ignored) { }
+        }
+        public void mouseEntered(java.awt.event.MouseEvent e) { hovered = true; name.setForeground(TEXT); icon.repaint(); }
+        public void mouseExited(java.awt.event.MouseEvent e) { hovered = false; name.setForeground(MUTED); icon.repaint(); }
+      });
+    }
+    /** A minimal, generic cat-silhouette glyph (round head, two ear triangles) used to suggest "GitHub" alongside the username, without reproducing GitHub's own mark. */
+    private static void drawCatGlyph(Graphics2D g, int w, int h) {
+      double cx = w / 2.0, cy = h * 0.58;
+      double r = w * 0.34;
+      int earH = (int) (h * 0.30);
+      g.fillPolygon(new int[]{ (int) (cx - r * 0.9), (int) (cx - r * 0.15), (int) (cx - r * 1.05) }, new int[]{ (int) (cy - r * 0.55), (int) (cy - r * 0.55), (int) (cy - r * 0.55 - earH) }, 3);
+      g.fillPolygon(new int[]{ (int) (cx + r * 0.9), (int) (cx + r * 0.15), (int) (cx + r * 1.05) }, new int[]{ (int) (cy - r * 0.55), (int) (cy - r * 0.55), (int) (cy - r * 0.55 - earH) }, 3);
+      g.fillOval((int) (cx - r), (int) (cy - r), (int) (r * 2), (int) (r * 2));
     }
   }
 
