@@ -89,8 +89,8 @@ public final class CDPlayer extends JFrame {
   private final JLabel length = label("0:00", 10, MUTED);
   private final JSlider progress = new JSlider(0, 1000, 0);
   private final TransportButton play = new TransportButton(Glyph.PLAY, 68, true);
-  private final JButton shuffleButton = textButton("SHUFFLE OFF");
-  private final JButton repeatButton = textButton("REPEAT OFF");
+  private final ModeIconButton shuffleButton = new ModeIconButton(Glyph.SHUFFLE, "Shuffle");
+  private final ModeIconButton repeatButton = new ModeIconButton(Glyph.REPEAT, "Repeat");
   private final JButton clearQueueButton = textButton("CLEAR QUEUE");
   private final JButton themeButton = textButton(THEMES[0].name);
   private final JLabel brandLabel = new JLabel("by kizarka");
@@ -500,8 +500,9 @@ public final class CDPlayer extends JFrame {
     JButton load = textButton("LOAD A TRACK  +"); load.addActionListener(e -> choose()); controls.add(load); panel.add(controls);
     panel.add(javax.swing.Box.createVerticalStrut(26));
     JPanel modes = new JPanel(); modes.setOpaque(false); modes.setAlignmentX(Component.LEFT_ALIGNMENT); modes.setLayout(new javax.swing.BoxLayout(modes, javax.swing.BoxLayout.X_AXIS));
-    shuffleButton.addActionListener(e -> { shuffle = !shuffle; shuffleButton.setText(shuffle ? "SHUFFLE ON" : "SHUFFLE OFF"); updateQueueUI(); }); modes.add(shuffleButton); modes.add(javax.swing.Box.createHorizontalStrut(10));
-    repeatButton.addActionListener(e -> { repeat = !repeat; repeatButton.setText(repeat ? "REPEAT ON" : "REPEAT OFF"); updateQueueUI(); }); modes.add(repeatButton); modes.add(javax.swing.Box.createHorizontalStrut(10));
+    modes.add(javax.swing.Box.createHorizontalStrut(92));
+    shuffleButton.addActionListener(e -> { shuffle = !shuffle; shuffleButton.setOn(shuffle); updateQueueUI(); }); modes.add(shuffleButton); modes.add(javax.swing.Box.createHorizontalStrut(20));
+    repeatButton.addActionListener(e -> { repeat = !repeat; repeatButton.setOn(repeat); updateQueueUI(); }); modes.add(repeatButton); modes.add(javax.swing.Box.createHorizontalGlue());
     clearQueueButton.addActionListener(e -> clearQueue()); modes.add(clearQueueButton); panel.add(modes);
     panel.add(javax.swing.Box.createVerticalStrut(18));
     // Crossfade now lives in the Settings dialog (see buildSettingsPanel) — it's a set-once preference, not
@@ -1034,7 +1035,7 @@ public final class CDPlayer extends JFrame {
   private static JLabel label(String value, int size, Color color) { JLabel result = new JLabel("<html>" + value.replace("\n", "<br>") + "</html>"); result.setForeground(color); result.setFont(new Font("SansSerif", Font.BOLD, size)); return result; }
   private static JButton roundButton(Glyph glyph, int size, boolean primary) { return new TransportButton(glyph, size, primary); }
   /** Which vector icon a TransportButton draws. PLAY/PAUSE are swapped on the same button as playback toggles. */
-  private enum Glyph { PLAY, PAUSE, PREVIOUS_TRACK, NEXT_TRACK, SKIP_BACK_15, SKIP_FORWARD_15 }
+  private enum Glyph { PLAY, PAUSE, PREVIOUS_TRACK, NEXT_TRACK, SKIP_BACK_15, SKIP_FORWARD_15, SHUFFLE, REPEAT }
   private static JButton textButton(String caption) { return new PillButton(caption); }
 
   private static final class PillButton extends JButton {
@@ -1145,6 +1146,65 @@ public final class CDPlayer extends JFrame {
       java.awt.FontMetrics fm = g.getFontMetrics();
       String label = "15";
       g.drawString(label, (int) (cx - fm.stringWidth(label) / 2.0), (int) (cy + fm.getAscent() / 2.0) - 1);
+    }
+  }
+
+  /** Draws a straight line that stops short of (x2, y2) and caps it with a filled triangular arrowhead pointing along the line's direction — shared by the shuffle and repeat glyphs below. */
+  private static void drawArrowSegment(Graphics2D g, double x1, double y1, double x2, double y2, double arrowLen, double arrowHalf) {
+    double dx = x2 - x1, dy = y2 - y1;
+    double len = Math.hypot(dx, dy);
+    if (len < 0.001) return;
+    double ux = dx / len, uy = dy / len;
+    double lineEndX = x2 - ux * arrowLen * 0.6, lineEndY = y2 - uy * arrowLen * 0.6;
+    g.draw(new java.awt.geom.Line2D.Double(x1, y1, lineEndX, lineEndY));
+    double baseX = x2 - ux * arrowLen, baseY = y2 - uy * arrowLen;
+    double perpX = -uy, perpY = ux;
+    int[] xs = { (int) x2, (int) (baseX + perpX * arrowHalf), (int) (baseX - perpX * arrowHalf) };
+    int[] ys = { (int) y2, (int) (baseY + perpY * arrowHalf), (int) (baseY - perpY * arrowHalf) };
+    g.fillPolygon(xs, ys, 3);
+  }
+  /** Two crossing diagonals, each ending in an arrowhead — the standard "shuffle" glyph. */
+  private static void drawShuffleGlyph(Graphics2D g, int w, int h) {
+    g.setStroke(new BasicStroke(Math.max(1.5f, w * 0.075f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+    double x1 = w * 0.20, x2 = w * 0.76, top = h * 0.28, bottom = h * 0.72;
+    double arrowLen = w * 0.15, arrowHalf = w * 0.11;
+    drawArrowSegment(g, x1, top, x2, bottom, arrowLen, arrowHalf);
+    drawArrowSegment(g, x1, bottom, x2, top, arrowLen, arrowHalf);
+  }
+  /** An open rectangular loop with an arrowhead on each of two opposite corners — the standard "repeat" glyph. */
+  private static void drawRepeatGlyph(Graphics2D g, int w, int h) {
+    g.setStroke(new BasicStroke(Math.max(1.5f, w * 0.075f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+    double left = w * 0.24, right = w * 0.76, top = h * 0.30, bottom = h * 0.70, mid = h * 0.50;
+    double arrowLen = w * 0.14, arrowHalf = w * 0.11;
+    g.draw(new java.awt.geom.Line2D.Double(left, top, right, top));
+    drawArrowSegment(g, right, top, right, mid, arrowLen, arrowHalf);
+    g.draw(new java.awt.geom.Line2D.Double(right, bottom, left, bottom));
+    drawArrowSegment(g, left, bottom, left, mid, arrowLen, arrowHalf);
+  }
+  /** A circular toggle button for the shuffle/repeat modes: gradient-filled when on, translucent outline when off — mirrors {@link TransportButton}'s style but tracks a persistent on/off state instead of momentary presses. */
+  private static final class ModeIconButton extends JButton {
+    private final Glyph glyph;
+    private boolean on;
+    ModeIconButton(Glyph glyph, String tooltip) {
+      this.glyph = glyph;
+      setToolTipText(tooltip);
+      setFocusPainted(false); setFocusable(false); setBorderPainted(false); setContentAreaFilled(false); setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+      setAlignmentY(Component.CENTER_ALIGNMENT);
+      Dimension fixed = new Dimension(40, 40);
+      setMinimumSize(fixed); setPreferredSize(fixed); setMaximumSize(fixed);
+    }
+    void setOn(boolean value) { if (on == value) return; on = value; repaint(); }
+    protected void paintComponent(Graphics raw) {
+      Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      int w = getWidth(), h = getHeight();
+      if (on) { g.setPaint(new GradientPaint(0, 0, ACCENT, w, h, ACCENT2)); g.fillOval(0, 0, w, h); }
+      else {
+        g.setColor(new Color(255, 255, 255, getModel().isRollover() ? 22 : 12)); g.fillOval(0, 0, w, h);
+        g.setColor(new Color(255, 255, 255, 30)); g.setStroke(new BasicStroke(1)); g.drawOval(0, 0, w - 1, h - 1);
+      }
+      g.setColor(on ? BG : TEXT);
+      if (glyph == Glyph.SHUFFLE) drawShuffleGlyph(g, w, h); else drawRepeatGlyph(g, w, h);
+      g.dispose();
     }
   }
 
