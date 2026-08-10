@@ -177,6 +177,10 @@ public final class CDPlayer extends JFrame {
     getRootPane().setGlassPane(themeOverlay);
     themeOverlay.setDiscReference(disc);
     themeOverlay.setVisible(false);
+    // Easter egg: at the peak of the disc's eject animation (see DiscView), swap to the next track — like
+    // physically switching the CD while it's held up out of the case. nextTrack() already no-ops gracefully
+    // (returns false) with an empty queue or at the end of it, so no extra guard is needed here.
+    disc.setOnEjectPeak(this::nextTrack);
     setDropTarget(new DropTarget(this, new DropTargetAdapter() {
       @SuppressWarnings("unchecked") public void drop(DropTargetDropEvent event) {
         try {
@@ -2355,10 +2359,44 @@ public final class CDPlayer extends JFrame {
     // GridBagLayout will compress even a fill=NONE component below its preferred size when the container is
     // tighter than the sum of every column's preferred size, and with no floor that shrank the disc to as little
     // as 10x10 at the app's default 1120x820 window — a visual regression, not just wasted layout space.
-    DiscView() { setOpaque(false); setMinimumSize(new Dimension(260, 260)); setPreferredSize(new Dimension(480, 480)); setMaximumSize(new Dimension(480, 480)); }
+    DiscView() {
+      setOpaque(false); setMinimumSize(new Dimension(260, 260)); setPreferredSize(new Dimension(480, 480)); setMaximumSize(new Dimension(480, 480));
+      addMouseListener(new java.awt.event.MouseAdapter() {
+        public void mouseClicked(java.awt.event.MouseEvent e) { if (e.getClickCount() == 2) startEject(); }
+      });
+    }
     void setSpinning(boolean value) { spinning = value; if (value) motion.start(); else motion.stop(); repaint(); }
     void setCover(BufferedImage image) { cover = image; repaint(); }
     void setLookingUp(boolean value) { lookingUp = value; repaint(); }
+
+    // Easter egg: double-click the disc and it lifts partway out of the case, tilts, holds briefly, then settles
+    // back — like swapping it for a different CD. onEjectPeak (if set) fires once per cycle, right as it reaches
+    // full lift (the start of the hold phase, before it starts coming back down), so the caller can swap the
+    // track while the disc is elevated — by the time it settles back into the case, it's already showing the new
+    // one, same as physically holding a CD up while you switch it out. ejectElapsedMs is -1 when idle so
+    // startEject() can cheaply no-op while an animation is already running instead of restarting/stacking on top
+    // of itself.
+    private double ejectElapsedMs = -1;
+    private boolean ejectPeakFired;
+    private Runnable onEjectPeak;
+    private static final double EJECT_OUT_MS = 300, EJECT_HOLD_MS = 180, EJECT_BACK_MS = 320;
+    private static final double EJECT_TOTAL_MS = EJECT_OUT_MS + EJECT_HOLD_MS + EJECT_BACK_MS;
+    private final Timer ejectTimer = new Timer(16, e -> {
+      ejectElapsedMs += 16;
+      if (!ejectPeakFired && ejectElapsedMs >= EJECT_OUT_MS) { ejectPeakFired = true; if (onEjectPeak != null) onEjectPeak.run(); }
+      if (ejectElapsedMs >= EJECT_TOTAL_MS) { ejectElapsedMs = -1; ((Timer) e.getSource()).stop(); }
+      repaint();
+    });
+    void setOnEjectPeak(Runnable callback) { this.onEjectPeak = callback; }
+    private void startEject() { if (ejectElapsedMs < 0) { ejectElapsedMs = 0; ejectPeakFired = false; ejectTimer.start(); } }
+    private static double easeOutCubic(double t) { return 1 - Math.pow(1 - t, 3); }
+    /** 0 = resting in the case, 1 = fully lifted out. Ramps up, holds, then ramps back down. */
+    private double ejectProgress() {
+      if (ejectElapsedMs < 0) return 0;
+      if (ejectElapsedMs < EJECT_OUT_MS) return easeOutCubic(ejectElapsedMs / EJECT_OUT_MS);
+      if (ejectElapsedMs < EJECT_OUT_MS + EJECT_HOLD_MS) return 1;
+      return 1 - easeOutCubic((ejectElapsedMs - EJECT_OUT_MS - EJECT_HOLD_MS) / EJECT_BACK_MS);
+    }
     protected void paintComponent(Graphics raw) {
       super.paintComponent(raw); Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
       int side = Math.min(300, Math.min(getWidth(), getHeight()) - 40);
@@ -2377,6 +2415,18 @@ public final class CDPlayer extends JFrame {
         g.drawImage(cover, caseX + 17, caseY + 17, thumb - 6, thumb - 6, null);
         g.setColor(ACCENT2); g.setStroke(new BasicStroke(1.2f)); g.drawRoundRect(caseX + 16, caseY + 16, thumb - 4, thumb - 4, 5, 5);
       }
+
+      // Everything below is the disc itself (not the case, which stays put above): shifted up/sideways and
+      // squished vertically around its own center to read as "lifting up and tilting out of the case" for the
+      // eject easter egg. squish=1/offset=0 at rest, so this is a no-op transform (translate by 0, scale by 1)
+      // when ejectProgress() is 0 — cheap enough not to bother skipping it entirely.
+      AffineTransform preEject = g.getTransform();
+      double eject = ejectProgress();
+      int ejectOffsetX = (int) Math.round(side * 0.14 * eject), ejectOffsetY = (int) Math.round(-side * 0.42 * eject);
+      double ejectSquish = 1.0 - 0.22 * eject;
+      g.translate(centerX + ejectOffsetX, centerY + ejectOffsetY);
+      g.scale(1.0, ejectSquish);
+      g.translate(-centerX, -centerY);
 
       // ambient glow ring, pulses while playing
       if (spinning) {
@@ -2433,6 +2483,7 @@ public final class CDPlayer extends JFrame {
 
       g.setTransform(old);
       if (!spinning) { g.setColor(new Color(10, 11, 16, 90)); g.fillOval(x, y, side, side); }
+      g.setTransform(preEject);
       g.dispose();
     }
   }
