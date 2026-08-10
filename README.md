@@ -47,7 +47,7 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - Full queue list with per-track duration, click-to-play, and a hover-to-reveal remove (×) button
 - One-click **Clear Queue** button, disabled automatically when there's nothing to clear
 - "Up next" preview and live queue position (e.g. `QUEUE 3 / 10`)
-- The queue and current track are saved when you close the app and restored next launch — ready to play, but not auto-started
+- The queue, current track, and exact playback position are all saved when you close the app and restored next launch — resumes right where you left off, ready to play but not auto-started
 
 **Now playing**
 - Spinning disc animation inside a jewel-case backdrop, with your album art on the disc label and case thumbnail
@@ -56,12 +56,17 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - Embedded album art extraction, with automatic iTunes/Deezer cover lookup when a file has none
 
 **Settings**
-- A dedicated Settings dialog (opened from the header) holds the Theme picker, Crossfade slider, and Mono Audio toggle, keeping the main screen focused on playback
+- A dedicated Settings dialog (opened from the header) holds the Theme picker, Crossfade slider, Mono Audio toggle, and an Animations toggle, keeping the main screen focused on playback
 - Fully live: switching themes updates the dialog's own colors immediately, even while it's open
+- Volume, crossfade, mono audio, and the animations preference all persist across launches instead of resetting to defaults
 - A GitHub link at the bottom (icon + username) opens the project author's profile in your browser
 
+**Motion**
+- Buttons, toggles, and the Settings dialog animate smoothly — hover fades, a squish-and-recover pulse on press, crossfaded on/off states, and a grow-and-fade dialog open/close — instead of snapping instantly
+- An **Animations** toggle in Settings turns all of it off at once for anyone who prefers a completely static UI
+
 <p align="center">
-  <img src="assets/screenshots/settings-dialog-3.png" width="70%" alt="CDPlayer Settings dialog showing Theme, Crossfade, and Mono Audio controls">
+  <img src="assets/screenshots/settings-dialog-4.png" width="70%" alt="CDPlayer Settings dialog showing Theme, Crossfade, Mono Audio, and Animations controls">
 </p>
 
 **Themes**
