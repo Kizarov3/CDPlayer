@@ -3,8 +3,8 @@
 CDPlayer is a Java desktop app that recreates the tactile feel of a physical CD player for local audio playback. Load a track, press play, and enjoy a simple, distraction-free music experience without relying on a browser or web app — no accounts, no streaming, no internet required to play a song.
 
 <p align="center">
-  <img src="assets/screenshots/main-red-theme.png" width="49%" alt="CDPlayer main window, RED theme, playing a track">
-  <img src="assets/screenshots/main-snow-theme.png" width="49%" alt="CDPlayer main window, SNOW theme with falling snow overlay">
+  <img src="assets/screenshots/main-red-theme-2.png" width="49%" alt="CDPlayer main window, RED theme, playing a track">
+  <img src="assets/screenshots/main-snow-theme-2.png" width="49%" alt="CDPlayer main window, SNOW theme with falling snow overlay">
 </p>
 
 ## About
@@ -60,7 +60,7 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - Fully live: switching themes updates the dialog's own colors immediately, even while it's open
 
 <p align="center">
-  <img src="assets/screenshots/settings-dialog.png" width="70%" alt="CDPlayer Settings dialog showing Theme, Crossfade, and Mono Audio controls">
+  <img src="assets/screenshots/settings-dialog-2.png" width="70%" alt="CDPlayer Settings dialog showing Theme, Crossfade, and Mono Audio controls">
 </p>
 
 **Themes**
