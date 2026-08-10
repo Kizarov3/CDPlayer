@@ -835,8 +835,10 @@ public final class CDPlayer extends JFrame {
       player = opened; loadedFile = file; rawAudio = opened.getAudioBytes(); audioFormat = opened.getFormat(); crossfadeStarted = false;
       opened.setMono(monoAudio);
       opened.onFinished = () -> trackFinished(opened);
-      SongDetails details = inspectSong(file);
-      metadataCache.put(file, details);
+      // getSongDetails() (not inspectSong() directly) so a replayed track — common with shuffle/repeat over a
+      // long session — reuses the cached result instead of re-spawning ffprobe + an ffmpeg cover extraction on
+      // every single play.
+      SongDetails details = getSongDetails(file);
       String name = details.title;
       setTrackTitle(name); source.setText("LOCAL AUDIO FILE · " + file.getName().substring(file.getName().lastIndexOf('.') + 1).toUpperCase());
       fadeInNowPlaying();
@@ -921,22 +923,25 @@ public final class CDPlayer extends JFrame {
   private static SongDetails inspectSong(File file) {
     String fallbackTitle = displayName(file).replaceFirst("^\\s*\\d{1,3}[ ._-]+", "");
     String title = null, artist = null, album = null;
+    Process probe = null;
     try {
-      Process probe = new ProcessBuilder(resolveBinary("ffprobe"), "-v", "error", "-show_entries", "format_tags=title,artist,album", "-of", "default=noprint_wrappers=1", file.getAbsolutePath()).redirectErrorStream(true).start();
+      probe = new ProcessBuilder(resolveBinary("ffprobe"), "-v", "error", "-show_entries", "format_tags=title,artist,album", "-of", "default=noprint_wrappers=1", file.getAbsolutePath()).redirectErrorStream(true).start();
       String tags = new String(readAll(probe.getInputStream()), StandardCharsets.UTF_8); probe.waitFor();
       for (String line : tags.split("\\R")) { int equals = line.indexOf('='); if (equals < 1) continue; String key = line.substring(0, equals).toLowerCase(); String value = line.substring(equals + 1).trim(); if ("tag:title".equals(key)) title = value; else if ("tag:artist".equals(key)) artist = value; else if ("tag:album".equals(key)) album = value; }
     } catch (Exception ignored) { /* FFmpeg metadata is optional. */ }
+    finally { if (probe != null) closeProcessStreams(probe); }
     BufferedImage embeddedCover = extractEmbeddedCover(file);
     return new SongDetails(title == null || title.isEmpty() ? fallbackTitle : title, artist, album, embeddedCover);
   }
   private static BufferedImage extractEmbeddedCover(File file) {
     File image = null;
+    Process extract = null;
     try {
       image = File.createTempFile("cdplayer-art-", ".jpg");
-      Process extract = new ProcessBuilder(resolveBinary("ffmpeg"), "-nostdin", "-y", "-v", "error", "-i", file.getAbsolutePath(), "-map", "0:v:0", "-frames:v", "1", "-pix_fmt", "yuvj420p", image.getAbsolutePath()).redirectErrorStream(true).start();
+      extract = new ProcessBuilder(resolveBinary("ffmpeg"), "-nostdin", "-y", "-v", "error", "-i", file.getAbsolutePath(), "-map", "0:v:0", "-frames:v", "1", "-pix_fmt", "yuvj420p", image.getAbsolutePath()).redirectErrorStream(true).start();
       readAll(extract.getInputStream()); if (extract.waitFor() == 0 && image.length() > 0) { BufferedImage decoded = ImageIO.read(image); if (decoded != null) return decoded; }
     } catch (Exception ignored) { /* No embedded artwork is normal. */ }
-    finally { if (image != null) image.delete(); }
+    finally { if (image != null) image.delete(); if (extract != null) closeProcessStreams(extract); }
     return null;
   }
   private static final class SongDetails {
@@ -993,6 +998,18 @@ public final class CDPlayer extends JFrame {
   private static BufferedImage fetchImage(String location) throws IOException { HttpURLConnection connection = open(location); try (InputStream stream = connection.getInputStream()) { return ImageIO.read(stream); } finally { connection.disconnect(); } }
   private static HttpURLConnection open(String location) throws IOException { HttpURLConnection connection = (HttpURLConnection) new URL(location).openConnection(); connection.setRequestProperty("User-Agent", "CDPlayer/1.0 (open cover lookup)"); connection.setConnectTimeout(5000); connection.setReadTimeout(8000); return connection; }
   private static byte[] readAll(InputStream stream) throws IOException { java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream(); byte[] buffer = new byte[4096]; int count; while ((count = stream.read(buffer)) >= 0) output.write(buffer, 0, count); return output.toByteArray(); }
+  /**
+   * Closes a Process's stdin/stdout/stderr pipes explicitly instead of leaving that to GC/finalization. Every
+   * ffprobe/ffmpeg call in this file (metadata, embedded cover, duration probing) runs on every track load, and
+   * on macOS each of those pipe streams holds a native (Mach-port-backed) file descriptor open until closed —
+   * over a long session with many track changes, relying on finalization to eventually reclaim them let threads
+   * and ports pile up (observed via Activity Monitor: hundreds of ports, dozens of threads, elevated CPU).
+   */
+  private static void closeProcessStreams(Process process) {
+    try { process.getInputStream().close(); } catch (Exception ignored) { }
+    try { process.getOutputStream().close(); } catch (Exception ignored) { }
+    try { process.getErrorStream().close(); } catch (Exception ignored) { }
+  }
   private void toggle() { if (player == null) { choose(); return; } if (player.isRunning()) { player.pause(); setPlaying(false); } else { player.start(); setPlaying(true); } }
   private void trackFinished(StreamPlayer finishedPlayer) { if (player != finishedPlayer) return; if (repeat) { player.setMicrosecondPosition(0); player.start(); setPlaying(true); } else if (!nextTrack()) setPlaying(false); }
   private boolean nextTrack() { int next = nextIndex(); if (next < 0) return false; queueIndex = next; load(queue.get(queueIndex)); return true; }
@@ -1180,12 +1197,14 @@ public final class CDPlayer extends JFrame {
       long frames = stream.getFrameLength();
       if (frames > 0 && format.getFrameRate() > 0) return (long) (frames / format.getFrameRate() * 1_000_000L);
     } catch (Exception ignored) { /* not natively decodable, e.g. flac/m4a; fall through to ffprobe */ }
+    Process probe = null;
     try {
-      Process probe = new ProcessBuilder(resolveBinary("ffprobe"), "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file.getAbsolutePath()).redirectErrorStream(true).start();
+      probe = new ProcessBuilder(resolveBinary("ffprobe"), "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file.getAbsolutePath()).redirectErrorStream(true).start();
       String output = new String(readAll(probe.getInputStream()), StandardCharsets.UTF_8).trim();
       probe.waitFor();
       return (long) (Double.parseDouble(output) * 1_000_000L);
     } catch (Exception ignored) { return 0L; }
+    finally { if (probe != null) closeProcessStreams(probe); }
   }
   private static String escape(String value) { return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"); }
   /** Sets the now-playing title, shrinking the font (34pt down to 20pt) to fit long names in the fixed-width label before falling back to an ellipsis, so the box's size never has to change. */
