@@ -139,11 +139,17 @@ public final class CDPlayer extends JFrame {
   private final JButton settingsButton = textButton("SETTINGS");
   private final JButton monoButton = textButton("OFF");
   private final JButton animationsButton = textButton("ON");
-  private javax.swing.JDialog settingsDialog;
+  private SettingsOverlay settingsOverlay;
+  private JPanel contentStack; // the OverlayLayout stack: settingsOverlay (topmost, added lazily) > foreground > themeOverlay > background
   private java.awt.Rectangle preFullscreenBounds;
   private boolean fullscreen;
 
   public static void main(String[] args) {
+    // The theme dropdown (showThemeMenu) uses a JPopupMenu; Swing normally decides per-popup whether to use a
+    // lightweight (in-window) or heavyweight (separate native window) implementation. Forcing lightweight avoids
+    // the same class of bug that motivated moving Settings off JDialog: a heavyweight popup is a real top-level
+    // window, and those don't reliably layer above this app's own exclusive GraphicsDevice fullscreen.
+    javax.swing.JPopupMenu.setDefaultLightWeightPopupEnabled(true);
     SwingUtilities.invokeLater(() -> {
       try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); }
       catch (Exception ignored) { }
@@ -164,7 +170,12 @@ public final class CDPlayer extends JFrame {
     setSize(1120, 820);
     setLocationByPlatform(true);
     setContentPane(createContent());
+    // The glass pane, not a regular sibling layer — see createContent()'s doc comment for why: it's the one
+    // mechanism Swing actually composites independently, so themeOverlay's continuous particle-animation
+    // repaints don't cascade into repainting the rest of the window. ThemeOverlay itself clips the disc's
+    // current bounds out of its own painting so particles still don't visually cover it.
     getRootPane().setGlassPane(themeOverlay);
+    themeOverlay.setDiscReference(disc);
     themeOverlay.setVisible(false);
     setDropTarget(new DropTarget(this, new DropTargetAdapter() {
       @SuppressWarnings("unchecked") public void drop(DropTargetDropEvent event) {
@@ -196,7 +207,13 @@ public final class CDPlayer extends JFrame {
     bindKey(inputMap, actionMap, "J", "previousTrackJ", e -> previousTrack());
     bindKey(inputMap, actionMap, "L", "nextTrackL", e -> nextTrack());
     bindKey(inputMap, actionMap, "F", "toggleFullscreen", e -> toggleFullscreen());
-    bindKey(inputMap, actionMap, "ESCAPE", "exitFullscreen", e -> { if (fullscreen) toggleFullscreen(); });
+    // Settings takes priority: Escape closes it if open, otherwise exits fullscreen if active. Settings is a
+    // plain in-window overlay (not a separate JDialog — see showSettingsDialog), so this single WHEN_IN_FOCUSED_WINDOW
+    // binding on the main frame handles both cases; there's no separate window with its own key bindings to manage.
+    bindKey(inputMap, actionMap, "ESCAPE", "escapeAction", e -> {
+      if (settingsOverlay != null && settingsOverlay.isVisible()) closeSettingsDialog();
+      else if (fullscreen) toggleFullscreen();
+    });
   }
   /**
    * True OS-level exclusive fullscreen via GraphicsDevice, not just resizing to the screen's bounds. Simply
@@ -302,93 +319,85 @@ public final class CDPlayer extends JFrame {
     return card;
   }
 
-  /** Opens (or refocuses) the Settings dialog. Rebuilds its content each time rather than caching the panel, so labels/colors stay current across theme changes even though the JDialog window itself is reused. */
+  /**
+   * Opens (or refocuses) Settings. This is a plain in-window overlay panel (added to contentStack, the topmost
+   * layer), not a separate JDialog/Window — a separate top-level window doesn't reliably layer correctly above
+   * either the OS's own native fullscreen (opens on a different Space entirely) or this app's own exclusive
+   * GraphicsDevice fullscreen (didn't show up at all — exclusive fullscreen generally can't host a second
+   * top-level window above it). Being a component within the same window sidesteps both failure modes: it's
+   * always positioned and painted correctly relative to whatever the main window's current bounds actually are.
+   * Rebuilds its content each time rather than caching the panel, so labels/colors stay current across theme changes.
+   */
   private void showSettingsDialog() {
-    if (settingsDialog == null) {
-      settingsDialog = new javax.swing.JDialog(this, "Settings", false);
-      settingsDialog.setUndecorated(true);
-      javax.swing.JRootPane root = settingsDialog.getRootPane();
-      root.getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW).put(javax.swing.KeyStroke.getKeyStroke("ESCAPE"), "closeSettings");
-      root.getActionMap().put("closeSettings", new javax.swing.AbstractAction() { public void actionPerformed(ActionEvent e) { closeSettingsDialog(); } });
+    if (settingsOverlay == null) {
+      settingsOverlay = new SettingsOverlay();
+      settingsOverlay.setVisible(false);
+      contentStack.add(settingsOverlay, 0); // index 0 = topmost in the OverlayLayout stack, above the disc/theme particles/background
+      themeOverlay.setSettingsCardReference(settingsOverlay.card); // themeOverlay is the glass pane (always topmost) — without this, particles would drift over the open Settings card too
     }
-    settingsDialog.setContentPane(buildSettingsPanel(settingsDialog));
-    settingsDialog.getRootPane().setBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 40), 1));
-    settingsDialog.pack();
-    settingsDialog.setLocationRelativeTo(this);
-    animateDialogIn(settingsDialog);
-    settingsDialog.toFront();
+    settingsOverlay.card.removeAll();
+    settingsOverlay.card.add(buildSettingsPanel(), BorderLayout.CENTER);
+    // validate() (immediate, synchronous), not revalidate() (deferred to the next natural repaint cycle) — and
+    // done here, after the card's content is populated, not right after contentStack.add() above: the card's own
+    // size comes from its content, so validating before that content exists would (and did) lock its bounds at
+    // zero permanently, since this whole block only runs once per settingsOverlay lifetime.
+    contentStack.validate();
+    settingsOverlay.setVisible(true);
+    animateSettingsIn();
   }
-  private void closeSettingsDialog() { animateDialogOut(settingsDialog); }
-  private Timer dialogAnimTimer;
-  private Boolean opacitySupported; // cached per-run: whether the platform lets an undecorated Window fade via setOpacity
-  private boolean opacitySupported() {
-    if (opacitySupported == null) {
-      try {
-        opacitySupported = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice()
-            .isWindowTranslucencySupported(java.awt.GraphicsDevice.WindowTranslucency.TRANSLUCENT);
-      } catch (Exception ignored) { opacitySupported = false; }
-    }
-    return opacitySupported;
-  }
-  /** Grows the dialog from 90% to 100% size (eased) around its own center, fading it in if the platform supports window translucency, instead of it just popping into existence. */
-  private void animateDialogIn(javax.swing.JDialog dialog) {
-    if (dialogAnimTimer != null && dialogAnimTimer.isRunning()) dialogAnimTimer.stop();
-    java.awt.Rectangle target = dialog.getBounds();
-    if (!animationsEnabled) { dialog.setBounds(target); if (opacitySupported()) dialog.setOpacity(1f); dialog.setVisible(true); return; }
-    int cx = target.x + target.width / 2, cy = target.y + target.height / 2;
-    boolean fade = opacitySupported();
-    if (fade) dialog.setOpacity(0f);
-    int startW = Math.round(target.width * 0.9f), startH = Math.round(target.height * 0.9f);
-    dialog.setBounds(cx - startW / 2, cy - startH / 2, startW, startH); // start at the animation's t=0 size, not the full target size, so it doesn't flash full-size for one frame before shrinking
-    dialog.setVisible(true);
+  private void closeSettingsDialog() { if (settingsOverlay != null) animateSettingsOut(); }
+  private Timer settingsAnimTimer;
+  /** Grows the settings card from 90% to 100% size (eased) with a fade-in, instead of it just popping into existence. Implemented as a component-level scale/alpha transform in FadeableCard.paint() rather than Window.setOpacity(), since this is no longer a separate Window. */
+  private void animateSettingsIn() {
+    if (settingsAnimTimer != null && settingsAnimTimer.isRunning()) settingsAnimTimer.stop();
+    FadeableCard card = settingsOverlay.card;
+    if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; settingsOverlay.repaint(); return; }
+    card.opacity = 0f; card.scale = 0.9f;
     final int steps = 10;
     final int[] step = { 0 };
-    dialogAnimTimer = new Timer(12, null);
-    dialogAnimTimer.addActionListener(e -> {
+    settingsAnimTimer = new Timer(12, null);
+    settingsAnimTimer.addActionListener(e -> {
       step[0]++;
       float t = Math.min(1f, step[0] / (float) steps);
       float eased = 1f - (float) Math.pow(1f - t, 3); // ease-out cubic
-      float s = 0.9f + 0.1f * eased;
-      int w = Math.round(target.width * s), h = Math.round(target.height * s);
-      dialog.setBounds(cx - w / 2, cy - h / 2, w, h);
-      if (fade) dialog.setOpacity(eased);
-      if (t >= 1f) { ((Timer) e.getSource()).stop(); dialog.setBounds(target); if (fade) dialog.setOpacity(1f); }
+      card.opacity = eased;
+      card.scale = 0.9f + 0.1f * eased;
+      settingsOverlay.repaint();
+      if (t >= 1f) { ((Timer) e.getSource()).stop(); card.opacity = 1f; card.scale = 1f; settingsOverlay.repaint(); }
     });
-    dialogAnimTimer.start();
+    settingsAnimTimer.start();
   }
-  /** Reverse of {@link #animateDialogIn}: shrinks and fades the dialog out, then actually hides it. */
-  private void animateDialogOut(javax.swing.JDialog dialog) {
-    if (dialog == null || !dialog.isVisible()) return;
-    if (dialogAnimTimer != null && dialogAnimTimer.isRunning()) dialogAnimTimer.stop();
-    java.awt.Rectangle target = dialog.getBounds();
-    if (!animationsEnabled) { dialog.setVisible(false); dialog.setBounds(target); if (opacitySupported()) dialog.setOpacity(1f); return; }
-    int cx = target.x + target.width / 2, cy = target.y + target.height / 2;
-    boolean fade = opacitySupported();
+  /** Reverse of {@link #animateSettingsIn}: shrinks and fades the card out, then actually hides the overlay. */
+  private void animateSettingsOut() {
+    if (!settingsOverlay.isVisible()) return;
+    if (settingsAnimTimer != null && settingsAnimTimer.isRunning()) settingsAnimTimer.stop();
+    FadeableCard card = settingsOverlay.card;
+    if (!animationsEnabled) { settingsOverlay.setVisible(false); card.opacity = 1f; card.scale = 1f; return; }
     final int steps = 8;
     final int[] step = { 0 };
-    dialogAnimTimer = new Timer(12, null);
-    dialogAnimTimer.addActionListener(e -> {
+    settingsAnimTimer = new Timer(12, null);
+    settingsAnimTimer.addActionListener(e -> {
       step[0]++;
       float t = Math.min(1f, step[0] / (float) steps);
-      float s = 1f - 0.1f * t;
-      int w = Math.round(target.width * s), h = Math.round(target.height * s);
-      dialog.setBounds(cx - w / 2, cy - h / 2, w, h);
-      if (fade) dialog.setOpacity(1f - t);
+      card.opacity = 1f - t;
+      card.scale = 1f - 0.1f * t;
+      settingsOverlay.repaint();
       if (t >= 1f) {
         ((Timer) e.getSource()).stop();
-        dialog.setVisible(false);
-        dialog.setBounds(target); // restore full size/opacity so the next animateDialogIn starts from a clean state
-        if (fade) dialog.setOpacity(1f);
+        settingsOverlay.setVisible(false);
+        card.opacity = 1f; card.scale = 1f; // reset so the next animateSettingsIn starts from a clean state
       }
     });
-    dialogAnimTimer.start();
+    settingsAnimTimer.start();
   }
-  private JPanel buildSettingsPanel(javax.swing.JDialog dialog) {
+  private JPanel buildSettingsPanel() {
     JPanel card = new JPanel();
     card.setLayout(new javax.swing.BoxLayout(card, javax.swing.BoxLayout.Y_AXIS));
     card.setBackground(CARD);
     card.setOpaque(true);
-    card.setBorder(BorderFactory.createEmptyBorder(26, 30, 22, 30));
+    // The outer line border used to be set separately on the JDialog's own root pane; now that this card is a
+    // plain in-window component, both borders live on the card itself via a compound border.
+    card.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 40), 1), BorderFactory.createEmptyBorder(26, 30, 22, 30)));
 
     JLabel title = label("SETTINGS", 16, ACCENT);
     title.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -491,6 +500,16 @@ public final class CDPlayer extends JFrame {
     menu.show(themeButton, 0, themeButton.getHeight() + 6);
   }
 
+  /** Applies a theme immediately, without switchToTheme()'s color-lerp animation — used only by restoreSettingsState() at startup, before the window is first shown, where an instant application is correct (no from-color transition makes sense yet, and an animated one risks a brief flash from the default theme to the restored one right as the app opens). */
+  private void applyThemeInstant(int index) {
+    currentThemeIndex = index;
+    Theme to = THEMES[index];
+    themeButton.setText(to.name);
+    themeOverlay.setMode(ThemeOverlay.Mode.forTheme(to.name));
+    visualizer.setMode(VisualizerBars.Mode.forTheme(to.name));
+    BG = to.bg; CARD = to.card; ACCENT = to.accent; ACCENT2 = to.accent2; TEXT = to.text; MUTED = to.muted;
+    applyThemeColors();
+  }
   private void switchToTheme(int index) {
     if (index == currentThemeIndex) return;
     Theme from = THEMES[currentThemeIndex];
@@ -504,7 +523,7 @@ public final class CDPlayer extends JFrame {
     if (themeAnim != null && themeAnim.isRunning()) themeAnim.stop();
     if (!animationsEnabled) {
       BG = to.bg; CARD = to.card; ACCENT = to.accent; ACCENT2 = to.accent2; TEXT = to.text; MUTED = to.muted;
-      applyThemeColors(); getContentPane().repaint(); refreshSettingsDialogIfOpen(); updateQueueUI();
+      applyThemeColors(); getContentPane().repaint(); refreshSettingsIfOpen(); updateQueueUI();
       return;
     }
     int steps = 18;
@@ -516,18 +535,18 @@ public final class CDPlayer extends JFrame {
       ACCENT2 = lerp(fromColors[3], toColors[3], t); TEXT = lerp(fromColors[4], toColors[4], t); MUTED = lerp(fromColors[5], toColors[5], t);
       applyThemeColors();
       getContentPane().repaint();
-      refreshSettingsDialogIfOpen(); // so an already-open Settings dialog fades along with the main window, not just on next open
+      refreshSettingsIfOpen(); // so an already-open Settings dialog fades along with the main window, not just on next open
       if (t >= 1f) { ((Timer) e.getSource()).stop(); updateQueueUI(); }
     });
     themeAnim.start();
   }
-  /** Rebuilds the Settings dialog's content in place if it's currently open, so it tracks the live BG/CARD/ACCENT/etc. colors during a theme transition instead of sitting frozen on whatever they were when it was opened. */
-  private void refreshSettingsDialogIfOpen() {
-    if (settingsDialog == null || !settingsDialog.isVisible()) return;
-    settingsDialog.setContentPane(buildSettingsPanel(settingsDialog));
-    settingsDialog.getRootPane().setBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 40), 1));
-    settingsDialog.revalidate();
-    settingsDialog.repaint();
+  /** Rebuilds the Settings card's content in place if it's currently open, so it tracks the live BG/CARD/ACCENT/etc. colors during a theme transition instead of sitting frozen on whatever they were when it was opened. */
+  private void refreshSettingsIfOpen() {
+    if (settingsOverlay == null || !settingsOverlay.isVisible()) return;
+    settingsOverlay.card.removeAll();
+    settingsOverlay.card.add(buildSettingsPanel(), BorderLayout.CENTER);
+    contentStack.validate(); // immediate, not deferred — see showSettingsDialog()'s note on why validate() over revalidate() here
+    settingsOverlay.card.repaint();
   }
 
   private void applyThemeColors() {
@@ -544,6 +563,22 @@ public final class CDPlayer extends JFrame {
     return new Color(r, g, bl);
   }
 
+  /**
+   * Builds the window content as a single tree (the original structure), wrapped in a thin OverlayLayout stack
+   * so the Settings overlay (see showSettingsDialog) can still be added on top of it later. themeOverlay is
+   * installed separately as the root pane's glass pane — NOT as a sibling layer in this stack.
+   *
+   * An earlier version tried making the disc render above the theme's animated particles by restructuring this
+   * into "foreground (disc/text/buttons) > themeOverlay (particles) > background" as three OverlayLayout
+   * siblings, reasoning that paint order alone would keep the disc on top cheaply. It didn't: only the glass
+   * pane gets Swing's special independent-compositing treatment (JRootPane paints it as a genuinely separate
+   * step). Regular sibling components don't — repainting one forces every overlapping sibling in the same
+   * container to repaint too, so themeOverlay's continuous ~28fps particle animation started forcing a full
+   * repaint of the entire foreground subtree (every label, button, slider, the queue list) on every tick, which
+   * scales with window size just like the disc-bounds bug (worse than it was before at a fullscreen resolution,
+   * per direct measurement). themeOverlay is back to being the glass pane; see ThemeOverlay's disc-exclusion
+   * clip below for how it still avoids painting over the disc without that cost.
+   */
   private JPanel createContent() {
     JPanel root = new BrushedMetalPanel();
     root.setBorder(BorderFactory.createEmptyBorder(32, 64, 28, 64));
@@ -552,13 +587,35 @@ public final class CDPlayer extends JFrame {
     root.add(headerBlock, BorderLayout.NORTH);
     JPanel body = new JPanel(new GridBagLayout()); body.setOpaque(false);
     GridBagConstraints constraints = new GridBagConstraints();
-    constraints.gridy = 0; constraints.weighty = 1; constraints.fill = GridBagConstraints.BOTH;
+    constraints.gridy = 0; constraints.weighty = 1;
+    // NONE (not BOTH) for the disc specifically: its cell still claims its weightx share of the row so the
+    // overall layout is unaffected, but the component itself is centered at its natural size instead of being
+    // stretched to fill the cell. GridBagLayout doesn't reliably honor a component's maximumSize when fill=BOTH
+    // — measured DiscView's actual bounds growing from 231x611 windowed to 1923x2671 at a 5K fullscreen
+    // resolution even with maximumSize(480, 480) set, because the disc spins on a 16ms Timer while playing and
+    // (being non-opaque) forces the opaque background panel beneath it to redraw its full dirty rectangle on
+    // every tick — over 5 million pixels/frame at that stretched size vs ~140K windowed, regardless of theme.
+    constraints.fill = GridBagConstraints.NONE;
     constraints.gridx = 0; constraints.weightx = 1; constraints.insets = new Insets(10, 0, 10, 44); body.add(disc, constraints);
+    constraints.fill = GridBagConstraints.BOTH;
     constraints.gridx = 1; constraints.weightx = 1.05; constraints.insets = new Insets(36, 0, 20, 0); body.add(playerPanel(), constraints);
     root.add(body, BorderLayout.CENTER);
     JLabel hint = label("DROP WAV · AIFF · AU · FLAC · M4A · MP3 — SPACE/K PLAY · J/L PREV/NEXT · ←/→ SKIP 15S · F FULLSCREEN · ESC EXIT", 10, new Color(120, 122, 126));
     hint.setHorizontalAlignment(SwingConstants.CENTER); hint.setBorder(BorderFactory.createEmptyBorder(18, 0, 0, 0)); root.add(hint, BorderLayout.SOUTH);
-    return root;
+
+    // isOptimizedDrawingEnabled must return false: JComponent defaults to true, which tells Swing's repaint
+    // machinery "children never overlap" so an incremental repaint (the seek bar ticking, the disc spinning)
+    // only repaints through a single layer instead of every child under the dirty rectangle. With that default,
+    // once settingsOverlay is added on top of root, ordinary repaints of things below it (seek bar, disc) stop
+    // reaching the card, leaving stale pixels bleeding through it. Full-tree paint() calls (used for off-screen
+    // verification) always repaint everything regardless, which is why this didn't show up until real usage.
+    contentStack = new JPanel() {
+      public boolean isOptimizedDrawingEnabled() { return false; }
+    };
+    contentStack.setOpaque(false);
+    contentStack.setLayout(new javax.swing.OverlayLayout(contentStack));
+    contentStack.add(root); // settingsOverlay is added on top of this later, lazily, in showSettingsDialog()
+    return contentStack;
   }
 
   private JPanel header() {
@@ -1092,16 +1149,16 @@ public final class CDPlayer extends JFrame {
       }
     } catch (Exception ignored) { /* corrupt or unreadable state file; just start with an empty queue */ }
   }
-  /** Persists volume, crossfade, mono audio, and the animations toggle so they carry over to the next launch instead of resetting to defaults. Runs on the same shutdown hook as {@link #saveQueueState()}, same EDT-quiescence rationale. */
+  /** Persists volume, crossfade, mono audio, the animations toggle, and the current theme so they carry over to the next launch instead of resetting to defaults. Runs on the same shutdown hook as {@link #saveQueueState()}, same EDT-quiescence rationale. Theme is stored by name (not index) so it survives THEMES being reordered later. */
   private void saveSettingsState() {
     try {
       File parent = SETTINGS_FILE.getParentFile();
       if (parent != null) parent.mkdirs();
-      String content = volumeSlider.getValue() + "\n" + crossfadeSlider.getValue() + "\n" + (monoAudio ? "1" : "0") + "\n" + (animationsEnabled ? "1" : "0") + "\n";
+      String content = volumeSlider.getValue() + "\n" + crossfadeSlider.getValue() + "\n" + (monoAudio ? "1" : "0") + "\n" + (animationsEnabled ? "1" : "0") + "\n" + THEMES[currentThemeIndex].name + "\n";
       java.nio.file.Files.write(SETTINGS_FILE.toPath(), content.getBytes(StandardCharsets.UTF_8));
     } catch (Exception ignored) { /* best-effort persistence; a failed save just means defaults next launch */ }
   }
-  /** Restores settings saved by {@link #saveSettingsState()}. Must run after createContent() has wired up the sliders' change listeners, so setting each value here also updates its label/live state the same way a manual drag would. The animations line is optional (absent in files saved before that toggle existed), defaulting to enabled. */
+  /** Restores settings saved by {@link #saveSettingsState()}. Must run after createContent() has wired up the sliders' change listeners, so setting each value here also updates its label/live state the same way a manual drag would. The animations and theme lines are optional (absent in files saved before those existed), defaulting to enabled / RED. */
   private void restoreSettingsState() {
     try {
       if (!SETTINGS_FILE.isFile()) return;
@@ -1111,10 +1168,16 @@ public final class CDPlayer extends JFrame {
       int savedCrossfade = Integer.parseInt(lines.get(1).trim());
       boolean savedMono = "1".equals(lines.get(2).trim());
       boolean savedAnimations = lines.size() < 4 || "1".equals(lines.get(3).trim());
+      String savedThemeName = lines.size() >= 5 ? lines.get(4).trim() : null;
       volumeSlider.setValue(Math.max(0, Math.min(100, savedVolume)));
       crossfadeSlider.setValue(Math.max(0, Math.min(15, savedCrossfade)));
       setMonoAudio(savedMono);
       setAnimationsEnabled(savedAnimations);
+      if (savedThemeName != null) {
+        for (int i = 0; i < THEMES.length; i++) {
+          if (THEMES[i].name.equals(savedThemeName)) { applyThemeInstant(i); break; }
+        }
+      }
     } catch (Exception ignored) { /* corrupt or unreadable state file; just start with defaults */ }
   }
   private void seek(int seconds) { if (player == null) return; long target = Math.max(0, Math.min(player.getMicrosecondLength(), player.getMicrosecondPosition() + seconds * 1_000_000L)); player.setMicrosecondPosition(target); long duration = player.getMicrosecondLength(); progress.setValue(duration == 0 ? 0 : (int) (target * 1000 / duration)); elapsed.setText(format(target)); }
@@ -1675,10 +1738,52 @@ public final class CDPlayer extends JFrame {
       g.setPaint(new GradientPaint(0, 0, new Color(28, 28, 31), 0, h, new Color(9, 9, 10)));
       g.fillRect(0, 0, w, h);
       g.setColor(new Color(255, 255, 255, 6));
-      for (int lineY = 0; lineY < h; lineY += 3) g.drawLine(0, lineY, w, lineY);
+      // Only iterate scanlines actually within the current paint clip. This panel is the content pane's opaque
+      // background, so it repaints (clipped to just the damaged rectangle) every time any non-opaque child above
+      // it repaints — including the disc's own 16ms spin timer while playing. The loop previously always ran
+      // from 0 to the full window height regardless of clip, so its per-call overhead scaled directly with
+      // window size: at a 5K fullscreen resolution that's ~960 drawLine calls, 60 times a second, for a repaint
+      // that's almost always clipped down to a small region like the disc — this was the actual dominant,
+      // theme-agnostic cost behind high CPU/GPU usage in fullscreen (not specific to any one animated theme).
+      java.awt.Rectangle clip = g.getClipBounds();
+      int startY = clip == null ? 0 : Math.max(0, clip.y - (clip.y % 3));
+      int endY = clip == null ? h : Math.min(h, clip.y + clip.height);
+      for (int lineY = startY; lineY < endY; lineY += 3) g.drawLine(0, lineY, w, lineY);
       g.setPaint(new GradientPaint(0, 0, new Color(0, 0, 0, 130), 0, h * 0.18f, new Color(0, 0, 0, 0)));
       g.fillRect(0, 0, w, (int) (h * 0.18f));
       g.dispose();
+    }
+  }
+
+  /** Applies a scale+alpha transform to everything painted within it (background, border, and every child component) by wrapping the Graphics context passed to paint(), instead of relying on Window.setOpacity() — used by SettingsOverlay so its open/close animation works as a plain in-window component rather than a separate top-level Window. */
+  private static final class FadeableCard extends JPanel {
+    float opacity = 1f, scale = 1f;
+    FadeableCard() { setOpaque(false); setLayout(new BorderLayout()); }
+    public void paint(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      if (scale != 1f) { g2.translate(getWidth() / 2.0, getHeight() / 2.0); g2.scale(scale, scale); g2.translate(-getWidth() / 2.0, -getHeight() / 2.0); }
+      if (opacity < 1f) g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.max(0f, Math.min(1f, opacity))));
+      super.paint(g2);
+      g2.dispose();
+    }
+  }
+
+  /**
+   * Hosts the Settings card as a full-window overlay layer (added to contentStack, see createContent) instead of
+   * a separate JDialog. A separate top-level window doesn't reliably layer above either the OS's native
+   * fullscreen (opens on an entirely different Space) or this app's own exclusive GraphicsDevice fullscreen
+   * (didn't appear at all). Being a plain component in the same window sidesteps both: it's always positioned
+   * and painted correctly relative to the main window's current bounds, fullscreen or not.
+   * Non-modal by design (matching the previous JDialog's own non-modal flag): contains() only reports true over
+   * the card's own bounds, so clicks anywhere else on the overlay pass through to whatever's beneath it, exactly
+   * like the original dialog let the main window stay interactive while open.
+   */
+  private static final class SettingsOverlay extends JPanel {
+    final FadeableCard card = new FadeableCard();
+    SettingsOverlay() { setOpaque(false); setLayout(new GridBagLayout()); add(card); }
+    public boolean contains(int x, int y) {
+      java.awt.Point p = SwingUtilities.convertPoint(this, x, y, card);
+      return card.contains(p);
     }
   }
 
@@ -2046,7 +2151,16 @@ public final class CDPlayer extends JFrame {
     private final Timer timer = new Timer(35, null);
     private Mode mode = Mode.NONE;
     private double clock;
+    private Component discRef; // set once from the constructor; lets particles avoid painting over the disc without needing to restructure z-order (see createContent()'s doc comment for why that costs more than it's worth)
+    private Component settingsCardRef; // set once Settings is first opened; being the glass pane again means themeOverlay is unconditionally topmost, so without this particles would drift over the Settings card too
     ThemeOverlay() { setOpaque(false); timer.addActionListener(e -> { advance(); repaint(); }); }
+    void setDiscReference(Component disc) { this.discRef = disc; }
+    void setSettingsCardReference(Component card) { this.settingsCardRef = card; }
+    private void excludeIfShowing(java.awt.geom.Area clip, Component c) {
+      if (c == null || !c.isShowing()) return;
+      java.awt.Rectangle bounds = SwingUtilities.convertRectangle(c.getParent(), c.getBounds(), this);
+      clip.subtract(new java.awt.geom.Area(bounds));
+    }
     void setMode(Mode value) {
       if (mode == value) return;
       mode = value;
@@ -2126,6 +2240,15 @@ public final class CDPlayer extends JFrame {
     protected void paintComponent(Graphics raw) {
       if (mode == Mode.NONE) return;
       Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      // Subtracts the disc's (and, if open, the Settings card's) current on-screen rectangle from this layer's
+      // paint clip, so particles/the OCEAN band never render over them — without needing either to actually sit
+      // in a higher paint layer than this glass pane (which nothing can, short of another glass-pane-like
+      // mechanism). Recomputed fresh each paint rather than cached: it's cheap arithmetic, and correctly tracks
+      // both across window resizes for free.
+      java.awt.geom.Area clip = new java.awt.geom.Area(new java.awt.Rectangle(0, 0, getWidth(), getHeight()));
+      excludeIfShowing(clip, discRef);
+      excludeIfShowing(clip, settingsCardRef);
+      g.setClip(clip);
       switch (mode) {
         case SNOW: paintSnow(g); break;
         case OCEAN: paintOcean(g); break;
@@ -2150,18 +2273,35 @@ public final class CDPlayer extends JFrame {
     private static final Color OCEAN_BUBBLE_FILL = new Color(210, 245, 250, 60);
     private static final Color OCEAN_BUBBLE_STROKE = new Color(255, 255, 255, 140);
     private static final BasicStroke OCEAN_STROKE = new BasicStroke(1f);
+    // The light-band sweep's shape (transparent -> translucent -> transparent, left to right) never changes
+    // frame to frame, only its screen position does, and it doesn't vary vertically at all — so instead of
+    // recomputing a full-height GradientPaint fill (a per-pixel interpolation over up to ~180 x 800 = 144,000
+    // pixels, on every one of the ~28 frames/sec this paints, measured as the dominant cost of the OCEAN theme —
+    // roughly 4x a particle-only theme like SNOW), it's pre-rendered once into a 1px-tall image and stretched
+    // vertically via drawImage, which is a much cheaper blit than recomputing the gradient every frame.
+    private static final BufferedImage BAND_IMAGE = buildBandImage();
+    private static BufferedImage buildBandImage() {
+      Color transparent = new Color(255, 255, 255, 0), peak = new Color(255, 255, 255, 35);
+      BufferedImage image = new BufferedImage(180, 1, BufferedImage.TYPE_INT_ARGB);
+      Graphics2D bg = image.createGraphics();
+      bg.setPaint(new java.awt.LinearGradientPaint(0, 0, 180, 0, new float[] { 0f, 0.5f, 1f }, new Color[] { transparent, peak, transparent }));
+      bg.fillRect(0, 0, 180, 1);
+      bg.dispose();
+      return image;
+    }
     private void paintOcean(Graphics2D g) {
       int w = Math.max(1, getWidth()), h = Math.max(1, getHeight());
-      // a soft light band sweeps across the water periodically, built from two abutting gradients (fade-in then fade-out)
+      // a soft light band sweeps across the water periodically
       double period = 6.0;
       double t = (clock % period) / period;
       float bandCenter = (float) (t * (w + 300) - 150);
-      Graphics2D sg = (Graphics2D) g.create();
-      sg.setPaint(new GradientPaint(bandCenter - 90, 0, new Color(255, 255, 255, 0), bandCenter, 0, new Color(255, 255, 255, 35)));
-      sg.fillRect((int) (bandCenter - 90), 0, 90, h);
-      sg.setPaint(new GradientPaint(bandCenter, 0, new Color(255, 255, 255, 35), bandCenter + 90, 0, new Color(255, 255, 255, 0)));
-      sg.fillRect((int) bandCenter, 0, 90, h);
-      sg.dispose();
+      // Capped rather than stretched to the full (possibly fullscreen, possibly 5K+) window height: this blit's
+      // cost scales with its destination area regardless of source resolution, and it's the one part of the
+      // OCEAN theme whose cost keeps scaling with window size even after the disc-bounds fix (measured 0.87ms
+      // windowed vs 2.35ms at a 5K fullscreen resolution) — every other theme's particle draws stay cheap
+      // regardless of window size since each particle's own size is small and fixed. The sweep is still full
+      // height on any realistic window/display; it just stops growing past a generous ceiling.
+      g.drawImage(BAND_IMAGE, (int) (bandCenter - 90), 0, 180, Math.min(h, 1000), null);
       // fill and stroke colors are constant across every bubble, so set them once instead of per-particle
       g.setStroke(OCEAN_STROKE);
       for (int i = 0; i < PARTICLE_COUNT; i++) {
@@ -2233,7 +2373,19 @@ public final class CDPlayer extends JFrame {
 
   private static final class DiscView extends JPanel {
     private double angle; private boolean spinning; private boolean lookingUp; private BufferedImage cover; private final Timer motion = new Timer(16, e -> { angle += .045; repaint(); });
-    DiscView() { setOpaque(false); setPreferredSize(new Dimension(480, 480)); }
+    // maximumSize matters here, not just preferredSize: the drawn disc itself is capped at 300px (see side=
+    // Math.min(300, ...) in paintComponent below), but GridBagLayout's fill=BOTH + weightx/weighty=1 on this
+    // column otherwise stretches the *component's actual bounds* to fill all available space in its cell —
+    // measured growing from 231x611 in a windowed layout to 1923x2671 at a 5K fullscreen resolution. Since the
+    // disc spins on a 16ms Timer while playing, every repaint() marks that entire (non-opaque) component's
+    // bounds dirty, forcing the opaque background panel beneath it to redraw across that whole area each tick —
+    // over 5 million pixels/frame at 5K vs ~140K windowed, a ~36x increase, regardless of which theme is active.
+    // Capping maximumSize keeps the dirty rectangle bounded to roughly what's actually drawn.
+    // minimumSize matters as much as maximumSize now that the disc's grid cell uses fill=NONE (see createContent):
+    // GridBagLayout will compress even a fill=NONE component below its preferred size when the container is
+    // tighter than the sum of every column's preferred size, and with no floor that shrank the disc to as little
+    // as 10x10 at the app's default 1120x820 window — a visual regression, not just wasted layout space.
+    DiscView() { setOpaque(false); setMinimumSize(new Dimension(260, 260)); setPreferredSize(new Dimension(480, 480)); setMaximumSize(new Dimension(480, 480)); }
     void setSpinning(boolean value) { spinning = value; if (value) motion.start(); else motion.stop(); repaint(); }
     void setCover(BufferedImage image) { cover = image; repaint(); }
     void setLookingUp(boolean value) { lookingUp = value; repaint(); }
