@@ -93,7 +93,6 @@ public final class CDPlayer extends JFrame {
   private final ModeIconButton repeatButton = new ModeIconButton(Glyph.REPEAT, "Repeat");
   private final JButton clearQueueButton = textButton("CLEAR QUEUE");
   private final JButton themeButton = textButton(THEMES[0].name);
-  private final JLabel brandLabel = new JLabel("by kizarka");
   private final JLabel nowPlayingLabel = new JLabel("NOW PLAYING");
   private final JLabel queueInfo = label("QUEUE EMPTY", 10, MUTED);
   private final JLabel queueNext = label("DROP SONGS OR A FOLDER TO BUILD A QUEUE", 9, MUTED);
@@ -368,6 +367,11 @@ public final class CDPlayer extends JFrame {
     buttonRow.setOpaque(false); buttonRow.setAlignmentX(Component.LEFT_ALIGNMENT); buttonRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
     buttonRow.add(close);
     card.add(buttonRow);
+    card.add(javax.swing.Box.createVerticalStrut(18));
+    JPanel githubRow = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0));
+    githubRow.setOpaque(false); githubRow.setAlignmentX(Component.LEFT_ALIGNMENT); githubRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
+    githubRow.add(new GitHubLinkButton("Kizarov3"));
+    card.add(githubRow);
     return card;
   }
   /** Applies the mono toggle to the live player (takes effect within ~20ms, on the pump thread's next chunk) and persists the choice for the next track load. */
@@ -454,13 +458,7 @@ public final class CDPlayer extends JFrame {
     constraints.gridx = 1; constraints.weightx = 1.05; constraints.insets = new Insets(36, 0, 20, 0); body.add(playerPanel(), constraints);
     root.add(body, BorderLayout.CENTER);
     JLabel hint = label("DROP WAV · AIFF · AU · FLAC · M4A · MP3 — SPACE/K PLAY · J/L PREV/NEXT · ←/→ SKIP 15S · F FULLSCREEN · ESC EXIT", 10, new Color(120, 122, 126));
-    hint.setHorizontalAlignment(SwingConstants.CENTER);
-    JPanel bottomBar = new JPanel(new BorderLayout()); bottomBar.setOpaque(false);
-    bottomBar.setBorder(BorderFactory.createEmptyBorder(18, 0, 0, 0));
-    bottomBar.add(hint, BorderLayout.CENTER);
-    brandLabel.setFont(new Font("SansSerif", Font.PLAIN | Font.ITALIC, 10)); brandLabel.setForeground(new Color(80, 82, 86));
-    bottomBar.add(brandLabel, BorderLayout.EAST);
-    root.add(bottomBar, BorderLayout.SOUTH);
+    hint.setHorizontalAlignment(SwingConstants.CENTER); hint.setBorder(BorderFactory.createEmptyBorder(18, 0, 0, 0)); root.add(hint, BorderLayout.SOUTH);
     return root;
   }
 
@@ -491,19 +489,36 @@ public final class CDPlayer extends JFrame {
     panel.add(progress);
     JPanel times = new JPanel(new BorderLayout()); times.setOpaque(false); times.setMaximumSize(new Dimension(Integer.MAX_VALUE, 16)); elapsed.setFont(new Font("SansSerif", Font.PLAIN, 11)); length.setFont(new Font("SansSerif", Font.PLAIN, 11)); times.add(elapsed, BorderLayout.WEST); times.add(length, BorderLayout.EAST); panel.add(times);
     panel.add(javax.swing.Box.createVerticalStrut(28));
-    JPanel controls = new JPanel(); controls.setOpaque(false); controls.setLayout(new javax.swing.BoxLayout(controls, javax.swing.BoxLayout.X_AXIS)); controls.setAlignmentX(Component.LEFT_ALIGNMENT);
-    JButton skipBack = roundButton(Glyph.SKIP_BACK_15, 36, false); skipBack.setToolTipText("Back 15 seconds"); skipBack.addActionListener(e -> seek(-15)); controls.add(skipBack); controls.add(javax.swing.Box.createHorizontalStrut(10));
-    JButton back = roundButton(Glyph.PREVIOUS_TRACK, 44, false); back.setToolTipText("Previous track"); back.addActionListener(e -> previousTrack()); controls.add(back); controls.add(javax.swing.Box.createHorizontalStrut(16));
-    play.addActionListener(e -> toggle()); controls.add(play); controls.add(javax.swing.Box.createHorizontalStrut(16));
-    JButton forward = roundButton(Glyph.NEXT_TRACK, 44, false); forward.setToolTipText("Next track"); forward.addActionListener(e -> nextTrack()); controls.add(forward); controls.add(javax.swing.Box.createHorizontalStrut(10));
-    JButton skipForward = roundButton(Glyph.SKIP_FORWARD_15, 36, false); skipForward.setToolTipText("Forward 15 seconds"); skipForward.addActionListener(e -> seek(15)); controls.add(skipForward); controls.add(javax.swing.Box.createHorizontalGlue());
-    JButton load = textButton("LOAD A TRACK  +"); load.addActionListener(e -> choose()); controls.add(load); panel.add(controls);
+    JPanel transportCluster = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0)); transportCluster.setOpaque(false);
+    JButton skipBack = roundButton(Glyph.SKIP_BACK_15, 36, false); skipBack.setToolTipText("Back 15 seconds"); skipBack.addActionListener(e -> seek(-15)); transportCluster.add(skipBack); transportCluster.add(javax.swing.Box.createHorizontalStrut(10));
+    JButton back = roundButton(Glyph.PREVIOUS_TRACK, 44, false); back.setToolTipText("Previous track"); back.addActionListener(e -> previousTrack()); transportCluster.add(back); transportCluster.add(javax.swing.Box.createHorizontalStrut(16));
+    play.addActionListener(e -> toggle()); transportCluster.add(play); transportCluster.add(javax.swing.Box.createHorizontalStrut(16));
+    JButton forward = roundButton(Glyph.NEXT_TRACK, 44, false); forward.setToolTipText("Next track"); forward.addActionListener(e -> nextTrack()); transportCluster.add(forward); transportCluster.add(javax.swing.Box.createHorizontalStrut(10));
+    JButton skipForward = roundButton(Glyph.SKIP_FORWARD_15, 36, false); skipForward.setToolTipText("Forward 15 seconds"); skipForward.addActionListener(e -> seek(15)); transportCluster.add(skipForward);
+    JButton load = textButton("LOAD A TRACK  +"); load.addActionListener(e -> choose());
+    // Both trailing buttons (load / clear queue) reserve the same width, so the transport cluster and the
+    // shuffle/repeat cluster below — each centered in the space left of its own trailing button — land on the
+    // exact same x position instead of merely looking "roughly centered" and drifting apart on resize.
+    int trailingWidth = Math.max(load.getPreferredSize().width, clearQueueButton.getPreferredSize().width);
+    JPanel controls = new JPanel(new BorderLayout()); controls.setOpaque(false); controls.setAlignmentX(Component.LEFT_ALIGNMENT);
+    controls.setMaximumSize(new Dimension(Integer.MAX_VALUE, 68)); // BorderLayout reports an unbounded max size otherwise, letting this row swallow vertical space meant for the rows below
+    controls.add(transportCluster, BorderLayout.CENTER);
+    JPanel loadWrap = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0)); loadWrap.setOpaque(false);
+    loadWrap.setPreferredSize(new Dimension(trailingWidth, 1)); loadWrap.add(load);
+    controls.add(loadWrap, BorderLayout.EAST);
+    panel.add(controls);
     panel.add(javax.swing.Box.createVerticalStrut(26));
-    JPanel modes = new JPanel(); modes.setOpaque(false); modes.setAlignmentX(Component.LEFT_ALIGNMENT); modes.setLayout(new javax.swing.BoxLayout(modes, javax.swing.BoxLayout.X_AXIS));
-    modes.add(javax.swing.Box.createHorizontalStrut(92));
-    shuffleButton.addActionListener(e -> { shuffle = !shuffle; shuffleButton.setOn(shuffle); updateQueueUI(); }); modes.add(shuffleButton); modes.add(javax.swing.Box.createHorizontalStrut(20));
-    repeatButton.addActionListener(e -> { repeat = !repeat; repeatButton.setOn(repeat); updateQueueUI(); }); modes.add(repeatButton); modes.add(javax.swing.Box.createHorizontalGlue());
-    clearQueueButton.addActionListener(e -> clearQueue()); modes.add(clearQueueButton); panel.add(modes);
+    JPanel modesCluster = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0)); modesCluster.setOpaque(false);
+    shuffleButton.addActionListener(e -> { shuffle = !shuffle; shuffleButton.setOn(shuffle); shuffleNextCacheIndex = Integer.MIN_VALUE; updateQueueUI(); }); modesCluster.add(shuffleButton); modesCluster.add(javax.swing.Box.createHorizontalStrut(20));
+    repeatButton.addActionListener(e -> { repeat = !repeat; repeatButton.setOn(repeat); updateQueueUI(); }); modesCluster.add(repeatButton);
+    clearQueueButton.addActionListener(e -> clearQueue());
+    JPanel modes = new JPanel(new BorderLayout()); modes.setOpaque(false); modes.setAlignmentX(Component.LEFT_ALIGNMENT);
+    modes.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40)); // see controls' setMaximumSize above
+    modes.add(modesCluster, BorderLayout.CENTER);
+    JPanel clearWrap = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0)); clearWrap.setOpaque(false);
+    clearWrap.setPreferredSize(new Dimension(trailingWidth, 1)); clearWrap.add(clearQueueButton);
+    modes.add(clearWrap, BorderLayout.EAST);
+    panel.add(modes);
     panel.add(javax.swing.Box.createVerticalStrut(18));
     // Crossfade now lives in the Settings dialog (see buildSettingsPanel) — it's a set-once preference, not
     // something adjusted every session, so it doesn't need permanent real estate on the main screen.
@@ -590,8 +605,10 @@ public final class CDPlayer extends JFrame {
       return;
     }
     queueInfo.setText("QUEUE " + (queueIndex + 1) + " / " + queue.size() + (shuffle ? " · SHUFFLED" : ""));
+    // trackFinished() loops the current track whenever repeat is on, regardless of queue position — so that (not
+    // whatever nextIndex() would return) is what actually plays next, and must take priority in this label.
     int next = nextIndex();
-    queueNext.setText(next >= 0 && next != queueIndex ? "UP NEXT · " + queueDisplay(queue.get(next)) : (repeat ? "REPEATING THIS TRACK" : "END OF QUEUE"));
+    queueNext.setText(repeat ? "REPEATING THIS TRACK" : (next >= 0 && next != queueIndex ? "UP NEXT · " + queueDisplay(queue.get(next)) : "END OF QUEUE"));
     // rebuild the full queue list UI
     queueList.removeAll();
     for (int i = 0; i < queue.size(); i++) {
@@ -654,7 +671,26 @@ public final class CDPlayer extends JFrame {
       row.cards.show(row.eastPanel, "duration");
     }
   }
-  private int nextIndex() { if (queue.isEmpty()) return -1; if (shuffle && queue.size() > 1) { int next; do { next = ThreadLocalRandom.current().nextInt(queue.size()); } while (next == queueIndex); return next; } return queueIndex + 1 < queue.size() ? queueIndex + 1 : -1; }
+  /**
+   * Which queue index plays after the current one. For shuffle, the random pick is cached (keyed on the current
+   * queueIndex + queue size) rather than re-rolled on every call — otherwise the "UP NEXT" label shown by
+   * updateQueueUI() and the track nextTrack()/tick() actually jump to would be two independent random draws,
+   * so "up next" would routinely lie about what plays next. The cache naturally invalidates itself once the
+   * queue actually advances (new queueIndex) or is mutated (new size), which is exactly when a fresh pick is due.
+   */
+  private int shuffleNextCacheIndex = Integer.MIN_VALUE, shuffleNextCacheSize = -1, shuffleNextCacheValue = -1;
+  private int nextIndex() {
+    if (queue.isEmpty()) return -1;
+    if (shuffle && queue.size() > 1) {
+      if (shuffleNextCacheIndex != queueIndex || shuffleNextCacheSize != queue.size()) {
+        int next;
+        do { next = ThreadLocalRandom.current().nextInt(queue.size()); } while (next == queueIndex);
+        shuffleNextCacheIndex = queueIndex; shuffleNextCacheSize = queue.size(); shuffleNextCacheValue = next;
+      }
+      return shuffleNextCacheValue;
+    }
+    return queueIndex + 1 < queue.size() ? queueIndex + 1 : -1;
+  }
   private static String displayName(File file) { return file.getName().replaceFirst("\\.[^.]+$", "").replace('_', ' ').replace('-', ' '); }
 
   private SongDetails getSongDetails(File file) {
@@ -1205,6 +1241,46 @@ public final class CDPlayer extends JFrame {
       g.setColor(on ? BG : TEXT);
       if (glyph == Glyph.SHUFFLE) drawShuffleGlyph(g, w, h); else drawRepeatGlyph(g, w, h);
       g.dispose();
+    }
+  }
+
+  /** A small "icon + username" link that opens the GitHub profile in the system browser — the URL itself is never shown, just the icon and handle. */
+  private static final class GitHubLinkButton extends JPanel {
+    private boolean hovered;
+    GitHubLinkButton(String username) {
+      super(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 6, 0));
+      setOpaque(false);
+      JLabel icon = new JLabel() {
+        protected void paintComponent(Graphics raw) {
+          Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+          g.setColor(hovered ? TEXT : MUTED);
+          drawCatGlyph(g, getWidth(), getHeight());
+          g.dispose();
+        }
+      };
+      icon.setPreferredSize(new Dimension(15, 15));
+      JLabel name = new JLabel(username);
+      name.setFont(new Font("SansSerif", Font.BOLD, 11));
+      name.setForeground(MUTED);
+      add(icon); add(name);
+      setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+      setToolTipText("Open GitHub profile");
+      addMouseListener(new java.awt.event.MouseAdapter() {
+        public void mouseClicked(java.awt.event.MouseEvent e) {
+          try { java.awt.Desktop.getDesktop().browse(new java.net.URI("https://github.com/" + username)); } catch (Exception ignored) { }
+        }
+        public void mouseEntered(java.awt.event.MouseEvent e) { hovered = true; name.setForeground(TEXT); icon.repaint(); }
+        public void mouseExited(java.awt.event.MouseEvent e) { hovered = false; name.setForeground(MUTED); icon.repaint(); }
+      });
+    }
+    /** A minimal, generic cat-silhouette glyph (round head, two ear triangles) used to suggest "GitHub" alongside the username, without reproducing GitHub's own mark. */
+    private static void drawCatGlyph(Graphics2D g, int w, int h) {
+      double cx = w / 2.0, cy = h * 0.58;
+      double r = w * 0.34;
+      int earH = (int) (h * 0.30);
+      g.fillPolygon(new int[]{ (int) (cx - r * 0.9), (int) (cx - r * 0.15), (int) (cx - r * 1.05) }, new int[]{ (int) (cy - r * 0.55), (int) (cy - r * 0.55), (int) (cy - r * 0.55 - earH) }, 3);
+      g.fillPolygon(new int[]{ (int) (cx + r * 0.9), (int) (cx + r * 0.15), (int) (cx + r * 1.05) }, new int[]{ (int) (cy - r * 0.55), (int) (cy - r * 0.55), (int) (cy - r * 0.55 - earH) }, 3);
+      g.fillOval((int) (cx - r), (int) (cy - r), (int) (r * 2), (int) (r * 2));
     }
   }
 
