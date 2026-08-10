@@ -5,9 +5,10 @@ CDPlayer is a Java desktop app that recreates the tactile feel of a physical CD 
 ## About
 
 - Built with plain Java and native Swing/AWT — no external UI framework, single self-contained app
-- Plays local audio files, with FFmpeg handling the formats Java can't decode natively
-- Full queue management: drag-and-drop, shuffle, repeat, crossfade, volume, and per-track removal — queue is saved automatically and restored next launch
+- Plays local audio files through a custom low-latency streaming engine, with FFmpeg handling the formats Java can't decode natively
+- Full queue management: drag-and-drop, shuffle, repeat, crossfade, volume, mono downmix, and per-track removal — queue is saved automatically and restored next launch
 - Nine built-in animated themes, each with its own falling/drifting particle effect and a matching reactive visualizer
+- True fullscreen, and a dedicated Settings dialog for theme/crossfade/mono
 - Automatic metadata and album art, with an online lookup fallback when a file has none
 - Works on Windows, macOS, and Linux
 
@@ -28,10 +29,13 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 
 **Playback**
 - Native playback for WAV, AIFF, and AU; FFmpeg-backed playback for MP3, FLAC, and M4A
-- Drag and drop individual files or whole folders (recursively) to build a queue
+- Custom low-latency streaming audio engine — volume changes and seeks apply in well under 100ms, not the multi-second lag you'd get from Java's stock `Clip` API
+- Drag and drop individual files or whole folders (recursively) to build a queue, or use **Load a Track** — the file picker remembers the last folder you browsed and reopens there next time
 - Shuffle and repeat modes
-- Adjustable crossfade (0–15s) between tracks using an equal-power fade curve, so the transition doesn't dip in volume
-- Volume slider with live gain control, correctly blended into an in-progress crossfade instead of fighting it
+- Adjustable crossfade (0–15s) using an equal-power fade curve so the transition doesn't dip in volume — only kicks in when the queue naturally advances to the next track, never when you manually pick a different one
+- Volume slider with near-instant gain control, correctly blended into an in-progress crossfade instead of fighting it
+- Mono audio toggle — sums left/right channels together, useful for a single speaker or one earbud
+- True fullscreen (`F` to enter, `Esc` to exit) that hides the OS menu bar/dock, not just a resized window
 - Keyboard shortcuts: `Space` / `K` play-pause, `J` / `L` previous/next track, `←` / `→` skip 15 seconds
 
 **Queue**
@@ -46,8 +50,12 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - Metadata display (artist, title, album) read from the file's tags, with the filename as a fallback
 - Embedded album art extraction, with automatic iTunes/Deezer cover lookup when a file has none
 
+**Settings**
+- A dedicated Settings dialog (opened from the header) holds the Theme picker, Crossfade slider, and Mono Audio toggle, keeping the main screen focused on playback
+- Fully live: switching themes updates the dialog's own colors immediately, even while it's open
+
 **Themes**
-- Nine built-in themes — RED, BLUE, SUNSET, FOREST, GALAXY, OCEAN, MATRIX, AUTUMN, SNOW — with a smooth animated color transition when switching
+- Nine built-in themes — RED, BLUE, SUNSET, FOREST, GALAXY, OCEAN, MATRIX, AUTUMN, SNOW — each with a genuinely distinct palette, and a smooth animated color transition when switching
 - Five of them replace the plain bar visualizer with a themed, audio-reactive shape driven by the exact same levels the bars use:
   - **SNOW** — gently falling snow across the whole window; visualizer becomes a small pine tree whose ornament lights pulse with the music
   - **GALAXY** — a twinkling starfield with the occasional shooting star; visualizer becomes a 5-star constellation that brightens with the beat
@@ -129,6 +137,8 @@ java -cp out com.cdplayer.CDPlayer
 | `L` | Next track |
 | `←` | Skip back 15 seconds |
 | `→` | Skip forward 15 seconds |
+| `F` | Toggle fullscreen |
+| `Esc` | Exit fullscreen |
 
 ## License
 
