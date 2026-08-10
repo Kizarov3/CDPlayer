@@ -2270,47 +2270,17 @@ public final class CDPlayer extends JFrame {
       for (int i = 0; i < LEAF_PALETTE.length; i++) { Color c = LEAF_PALETTE[i]; out[i] = new Color(c.getRed(), c.getGreen(), c.getBlue(), 210); }
       return out;
     }
-    private static final Color OCEAN_BUBBLE_FILL = new Color(210, 245, 250, 60);
-    private static final Color OCEAN_BUBBLE_STROKE = new Color(255, 255, 255, 140);
-    private static final BasicStroke OCEAN_STROKE = new BasicStroke(1f);
-    // The light-band sweep's shape (transparent -> translucent -> transparent, left to right) never changes
-    // frame to frame, only its screen position does, and it doesn't vary vertically at all — so instead of
-    // recomputing a full-height GradientPaint fill (a per-pixel interpolation over up to ~180 x 800 = 144,000
-    // pixels, on every one of the ~28 frames/sec this paints, measured as the dominant cost of the OCEAN theme —
-    // roughly 4x a particle-only theme like SNOW), it's pre-rendered once into a 1px-tall image and stretched
-    // vertically via drawImage, which is a much cheaper blit than recomputing the gradient every frame.
-    private static final BufferedImage BAND_IMAGE = buildBandImage();
-    private static BufferedImage buildBandImage() {
-      Color transparent = new Color(255, 255, 255, 0), peak = new Color(255, 255, 255, 35);
-      BufferedImage image = new BufferedImage(180, 1, BufferedImage.TYPE_INT_ARGB);
-      Graphics2D bg = image.createGraphics();
-      bg.setPaint(new java.awt.LinearGradientPaint(0, 0, 180, 0, new float[] { 0f, 0.5f, 1f }, new Color[] { transparent, peak, transparent }));
-      bg.fillRect(0, 0, 180, 1);
-      bg.dispose();
-      return image;
-    }
+    // A single constant fill, no outline stroke and no light-band sweep — the previous version's per-bubble
+    // fillOval+drawOval pair (two draw calls, two color switches per particle) plus a full-height gradient blit
+    // that scaled with window size (measured up to 2.35ms at 5K fullscreen) made OCEAN 3-4x more expensive than
+    // every other theme even after that blit was cached as an image. This trades the light-sweep and bubble rim
+    // for the same one-draw-call-per-particle shape SNOW uses, bringing its cost down to the same baseline.
+    private static final Color OCEAN_BUBBLE_FILL = new Color(210, 245, 250, 130);
     private void paintOcean(Graphics2D g) {
-      int w = Math.max(1, getWidth()), h = Math.max(1, getHeight());
-      // a soft light band sweeps across the water periodically
-      double period = 6.0;
-      double t = (clock % period) / period;
-      float bandCenter = (float) (t * (w + 300) - 150);
-      // Capped rather than stretched to the full (possibly fullscreen, possibly 5K+) window height: this blit's
-      // cost scales with its destination area regardless of source resolution, and it's the one part of the
-      // OCEAN theme whose cost keeps scaling with window size even after the disc-bounds fix (measured 0.87ms
-      // windowed vs 2.35ms at a 5K fullscreen resolution) — every other theme's particle draws stay cheap
-      // regardless of window size since each particle's own size is small and fixed. The sweep is still full
-      // height on any realistic window/display; it just stops growing past a generous ceiling.
-      g.drawImage(BAND_IMAGE, (int) (bandCenter - 90), 0, 180, Math.min(h, 1000), null);
-      // fill and stroke colors are constant across every bubble, so set them once instead of per-particle
-      g.setStroke(OCEAN_STROKE);
+      g.setColor(OCEAN_BUBBLE_FILL);
       for (int i = 0; i < PARTICLE_COUNT; i++) {
         double r = size[i];
-        int ix = (int) (x[i] - r), iy = (int) (y[i] - r), d = (int) (r * 2);
-        g.setColor(OCEAN_BUBBLE_FILL);
-        g.fillOval(ix, iy, d, d);
-        g.setColor(OCEAN_BUBBLE_STROKE);
-        g.drawOval(ix, iy, d, d);
+        g.fillOval((int) (x[i] - r), (int) (y[i] - r), (int) (r * 2), (int) (r * 2));
       }
     }
     /**
