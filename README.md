@@ -3,8 +3,8 @@
 CDPlayer is a Java desktop app that recreates the tactile feel of a physical CD player for local audio playback. Load a track, press play, and enjoy a simple, distraction-free music experience without relying on a browser or web app — no accounts, no streaming, no internet required to play a song.
 
 <p align="center">
-  <img src="assets/screenshots/main-red-theme-2.png" width="49%" alt="CDPlayer main window, RED theme, playing a track">
-  <img src="assets/screenshots/main-snow-theme-2.png" width="49%" alt="CDPlayer main window, SNOW theme with falling snow overlay">
+  <img src="assets/screenshots/main-red-theme-3.png" width="49%" alt="CDPlayer main window, RED theme, playing a track">
+  <img src="assets/screenshots/main-snow-theme-3.png" width="49%" alt="CDPlayer main window, SNOW theme with falling snow overlay">
 </p>
 
 ## About
@@ -36,7 +36,7 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - Native playback for WAV, AIFF, and AU; FFmpeg-backed playback for MP3, FLAC, and M4A
 - Custom low-latency streaming audio engine — volume changes and seeks apply in well under 100ms, not the multi-second lag you'd get from Java's stock `Clip` API
 - Drag and drop individual files or whole folders (recursively) to build a queue, or use **Load a Track** — the file picker remembers the last folder you browsed and reopens there next time
-- Shuffle and repeat modes
+- Shuffle and repeat as icon toggles next to the transport controls, with an "Up Next" preview that always reflects what will actually play next (the shuffled pick or the repeated track, not just the next queue slot)
 - Adjustable crossfade (0–15s) using an equal-power fade curve so the transition doesn't dip in volume — only kicks in when the queue naturally advances to the next track, never when you manually pick a different one
 - Volume slider with near-instant gain control, correctly blended into an in-progress crossfade instead of fighting it
 - Mono audio toggle — sums left/right channels together, useful for a single speaker or one earbud
@@ -58,9 +58,10 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 **Settings**
 - A dedicated Settings dialog (opened from the header) holds the Theme picker, Crossfade slider, and Mono Audio toggle, keeping the main screen focused on playback
 - Fully live: switching themes updates the dialog's own colors immediately, even while it's open
+- A GitHub link at the bottom (icon + username) opens the project author's profile in your browser
 
 <p align="center">
-  <img src="assets/screenshots/settings-dialog-2.png" width="70%" alt="CDPlayer Settings dialog showing Theme, Crossfade, and Mono Audio controls">
+  <img src="assets/screenshots/settings-dialog-3.png" width="70%" alt="CDPlayer Settings dialog showing Theme, Crossfade, and Mono Audio controls">
 </p>
 
 **Themes**
