@@ -430,7 +430,7 @@ public final class CDPlayer extends JFrame {
   private void applyThemeColors() {
     status.setForeground(ACCENT); track.setForeground(TEXT); source.setForeground(MUTED);
     elapsed.setForeground(MUTED); length.setForeground(MUTED); queueInfo.setForeground(MUTED); queueNext.setForeground(MUTED);
-    brandLabel.setForeground(TEXT); nowPlayingLabel.setForeground(ACCENT2); crossfadeTitle.setForeground(MUTED); crossfadeValueLabel.setForeground(MUTED);
+    nowPlayingLabel.setForeground(ACCENT2); crossfadeTitle.setForeground(MUTED); crossfadeValueLabel.setForeground(MUTED);
     volumeTitle.setForeground(MUTED); volumeValueLabel.setForeground(MUTED);
   }
 
@@ -454,14 +454,18 @@ public final class CDPlayer extends JFrame {
     constraints.gridx = 1; constraints.weightx = 1.05; constraints.insets = new Insets(36, 0, 20, 0); body.add(playerPanel(), constraints);
     root.add(body, BorderLayout.CENTER);
     JLabel hint = label("DROP WAV · AIFF · AU · FLAC · M4A · MP3 — SPACE/K PLAY · J/L PREV/NEXT · ←/→ SKIP 15S · F FULLSCREEN · ESC EXIT", 10, new Color(120, 122, 126));
-    hint.setHorizontalAlignment(SwingConstants.CENTER); hint.setBorder(BorderFactory.createEmptyBorder(18, 0, 0, 0)); root.add(hint, BorderLayout.SOUTH);
+    hint.setHorizontalAlignment(SwingConstants.CENTER);
+    JPanel bottomBar = new JPanel(new BorderLayout()); bottomBar.setOpaque(false);
+    bottomBar.setBorder(BorderFactory.createEmptyBorder(18, 0, 0, 0));
+    bottomBar.add(hint, BorderLayout.CENTER);
+    brandLabel.setFont(new Font("SansSerif", Font.PLAIN | Font.ITALIC, 10)); brandLabel.setForeground(new Color(80, 82, 86));
+    bottomBar.add(brandLabel, BorderLayout.EAST);
+    root.add(bottomBar, BorderLayout.SOUTH);
     return root;
   }
 
   private JPanel header() {
     JPanel bar = new JPanel(new BorderLayout()); bar.setOpaque(false); bar.setPreferredSize(new Dimension(0, 56));
-    brandLabel.setFont(new Font("SansSerif", Font.BOLD | Font.ITALIC, 20)); brandLabel.setForeground(TEXT);
-    bar.add(brandLabel, BorderLayout.WEST);
     JPanel statusPill = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0)) {
       protected void paintComponent(Graphics raw) { Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON); g.setColor(new Color(0,0,0,90)); g.fillRoundRect(0, 0, getWidth(), getHeight(), 4, 4); g.setColor(new Color(255,255,255,30)); g.setStroke(new BasicStroke(1)); g.drawRoundRect(0, 0, getWidth()-1, getHeight()-1, 4, 4); g.dispose(); super.paintComponent(raw); }
     };
@@ -697,7 +701,7 @@ public final class CDPlayer extends JFrame {
       SongDetails details = inspectSong(file);
       metadataCache.put(file, details);
       String name = details.title;
-      track.setText("<html>" + escape(ellipsize(track, name, 456)) + "</html>"); source.setText("LOCAL AUDIO FILE · " + file.getName().substring(file.getName().lastIndexOf('.') + 1).toUpperCase());
+      setTrackTitle(name); source.setText("LOCAL AUDIO FILE · " + file.getName().substring(file.getName().lastIndexOf('.') + 1).toUpperCase());
       length.setText(format(opened.getMicrosecondLength())); elapsed.setText("0:00"); progress.setValue(0); status.setText("●  TRACK LOADED");
       boolean canLookUp = details.embeddedCover == null && details.title != null && !details.title.trim().isEmpty();
       disc.setCover(details.embeddedCover); disc.setLookingUp(canLookUp);
@@ -880,7 +884,7 @@ public final class CDPlayer extends JFrame {
     queueIndex = -1;
     if (player != null) { StreamPlayer closing = player; player = null; closing.close(); }
     deleteTemporaryAudio();
-    track.setText("Pick a track to get started."); source.setText("YOUR MUSIC LIBRARY");
+    track.setFont(new Font("SansSerif", Font.BOLD, 34)); track.setText("Pick a track to get started."); source.setText("YOUR MUSIC LIBRARY");
     elapsed.setText("0:00"); length.setText("0:00"); progress.setValue(0);
     disc.setCover(null); disc.setLookingUp(false); loadedFile = null; setPlaying(false);
     status.setText(statusMessage);
@@ -1000,6 +1004,20 @@ public final class CDPlayer extends JFrame {
     } catch (Exception ignored) { return 0L; }
   }
   private static String escape(String value) { return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"); }
+  /** Sets the now-playing title, shrinking the font (34pt down to 20pt) to fit long names in the fixed-width label before falling back to an ellipsis, so the box's size never has to change. */
+  private void setTrackTitle(String name) {
+    int maxWidth = 456;
+    int size = 34;
+    Font font = new Font("SansSerif", Font.BOLD, size);
+    java.awt.FontMetrics metrics = track.getFontMetrics(font);
+    while (metrics.stringWidth(name) > maxWidth && size > 20) {
+      size--;
+      font = new Font("SansSerif", Font.BOLD, size);
+      metrics = track.getFontMetrics(font);
+    }
+    track.setFont(font);
+    track.setText("<html>" + escape(ellipsize(track, name, maxWidth)) + "</html>");
+  }
   private static String ellipsize(JLabel label, String text, int maxWidth) {
     java.awt.FontMetrics metrics = label.getFontMetrics(label.getFont());
     if (metrics.stringWidth(text) <= maxWidth) return text;
