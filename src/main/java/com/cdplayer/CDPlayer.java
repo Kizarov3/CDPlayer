@@ -71,7 +71,7 @@ public final class CDPlayer extends JFrame {
     new Theme("OCEAN", new Color(4, 14, 20), new Color(9, 24, 33), new Color(40, 190, 210), new Color(60, 130, 220), new Color(226, 246, 250), new Color(110, 152, 166)),
     new Theme("MATRIX", new Color(4, 8, 5), new Color(9, 15, 10), new Color(64, 230, 120), new Color(140, 255, 170), new Color(214, 250, 224), new Color(96, 140, 108)),
     new Theme("AUTUMN", new Color(20, 12, 8), new Color(34, 21, 14), new Color(224, 122, 40), new Color(200, 60, 46), new Color(250, 236, 220), new Color(168, 132, 108)),
-    new Theme("SNOW", new Color(8, 12, 24), new Color(16, 22, 38), new Color(214, 44, 54), new Color(38, 150, 84), new Color(245, 247, 250), new Color(140, 150, 172)),
+    new Theme("SNOW", new Color(14, 16, 20), new Color(23, 26, 30), new Color(214, 44, 54), new Color(46, 168, 96), new Color(248, 248, 250), new Color(152, 154, 160)),
   };
   private static Color BG = THEMES[0].bg;
   private static Color CARD = THEMES[0].card;
@@ -92,7 +92,7 @@ public final class CDPlayer extends JFrame {
   private final JButton shuffleButton = textButton("SHUFFLE OFF");
   private final JButton repeatButton = textButton("REPEAT OFF");
   private final JButton clearQueueButton = textButton("CLEAR QUEUE");
-  private final JButton themeButton = textButton("THEME: " + THEMES[0].name);
+  private final JButton themeButton = textButton(THEMES[0].name);
   private final JLabel brandLabel = new JLabel("by kizarka");
   private final JLabel nowPlayingLabel = new JLabel("NOW PLAYING");
   private final JLabel queueInfo = label("QUEUE EMPTY", 10, MUTED);
@@ -130,8 +130,9 @@ public final class CDPlayer extends JFrame {
   private static final Pattern DEEZER_COVER = Pattern.compile("\\\"cover_xl\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
   private static final File QUEUE_STATE_FILE = new File(System.getProperty("user.home"), ".cdplayer/queue.txt");
   private static final File ONBOARDING_FLAG_FILE = new File(System.getProperty("user.home"), ".cdplayer/onboarded");
+  private static final File LAST_PATH_FILE = new File(System.getProperty("user.home"), ".cdplayer/lastpath.txt");
   private final JButton settingsButton = textButton("SETTINGS");
-  private final JButton monoButton = textButton("MONO OFF");
+  private final JButton monoButton = textButton("OFF");
   private javax.swing.JDialog settingsDialog;
   private java.awt.Rectangle preFullscreenBounds;
   private boolean fullscreen;
@@ -169,6 +170,9 @@ public final class CDPlayer extends JFrame {
       }
     }));
     bindKeys();
+    // Wired once here rather than inside buildSettingsPanel(), which is rebuilt fresh every time the Settings
+    // dialog opens — attaching it there would stack a duplicate listener on each open.
+    themeButton.addActionListener(e -> showThemeMenu());
     Runtime.getRuntime().addShutdownHook(new Thread(this::saveQueueState, "cdplayer-save-queue"));
     restoreQueueState();
   }
@@ -187,21 +191,25 @@ public final class CDPlayer extends JFrame {
     bindKey(inputMap, actionMap, "ESCAPE", "exitFullscreen", e -> { if (fullscreen) toggleFullscreen(); });
   }
   /**
-   * True borderless fullscreen (not the OS's exclusive-fullscreen mode, which some platforms render through a
-   * different, flickery path): undecorate and resize to the current screen's bounds. Swing requires a Frame to
-   * not be displayable to change setUndecorated(), so this disposes and recreates the native peer — the Java
-   * component tree (and all its listeners) survives that untouched, only the OS window itself is torn down and
-   * rebuilt.
+   * True OS-level exclusive fullscreen via GraphicsDevice, not just resizing to the screen's bounds. Simply
+   * matching the screen's bounds (the earlier approach) leaves a borderless window that's still just a regular
+   * window as far as the OS is concerned — on macOS the menu bar is a system-level overlay that stays on top of
+   * any regular window regardless of its size, so that approach never actually covered it. setFullScreenWindow()
+   * is the real "hide the menu bar/dock (or Windows taskbar) and take over the display" API.
+   * Swing requires a Frame to not be displayable to change setUndecorated(), so this disposes and recreates the
+   * native peer — the Java component tree (and all its listeners) survives that untouched, only the OS window
+   * itself is torn down and rebuilt.
    */
   private void toggleFullscreen() {
+    java.awt.GraphicsDevice device = getGraphicsConfiguration().getDevice();
     if (!fullscreen) {
       preFullscreenBounds = getBounds();
       dispose();
       setUndecorated(true);
-      setBounds(getGraphicsConfiguration().getDevice().getDefaultConfiguration().getBounds());
-      setVisible(true);
+      device.setFullScreenWindow(this);
       fullscreen = true;
     } else {
+      device.setFullScreenWindow(null);
       dispose();
       setUndecorated(false);
       if (preFullscreenBounds != null) setBounds(preFullscreenBounds);
@@ -256,7 +264,7 @@ public final class CDPlayer extends JFrame {
 
     String[] tips = {
       "Drag & drop audio files or a whole folder onto the window to build your queue",
-      "SPACE / K play or pause &middot; J / L previous / next &middot; &larr; / &rarr; skip 15 seconds",
+      "SPACE / K play or pause &middot; J / L previous / next &middot; &larr; / &rarr; skip 15 seconds &middot; F fullscreen",
       "Click THEME to explore nine animated themes, each with its own audio visualizer",
       "FFmpeg is required for MP3, FLAC, and M4A playback, and for reading cover art / tags",
       "Your queue is saved automatically and restored the next time you open the app",
@@ -314,6 +322,17 @@ public final class CDPlayer extends JFrame {
     card.add(title);
     card.add(javax.swing.Box.createVerticalStrut(20));
 
+    // Theme picker — relocated here from the header; showThemeMenu() just opens the same popup as before,
+    // now anchored to themeButton wherever it currently lives.
+    JPanel themeRow = new JPanel(new BorderLayout()); themeRow.setOpaque(false); themeRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+    themeRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+    JLabel themeLabel = label("THEME", 10, MUTED);
+    themeRow.add(themeLabel, BorderLayout.WEST);
+    JPanel themeButtonWrap = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0)); themeButtonWrap.setOpaque(false); themeButtonWrap.add(themeButton);
+    themeRow.add(themeButtonWrap, BorderLayout.EAST);
+    card.add(themeRow);
+    card.add(javax.swing.Box.createVerticalStrut(22));
+
     // Crossfade slider — relocated here from the main screen, same fields/behavior as before.
     JPanel crossfadeRow = new JPanel(); crossfadeRow.setOpaque(false); crossfadeRow.setAlignmentX(Component.LEFT_ALIGNMENT); crossfadeRow.setLayout(new javax.swing.BoxLayout(crossfadeRow, javax.swing.BoxLayout.X_AXIS));
     crossfadeTitle.setFont(new Font("SansSerif", Font.BOLD, 10)); crossfadeTitle.setForeground(MUTED);
@@ -354,7 +373,7 @@ public final class CDPlayer extends JFrame {
   /** Applies the mono toggle to the live player (takes effect within ~20ms, on the pump thread's next chunk) and persists the choice for the next track load. */
   private void setMonoAudio(boolean value) {
     monoAudio = value;
-    monoButton.setText(value ? "MONO ON" : "MONO OFF");
+    monoButton.setText(value ? "ON" : "OFF"); // the row's own "MONO AUDIO" label already gives context, so the button itself is just a plain on/off toggle
     if (player != null) player.setMono(value);
   }
 
@@ -379,7 +398,7 @@ public final class CDPlayer extends JFrame {
     Theme from = THEMES[currentThemeIndex];
     Theme to = THEMES[index];
     currentThemeIndex = index;
-    themeButton.setText("THEME: " + to.name);
+    themeButton.setText(to.name); // the settings row's own "THEME" label already gives context
     themeOverlay.setMode(ThemeOverlay.Mode.forTheme(to.name));
     visualizer.setMode(VisualizerBars.Mode.forTheme(to.name));
     Color[] fromColors = { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED };
@@ -394,9 +413,18 @@ public final class CDPlayer extends JFrame {
       ACCENT2 = lerp(fromColors[3], toColors[3], t); TEXT = lerp(fromColors[4], toColors[4], t); MUTED = lerp(fromColors[5], toColors[5], t);
       applyThemeColors();
       getContentPane().repaint();
+      refreshSettingsDialogIfOpen(); // so an already-open Settings dialog fades along with the main window, not just on next open
       if (t >= 1f) { ((Timer) e.getSource()).stop(); updateQueueUI(); }
     });
     themeAnim.start();
+  }
+  /** Rebuilds the Settings dialog's content in place if it's currently open, so it tracks the live BG/CARD/ACCENT/etc. colors during a theme transition instead of sitting frozen on whatever they were when it was opened. */
+  private void refreshSettingsDialogIfOpen() {
+    if (settingsDialog == null || !settingsDialog.isVisible()) return;
+    settingsDialog.setContentPane(buildSettingsPanel(settingsDialog));
+    settingsDialog.getRootPane().setBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 40), 1));
+    settingsDialog.revalidate();
+    settingsDialog.repaint();
   }
 
   private void applyThemeColors() {
@@ -425,7 +453,7 @@ public final class CDPlayer extends JFrame {
     constraints.gridx = 0; constraints.weightx = 1; constraints.insets = new Insets(10, 0, 10, 44); body.add(disc, constraints);
     constraints.gridx = 1; constraints.weightx = 1.05; constraints.insets = new Insets(36, 0, 20, 0); body.add(playerPanel(), constraints);
     root.add(body, BorderLayout.CENTER);
-    JLabel hint = label("DROP WAV · AIFF · AU · FLAC · M4A · MP3 — SPACE/K PLAY · J/L PREV/NEXT · ←/→ SKIP 15S", 10, new Color(120, 122, 126));
+    JLabel hint = label("DROP WAV · AIFF · AU · FLAC · M4A · MP3 — SPACE/K PLAY · J/L PREV/NEXT · ←/→ SKIP 15S · F FULLSCREEN · ESC EXIT", 10, new Color(120, 122, 126));
     hint.setHorizontalAlignment(SwingConstants.CENTER); hint.setBorder(BorderFactory.createEmptyBorder(18, 0, 0, 0)); root.add(hint, BorderLayout.SOUTH);
     return root;
   }
@@ -440,9 +468,8 @@ public final class CDPlayer extends JFrame {
     statusPill.setOpaque(false); statusPill.setBorder(BorderFactory.createEmptyBorder(6, 16, 6, 16)); statusPill.add(status);
     JPanel center = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0)); center.setOpaque(false); center.add(statusPill);
     bar.add(center, BorderLayout.CENTER);
-    themeButton.addActionListener(e -> showThemeMenu());
     settingsButton.addActionListener(e -> showSettingsDialog());
-    JPanel east = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 8, 0)); east.setOpaque(false); east.add(settingsButton); east.add(themeButton);
+    JPanel east = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 8, 0)); east.setOpaque(false); east.add(settingsButton);
     bar.add(east, BorderLayout.EAST);
     return bar;
   }
@@ -512,7 +539,35 @@ public final class CDPlayer extends JFrame {
     return panel;
   }
 
-  private void choose() { JFileChooser chooser = new JFileChooser(); chooser.setMultiSelectionEnabled(true); chooser.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES); chooser.setFileFilter(new FileNameExtensionFilter("Audio files (WAV, AIFF, AU, FLAC, M4A, MP3)", "wav", "wave", "aif", "aiff", "au", "flac", "m4a", "mp3")); if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) { File[] selected = chooser.getSelectedFiles(); if (selected.length == 0) selected = new File[] { chooser.getSelectedFile() }; addToQueue(java.util.Arrays.asList(selected)); } }
+  private void choose() {
+    JFileChooser chooser = new JFileChooser();
+    chooser.setMultiSelectionEnabled(true);
+    chooser.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
+    chooser.setFileFilter(new FileNameExtensionFilter("Audio files (WAV, AIFF, AU, FLAC, M4A, MP3)", "wav", "wave", "aif", "aiff", "au", "flac", "m4a", "mp3"));
+    File lastDir = readLastPath();
+    if (lastDir != null && lastDir.isDirectory()) chooser.setCurrentDirectory(lastDir);
+    if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+      File[] selected = chooser.getSelectedFiles();
+      if (selected.length == 0) selected = new File[] { chooser.getSelectedFile() };
+      addToQueue(java.util.Arrays.asList(selected));
+      saveLastPath(chooser.getCurrentDirectory()); // wherever the chooser was browsing when the user picked, not just the file's own folder
+    }
+  }
+  private static File readLastPath() {
+    try {
+      if (!LAST_PATH_FILE.isFile()) return null;
+      String path = new String(java.nio.file.Files.readAllBytes(LAST_PATH_FILE.toPath()), StandardCharsets.UTF_8).trim();
+      return path.isEmpty() ? null : new File(path);
+    } catch (Exception ignored) { return null; }
+  }
+  private static void saveLastPath(File directory) {
+    try {
+      if (directory == null) return;
+      File parent = LAST_PATH_FILE.getParentFile();
+      if (parent != null) parent.mkdirs();
+      java.nio.file.Files.write(LAST_PATH_FILE.toPath(), directory.getAbsolutePath().getBytes(StandardCharsets.UTF_8));
+    } catch (Exception ignored) { /* best-effort; worst case the chooser just opens to the default location next time */ }
+  }
   private void addToQueue(List<File> dropped) {
     List<File> songs = new ArrayList<File>(); for (File item : dropped) collectAudio(item, songs); Collections.sort(songs, (left, right) -> left.getName().compareToIgnoreCase(right.getName()));
     if (songs.isEmpty()) { status.setText("●  NO SUPPORTED AUDIO FOUND"); return; }
