@@ -42,8 +42,9 @@ import javax.imageio.ImageIO;
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.Clip;
-import javax.sound.sampled.LineEvent;
+import javax.sound.sampled.DataLine;
+import javax.sound.sampled.LineUnavailableException;
+import javax.sound.sampled.SourceDataLine;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JFileChooser;
@@ -114,13 +115,14 @@ public final class CDPlayer extends JFrame {
   private int hoveredQueueIndex = -1;
   private boolean shuffle;
   private boolean repeat;
-  private Clip clip;
+  private StreamPlayer player;
   private File loadedFile;
   private File temporaryAudio;
   private boolean adjusting;
   private boolean crossfadeStarted;
   private boolean crossfading;
   private float volume = 1f;
+  private boolean monoAudio;
   private byte[] rawAudio;
   private AudioFormat audioFormat;
   private final Timer clock = new Timer(70, this::tick);
@@ -128,6 +130,11 @@ public final class CDPlayer extends JFrame {
   private static final Pattern DEEZER_COVER = Pattern.compile("\\\"cover_xl\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
   private static final File QUEUE_STATE_FILE = new File(System.getProperty("user.home"), ".cdplayer/queue.txt");
   private static final File ONBOARDING_FLAG_FILE = new File(System.getProperty("user.home"), ".cdplayer/onboarded");
+  private final JButton settingsButton = textButton("SETTINGS");
+  private final JButton monoButton = textButton("MONO OFF");
+  private javax.swing.JDialog settingsDialog;
+  private java.awt.Rectangle preFullscreenBounds;
+  private boolean fullscreen;
 
   public static void main(String[] args) {
     SwingUtilities.invokeLater(() -> {
@@ -176,6 +183,32 @@ public final class CDPlayer extends JFrame {
     bindKey(inputMap, actionMap, "K", "togglePlayK", e -> toggle());
     bindKey(inputMap, actionMap, "J", "previousTrackJ", e -> previousTrack());
     bindKey(inputMap, actionMap, "L", "nextTrackL", e -> nextTrack());
+    bindKey(inputMap, actionMap, "F", "toggleFullscreen", e -> toggleFullscreen());
+    bindKey(inputMap, actionMap, "ESCAPE", "exitFullscreen", e -> { if (fullscreen) toggleFullscreen(); });
+  }
+  /**
+   * True borderless fullscreen (not the OS's exclusive-fullscreen mode, which some platforms render through a
+   * different, flickery path): undecorate and resize to the current screen's bounds. Swing requires a Frame to
+   * not be displayable to change setUndecorated(), so this disposes and recreates the native peer — the Java
+   * component tree (and all its listeners) survives that untouched, only the OS window itself is torn down and
+   * rebuilt.
+   */
+  private void toggleFullscreen() {
+    if (!fullscreen) {
+      preFullscreenBounds = getBounds();
+      dispose();
+      setUndecorated(true);
+      setBounds(getGraphicsConfiguration().getDevice().getDefaultConfiguration().getBounds());
+      setVisible(true);
+      fullscreen = true;
+    } else {
+      dispose();
+      setUndecorated(false);
+      if (preFullscreenBounds != null) setBounds(preFullscreenBounds);
+      setVisible(true);
+      fullscreen = false;
+    }
+    getRootPane().requestFocusInWindow(); // keyboard shortcuts live on the root pane's WHEN_IN_FOCUSED_WINDOW map
   }
 
   private static void bindKey(javax.swing.InputMap inputMap, javax.swing.ActionMap actionMap, String key, String name, java.util.function.Consumer<ActionEvent> action) {
@@ -251,6 +284,78 @@ public final class CDPlayer extends JFrame {
     buttonRow.add(gotIt);
     card.add(buttonRow);
     return card;
+  }
+
+  /** Opens (or refocuses) the Settings dialog. Rebuilds its content each time rather than caching the panel, so labels/colors stay current across theme changes even though the JDialog window itself is reused. */
+  private void showSettingsDialog() {
+    if (settingsDialog == null) {
+      settingsDialog = new javax.swing.JDialog(this, "Settings", false);
+      settingsDialog.setUndecorated(true);
+      javax.swing.JRootPane root = settingsDialog.getRootPane();
+      root.getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW).put(javax.swing.KeyStroke.getKeyStroke("ESCAPE"), "closeSettings");
+      root.getActionMap().put("closeSettings", new javax.swing.AbstractAction() { public void actionPerformed(ActionEvent e) { settingsDialog.setVisible(false); } });
+    }
+    settingsDialog.setContentPane(buildSettingsPanel(settingsDialog));
+    settingsDialog.getRootPane().setBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 40), 1));
+    settingsDialog.pack();
+    settingsDialog.setLocationRelativeTo(this);
+    settingsDialog.setVisible(true);
+    settingsDialog.toFront();
+  }
+  private JPanel buildSettingsPanel(javax.swing.JDialog dialog) {
+    JPanel card = new JPanel();
+    card.setLayout(new javax.swing.BoxLayout(card, javax.swing.BoxLayout.Y_AXIS));
+    card.setBackground(CARD);
+    card.setOpaque(true);
+    card.setBorder(BorderFactory.createEmptyBorder(26, 30, 22, 30));
+
+    JLabel title = label("SETTINGS", 16, ACCENT);
+    title.setAlignmentX(Component.LEFT_ALIGNMENT);
+    card.add(title);
+    card.add(javax.swing.Box.createVerticalStrut(20));
+
+    // Crossfade slider — relocated here from the main screen, same fields/behavior as before.
+    JPanel crossfadeRow = new JPanel(); crossfadeRow.setOpaque(false); crossfadeRow.setAlignmentX(Component.LEFT_ALIGNMENT); crossfadeRow.setLayout(new javax.swing.BoxLayout(crossfadeRow, javax.swing.BoxLayout.X_AXIS));
+    crossfadeTitle.setFont(new Font("SansSerif", Font.BOLD, 10)); crossfadeTitle.setForeground(MUTED);
+    crossfadeSlider.setOpaque(false); crossfadeSlider.setUI(new AccentSliderUI(crossfadeSlider)); crossfadeSlider.setFocusable(false);
+    crossfadeSlider.setPreferredSize(new Dimension(150, 20)); crossfadeSlider.setMaximumSize(new Dimension(150, 20));
+    crossfadeValueLabel.setFont(new Font("SansSerif", Font.BOLD, 10)); crossfadeValueLabel.setForeground(MUTED); crossfadeValueLabel.setPreferredSize(new Dimension(28, 16));
+    crossfadeSlider.addChangeListener(e -> { int v = crossfadeSlider.getValue(); crossfadeValueLabel.setText(v == 0 ? "OFF" : v + "S"); });
+    crossfadeSlider.setToolTipText("Crossfade between tracks (0 = off, up to 15s)");
+    crossfadeRow.add(crossfadeTitle); crossfadeRow.add(javax.swing.Box.createHorizontalStrut(10)); crossfadeRow.add(crossfadeSlider); crossfadeRow.add(javax.swing.Box.createHorizontalStrut(8)); crossfadeRow.add(crossfadeValueLabel); crossfadeRow.add(javax.swing.Box.createHorizontalGlue());
+    card.add(crossfadeRow);
+    card.add(javax.swing.Box.createVerticalStrut(22));
+
+    // Mono audio toggle — downmixes left/right to identical channels in software on the playback pump thread.
+    JPanel monoRow = new JPanel(new BorderLayout()); monoRow.setOpaque(false); monoRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+    monoRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+    JLabel monoLabel = label("MONO AUDIO", 10, MUTED);
+    for (java.awt.event.ActionListener l : monoButton.getActionListeners()) monoButton.removeActionListener(l); // rebuilt each open; avoid stacking duplicate listeners
+    monoButton.addActionListener(e -> setMonoAudio(!monoAudio));
+    monoRow.add(monoLabel, BorderLayout.WEST);
+    JPanel monoButtonWrap = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0)); monoButtonWrap.setOpaque(false); monoButtonWrap.add(monoButton);
+    monoRow.add(monoButtonWrap, BorderLayout.EAST);
+    card.add(monoRow);
+    card.add(javax.swing.Box.createVerticalStrut(10));
+    JLabel monoHint = new JLabel("<html><body style='width:280px'>Sums the left and right channels together — useful if you're listening through a single speaker or one earbud.</body></html>");
+    monoHint.setForeground(MUTED); monoHint.setFont(new Font("SansSerif", Font.PLAIN, 10));
+    monoHint.setAlignmentX(Component.LEFT_ALIGNMENT);
+    card.add(monoHint);
+    card.add(javax.swing.Box.createVerticalStrut(22));
+
+    JButton close = textButton("CLOSE");
+    close.addActionListener(e -> dialog.setVisible(false));
+    JPanel buttonRow = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0));
+    buttonRow.setOpaque(false); buttonRow.setAlignmentX(Component.LEFT_ALIGNMENT); buttonRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+    buttonRow.add(close);
+    card.add(buttonRow);
+    return card;
+  }
+  /** Applies the mono toggle to the live player (takes effect within ~20ms, on the pump thread's next chunk) and persists the choice for the next track load. */
+  private void setMonoAudio(boolean value) {
+    monoAudio = value;
+    monoButton.setText(value ? "MONO ON" : "MONO OFF");
+    if (player != null) player.setMono(value);
   }
 
   private void showThemeMenu() {
@@ -336,7 +441,8 @@ public final class CDPlayer extends JFrame {
     JPanel center = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0)); center.setOpaque(false); center.add(statusPill);
     bar.add(center, BorderLayout.CENTER);
     themeButton.addActionListener(e -> showThemeMenu());
-    JPanel east = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0)); east.setOpaque(false); east.add(themeButton);
+    settingsButton.addActionListener(e -> showSettingsDialog());
+    JPanel east = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 8, 0)); east.setOpaque(false); east.add(settingsButton); east.add(themeButton);
     bar.add(east, BorderLayout.EAST);
     return bar;
   }
@@ -350,7 +456,7 @@ public final class CDPlayer extends JFrame {
     panel.add(javax.swing.Box.createVerticalStrut(10)); source.setAlignmentX(Component.LEFT_ALIGNMENT); source.setFont(new Font("SansSerif", Font.PLAIN, 12)); source.setPreferredSize(new Dimension(460, 16)); source.setMaximumSize(new Dimension(460, 16)); source.setMinimumSize(new Dimension(460, 16)); panel.add(source);
     panel.add(javax.swing.Box.createVerticalStrut(38));
     progress.setOpaque(false); progress.setUI(new AccentSliderUI(progress)); progress.setAlignmentX(Component.LEFT_ALIGNMENT); progress.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20)); progress.setFocusable(false);
-    progress.addChangeListener(e -> { if (clip != null && progress.getValueIsAdjusting()) adjusting = true; else if (clip != null && adjusting) { clip.setMicrosecondPosition((long) (clip.getMicrosecondLength() * progress.getValue() / 1000.0)); adjusting = false; } });
+    progress.addChangeListener(e -> { if (player != null && progress.getValueIsAdjusting()) adjusting = true; else if (player != null && adjusting) { player.setMicrosecondPosition((long) (player.getMicrosecondLength() * progress.getValue() / 1000.0)); adjusting = false; } });
     panel.add(progress);
     JPanel times = new JPanel(new BorderLayout()); times.setOpaque(false); times.setMaximumSize(new Dimension(Integer.MAX_VALUE, 16)); elapsed.setFont(new Font("SansSerif", Font.PLAIN, 11)); length.setFont(new Font("SansSerif", Font.PLAIN, 11)); times.add(elapsed, BorderLayout.WEST); times.add(length, BorderLayout.EAST); panel.add(times);
     panel.add(javax.swing.Box.createVerticalStrut(28));
@@ -367,16 +473,8 @@ public final class CDPlayer extends JFrame {
     repeatButton.addActionListener(e -> { repeat = !repeat; repeatButton.setText(repeat ? "REPEAT ON" : "REPEAT OFF"); updateQueueUI(); }); modes.add(repeatButton); modes.add(javax.swing.Box.createHorizontalStrut(10));
     clearQueueButton.addActionListener(e -> clearQueue()); modes.add(clearQueueButton); panel.add(modes);
     panel.add(javax.swing.Box.createVerticalStrut(18));
-    JPanel crossfadeRow = new JPanel(); crossfadeRow.setOpaque(false); crossfadeRow.setAlignmentX(Component.LEFT_ALIGNMENT); crossfadeRow.setLayout(new javax.swing.BoxLayout(crossfadeRow, javax.swing.BoxLayout.X_AXIS));
-    crossfadeTitle.setFont(new Font("SansSerif", Font.BOLD, 10)); crossfadeTitle.setForeground(MUTED);
-    crossfadeSlider.setOpaque(false); crossfadeSlider.setUI(new AccentSliderUI(crossfadeSlider)); crossfadeSlider.setFocusable(false);
-    crossfadeSlider.setPreferredSize(new Dimension(120, 20)); crossfadeSlider.setMaximumSize(new Dimension(120, 20));
-    crossfadeValueLabel.setFont(new Font("SansSerif", Font.BOLD, 10)); crossfadeValueLabel.setForeground(MUTED); crossfadeValueLabel.setPreferredSize(new Dimension(28, 16));
-    crossfadeSlider.addChangeListener(e -> { int v = crossfadeSlider.getValue(); crossfadeValueLabel.setText(v == 0 ? "OFF" : v + "S"); });
-    crossfadeSlider.setToolTipText("Crossfade between tracks (0 = off, up to 15s)");
-    crossfadeRow.add(crossfadeTitle); crossfadeRow.add(javax.swing.Box.createHorizontalStrut(10)); crossfadeRow.add(crossfadeSlider); crossfadeRow.add(javax.swing.Box.createHorizontalStrut(8)); crossfadeRow.add(crossfadeValueLabel); crossfadeRow.add(javax.swing.Box.createHorizontalGlue());
-    panel.add(crossfadeRow);
-    panel.add(javax.swing.Box.createVerticalStrut(10));
+    // Crossfade now lives in the Settings dialog (see buildSettingsPanel) — it's a set-once preference, not
+    // something adjusted every session, so it doesn't need permanent real estate on the main screen.
     JPanel volumeRow = new JPanel(); volumeRow.setOpaque(false); volumeRow.setAlignmentX(Component.LEFT_ALIGNMENT); volumeRow.setLayout(new javax.swing.BoxLayout(volumeRow, javax.swing.BoxLayout.X_AXIS));
     volumeTitle.setFont(new Font("SansSerif", Font.BOLD, 10)); volumeTitle.setForeground(MUTED);
     volumeSlider.setOpaque(false); volumeSlider.setUI(new AccentSliderUI(volumeSlider)); volumeSlider.setFocusable(false);
@@ -386,9 +484,10 @@ public final class CDPlayer extends JFrame {
       int v = volumeSlider.getValue();
       volume = v / 100f;
       volumeValueLabel.setText(v + "%");
-      // While a crossfade is actively running, its own timer recomputes both clips' gain from the live volume
+      // While a crossfade is actively running, its own timer recomputes both players' gain from the live volume
       // field every tick, so it self-corrects on its own. Only apply directly when nothing else is driving gain.
-      if (clip != null && !crossfading) setLinearGain(clip, volume);
+      // Gain is applied per-chunk on the pump thread (see StreamPlayer), so this takes effect within ~20ms.
+      if (player != null && !crossfading) player.setGain(volume);
     });
     volumeSlider.setToolTipText("Playback volume");
     volumeRow.add(volumeTitle); volumeRow.add(javax.swing.Box.createHorizontalStrut(10)); volumeRow.add(volumeSlider); volumeRow.add(javax.swing.Box.createHorizontalStrut(8)); volumeRow.add(volumeValueLabel); volumeRow.add(javax.swing.Box.createHorizontalGlue());
@@ -514,59 +613,58 @@ public final class CDPlayer extends JFrame {
     } catch (Exception ignored) { }
     return displayName(file);
   }
-  private void load(File file) { load(file, true); }
-  private void load(File file, boolean autoPlay) {
+  private void load(File file) { load(file, true, false); }
+  private void load(File file, boolean autoPlay) { load(file, autoPlay, false); }
+  /**
+   * @param allowCrossfade Only true for the automatic "queue naturally advancing to the next track" path (the
+   *     pre-emptive trigger in {@link #tick}). Manual navigation — clicking a queue row, Prev/Next, choosing a
+   *     file — always passes false, so crossfade only ever kicks in when a track finishes on its own, never when
+   *     the user actively picks a different song to jump to.
+   */
+  private void load(File file, boolean autoPlay, boolean allowCrossfade) {
     try {
-      Clip outgoing = clip;
+      StreamPlayer outgoing = player;
       int fadeSeconds = crossfadeSlider.getValue();
-      boolean doCrossfade = outgoing != null && outgoing.isRunning() && fadeSeconds > 0;
-      if (!doCrossfade && outgoing != null) { clip = null; outgoing.stop(); outgoing.close(); }
+      boolean doCrossfade = allowCrossfade && outgoing != null && outgoing.isRunning() && fadeSeconds > 0;
+      if (!doCrossfade && outgoing != null) { player = null; outgoing.close(); }
       deleteTemporaryAudio();
       File playable = prepareAudio(file);
       AudioInputStream decodedStream = AudioSystem.getAudioInputStream(playable);
       byte[] audioBytes = readAll(decodedStream);
       AudioFormat format = decodedStream.getFormat();
       decodedStream.close();
-      AudioInputStream clipStream = new AudioInputStream(new java.io.ByteArrayInputStream(audioBytes), format, audioBytes.length / Math.max(1, format.getFrameSize()));
-      Clip openedClip = AudioSystem.getClip(); openedClip.open(clipStream); clip = openedClip; loadedFile = file; rawAudio = audioBytes; audioFormat = format; crossfadeStarted = false;
-      openedClip.addLineListener(event -> { if (event.getType() == LineEvent.Type.STOP && openedClip.getMicrosecondPosition() >= openedClip.getMicrosecondLength()) SwingUtilities.invokeLater(() -> trackFinished(openedClip)); });
+      StreamPlayer opened = new StreamPlayer(format, audioBytes);
+      // Pulled from the player, not the raw decode above: StreamPlayer may have normalized the format to 16-bit
+      // PCM internally, and computeLevels() below must read the exact bytes/format actually being played.
+      player = opened; loadedFile = file; rawAudio = opened.getAudioBytes(); audioFormat = opened.getFormat(); crossfadeStarted = false;
+      opened.setMono(monoAudio);
+      opened.onFinished = () -> trackFinished(opened);
       SongDetails details = inspectSong(file);
       metadataCache.put(file, details);
       String name = details.title;
       track.setText("<html>" + escape(ellipsize(track, name, 456)) + "</html>"); source.setText("LOCAL AUDIO FILE · " + file.getName().substring(file.getName().lastIndexOf('.') + 1).toUpperCase());
-      length.setText(format(clip.getMicrosecondLength())); elapsed.setText("0:00"); progress.setValue(0); status.setText("●  TRACK LOADED");
+      length.setText(format(opened.getMicrosecondLength())); elapsed.setText("0:00"); progress.setValue(0); status.setText("●  TRACK LOADED");
       boolean canLookUp = details.embeddedCover == null && details.title != null && !details.title.trim().isEmpty();
       disc.setCover(details.embeddedCover); disc.setLookingUp(canLookUp);
       if (details.embeddedCover != null) source.setText("EMBEDDED ALBUM ART · " + extension(file).toUpperCase());
       else if (canLookUp) findCover(details.lookupQuery(), file);
       else source.setText("NO EMBEDDED COVER · ADD SONG METADATA");
       updateQueueUI();
-      setLinearGain(openedClip, doCrossfade ? 0f : volume);
+      opened.setGain(doCrossfade ? 0f : volume);
       if (autoPlay) {
-        openedClip.start(); setPlaying(true);
-        if (doCrossfade) { status.setText("●  CROSSFADING"); startCrossfade(outgoing, openedClip, fadeSeconds); }
+        opened.start(); setPlaying(true);
+        if (doCrossfade) { status.setText("●  CROSSFADING"); startCrossfade(outgoing, opened, fadeSeconds); }
       } else {
         setPlaying(false); // restored from a saved session: track is ready, but wait for the user to press play
       }
     } catch (Exception error) { status.setText("●  INSTALL FFMPEG FOR FLAC / M4A"); }
   }
-  /** Sets a Clip's volume (0..1, linear) via its MASTER_GAIN control, converting to decibels. Silently no-ops if the control isn't available on this line. */
-  private static void setLinearGain(Clip target, float volume) {
-    try {
-      if (!target.isControlSupported(javax.sound.sampled.FloatControl.Type.MASTER_GAIN)) return;
-      javax.sound.sampled.FloatControl gainControl = (javax.sound.sampled.FloatControl) target.getControl(javax.sound.sampled.FloatControl.Type.MASTER_GAIN);
-      float clamped = Math.max(0.0001f, Math.min(1f, volume));
-      float decibels = (float) (20 * Math.log10(clamped));
-      decibels = Math.max(gainControl.getMinimum(), Math.min(gainControl.getMaximum(), decibels));
-      gainControl.setValue(decibels);
-    } catch (Exception ignored) { /* gain control unsupported on this line/platform */ }
-  }
-  /** Fades `outgoing` out and `incoming` in over `seconds` using an equal-power curve, then stops/closes the outgoing clip. Equal-power (cos/sin, not linear 1-t/t) keeps the combined perceived loudness roughly constant through the transition, instead of dipping in the middle — this is the same principle Spotify's crossfade (and most professional DJ mixers) use. */
-  private void startCrossfade(final Clip outgoing, final Clip incoming, int seconds) {
+  /** Fades `outgoing` out and `incoming` in over `seconds` using an equal-power curve, then closes the outgoing player. Equal-power (cos/sin, not linear 1-t/t) keeps the combined perceived loudness roughly constant through the transition, instead of dipping in the middle — this is the same principle Spotify's crossfade (and most professional DJ mixers) use. */
+  private void startCrossfade(final StreamPlayer outgoing, final StreamPlayer incoming, int seconds) {
     final long durationMillis = seconds * 1000L;
     final long startTime = System.currentTimeMillis();
     crossfading = true;
-    setLinearGain(outgoing, volume); setLinearGain(incoming, 0f);
+    outgoing.setGain(volume); incoming.setGain(0f);
     Timer fade = new Timer(30, null);
     fade.addActionListener(e -> {
       long elapsedMillis = System.currentTimeMillis() - startTime;
@@ -575,12 +673,12 @@ public final class CDPlayer extends JFrame {
       float outGain = (float) Math.cos(angle);   // 1 -> 0, equal-power taper
       float inGain = (float) Math.sin(angle);    // 0 -> 1, equal-power taper
       // scaled by the live volume field so dragging the volume slider mid-crossfade is picked up on the next tick
-      setLinearGain(outgoing, outGain * volume); setLinearGain(incoming, inGain * volume);
+      outgoing.setGain(outGain * volume); incoming.setGain(inGain * volume);
       if (t >= 1f) {
         ((Timer) e.getSource()).stop();
-        try { outgoing.stop(); outgoing.close(); } catch (Exception ignored) { }
+        outgoing.close();
         crossfading = false;
-        if (clip == incoming) { setLinearGain(incoming, volume); status.setText("●  NOW SPINNING"); }
+        if (player == incoming) { incoming.setGain(volume); status.setText("●  NOW SPINNING"); }
       }
     });
     fade.start();
@@ -698,10 +796,10 @@ public final class CDPlayer extends JFrame {
   private static BufferedImage fetchImage(String location) throws IOException { HttpURLConnection connection = open(location); try (InputStream stream = connection.getInputStream()) { return ImageIO.read(stream); } finally { connection.disconnect(); } }
   private static HttpURLConnection open(String location) throws IOException { HttpURLConnection connection = (HttpURLConnection) new URL(location).openConnection(); connection.setRequestProperty("User-Agent", "CDPlayer/1.0 (open cover lookup)"); connection.setConnectTimeout(5000); connection.setReadTimeout(8000); return connection; }
   private static byte[] readAll(InputStream stream) throws IOException { java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream(); byte[] buffer = new byte[4096]; int count; while ((count = stream.read(buffer)) >= 0) output.write(buffer, 0, count); return output.toByteArray(); }
-  private void toggle() { if (clip == null) { choose(); return; } if (clip.isRunning()) { clip.stop(); setPlaying(false); } else { clip.start(); setPlaying(true); } }
-  private void trackFinished(Clip finishedClip) { if (clip != finishedClip) return; if (repeat) { clip.setMicrosecondPosition(0); clip.start(); setPlaying(true); } else if (!nextTrack()) setPlaying(false); }
+  private void toggle() { if (player == null) { choose(); return; } if (player.isRunning()) { player.pause(); setPlaying(false); } else { player.start(); setPlaying(true); } }
+  private void trackFinished(StreamPlayer finishedPlayer) { if (player != finishedPlayer) return; if (repeat) { player.setMicrosecondPosition(0); player.start(); setPlaying(true); } else if (!nextTrack()) setPlaying(false); }
   private boolean nextTrack() { int next = nextIndex(); if (next < 0) return false; queueIndex = next; load(queue.get(queueIndex)); return true; }
-  private void previousTrack() { if (clip != null && clip.getMicrosecondPosition() > 5_000_000L) { clip.setMicrosecondPosition(0); return; } if (queueIndex > 0) { queueIndex--; load(queue.get(queueIndex)); } else if (clip != null) clip.setMicrosecondPosition(0); }
+  private void previousTrack() { if (player != null && player.getMicrosecondPosition() > 5_000_000L) { player.setMicrosecondPosition(0); return; } if (queueIndex > 0) { queueIndex--; load(queue.get(queueIndex)); } else if (player != null) player.setMicrosecondPosition(0); }
   private void removeFromQueue(int index) {
     if (index < 0 || index >= queue.size()) return;
     queue.remove(index);
@@ -722,10 +820,10 @@ public final class CDPlayer extends JFrame {
     resetPlaybackToIdle("●  QUEUE CLEARED");
     updateQueueUI();
   }
-  /** Stops and releases the current clip and resets the now-playing UI back to its empty-queue state. */
+  /** Stops and releases the current player and resets the now-playing UI back to its empty-queue state. */
   private void resetPlaybackToIdle(String statusMessage) {
     queueIndex = -1;
-    if (clip != null) { Clip closingClip = clip; clip = null; closingClip.stop(); closingClip.close(); }
+    if (player != null) { StreamPlayer closing = player; player = null; closing.close(); }
     deleteTemporaryAudio();
     track.setText("Pick a track to get started."); source.setText("YOUR MUSIC LIBRARY");
     elapsed.setText("0:00"); length.setText("0:00"); progress.setValue(0);
@@ -764,23 +862,25 @@ public final class CDPlayer extends JFrame {
       load(queue.get(queueIndex), false);
     } catch (Exception ignored) { /* corrupt or unreadable state file; just start with an empty queue */ }
   }
-  private void seek(int seconds) { if (clip == null) return; long target = Math.max(0, Math.min(clip.getMicrosecondLength(), clip.getMicrosecondPosition() + seconds * 1_000_000L)); clip.setMicrosecondPosition(target); long duration = clip.getMicrosecondLength(); progress.setValue(duration == 0 ? 0 : (int) (target * 1000 / duration)); elapsed.setText(format(target)); }
+  private void seek(int seconds) { if (player == null) return; long target = Math.max(0, Math.min(player.getMicrosecondLength(), player.getMicrosecondPosition() + seconds * 1_000_000L)); player.setMicrosecondPosition(target); long duration = player.getMicrosecondLength(); progress.setValue(duration == 0 ? 0 : (int) (target * 1000 / duration)); elapsed.setText(format(target)); }
   private void tick(ActionEvent event) {
-    if (clip == null || adjusting) return;
-    long duration = clip.getMicrosecondLength(); long position = clip.getMicrosecondPosition();
+    if (player == null || adjusting) return;
+    long duration = player.getMicrosecondLength(); long position = player.getMicrosecondPosition();
     progress.setValue(duration == 0 ? 0 : (int) (position * 1000 / duration)); elapsed.setText(format(position));
     double[] levels = computeLevels(5, 90); visualizer.setLevels(levels != null ? levels : fallbackLevels());
     int fadeSeconds = crossfadeSlider.getValue();
+    // allowCrossfade=true only here: this is the one path where the queue is naturally advancing on its own,
+    // not the user actively choosing a different track (see load()'s allowCrossfade doc for the full rationale).
     if (!crossfadeStarted && fadeSeconds > 0 && duration > 0 && duration - position <= fadeSeconds * 1_000_000L) {
       int next = nextIndex();
-      if (next >= 0) { crossfadeStarted = true; queueIndex = next; load(queue.get(queueIndex)); }
-      else if (repeat && loadedFile != null) { crossfadeStarted = true; load(loadedFile); } // seamless loop crossfade back into the same track
+      if (next >= 0) { crossfadeStarted = true; queueIndex = next; load(queue.get(queueIndex), true, true); }
+      else if (repeat && loadedFile != null) { crossfadeStarted = true; load(loadedFile, true, true); } // seamless loop crossfade back into the same track
     }
   }
   private void setPlaying(boolean playing) { disc.setSpinning(playing); play.setGlyph(playing ? Glyph.PAUSE : Glyph.PLAY); status.setText(playing ? "●  NOW SPINNING" : (loadedFile == null ? "●  READY TO PLAY" : "●  PAUSED")); visualizer.setActive(playing); if (playing) clock.start(); else clock.stop(); }
   private double[] computeLevels(int bars, int windowMillis) {
     try {
-      if (rawAudio == null || audioFormat == null || clip == null) return null;
+      if (rawAudio == null || audioFormat == null || player == null) return null;
       AudioFormat.Encoding encoding = audioFormat.getEncoding();
       if (encoding != AudioFormat.Encoding.PCM_SIGNED && encoding != AudioFormat.Encoding.PCM_UNSIGNED) return null;
       int frameSize = audioFormat.getFrameSize();
@@ -790,7 +890,7 @@ public final class CDPlayer extends JFrame {
       boolean unsigned = encoding == AudioFormat.Encoding.PCM_UNSIGNED;
       int totalFrames = rawAudio.length / frameSize;
       int windowFrames = Math.max(bars, (int) (audioFormat.getFrameRate() * windowMillis / 1000.0));
-      long framePos = clip.getFramePosition();
+      long framePos = player.getFramePosition();
       int startFrame = (int) Math.min(Math.max(0, framePos), Math.max(0, totalFrames - windowFrames));
       int framesPerBar = Math.max(1, windowFrames / bars);
       double maxAmp = bytesPerSample >= 3 ? 32768.0 * 256 : (bytesPerSample == 2 ? 32768.0 : 128.0);
@@ -1026,6 +1126,142 @@ public final class CDPlayer extends JFrame {
       }
       g.dispose();
     }
+  }
+
+  /**
+   * Streams pre-decoded PCM audio out to a {@link SourceDataLine} in small chunks on a dedicated pump thread,
+   * applying gain (and optional mono downmix) in software to each chunk just before it's written.
+   *
+   * This replaces {@code javax.sound.sampled.Clip}, whose default implementation ({@code DirectAudioDevice}) hard-caps
+   * its internal playback buffer at exactly 1 second of audio regardless of what buffer size is requested — verified
+   * empirically, not documented. Gain is applied to samples as they enter that buffer, so a MASTER_GAIN change only
+   * affects newly-buffered audio; up to a second of already-buffered audio at the *old* gain plays first. There is no
+   * public API to shrink that. Streaming our own small buffer (a few tens of milliseconds) via SourceDataLine, with
+   * gain multiplied into the samples directly, makes volume changes (and mono toggling) apply almost immediately, and
+   * makes seeking exact (via {@code line.flush()}) instead of playing a stale buffered tail from the old position.
+   */
+  private static final class StreamPlayer {
+    private final AudioFormat format;
+    private final byte[] audioBytes;
+    private final int frameSize;
+    private final long totalFrames;
+    private final SourceDataLine line;
+    private final int chunkFrames;
+    private volatile long framePosition;
+    private volatile boolean playing;
+    private volatile boolean closed;
+    private volatile float gain = 1f;
+    private volatile boolean mono;
+    private Thread pumpThread;
+    /** Invoked on the EDT when playback reaches the end of the audio on its own (not on pause/close). */
+    Runnable onFinished;
+
+    StreamPlayer(AudioFormat sourceFormat, byte[] sourceBytes) throws LineUnavailableException {
+      // Normalize to signed 16-bit little-endian PCM: SourceDataLine needs an exact format match (no
+      // auto-conversion the way Clip.open(AudioInputStream) can do internally), and standardizing here keeps the
+      // gain/mono sample math below simple instead of having to branch on bit depth/encoding.
+      AudioFormat target = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, sourceFormat.getSampleRate(), 16,
+          sourceFormat.getChannels(), sourceFormat.getChannels() * 2, sourceFormat.getSampleRate(), false);
+      if (sourceFormat.matches(target)) {
+        this.format = sourceFormat;
+        this.audioBytes = sourceBytes;
+      } else {
+        AudioInputStream converted = AudioSystem.getAudioInputStream(target,
+            new AudioInputStream(new java.io.ByteArrayInputStream(sourceBytes), sourceFormat, sourceBytes.length / Math.max(1, sourceFormat.getFrameSize())));
+        byte[] convertedBytes;
+        try { convertedBytes = readAllStatic(converted); } catch (IOException io) { throw new LineUnavailableException(io.getMessage()); }
+        finally { try { converted.close(); } catch (IOException ignored) { } }
+        this.format = target;
+        this.audioBytes = convertedBytes;
+      }
+      this.frameSize = format.getFrameSize();
+      this.totalFrames = audioBytes.length / frameSize;
+      DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
+      line = (SourceDataLine) AudioSystem.getLine(info);
+      chunkFrames = Math.max(1, (int) (format.getFrameRate() * 0.02)); // ~20ms chunks
+      int bufferBytes = chunkFrames * frameSize * 4; // ~80ms of line buffer — small and under our own control
+      line.open(format, bufferBytes);
+    }
+    private static byte[] readAllStatic(InputStream stream) throws IOException {
+      java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+      byte[] buffer = new byte[4096]; int count;
+      while ((count = stream.read(buffer)) >= 0) output.write(buffer, 0, count);
+      return output.toByteArray();
+    }
+    void start() {
+      if (closed) return;
+      playing = true;
+      line.start();
+      if (pumpThread == null || !pumpThread.isAlive()) {
+        pumpThread = new Thread(this::pump, "cdplayer-stream-pump");
+        pumpThread.setDaemon(true);
+        pumpThread.start();
+      }
+    }
+    void pause() { playing = false; line.stop(); }
+    boolean isRunning() { return playing; }
+    void setGain(float value) { gain = value; }
+    void setMono(boolean value) { mono = value; }
+    long getMicrosecondPosition() { return (long) (framePosition / format.getFrameRate() * 1_000_000L); }
+    long getMicrosecondLength() { return (long) (totalFrames / format.getFrameRate() * 1_000_000L); }
+    long getFramePosition() { return framePosition; }
+    /** The audio actually being played — may differ from what was passed to the constructor if normalization to 16-bit PCM occurred. */
+    byte[] getAudioBytes() { return audioBytes; }
+    AudioFormat getFormat() { return format; }
+    void setMicrosecondPosition(long micros) {
+      long targetFrame = (long) (micros / 1_000_000.0 * format.getFrameRate());
+      framePosition = Math.max(0, Math.min(totalFrames, targetFrame));
+      line.flush(); // drop anything already queued at the old position so playback jumps immediately, not after a lag
+    }
+    void close() {
+      closed = true; playing = false;
+      try { line.stop(); line.flush(); line.close(); } catch (Exception ignored) { }
+      if (pumpThread != null) { try { pumpThread.join(200); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); } }
+    }
+    private void pump() {
+      byte[] chunk = new byte[chunkFrames * frameSize];
+      try {
+        while (!closed) {
+          if (!playing) { Thread.sleep(8); continue; }
+          long pos = framePosition;
+          if (pos >= totalFrames) {
+            playing = false;
+            Runnable callback = onFinished;
+            if (callback != null) SwingUtilities.invokeLater(callback);
+            continue;
+          }
+          int framesToCopy = (int) Math.min(chunkFrames, totalFrames - pos);
+          int bytesToCopy = framesToCopy * frameSize;
+          System.arraycopy(audioBytes, (int) (pos * frameSize), chunk, 0, bytesToCopy);
+          applyGainAndMono(chunk, bytesToCopy);
+          line.write(chunk, 0, bytesToCopy); // blocks until buffer space frees up, naturally pacing playback
+          if (framePosition == pos) framePosition = pos + framesToCopy; // don't clobber a concurrent seek
+        }
+      } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+      catch (Exception ignored) { /* line closed underneath us during shutdown/track switch */ }
+    }
+    private void applyGainAndMono(byte[] chunk, int length) {
+      float g = gain;
+      boolean applyMono = mono && format.getChannels() == 2;
+      if (g == 1f && !applyMono) return;
+      int channels = format.getChannels();
+      for (int off = 0; off + frameSize <= length; off += frameSize) {
+        if (applyMono) {
+          int left = readS16(chunk, off), right = readS16(chunk, off + 2);
+          int avg = (left + right) / 2;
+          writeS16(chunk, off, avg); writeS16(chunk, off + 2, avg);
+        }
+        if (g != 1f) {
+          for (int c = 0; c < channels; c++) {
+            int s = readS16(chunk, off + c * 2);
+            int scaled = Math.round(s * g);
+            writeS16(chunk, off + c * 2, Math.max(-32768, Math.min(32767, scaled)));
+          }
+        }
+      }
+    }
+    private static int readS16(byte[] data, int offset) { return (short) ((data[offset] & 0xFF) | (data[offset + 1] << 8)); } // little-endian
+    private static void writeS16(byte[] data, int offset, int value) { data[offset] = (byte) (value & 0xFF); data[offset + 1] = (byte) ((value >> 8) & 0xFF); }
   }
 
   private static final class Theme {
@@ -1333,6 +1569,16 @@ public final class CDPlayer extends JFrame {
       g.setColor(new Color(255, 255, 255, 220));
       for (int i = 0; i < PARTICLE_COUNT; i++) { double r = size[i]; g.fillOval((int) (x[i] - r), (int) (y[i] - r), (int) (r * 2), (int) (r * 2)); }
     }
+    // Pre-baked at 210 alpha (the constant leaf opacity), so paintAutumn never allocates a Color per particle per frame.
+    private static final Color[] LEAF_PALETTE_ALPHA = buildLeafPaletteAlpha();
+    private static Color[] buildLeafPaletteAlpha() {
+      Color[] out = new Color[LEAF_PALETTE.length];
+      for (int i = 0; i < LEAF_PALETTE.length; i++) { Color c = LEAF_PALETTE[i]; out[i] = new Color(c.getRed(), c.getGreen(), c.getBlue(), 210); }
+      return out;
+    }
+    private static final Color OCEAN_BUBBLE_FILL = new Color(210, 245, 250, 60);
+    private static final Color OCEAN_BUBBLE_STROKE = new Color(255, 255, 255, 140);
+    private static final BasicStroke OCEAN_STROKE = new BasicStroke(1f);
     private void paintOcean(Graphics2D g) {
       int w = Math.max(1, getWidth()), h = Math.max(1, getHeight());
       // a soft light band sweeps across the water periodically, built from two abutting gradients (fade-in then fade-out)
@@ -1345,25 +1591,33 @@ public final class CDPlayer extends JFrame {
       sg.setPaint(new GradientPaint(bandCenter, 0, new Color(255, 255, 255, 35), bandCenter + 90, 0, new Color(255, 255, 255, 0)));
       sg.fillRect((int) bandCenter, 0, 90, h);
       sg.dispose();
+      // fill and stroke colors are constant across every bubble, so set them once instead of per-particle
+      g.setStroke(OCEAN_STROKE);
       for (int i = 0; i < PARTICLE_COUNT; i++) {
         double r = size[i];
-        g.setColor(new Color(210, 245, 250, 60));
-        g.fillOval((int) (x[i] - r), (int) (y[i] - r), (int) (r * 2), (int) (r * 2));
-        g.setColor(new Color(255, 255, 255, 140));
-        g.setStroke(new BasicStroke(1f));
-        g.drawOval((int) (x[i] - r), (int) (y[i] - r), (int) (r * 2), (int) (r * 2));
+        int ix = (int) (x[i] - r), iy = (int) (y[i] - r), d = (int) (r * 2);
+        g.setColor(OCEAN_BUBBLE_FILL);
+        g.fillOval(ix, iy, d, d);
+        g.setColor(OCEAN_BUBBLE_STROKE);
+        g.drawOval(ix, iy, d, d);
       }
     }
+    /**
+     * Reuses one Graphics2D for all 140 leaves via translate/rotate + restoring the transform afterward, instead
+     * of calling g.create() per particle. Graphics2D.create() was showing up as the main cost behind AUTUMN's
+     * frame time — each call allocates and copies a full graphics context, 140 times every 35ms — and since that
+     * paint competes with DiscView's own repaint on the EDT, a slow overlay frame directly stalled the disc's
+     * rotation. Translate/rotate + setTransform(original) does the same visual job for a fraction of the cost.
+     */
     private void paintAutumn(Graphics2D g) {
+      java.awt.geom.AffineTransform original = g.getTransform();
       for (int i = 0; i < PARTICLE_COUNT; i++) {
-        Graphics2D lg = (Graphics2D) g.create();
-        lg.translate(x[i], y[i]);
-        lg.rotate(spin[i]);
         double r = size[i];
-        Color c = LEAF_PALETTE[i % LEAF_PALETTE.length];
-        lg.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 210));
-        lg.fillOval((int) -r, (int) (-r * 0.6), (int) (r * 2), (int) (r * 1.2));
-        lg.dispose();
+        g.setColor(LEAF_PALETTE_ALPHA[i % LEAF_PALETTE_ALPHA.length]);
+        g.translate(x[i], y[i]);
+        g.rotate(spin[i]);
+        g.fillOval((int) -r, (int) (-r * 0.6), (int) (r * 2), (int) (r * 1.2));
+        g.setTransform(original);
       }
     }
     private void paintGalaxy(Graphics2D g) {
@@ -1381,16 +1635,24 @@ public final class CDPlayer extends JFrame {
         g.drawLine((int) sx, (int) sy, (int) (sx - vx / norm * len), (int) (sy - vy / norm * len));
       }
     }
+    private static final Font MATRIX_FONT = new Font(Font.MONOSPACED, Font.BOLD, 14);
+    private static final Color MATRIX_HEAD_COLOR = new Color(224, 255, 224, 255);
+    private static final int MATRIX_TRAIL_LENGTH = 10;
     private void paintMatrix(Graphics2D g) {
-      int w = getWidth(), h = getHeight(), trailLength = 10, lineHeight = 16;
-      g.setFont(new Font(Font.MONOSPACED, Font.BOLD, 14));
+      int w = getWidth(), h = getHeight(), lineHeight = 16;
+      g.setFont(MATRIX_FONT);
       ThreadLocalRandom r = ThreadLocalRandom.current();
+      // ACCENT can change mid-frame during a theme transition, so this can't be a static cache, but it only needs
+      // recomputing once per paint call — precomputing here turns what was up to 140*10 Color allocations per
+      // frame into just 10, since every particle's trail reuses the same 10 alpha steps.
+      Color[] trailColors = new Color[MATRIX_TRAIL_LENGTH];
+      for (int j = 1; j < MATRIX_TRAIL_LENGTH; j++) trailColors[j] = new Color(ACCENT.getRed(), ACCENT.getGreen(), ACCENT.getBlue(), Math.max(0, 200 - j * 22));
       for (int i = 0; i < PARTICLE_COUNT; i++) {
         if (x[i] > w) continue;
-        for (int j = 0; j < trailLength; j++) {
+        for (int j = 0; j < MATRIX_TRAIL_LENGTH; j++) {
           double gy = y[i] - j * lineHeight;
           if (gy < -lineHeight || gy > h + lineHeight) continue;
-          g.setColor(j == 0 ? new Color(224, 255, 224, 255) : new Color(ACCENT.getRed(), ACCENT.getGreen(), ACCENT.getBlue(), Math.max(0, 200 - j * 22)));
+          g.setColor(j == 0 ? MATRIX_HEAD_COLOR : trailColors[j]);
           g.drawString(String.valueOf((char) ('0' + r.nextInt(10))), (float) x[i], (float) gy);
         }
       }
