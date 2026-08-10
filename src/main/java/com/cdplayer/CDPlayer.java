@@ -79,6 +79,10 @@ public final class CDPlayer extends JFrame {
   private static Color ACCENT2 = THEMES[0].accent2;
   private static Color TEXT = THEMES[0].text;
   private static Color MUTED = THEMES[0].muted;
+  // Read by every hover/pulse/transition timer below (HoverFade, PillButton, TransportButton, ModeIconButton,
+  // the Settings dialog open/close animation, the now-playing fade-in, and the theme color transition) — when
+  // off, each of those jumps straight to its end state instead of animating toward it.
+  private static boolean animationsEnabled = true;
   private int currentThemeIndex = 0;
   private Timer themeAnim;
   private Timer nowPlayingFadeTimer;
@@ -131,8 +135,10 @@ public final class CDPlayer extends JFrame {
   private static final File QUEUE_STATE_FILE = new File(System.getProperty("user.home"), ".cdplayer/queue.txt");
   private static final File ONBOARDING_FLAG_FILE = new File(System.getProperty("user.home"), ".cdplayer/onboarded");
   private static final File LAST_PATH_FILE = new File(System.getProperty("user.home"), ".cdplayer/lastpath.txt");
+  private static final File SETTINGS_FILE = new File(System.getProperty("user.home"), ".cdplayer/settings.txt");
   private final JButton settingsButton = textButton("SETTINGS");
   private final JButton monoButton = textButton("OFF");
+  private final JButton animationsButton = textButton("ON");
   private javax.swing.JDialog settingsDialog;
   private java.awt.Rectangle preFullscreenBounds;
   private boolean fullscreen;
@@ -174,6 +180,8 @@ public final class CDPlayer extends JFrame {
     // dialog opens — attaching it there would stack a duplicate listener on each open.
     themeButton.addActionListener(e -> showThemeMenu());
     Runtime.getRuntime().addShutdownHook(new Thread(this::saveQueueState, "cdplayer-save-queue"));
+    Runtime.getRuntime().addShutdownHook(new Thread(this::saveSettingsState, "cdplayer-save-settings"));
+    restoreSettingsState();
     restoreQueueState();
   }
 
@@ -326,6 +334,7 @@ public final class CDPlayer extends JFrame {
   private void animateDialogIn(javax.swing.JDialog dialog) {
     if (dialogAnimTimer != null && dialogAnimTimer.isRunning()) dialogAnimTimer.stop();
     java.awt.Rectangle target = dialog.getBounds();
+    if (!animationsEnabled) { dialog.setBounds(target); if (opacitySupported()) dialog.setOpacity(1f); dialog.setVisible(true); return; }
     int cx = target.x + target.width / 2, cy = target.y + target.height / 2;
     boolean fade = opacitySupported();
     if (fade) dialog.setOpacity(0f);
@@ -352,6 +361,7 @@ public final class CDPlayer extends JFrame {
     if (dialog == null || !dialog.isVisible()) return;
     if (dialogAnimTimer != null && dialogAnimTimer.isRunning()) dialogAnimTimer.stop();
     java.awt.Rectangle target = dialog.getBounds();
+    if (!animationsEnabled) { dialog.setVisible(false); dialog.setBounds(target); if (opacitySupported()) dialog.setOpacity(1f); return; }
     int cx = target.x + target.width / 2, cy = target.y + target.height / 2;
     boolean fade = opacitySupported();
     final int steps = 8;
@@ -402,7 +412,9 @@ public final class CDPlayer extends JFrame {
     crossfadeSlider.setOpaque(false); crossfadeSlider.setUI(new AccentSliderUI(crossfadeSlider)); crossfadeSlider.setFocusable(false);
     crossfadeSlider.setPreferredSize(new Dimension(150, 20)); crossfadeSlider.setMaximumSize(new Dimension(150, 20));
     crossfadeValueLabel.setFont(new Font("SansSerif", Font.BOLD, 10)); crossfadeValueLabel.setForeground(MUTED); crossfadeValueLabel.setPreferredSize(new Dimension(28, 16));
+    for (javax.swing.event.ChangeListener l : crossfadeSlider.getChangeListeners()) crossfadeSlider.removeChangeListener(l); // rebuilt each open; avoid stacking duplicate listeners
     crossfadeSlider.addChangeListener(e -> { int v = crossfadeSlider.getValue(); crossfadeValueLabel.setText(v == 0 ? "OFF" : v + "S"); });
+    crossfadeValueLabel.setText(crossfadeSlider.getValue() == 0 ? "OFF" : crossfadeSlider.getValue() + "S"); // sync immediately: the slider's value may already differ from "OFF" (e.g. restored from a previous session) before any change event fires
     crossfadeSlider.setToolTipText("Crossfade between tracks (0 = off, up to 15s)");
     crossfadeRow.add(crossfadeTitle); crossfadeRow.add(javax.swing.Box.createHorizontalStrut(10)); crossfadeRow.add(crossfadeSlider); crossfadeRow.add(javax.swing.Box.createHorizontalStrut(8)); crossfadeRow.add(crossfadeValueLabel); crossfadeRow.add(javax.swing.Box.createHorizontalGlue());
     card.add(crossfadeRow);
@@ -425,6 +437,19 @@ public final class CDPlayer extends JFrame {
     card.add(monoHint);
     card.add(javax.swing.Box.createVerticalStrut(22));
 
+    // Animations toggle — hover fades, pulses, on/off crossfades, dialog open/close, the now-playing fade-in, and
+    // the theme color transition all check this and jump straight to their end state when off.
+    JPanel animationsRow = new JPanel(new BorderLayout()); animationsRow.setOpaque(false); animationsRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+    animationsRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+    JLabel animationsLabel = label("ANIMATIONS", 10, MUTED);
+    for (java.awt.event.ActionListener l : animationsButton.getActionListeners()) animationsButton.removeActionListener(l); // rebuilt each open; avoid stacking duplicate listeners
+    animationsButton.addActionListener(e -> setAnimationsEnabled(!animationsEnabled));
+    animationsRow.add(animationsLabel, BorderLayout.WEST);
+    JPanel animationsButtonWrap = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0)); animationsButtonWrap.setOpaque(false); animationsButtonWrap.add(animationsButton);
+    animationsRow.add(animationsButtonWrap, BorderLayout.EAST);
+    card.add(animationsRow);
+    card.add(javax.swing.Box.createVerticalStrut(22));
+
     JButton close = textButton("CLOSE");
     close.addActionListener(e -> closeSettingsDialog());
     JPanel buttonRow = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0));
@@ -443,6 +468,11 @@ public final class CDPlayer extends JFrame {
     monoAudio = value;
     monoButton.setText(value ? "ON" : "OFF"); // the row's own "MONO AUDIO" label already gives context, so the button itself is just a plain on/off toggle
     if (player != null) player.setMono(value);
+  }
+  /** Flips the global animations flag before updating the button's own text, so turning animations on still gets an animated flourish on the button itself, and turning them off snaps the button (and everything else) instantly. */
+  private void setAnimationsEnabled(boolean value) {
+    animationsEnabled = value;
+    animationsButton.setText(value ? "ON" : "OFF");
   }
 
   private void showThemeMenu() {
@@ -472,6 +502,11 @@ public final class CDPlayer extends JFrame {
     Color[] fromColors = { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED };
     Color[] toColors = { to.bg, to.card, to.accent, to.accent2, to.text, to.muted };
     if (themeAnim != null && themeAnim.isRunning()) themeAnim.stop();
+    if (!animationsEnabled) {
+      BG = to.bg; CARD = to.card; ACCENT = to.accent; ACCENT2 = to.accent2; TEXT = to.text; MUTED = to.muted;
+      applyThemeColors(); getContentPane().repaint(); refreshSettingsDialogIfOpen(); updateQueueUI();
+      return;
+    }
     int steps = 18;
     int[] step = { 0 };
     themeAnim = new Timer(16, e -> {
@@ -690,6 +725,7 @@ public final class CDPlayer extends JFrame {
       closeButton.setFocusPainted(false); closeButton.setBorderPainted(false); closeButton.setContentAreaFilled(false); closeButton.setOpaque(false);
       closeButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); closeButton.setMargin(new Insets(0, 6, 0, 0)); closeButton.setToolTipText("Remove from queue");
       closeButton.setFocusable(false);
+      attachColorHover(closeButton, MUTED, TEXT);
       closeButton.addActionListener(e -> removeFromQueue(index));
       eastPanel.add(closeButton, "close");
       row.add(entry, BorderLayout.CENTER); row.add(eastPanel, BorderLayout.EAST);
@@ -991,24 +1027,33 @@ public final class CDPlayer extends JFrame {
     disc.setCover(null); disc.setLookingUp(false); loadedFile = null; setPlaying(false);
     status.setText(statusMessage);
   }
-  /** Persists the queue (as absolute file paths) and current track index so the session can resume next launch. Runs on a JVM shutdown hook, so it must not touch anything the EDT might still be mutating concurrently — by the time shutdown hooks run for EXIT_ON_CLOSE, the EDT thread is the one blocked inside System.exit(), so nothing else is mutating `queue`/`queueIndex` at this point. */
+  /**
+   * Persists the queue (as absolute file paths), current track index, and playback position so the session can
+   * resume next launch exactly where it left off, not just on the right track. Runs on a JVM shutdown hook, so
+   * it must not touch anything the EDT might still be mutating concurrently — by the time shutdown hooks run for
+   * EXIT_ON_CLOSE, the EDT thread is the one blocked inside System.exit(), so nothing else is mutating
+   * `queue`/`queueIndex`/`player` at this point.
+   */
   private void saveQueueState() {
     try {
       File parent = QUEUE_STATE_FILE.getParentFile();
       if (parent != null) parent.mkdirs();
+      long position = player != null ? player.getMicrosecondPosition() : 0L;
       StringBuilder content = new StringBuilder();
-      content.append(queueIndex).append('\n');
+      content.append(queueIndex).append(',').append(position).append('\n');
       for (File file : queue) content.append(file.getAbsolutePath()).append('\n');
       java.nio.file.Files.write(QUEUE_STATE_FILE.toPath(), content.toString().getBytes(StandardCharsets.UTF_8));
     } catch (Exception ignored) { /* best-effort persistence; a failed save just means an empty queue next launch */ }
   }
-  /** Restores a queue saved by {@link #saveQueueState()}. Tracks that were moved or deleted since the last session are silently skipped rather than failing the whole restore. */
+  /** Restores a queue saved by {@link #saveQueueState()}, including seeking back to the exact playback position the current track was at. Tracks that were moved or deleted since the last session are silently skipped rather than failing the whole restore. The position field is optional (absent in files saved before it existed), defaulting to the start of the track. */
   private void restoreQueueState() {
     try {
       if (!QUEUE_STATE_FILE.isFile()) return;
       List<String> lines = java.nio.file.Files.readAllLines(QUEUE_STATE_FILE.toPath(), StandardCharsets.UTF_8);
       if (lines.isEmpty()) return;
-      int savedIndex = Integer.parseInt(lines.get(0).trim());
+      String[] header = lines.get(0).trim().split(",", 2);
+      int savedIndex = Integer.parseInt(header[0].trim());
+      long savedPosition = header.length > 1 ? Long.parseLong(header[1].trim()) : 0L;
       List<File> restored = new ArrayList<File>();
       for (int i = 1; i < lines.size(); i++) {
         String path = lines.get(i).trim();
@@ -1021,7 +1066,39 @@ public final class CDPlayer extends JFrame {
       queueIndex = Math.max(0, Math.min(savedIndex, queue.size() - 1));
       updateQueueUI();
       load(queue.get(queueIndex), false);
+      if (savedPosition > 0 && player != null) {
+        long target = Math.max(0, Math.min(player.getMicrosecondLength(), savedPosition));
+        player.setMicrosecondPosition(target);
+        long duration = player.getMicrosecondLength();
+        progress.setValue(duration == 0 ? 0 : (int) (target * 1000 / duration));
+        elapsed.setText(format(target));
+      }
     } catch (Exception ignored) { /* corrupt or unreadable state file; just start with an empty queue */ }
+  }
+  /** Persists volume, crossfade, mono audio, and the animations toggle so they carry over to the next launch instead of resetting to defaults. Runs on the same shutdown hook as {@link #saveQueueState()}, same EDT-quiescence rationale. */
+  private void saveSettingsState() {
+    try {
+      File parent = SETTINGS_FILE.getParentFile();
+      if (parent != null) parent.mkdirs();
+      String content = volumeSlider.getValue() + "\n" + crossfadeSlider.getValue() + "\n" + (monoAudio ? "1" : "0") + "\n" + (animationsEnabled ? "1" : "0") + "\n";
+      java.nio.file.Files.write(SETTINGS_FILE.toPath(), content.getBytes(StandardCharsets.UTF_8));
+    } catch (Exception ignored) { /* best-effort persistence; a failed save just means defaults next launch */ }
+  }
+  /** Restores settings saved by {@link #saveSettingsState()}. Must run after createContent() has wired up the sliders' change listeners, so setting each value here also updates its label/live state the same way a manual drag would. The animations line is optional (absent in files saved before that toggle existed), defaulting to enabled. */
+  private void restoreSettingsState() {
+    try {
+      if (!SETTINGS_FILE.isFile()) return;
+      List<String> lines = java.nio.file.Files.readAllLines(SETTINGS_FILE.toPath(), StandardCharsets.UTF_8);
+      if (lines.size() < 3) return;
+      int savedVolume = Integer.parseInt(lines.get(0).trim());
+      int savedCrossfade = Integer.parseInt(lines.get(1).trim());
+      boolean savedMono = "1".equals(lines.get(2).trim());
+      boolean savedAnimations = lines.size() < 4 || "1".equals(lines.get(3).trim());
+      volumeSlider.setValue(Math.max(0, Math.min(100, savedVolume)));
+      crossfadeSlider.setValue(Math.max(0, Math.min(15, savedCrossfade)));
+      setMonoAudio(savedMono);
+      setAnimationsEnabled(savedAnimations);
+    } catch (Exception ignored) { /* corrupt or unreadable state file; just start with defaults */ }
   }
   private void seek(int seconds) { if (player == null) return; long target = Math.max(0, Math.min(player.getMicrosecondLength(), player.getMicrosecondPosition() + seconds * 1_000_000L)); player.setMicrosecondPosition(target); long duration = player.getMicrosecondLength(); progress.setValue(duration == 0 ? 0 : (int) (target * 1000 / duration)); elapsed.setText(format(target)); }
   private void tick(ActionEvent event) {
@@ -1032,10 +1109,15 @@ public final class CDPlayer extends JFrame {
     int fadeSeconds = crossfadeSlider.getValue();
     // allowCrossfade=true only here: this is the one path where the queue is naturally advancing on its own,
     // not the user actively choosing a different track (see load()'s allowCrossfade doc for the full rationale).
+    // repeat is checked first, unconditionally — matching trackFinished()'s priority — since with repeat on the
+    // track always loops regardless of queue position; checking nextIndex() first here would crossfade into the
+    // next queue track instead of looping whenever repeat was on but the current track wasn't the last one.
     if (!crossfadeStarted && fadeSeconds > 0 && duration > 0 && duration - position <= fadeSeconds * 1_000_000L) {
-      int next = nextIndex();
-      if (next >= 0) { crossfadeStarted = true; queueIndex = next; load(queue.get(queueIndex), true, true); }
-      else if (repeat && loadedFile != null) { crossfadeStarted = true; load(loadedFile, true, true); } // seamless loop crossfade back into the same track
+      if (repeat && loadedFile != null) { crossfadeStarted = true; load(loadedFile, true, true); } // seamless loop crossfade back into the same track
+      else {
+        int next = nextIndex();
+        if (next >= 0) { crossfadeStarted = true; queueIndex = next; load(queue.get(queueIndex), true, true); }
+      }
     }
   }
   private void setPlaying(boolean playing) { disc.setSpinning(playing); play.setGlyph(playing ? Glyph.PAUSE : Glyph.PLAY); play.pulse(); status.setText(playing ? "●  NOW SPINNING" : (loadedFile == null ? "●  READY TO PLAY" : "●  PAUSED")); visualizer.setActive(playing); if (playing) clock.start(); else clock.stop(); }
@@ -1124,6 +1206,14 @@ public final class CDPlayer extends JFrame {
   private void fadeInNowPlaying() {
     if (nowPlayingFadeTimer != null && nowPlayingFadeTimer.isRunning()) nowPlayingFadeTimer.stop();
     final Color trackColor = track.getForeground(), sourceColor = source.getForeground();
+    // Force full opacity rather than reusing trackColor/sourceColor as-is: if a previous fade was still mid-flight
+    // when animations got disabled, the label's current color could itself be partially transparent, and simply
+    // reapplying it would "snap" to that same partial state instead of actually becoming fully visible.
+    if (!animationsEnabled) {
+      track.setForeground(new Color(trackColor.getRed(), trackColor.getGreen(), trackColor.getBlue(), 255));
+      source.setForeground(new Color(sourceColor.getRed(), sourceColor.getGreen(), sourceColor.getBlue(), 255));
+      return;
+    }
     final int steps = 10;
     final int[] step = { 0 };
     nowPlayingFadeTimer = new Timer(16, null);
@@ -1157,24 +1247,30 @@ public final class CDPlayer extends JFrame {
   private static JButton textButton(String caption) { return new PillButton(caption); }
 
   /**
-   * A small, reusable 0..1 progress value that eases toward 1 while its owning button is hovered and back to 0
-   * when the pointer leaves, driven by a short-lived Timer (auto-stops once the target is reached, so it costs
-   * nothing while idle) instead of every button rolling its own copy of the same fade logic. Buttons read
-   * {@link #value()} in paintComponent to blend their hover-highlight alpha instead of snapping between two
-   * fixed alpha constants.
+   * A small, reusable 0..1 progress value that eases toward 1 while hovered and back to 0 when the pointer
+   * leaves, driven by a short-lived Timer (auto-stops once the target is reached, so it costs nothing while
+   * idle) instead of every hoverable component rolling its own copy of the same fade logic. Components read
+   * {@link #value()} in paintComponent to blend their hover-highlight alpha/color instead of snapping between
+   * two fixed states. {@link #forButton} wires this to a button's own rollover state automatically; components
+   * with no ButtonModel (e.g. a plain JPanel acting as a link) call {@link #set} from their own mouse listener.
    */
   private static final class HoverFade {
     private float value;
     private boolean lastHovered;
     private Timer timer;
-    private final javax.swing.AbstractButton owner;
-    HoverFade(javax.swing.AbstractButton owner) { this.owner = owner; owner.getModel().addChangeListener(e -> update()); }
-    private void update() {
-      boolean hovered = owner.getModel().isRollover();
+    private final Runnable onRepaint;
+    HoverFade(Runnable onRepaint) { this.onRepaint = onRepaint; }
+    static HoverFade forButton(javax.swing.AbstractButton owner) {
+      HoverFade fade = new HoverFade(owner::repaint);
+      owner.getModel().addChangeListener(e -> fade.set(owner.getModel().isRollover()));
+      return fade;
+    }
+    void set(boolean hovered) {
       if (hovered == lastHovered) return;
       lastHovered = hovered;
       if (timer != null && timer.isRunning()) timer.stop();
       final float start = value, target = hovered ? 1f : 0f;
+      if (!animationsEnabled) { value = target; onRepaint.run(); return; }
       final int steps = 6; // hover fades are subtle and frequent, so keep them quick and cheap
       final int[] step = { 0 };
       timer = new Timer(14, null);
@@ -1182,16 +1278,22 @@ public final class CDPlayer extends JFrame {
         step[0]++;
         float t = Math.min(1f, step[0] / (float) steps);
         value = start + (target - start) * t;
-        owner.repaint();
+        onRepaint.run();
         if (t >= 1f) ((Timer) e.getSource()).stop();
       });
       timer.start();
     }
     float value() { return value; }
   }
+  /** Wires a HoverFade to a plain button that isn't custom-painted (no paintComponent override to read hover.value() from), animating its foreground color between two fixed colors on hover instead of the color just snapping. */
+  private static void attachColorHover(javax.swing.AbstractButton button, Color from, Color to) {
+    HoverFade[] holder = new HoverFade[1];
+    holder[0] = new HoverFade(() -> button.setForeground(lerp(from, to, holder[0].value())));
+    button.getModel().addChangeListener(e -> holder[0].set(button.getModel().isRollover()));
+  }
 
   private static final class PillButton extends JButton {
-    private final HoverFade hover = new HoverFade(this);
+    private final HoverFade hover = HoverFade.forButton(this);
     private float onProgress; // 0 = off-look, 1 = on-look (gradient) — only meaningful for on/off toggle buttons like Mono Audio
     private float scale = 1f;
     private Timer transitionTimer, pulseTimer;
@@ -1210,6 +1312,7 @@ public final class CDPlayer extends JFrame {
     private void animateTransition(boolean on) {
       if (transitionTimer != null && transitionTimer.isRunning()) transitionTimer.stop();
       final float start = onProgress, target = on ? 1f : 0f;
+      if (!animationsEnabled) { onProgress = target; repaint(); return; }
       final int steps = 10;
       final int[] step = { 0 };
       transitionTimer = new Timer(12, null);
@@ -1223,6 +1326,7 @@ public final class CDPlayer extends JFrame {
       transitionTimer.start();
     }
     private void pulse() {
+      if (!animationsEnabled) return;
       if (pulseTimer != null && pulseTimer.isRunning()) pulseTimer.stop();
       final int steps = 8;
       final int[] step = { 0 };
@@ -1259,7 +1363,7 @@ public final class CDPlayer extends JFrame {
 
   private static final class TransportButton extends JButton {
     private final boolean primary;
-    private final HoverFade hover = new HoverFade(this);
+    private final HoverFade hover = HoverFade.forButton(this);
     private Glyph glyph;
     private float scale = 1f;
     private Timer pulseTimer;
@@ -1277,6 +1381,7 @@ public final class CDPlayer extends JFrame {
     void setGlyph(Glyph value) { if (glyph == value) return; glyph = value; repaint(); }
     /** A quick squish-and-recover scale animation, played whenever playback toggles, so the button reacts instead of the icon just silently flipping. */
     void pulse() {
+      if (!animationsEnabled) return;
       if (pulseTimer != null && pulseTimer.isRunning()) pulseTimer.stop();
       final int steps = 8;
       final int[] step = { 0 };
@@ -1407,7 +1512,7 @@ public final class CDPlayer extends JFrame {
   }
   /** A circular toggle button for the shuffle/repeat modes: gradient-filled when on, translucent outline when off — mirrors {@link TransportButton}'s style but tracks a persistent on/off state instead of momentary presses. */
   private static final class ModeIconButton extends JButton {
-    private final HoverFade hover = new HoverFade(this);
+    private final HoverFade hover = HoverFade.forButton(this);
     private final Glyph glyph;
     private boolean on;
     private float onProgress; // 0 = fully off, 1 = fully on; animates between them instead of snapping
@@ -1431,6 +1536,7 @@ public final class CDPlayer extends JFrame {
     private void animateTransition() {
       if (transitionTimer != null && transitionTimer.isRunning()) transitionTimer.stop();
       final float start = onProgress, target = on ? 1f : 0f;
+      if (!animationsEnabled) { onProgress = target; repaint(); return; }
       final int steps = 10;
       final int[] step = { 0 };
       transitionTimer = new Timer(12, null);
@@ -1445,6 +1551,7 @@ public final class CDPlayer extends JFrame {
     }
     /** Same squish-and-recover feedback as the transport buttons, played on every toggle. */
     private void pulse() {
+      if (!animationsEnabled) return;
       if (pulseTimer != null && pulseTimer.isRunning()) pulseTimer.stop();
       final int steps = 8;
       final int[] step = { 0 };
@@ -1481,14 +1588,14 @@ public final class CDPlayer extends JFrame {
 
   /** A small "icon + username" link that opens the GitHub profile in the system browser — the URL itself is never shown, just the icon and handle. */
   private static final class GitHubLinkButton extends JPanel {
-    private boolean hovered;
     GitHubLinkButton(String username) {
       super(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 6, 0));
       setOpaque(false);
+      final HoverFade[] hover = new HoverFade[1];
       JLabel icon = new JLabel() {
         protected void paintComponent(Graphics raw) {
           Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-          g.setColor(hovered ? TEXT : MUTED);
+          g.setColor(lerp(MUTED, TEXT, hover[0].value()));
           drawCatGlyph(g, getWidth(), getHeight());
           g.dispose();
         }
@@ -1497,6 +1604,7 @@ public final class CDPlayer extends JFrame {
       JLabel name = new JLabel(username);
       name.setFont(new Font("SansSerif", Font.BOLD, 11));
       name.setForeground(MUTED);
+      hover[0] = new HoverFade(() -> { name.setForeground(lerp(MUTED, TEXT, hover[0].value())); icon.repaint(); });
       add(icon); add(name);
       setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
       setToolTipText("Open GitHub profile");
@@ -1504,8 +1612,8 @@ public final class CDPlayer extends JFrame {
         public void mouseClicked(java.awt.event.MouseEvent e) {
           try { java.awt.Desktop.getDesktop().browse(new java.net.URI("https://github.com/" + username)); } catch (Exception ignored) { }
         }
-        public void mouseEntered(java.awt.event.MouseEvent e) { hovered = true; name.setForeground(TEXT); icon.repaint(); }
-        public void mouseExited(java.awt.event.MouseEvent e) { hovered = false; name.setForeground(MUTED); icon.repaint(); }
+        public void mouseEntered(java.awt.event.MouseEvent e) { hover[0].set(true); }
+        public void mouseExited(java.awt.event.MouseEvent e) { hover[0].set(false); }
       });
     }
     /** A minimal, generic cat-silhouette glyph (round head, two ear triangles) used to suggest "GitHub" alongside the username, without reproducing GitHub's own mark. */
