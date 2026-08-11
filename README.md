@@ -57,7 +57,7 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - Live audio visualizer that reacts to the actual decoded waveform, not a fake animation — its shape changes with the active theme (see below)
 - Metadata display (artist, title, album) read from the file's tags, with the filename as a fallback
 - Embedded album art extraction, with automatic iTunes/Deezer cover lookup when a file has none
-- A **Lyrics** button appears whenever the current track has embedded lyrics, opening a scrollable panel that follows the track — LRC-style timing markers and header tags are stripped for a clean read
+- A **Lyrics** button appears whenever the current track has embedded lyrics, opening a panel that follows the track — for LRC-timed lyrics, the current line highlights and auto-scrolls in sync with playback, karaoke-style; otherwise it's a plain scrollable read
 
 **Settings**
 - A dedicated Settings dialog (opened from the header) holds the Theme picker, Crossfade slider, Sleep Timer, Mono Audio toggle, and an Animations toggle, keeping the main screen focused on playback

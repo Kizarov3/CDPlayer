@@ -754,6 +754,7 @@ public final class CDPlayer extends JFrame {
     lyricsOverlay.card.removeAll();
     lyricsOverlay.card.add(buildLyricsPanel(), BorderLayout.CENTER);
     contentStack.validate(); // see showSettingsDialog()'s note on why this must be immediate, and run after the card's content is populated
+    updateLyricsSync(); // now that validate() has given every line label real bounds, this can scroll to the right one immediately instead of waiting for the next tick
     lyricsOverlay.setVisible(true);
     animateLyricsIn();
   }
@@ -765,6 +766,7 @@ public final class CDPlayer extends JFrame {
     lyricsOverlay.card.removeAll();
     lyricsOverlay.card.add(buildLyricsPanel(), BorderLayout.CENTER);
     contentStack.validate();
+    updateLyricsSync();
     lyricsOverlay.card.repaint();
   }
   private Timer lyricsAnimTimer;
@@ -810,20 +812,81 @@ public final class CDPlayer extends JFrame {
     });
     lyricsAnimTimer.start();
   }
+  /**
+   * One parsed LRC timing point. A single source line can carry more than one leading [mm:ss.xx] tag (LRC's way
+   * of repeating the same text at multiple points), which parseLrc() expands into one LyricLine per timestamp —
+   * so this always represents one timestamp/text pair, never a whole raw line.
+   */
+  private static final class LyricLine {
+    final long micros; final String text;
+    LyricLine(long micros, String text) { this.micros = micros; this.text = text; }
+  }
+  private static final java.util.regex.Pattern LRC_TIMESTAMP = java.util.regex.Pattern.compile("^\\[(\\d{1,2}):(\\d{2})(?:\\.(\\d{1,3}))?\\]");
+  /** Parses LRC timing tags out of raw tag text; returns an empty list (not null) if it isn't LRC-timed at all, which the caller uses to fall back to a plain, unsynced scrollable view. */
+  private static List<LyricLine> parseLrc(String raw) {
+    List<LyricLine> result = new ArrayList<LyricLine>();
+    for (String rawLine : raw.split("\\R", -1)) {
+      String remaining = rawLine;
+      List<Long> stamps = new ArrayList<Long>();
+      while (true) {
+        java.util.regex.Matcher m = LRC_TIMESTAMP.matcher(remaining);
+        if (!m.find()) break;
+        int minutes = Integer.parseInt(m.group(1)), seconds = Integer.parseInt(m.group(2));
+        String frac = m.group(3);
+        int millis = frac == null ? 0 : (int) (Double.parseDouble("0." + frac) * 1000);
+        stamps.add((minutes * 60L + seconds) * 1_000_000L + millis * 1000L);
+        remaining = remaining.substring(m.end());
+      }
+      if (stamps.isEmpty()) continue; // a header tag like [ti:...] or genuinely untimed lyrics — neither starts with digits
+      String text = remaining.trim();
+      for (long micros : stamps) result.add(new LyricLine(micros, text));
+    }
+    result.sort((a, b) -> Long.compare(a.micros, b.micros));
+    return result;
+  }
+  private List<LyricLine> currentLyricLines = java.util.Collections.emptyList();
+  private List<JLabel> lyricsLineLabels; // parallel to currentLyricLines; null when showing the plain unsynced fallback instead
+  private JScrollPane lyricsScrollPane;
+  private int lyricsHighlightIndex = -1;
   private JPanel buildLyricsPanel() {
     JPanel card = new JPanel(new BorderLayout(0, 16));
     card.setBackground(CARD); card.setOpaque(true);
     card.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 40), 1), BorderFactory.createEmptyBorder(26, 30, 22, 30)));
     JLabel title = label("LYRICS", 16, ACCENT);
     card.add(title, BorderLayout.NORTH);
-    javax.swing.JTextArea text = new javax.swing.JTextArea(currentLyrics == null ? "" : formatLyricsForDisplay(currentLyrics));
-    text.setEditable(false); text.setLineWrap(true); text.setWrapStyleWord(true);
-    text.setOpaque(false); text.setForeground(TEXT); text.setFont(new Font("SansSerif", Font.PLAIN, 13));
-    text.setCaretPosition(0); // JTextArea otherwise scrolls to wherever setText() last left the caret (the end), opening on the last line instead of the first
-    JScrollPane scroll = new JScrollPane(text);
+    currentLyricLines = currentLyrics == null ? java.util.Collections.<LyricLine>emptyList() : parseLrc(currentLyrics);
+    lyricsHighlightIndex = -1;
+    javax.swing.JComponent body;
+    if (currentLyricLines.isEmpty()) {
+      // Not LRC-timed (or no lyrics at all) — same plain scrollable text as before, no line-by-line sync possible.
+      javax.swing.JTextArea text = new javax.swing.JTextArea(currentLyrics == null ? "" : formatLyricsForDisplay(currentLyrics));
+      text.setEditable(false); text.setLineWrap(true); text.setWrapStyleWord(true);
+      text.setOpaque(false); text.setForeground(TEXT); text.setFont(new Font("SansSerif", Font.PLAIN, 13));
+      text.setCaretPosition(0); // JTextArea otherwise scrolls to wherever setText() last left the caret (the end), opening on the last line instead of the first
+      body = text;
+      lyricsLineLabels = null;
+    } else {
+      // One JLabel per line (not a single JTextArea) so updateLyricsSync() can restyle just the current line on
+      // every tick without rebuilding or re-flowing the whole panel — cheap enough to call every 70ms.
+      JPanel lines = new JPanel();
+      lines.setOpaque(false);
+      lines.setLayout(new javax.swing.BoxLayout(lines, javax.swing.BoxLayout.Y_AXIS));
+      lyricsLineLabels = new ArrayList<JLabel>();
+      for (LyricLine ll : currentLyricLines) {
+        JLabel lbl = new JLabel(ll.text.isEmpty() ? " " : ll.text);
+        lbl.setForeground(MUTED); lbl.setFont(new Font("SansSerif", Font.PLAIN, 13));
+        lbl.setAlignmentX(Component.LEFT_ALIGNMENT);
+        lbl.setBorder(BorderFactory.createEmptyBorder(3, 0, 3, 0));
+        lyricsLineLabels.add(lbl);
+        lines.add(lbl);
+      }
+      body = lines;
+    }
+    JScrollPane scroll = new JScrollPane(body);
     scroll.setOpaque(false); scroll.getViewport().setOpaque(false); scroll.setBorder(null);
     scroll.setPreferredSize(new Dimension(420, 380));
     scroll.getVerticalScrollBar().setUnitIncrement(16);
+    lyricsScrollPane = scroll;
     card.add(scroll, BorderLayout.CENTER);
     JButton close = textButton("CLOSE");
     close.addActionListener(e -> closeLyrics());
@@ -831,6 +894,35 @@ public final class CDPlayer extends JFrame {
     buttonRow.setOpaque(false); buttonRow.add(close);
     card.add(buttonRow, BorderLayout.SOUTH);
     return card;
+  }
+  /**
+   * Restyles whichever line covers the player's current position and scrolls it into view — called after every
+   * open/rebuild (once bounds are valid, so the scroll math is correct) and on every tick/seek while the panel is
+   * open. A cheap linear scan: real lyrics files are at most a few hundred lines, and this only runs while the
+   * lyrics panel is actually visible.
+   */
+  private void updateLyricsSync() {
+    if (lyricsLineLabels == null || lyricsLineLabels.isEmpty() || player == null) return;
+    long position = player.getMicrosecondPosition();
+    int index = -1;
+    for (int i = 0; i < currentLyricLines.size(); i++) {
+      if (currentLyricLines.get(i).micros <= position) index = i; else break;
+    }
+    if (index == lyricsHighlightIndex) return;
+    if (lyricsHighlightIndex >= 0 && lyricsHighlightIndex < lyricsLineLabels.size()) {
+      JLabel old = lyricsLineLabels.get(lyricsHighlightIndex);
+      old.setForeground(MUTED); old.setFont(new Font("SansSerif", Font.PLAIN, 13));
+    }
+    lyricsHighlightIndex = index;
+    if (index >= 0) {
+      JLabel current = lyricsLineLabels.get(index);
+      current.setForeground(ACCENT); current.setFont(new Font("SansSerif", Font.BOLD, 14));
+      if (lyricsScrollPane != null) {
+        java.awt.Rectangle bounds = current.getBounds();
+        int targetY = Math.max(0, bounds.y - lyricsScrollPane.getViewport().getExtentSize().height / 2 + bounds.height / 2);
+        lyricsScrollPane.getVerticalScrollBar().setValue(targetY);
+      }
+    }
   }
   /**
    * Strips LRC-style furniture for display only — currentLyrics itself stays exactly as extracted. Leading
@@ -953,7 +1045,7 @@ public final class CDPlayer extends JFrame {
     panel.add(javax.swing.Box.createVerticalStrut(10)); source.setAlignmentX(Component.LEFT_ALIGNMENT); source.setFont(new Font("SansSerif", Font.PLAIN, 12)); source.setPreferredSize(new Dimension(460, 16)); source.setMaximumSize(new Dimension(460, 16)); source.setMinimumSize(new Dimension(460, 16)); panel.add(source);
     panel.add(javax.swing.Box.createVerticalStrut(38));
     progress.setOpaque(false); progress.setUI(new AccentSliderUI(progress)); progress.setAlignmentX(Component.LEFT_ALIGNMENT); progress.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20)); progress.setFocusable(false);
-    progress.addChangeListener(e -> { if (player != null && progress.getValueIsAdjusting()) adjusting = true; else if (player != null && adjusting) { player.setMicrosecondPosition((long) (player.getMicrosecondLength() * progress.getValue() / 1000.0)); adjusting = false; } });
+    progress.addChangeListener(e -> { if (player != null && progress.getValueIsAdjusting()) adjusting = true; else if (player != null && adjusting) { player.setMicrosecondPosition((long) (player.getMicrosecondLength() * progress.getValue() / 1000.0)); adjusting = false; if (lyricsOverlay != null && lyricsOverlay.isVisible()) updateLyricsSync(); } });
     panel.add(progress);
     JPanel times = new JPanel(new BorderLayout()); times.setOpaque(false); times.setMaximumSize(new Dimension(Integer.MAX_VALUE, 16)); elapsed.setFont(new Font("SansSerif", Font.PLAIN, 11)); length.setFont(new Font("SansSerif", Font.PLAIN, 11)); times.add(elapsed, BorderLayout.WEST); times.add(length, BorderLayout.EAST); panel.add(times);
     panel.add(javax.swing.Box.createVerticalStrut(28));
@@ -1626,12 +1718,13 @@ public final class CDPlayer extends JFrame {
       }
     } catch (Exception ignored) { /* corrupt or unreadable state file; just start with defaults */ }
   }
-  private void seek(int seconds) { if (player == null) return; long target = Math.max(0, Math.min(player.getMicrosecondLength(), player.getMicrosecondPosition() + seconds * 1_000_000L)); player.setMicrosecondPosition(target); long duration = player.getMicrosecondLength(); progress.setValue(duration == 0 ? 0 : (int) (target * 1000 / duration)); elapsed.setText(format(target)); }
+  private void seek(int seconds) { if (player == null) return; long target = Math.max(0, Math.min(player.getMicrosecondLength(), player.getMicrosecondPosition() + seconds * 1_000_000L)); player.setMicrosecondPosition(target); long duration = player.getMicrosecondLength(); progress.setValue(duration == 0 ? 0 : (int) (target * 1000 / duration)); elapsed.setText(format(target)); if (lyricsOverlay != null && lyricsOverlay.isVisible()) updateLyricsSync(); }
   private void tick(ActionEvent event) {
     if (player == null || adjusting) return;
     long duration = player.getMicrosecondLength(); long position = player.getMicrosecondPosition();
     progress.setValue(duration == 0 ? 0 : (int) (position * 1000 / duration)); elapsed.setText(format(position));
     double[] levels = computeLevels(5, 90); visualizer.setLevels(levels != null ? levels : fallbackLevels());
+    if (lyricsOverlay != null && lyricsOverlay.isVisible()) updateLyricsSync();
     int fadeSeconds = crossfadeSlider.getValue();
     // allowCrossfade=true only here: this is the one path where the queue is naturally advancing on its own,
     // not the user actively choosing a different track (see load()'s allowCrossfade doc for the full rationale).
