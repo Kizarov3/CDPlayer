@@ -37,7 +37,7 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - Native playback for WAV, AIFF, and AU; FFmpeg-backed playback for MP3, FLAC, and M4A
 - Custom low-latency streaming audio engine — volume changes and seeks apply in well under 100ms, not the multi-second lag you'd get from Java's stock `Clip` API
 - Drag and drop individual files or whole folders (recursively) to build a queue, or use **Load a Track** — the file picker remembers the last folder you browsed and reopens there next time
-- Shuffle and repeat as icon toggles next to the transport controls, with an "Up Next" preview that always reflects what will actually play next (the shuffled pick or the repeated track, not just the next queue slot)
+- Shuffle toggle and a three-way repeat cycle (off → repeat one track → repeat the whole queue, looping back to the start once it ends) next to the transport controls, with an "Up Next" preview that always reflects what will actually play next
 - Adjustable crossfade (0–15s) using an equal-power fade curve so the transition doesn't dip in volume — only kicks in when the queue naturally advances to the next track, never when you manually pick a different one
 - Volume slider with near-instant gain control, correctly blended into an in-progress crossfade instead of fighting it
 - Mono audio toggle — sums left/right channels together, useful for a single speaker or one earbud
@@ -50,12 +50,14 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - One-click **Clear Queue** button, disabled automatically when there's nothing to clear
 - "Up next" preview and live queue position (e.g. `QUEUE 3 / 10`)
 - The queue, current track, and exact playback position are all saved when you close the app and restored next launch — resumes right where you left off, ready to play but not auto-started
+- Save the current queue as a standard `.m3u` playlist file, or load one back in — from Settings, order preserved exactly as saved
 
 **Now playing**
 - Spinning disc animation inside a jewel-case backdrop, with your album art on the disc label and case thumbnail
 - Live audio visualizer that reacts to the actual decoded waveform, not a fake animation — its shape changes with the active theme (see below)
 - Metadata display (artist, title, album) read from the file's tags, with the filename as a fallback
 - Embedded album art extraction, with automatic iTunes/Deezer cover lookup when a file has none
+- A **Lyrics** button appears whenever the current track has embedded lyrics, opening a scrollable panel that follows the track — LRC-style timing markers and header tags are stripped for a clean read
 
 **Settings**
 - A dedicated Settings dialog (opened from the header) holds the Theme picker, Crossfade slider, Sleep Timer, Mono Audio toggle, and an Animations toggle, keeping the main screen focused on playback

@@ -103,6 +103,8 @@ public final class CDPlayer extends JFrame {
   private final ModeIconButton repeatButton = new ModeIconButton(Glyph.REPEAT, "Repeat");
   private final JButton clearQueueButton = textButton("CLEAR QUEUE");
   private final JButton themeButton = textButton(THEMES[0].name);
+  private final JButton lyricsButton = textButton("LYRICS");
+  private String currentLyrics; // the loaded track's embedded lyrics, or null — drives lyricsButton's visibility
   private final JLabel nowPlayingLabel = new JLabel("NOW PLAYING");
   private final JLabel queueInfo = label("QUEUE EMPTY", 10, MUTED);
   private final JLabel queueNext = label("DROP SONGS OR A FOLDER TO BUILD A QUEUE", 9, MUTED);
@@ -138,7 +140,8 @@ public final class CDPlayer extends JFrame {
   private int dragAccumulatedY;
   private boolean dragMoved;
   private boolean shuffle;
-  private boolean repeat;
+  private enum RepeatMode { OFF, ONE, ALL }
+  private RepeatMode repeatMode = RepeatMode.OFF;
   private StreamPlayer player;
   private File loadedFile;
   private File temporaryAudio;
@@ -159,9 +162,10 @@ public final class CDPlayer extends JFrame {
   private final JButton settingsButton = textButton("SETTINGS");
   private final JButton monoButton = textButton("OFF");
   private final JButton animationsButton = textButton("ON");
-  private SettingsOverlay settingsOverlay;
+  private CenteredOverlay settingsOverlay;
+  private CenteredOverlay lyricsOverlay;
   private ThemeMenuOverlay themeMenuOverlay;
-  private JPanel contentStack; // the OverlayLayout stack: themeMenuOverlay / settingsOverlay (topmost, added lazily) > foreground > themeOverlay > background
+  private JPanel contentStack; // the OverlayLayout stack: themeMenuOverlay / settingsOverlay / lyricsOverlay (topmost, added lazily) > foreground > themeOverlay > background
   private java.awt.Rectangle preFullscreenBounds;
   private boolean fullscreen;
 
@@ -216,6 +220,7 @@ public final class CDPlayer extends JFrame {
     // Wired once here rather than inside buildSettingsPanel(), which is rebuilt fresh every time the Settings
     // dialog opens — attaching it there would stack a duplicate listener on each open.
     themeButton.addActionListener(e -> showThemeMenu());
+    lyricsButton.addActionListener(e -> showLyrics());
     sleepTimer.addActionListener(e -> {
       sleepSecondsRemaining--;
       if (sleepSecondsRemaining <= 0) {
@@ -249,6 +254,7 @@ public final class CDPlayer extends JFrame {
     // with its own key bindings to manage.
     bindKey(inputMap, actionMap, "ESCAPE", "escapeAction", e -> {
       if (themeMenuOverlay != null && themeMenuOverlay.isVisible()) hideThemeMenu();
+      else if (lyricsOverlay != null && lyricsOverlay.isVisible()) closeLyrics();
       else if (settingsOverlay != null && settingsOverlay.isVisible()) closeSettingsDialog();
       else if (fullscreen) toggleFullscreen();
     });
@@ -368,7 +374,7 @@ public final class CDPlayer extends JFrame {
    */
   private void showSettingsDialog() {
     if (settingsOverlay == null) {
-      settingsOverlay = new SettingsOverlay();
+      settingsOverlay = new CenteredOverlay();
       settingsOverlay.setVisible(false);
       contentStack.add(settingsOverlay, 0); // index 0 = topmost in the OverlayLayout stack, above the disc/theme particles/background
       themeOverlay.setSettingsCardReference(settingsOverlay.card); // themeOverlay is the glass pane (always topmost) — without this, particles would drift over the open Settings card too
@@ -489,6 +495,22 @@ public final class CDPlayer extends JFrame {
     sleepTimerSlider.setToolTipText("Pause playback after a set time (0 = off, up to 120 minutes)");
     sleepRow.add(sleepTimerTitle); sleepRow.add(javax.swing.Box.createHorizontalStrut(10)); sleepRow.add(sleepTimerSlider); sleepRow.add(javax.swing.Box.createHorizontalStrut(8)); sleepRow.add(sleepTimerValueLabel); sleepRow.add(javax.swing.Box.createHorizontalGlue());
     card.add(sleepRow);
+    card.add(javax.swing.Box.createVerticalStrut(22));
+
+    // Playlist save/load (.m3u) — brand new JButtons each rebuild, same as CLOSE below, so no listener-stacking
+    // guard is needed the way the reused crossfade/sleep-timer/mono/animations fields require.
+    JPanel playlistRow = new JPanel(new BorderLayout()); playlistRow.setOpaque(false); playlistRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+    playlistRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+    JLabel playlistLabel = label("PLAYLIST", 10, MUTED);
+    playlistRow.add(playlistLabel, BorderLayout.WEST);
+    JPanel playlistButtons = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 8, 0)); playlistButtons.setOpaque(false);
+    JButton savePlaylistButton = textButton("SAVE"); savePlaylistButton.setToolTipText("Save the current queue as a .m3u playlist file");
+    savePlaylistButton.addActionListener(e -> savePlaylist());
+    JButton loadPlaylistButton = textButton("LOAD"); loadPlaylistButton.setToolTipText("Add every track from a .m3u playlist file to the queue");
+    loadPlaylistButton.addActionListener(e -> loadPlaylist());
+    playlistButtons.add(savePlaylistButton); playlistButtons.add(loadPlaylistButton);
+    playlistRow.add(playlistButtons, BorderLayout.EAST);
+    card.add(playlistRow);
     card.add(javax.swing.Box.createVerticalStrut(22));
 
     // Mono audio toggle — downmixes left/right to identical channels in software on the playback pump thread.
@@ -720,6 +742,113 @@ public final class CDPlayer extends JFrame {
     settingsOverlay.card.repaint();
   }
 
+  /** Opens the lyrics panel — same in-window-overlay approach as Settings (see showSettingsDialog), and for the same reason: a separate window doesn't reliably layer above this app's own or the OS's fullscreen. Uses its own CenteredOverlay/Timer rather than sharing Settings' — both can be triggered independently (the lyrics button lives on the main screen, not inside Settings), and stopping one's in-progress animation whenever the other opens would leave it visibly frozen mid-transition. */
+  private void showLyrics() {
+    if (currentLyrics == null) return;
+    if (lyricsOverlay == null) {
+      lyricsOverlay = new CenteredOverlay();
+      lyricsOverlay.setVisible(false);
+      contentStack.add(lyricsOverlay, 0);
+      themeOverlay.setLyricsCardReference(lyricsOverlay.card);
+    }
+    lyricsOverlay.card.removeAll();
+    lyricsOverlay.card.add(buildLyricsPanel(), BorderLayout.CENTER);
+    contentStack.validate(); // see showSettingsDialog()'s note on why this must be immediate, and run after the card's content is populated
+    lyricsOverlay.setVisible(true);
+    animateLyricsIn();
+  }
+  private void closeLyrics() { if (lyricsOverlay != null) animateLyricsOut(); }
+  /** Rebuilds the lyrics card in place if it's open and a new track just loaded, so it tracks whatever's actually playing instead of showing a stale track's words — closes itself if the new track has none. */
+  private void refreshLyricsIfOpen() {
+    if (lyricsOverlay == null || !lyricsOverlay.isVisible()) return;
+    if (currentLyrics == null) { closeLyrics(); return; }
+    lyricsOverlay.card.removeAll();
+    lyricsOverlay.card.add(buildLyricsPanel(), BorderLayout.CENTER);
+    contentStack.validate();
+    lyricsOverlay.card.repaint();
+  }
+  private Timer lyricsAnimTimer;
+  private void animateLyricsIn() {
+    if (lyricsAnimTimer != null && lyricsAnimTimer.isRunning()) lyricsAnimTimer.stop();
+    FadeableCard card = lyricsOverlay.card;
+    if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; lyricsOverlay.repaint(); return; }
+    card.beginTransformAnimation();
+    card.opacity = 0f; card.scale = 0.9f;
+    final int steps = 10;
+    final int[] step = { 0 };
+    lyricsAnimTimer = new Timer(12, null);
+    lyricsAnimTimer.addActionListener(e -> {
+      step[0]++;
+      float t = Math.min(1f, step[0] / (float) steps);
+      float eased = 1f - (float) Math.pow(1f - t, 3);
+      card.opacity = eased; card.scale = 0.9f + 0.1f * eased;
+      lyricsOverlay.repaint();
+      if (t >= 1f) { ((Timer) e.getSource()).stop(); card.opacity = 1f; card.scale = 1f; card.endTransformAnimation(); }
+    });
+    lyricsAnimTimer.start();
+  }
+  private void animateLyricsOut() {
+    if (!lyricsOverlay.isVisible()) return;
+    if (lyricsAnimTimer != null && lyricsAnimTimer.isRunning()) lyricsAnimTimer.stop();
+    FadeableCard card = lyricsOverlay.card;
+    if (!animationsEnabled) { lyricsOverlay.setVisible(false); card.opacity = 1f; card.scale = 1f; return; }
+    card.beginTransformAnimation();
+    final int steps = 8;
+    final int[] step = { 0 };
+    lyricsAnimTimer = new Timer(12, null);
+    lyricsAnimTimer.addActionListener(e -> {
+      step[0]++;
+      float t = Math.min(1f, step[0] / (float) steps);
+      card.opacity = 1f - t; card.scale = 1f - 0.1f * t;
+      lyricsOverlay.repaint();
+      if (t >= 1f) {
+        ((Timer) e.getSource()).stop();
+        lyricsOverlay.setVisible(false);
+        card.opacity = 1f; card.scale = 1f;
+        card.endTransformAnimation();
+      }
+    });
+    lyricsAnimTimer.start();
+  }
+  private JPanel buildLyricsPanel() {
+    JPanel card = new JPanel(new BorderLayout(0, 16));
+    card.setBackground(CARD); card.setOpaque(true);
+    card.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 40), 1), BorderFactory.createEmptyBorder(26, 30, 22, 30)));
+    JLabel title = label("LYRICS", 16, ACCENT);
+    card.add(title, BorderLayout.NORTH);
+    javax.swing.JTextArea text = new javax.swing.JTextArea(currentLyrics == null ? "" : formatLyricsForDisplay(currentLyrics));
+    text.setEditable(false); text.setLineWrap(true); text.setWrapStyleWord(true);
+    text.setOpaque(false); text.setForeground(TEXT); text.setFont(new Font("SansSerif", Font.PLAIN, 13));
+    text.setCaretPosition(0); // JTextArea otherwise scrolls to wherever setText() last left the caret (the end), opening on the last line instead of the first
+    JScrollPane scroll = new JScrollPane(text);
+    scroll.setOpaque(false); scroll.getViewport().setOpaque(false); scroll.setBorder(null);
+    scroll.setPreferredSize(new Dimension(420, 380));
+    scroll.getVerticalScrollBar().setUnitIncrement(16);
+    card.add(scroll, BorderLayout.CENTER);
+    JButton close = textButton("CLOSE");
+    close.addActionListener(e -> closeLyrics());
+    JPanel buttonRow = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0));
+    buttonRow.setOpaque(false); buttonRow.add(close);
+    card.add(buttonRow, BorderLayout.SOUTH);
+    return card;
+  }
+  /**
+   * Strips LRC-style furniture for display only — currentLyrics itself stays exactly as extracted. Leading
+   * [mm:ss.xx] timing markers and [ti:]/[ar:]/[al:]/[by:]/etc. header lines are extremely common in lyrics pulled
+   * from LRC files (every real-world example seen while building this was tagged that way) and aren't something
+   * anyone wants to read line by line; anything that isn't in one of those two specific forms is left untouched,
+   * so plain, non-LRC lyrics text just passes through as-is.
+   */
+  private static String formatLyricsForDisplay(String raw) {
+    StringBuilder out = new StringBuilder();
+    for (String line : raw.split("\\R", -1)) {
+      String stripped = line.replaceFirst("^\\[\\d{1,2}:\\d{2}(?:\\.\\d{1,3})?\\]\\s*", "");
+      if (stripped.matches("^\\[(ti|ar|al|by|offset|length|re|ve):[^\\]]*\\]\\s*$")) continue;
+      out.append(stripped).append('\n');
+    }
+    return out.toString().trim();
+  }
+
   private void applyThemeColors() {
     status.setForeground(ACCENT); track.setForeground(TEXT); source.setForeground(MUTED);
     elapsed.setForeground(MUTED); length.setForeground(MUTED); queueInfo.setForeground(MUTED); queueNext.setForeground(MUTED);
@@ -814,7 +943,11 @@ public final class CDPlayer extends JFrame {
   private JPanel playerPanel() {
     JPanel panel = new JPanel(); panel.setOpaque(false); panel.setLayout(new javax.swing.BoxLayout(panel, javax.swing.BoxLayout.Y_AXIS));
     JPanel nowRow = new JPanel(); nowRow.setOpaque(false); nowRow.setAlignmentX(Component.LEFT_ALIGNMENT); nowRow.setLayout(new javax.swing.BoxLayout(nowRow, javax.swing.BoxLayout.X_AXIS));
-    JLabel now = nowPlayingLabel; now.setText("NOW PLAYING"); now.setForeground(ACCENT2); now.setFont(new Font("SansSerif", Font.BOLD, 11)); nowRow.add(now); nowRow.add(javax.swing.Box.createHorizontalStrut(12)); nowRow.add(visualizer); panel.add(nowRow);
+    JLabel now = nowPlayingLabel; now.setText("NOW PLAYING"); now.setForeground(ACCENT2); now.setFont(new Font("SansSerif", Font.BOLD, 11)); nowRow.add(now); nowRow.add(javax.swing.Box.createHorizontalStrut(12)); nowRow.add(visualizer);
+    nowRow.add(javax.swing.Box.createHorizontalGlue());
+    lyricsButton.setVisible(false); // shown only once a loaded track actually has lyrics — see load()
+    nowRow.add(lyricsButton);
+    panel.add(nowRow);
     panel.add(javax.swing.Box.createVerticalStrut(14));
     track.setForeground(TEXT); track.setFont(new Font("SansSerif", Font.BOLD, 34)); track.setAlignmentX(Component.LEFT_ALIGNMENT); track.setPreferredSize(new Dimension(460, 44)); track.setMaximumSize(new Dimension(460, 44)); track.setMinimumSize(new Dimension(460, 44)); panel.add(track);
     panel.add(javax.swing.Box.createVerticalStrut(10)); source.setAlignmentX(Component.LEFT_ALIGNMENT); source.setFont(new Font("SansSerif", Font.PLAIN, 12)); source.setPreferredSize(new Dimension(460, 16)); source.setMaximumSize(new Dimension(460, 16)); source.setMinimumSize(new Dimension(460, 16)); panel.add(source);
@@ -845,7 +978,16 @@ public final class CDPlayer extends JFrame {
     panel.add(javax.swing.Box.createVerticalStrut(26));
     JPanel modesCluster = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0)); modesCluster.setOpaque(false);
     shuffleButton.addActionListener(e -> { shuffle = !shuffle; shuffleButton.setOn(shuffle); shuffleNextCacheIndex = Integer.MIN_VALUE; updateQueueUI(); }); modesCluster.add(shuffleButton); modesCluster.add(javax.swing.Box.createHorizontalStrut(20));
-    repeatButton.addActionListener(e -> { repeat = !repeat; repeatButton.setOn(repeat); updateQueueUI(); }); modesCluster.add(repeatButton);
+    // Cycles OFF -> ONE -> ALL -> OFF. setOn() (the button's existing binary gradient fill) tracks "not OFF", and
+    // a small "1" badge distinguishes ONE from ALL without needing a whole second visual state in the button.
+    repeatButton.addActionListener(e -> {
+      repeatMode = repeatMode == RepeatMode.OFF ? RepeatMode.ONE : repeatMode == RepeatMode.ONE ? RepeatMode.ALL : RepeatMode.OFF;
+      repeatButton.setOn(repeatMode != RepeatMode.OFF);
+      repeatButton.setBadge(repeatMode == RepeatMode.ONE ? "1" : null);
+      repeatButton.setToolTipText(repeatMode == RepeatMode.OFF ? "Repeat" : repeatMode == RepeatMode.ONE ? "Repeat: one track" : "Repeat: whole queue");
+      updateQueueUI();
+    });
+    modesCluster.add(repeatButton);
     clearQueueButton.addActionListener(e -> clearQueue());
     JPanel modes = new JPanel(new BorderLayout()); modes.setOpaque(false); modes.setAlignmentX(Component.LEFT_ALIGNMENT);
     modes.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40)); // see controls' setMaximumSize above
@@ -908,6 +1050,53 @@ public final class CDPlayer extends JFrame {
       saveLastPath(chooser.getCurrentDirectory()); // wherever the chooser was browsing when the user picked, not just the file's own folder
     }
   }
+  /** Writes the current queue out as a standard .m3u (UTF-8, so #EXTM3U is implicitly the "extended" M3U8 dialect) — absolute paths, so the file stays valid regardless of where it's later opened from. */
+  private void savePlaylist() {
+    if (queue.isEmpty()) { status.setText("●  QUEUE IS EMPTY"); return; }
+    JFileChooser chooser = new JFileChooser();
+    chooser.setSelectedFile(new File("playlist.m3u"));
+    File lastDir = readLastPath();
+    if (lastDir != null && lastDir.isDirectory()) chooser.setCurrentDirectory(lastDir);
+    if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
+    File target = chooser.getSelectedFile();
+    if (!target.getName().toLowerCase().endsWith(".m3u") && !target.getName().toLowerCase().endsWith(".m3u8")) {
+      target = new File(target.getParentFile(), target.getName() + ".m3u");
+    }
+    try (java.io.PrintWriter writer = new java.io.PrintWriter(new java.io.OutputStreamWriter(new java.io.FileOutputStream(target), StandardCharsets.UTF_8))) {
+      writer.println("#EXTM3U");
+      for (File f : queue) { writer.println("#EXTINF:-1," + queueDisplay(f)); writer.println(f.getAbsolutePath()); }
+      status.setText("●  SAVED PLAYLIST · " + target.getName());
+      saveLastPath(chooser.getCurrentDirectory());
+    } catch (Exception ex) { status.setText("●  COULDN'T SAVE PLAYLIST"); }
+  }
+  /** Reads a .m3u/.m3u8 file and queues whatever tracks in it still exist and are playable — anything else (missing files, unsupported formats, blank lines, comments other than #EXTINF) is silently skipped rather than failing the whole load. A relative path in the file resolves against the playlist's own folder, matching how every other player treats them. */
+  private void loadPlaylist() {
+    JFileChooser chooser = new JFileChooser();
+    chooser.setFileFilter(new FileNameExtensionFilter("Playlist (M3U)", "m3u", "m3u8"));
+    File lastDir = readLastPath();
+    if (lastDir != null && lastDir.isDirectory()) chooser.setCurrentDirectory(lastDir);
+    if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) return;
+    File source = chooser.getSelectedFile();
+    List<File> tracks = new ArrayList<File>();
+    try {
+      for (String rawLine : java.nio.file.Files.readAllLines(source.toPath(), StandardCharsets.UTF_8)) {
+        String line = rawLine.trim();
+        if (line.isEmpty() || line.startsWith("#")) continue;
+        File f = new File(line);
+        if (!f.isAbsolute()) f = new File(source.getParentFile(), line);
+        if (f.isFile() && isSupportedAudio(f)) tracks.add(f);
+      }
+    } catch (Exception ex) { status.setText("●  COULDN'T READ PLAYLIST"); return; }
+    saveLastPath(chooser.getCurrentDirectory());
+    if (tracks.isEmpty()) { status.setText("●  NO PLAYABLE TRACKS IN PLAYLIST"); return; }
+    // Appends in file order rather than going through addToQueue() — that alphabetically re-sorts everything it
+    // adds, which makes sense for a drag-and-dropped batch of files but would silently discard the whole point of
+    // a playlist: the curated order it was saved in (very possibly built with the queue's own drag-to-reorder).
+    queue.addAll(tracks);
+    status.setText("●  LOADED PLAYLIST · " + tracks.size() + " TRACK" + (tracks.size() == 1 ? "" : "S"));
+    updateQueueUI();
+    if (queueIndex < 0) { queueIndex = 0; load(queue.get(queueIndex)); }
+  }
   private static File readLastPath() {
     try {
       if (!LAST_PATH_FILE.isFile()) return null;
@@ -940,10 +1129,12 @@ public final class CDPlayer extends JFrame {
       return;
     }
     queueInfo.setText("QUEUE " + (queueIndex + 1) + " / " + queue.size() + (shuffle ? " · SHUFFLED" : ""));
-    // trackFinished() loops the current track whenever repeat is on, regardless of queue position — so that (not
-    // whatever nextIndex() would return) is what actually plays next, and must take priority in this label.
+    // trackFinished() loops the current track whenever repeat-one is on, regardless of queue position — so that
+    // (not whatever nextIndex() would return) is what actually plays next, and must take priority in this label.
+    // Repeat-all wraps back to the front of the queue once nextIndex() runs out, same as trackFinished()/tick().
     int next = nextIndex();
-    queueNext.setText(repeat ? "REPEATING THIS TRACK" : (next >= 0 && next != queueIndex ? "UP NEXT · " + queueDisplay(queue.get(next)) : "END OF QUEUE"));
+    if (next < 0 && repeatMode == RepeatMode.ALL && !queue.isEmpty()) next = 0;
+    queueNext.setText(repeatMode == RepeatMode.ONE ? "REPEATING THIS TRACK" : (next >= 0 && next != queueIndex ? "UP NEXT · " + queueDisplay(queue.get(next)) : "END OF QUEUE"));
     // rebuild the full queue list UI
     queueList.removeAll();
     for (int i = 0; i < queue.size(); i++) {
@@ -1127,6 +1318,9 @@ public final class CDPlayer extends JFrame {
       if (details.embeddedCover != null) source.setText("EMBEDDED ALBUM ART · " + extension(file).toUpperCase());
       else if (canLookUp) findCover(details.lookupQuery(), file);
       else source.setText("NO EMBEDDED COVER · ADD SONG METADATA");
+      currentLyrics = details.lyrics;
+      lyricsButton.setVisible(currentLyrics != null);
+      refreshLyricsIfOpen();
       updateQueueUI();
       opened.setGain(doCrossfade ? 0f : volume);
       if (autoPlay) {
@@ -1210,7 +1404,8 @@ public final class CDPlayer extends JFrame {
     } catch (Exception ignored) { /* FFmpeg metadata is optional. */ }
     finally { if (probe != null) closeProcessStreams(probe); }
     BufferedImage embeddedCover = extractEmbeddedCover(file);
-    return new SongDetails(title == null || title.isEmpty() ? fallbackTitle : title, artist, album, embeddedCover);
+    String lyrics = extractLyrics(file);
+    return new SongDetails(title == null || title.isEmpty() ? fallbackTitle : title, artist, album, embeddedCover, lyrics);
   }
   private static BufferedImage extractEmbeddedCover(File file) {
     File image = null;
@@ -1223,9 +1418,29 @@ public final class CDPlayer extends JFrame {
     finally { if (image != null) image.delete(); if (extract != null) closeProcessStreams(extract); }
     return null;
   }
+  /**
+   * A dedicated call per tag name, not folded into the title/artist/album probe above: that one relies on
+   * ffprobe's plain "TAG:key=value" output being one tag per line, which breaks for a value that itself contains
+   * newlines — exactly what lyrics are. Fetching just one tag at a time with nokey=1 (no "TAG:key=" prefix at
+   * all) sidesteps that entirely: the raw stdout, trimmed, IS the tag's full value, multi-line and all. There's
+   * no single standard tag name for lyrics across formats/taggers, so this tries the two common ones in order.
+   */
+  private static String extractLyrics(File file) {
+    for (String tagName : new String[] { "lyrics", "unsyncedlyrics" }) {
+      Process probe = null;
+      try {
+        probe = new ProcessBuilder(resolveBinary("ffprobe"), "-v", "error", "-show_entries", "format_tags=" + tagName, "-of", "default=noprint_wrappers=1:nokey=1", file.getAbsolutePath()).redirectErrorStream(true).start();
+        String raw = new String(readAll(probe.getInputStream()), StandardCharsets.UTF_8); probe.waitFor();
+        String trimmed = raw.trim();
+        if (!trimmed.isEmpty()) return trimmed;
+      } catch (Exception ignored) { /* Lyrics are optional, and so is FFmpeg itself. */ }
+      finally { if (probe != null) closeProcessStreams(probe); }
+    }
+    return null;
+  }
   private static final class SongDetails {
-    final String title, artist, album; final BufferedImage embeddedCover;
-    SongDetails(String title, String artist, String album, BufferedImage embeddedCover) { this.title = title; this.artist = artist; this.album = album; this.embeddedCover = embeddedCover; }
+    final String title, artist, album; final BufferedImage embeddedCover; final String lyrics;
+    SongDetails(String title, String artist, String album, BufferedImage embeddedCover, String lyrics) { this.title = title; this.artist = artist; this.album = album; this.embeddedCover = embeddedCover; this.lyrics = lyrics; }
     boolean hasArtist() { return artist != null && !artist.trim().isEmpty(); }
     String lookupQuery() { return (hasArtist() ? artist + " " : "") + title; }
   }
@@ -1290,7 +1505,15 @@ public final class CDPlayer extends JFrame {
     try { process.getErrorStream().close(); } catch (Exception ignored) { }
   }
   private void toggle() { if (player == null) { choose(); return; } if (player.isRunning()) { player.pause(); setPlaying(false); } else { player.start(); setPlaying(true); } }
-  private void trackFinished(StreamPlayer finishedPlayer) { if (player != finishedPlayer) return; if (repeat) { player.setMicrosecondPosition(0); player.start(); setPlaying(true); } else if (!nextTrack()) setPlaying(false); }
+  private void trackFinished(StreamPlayer finishedPlayer) {
+    if (player != finishedPlayer) return;
+    if (repeatMode == RepeatMode.ONE) { player.setMicrosecondPosition(0); player.start(); setPlaying(true); return; }
+    if (nextTrack()) return;
+    // nextTrack() only fails at the true end of a non-shuffled queue (shuffle's nextIndex() always has somewhere
+    // to go as long as there's more than one track) — repeat-all wraps back to the front instead of stopping.
+    if (repeatMode == RepeatMode.ALL && !queue.isEmpty()) { queueIndex = 0; load(queue.get(0)); return; }
+    setPlaying(false);
+  }
   private boolean nextTrack() { int next = nextIndex(); if (next < 0) return false; queueIndex = next; load(queue.get(queueIndex)); return true; }
   private void previousTrack() { if (player != null && player.getMicrosecondPosition() > 5_000_000L) { player.setMicrosecondPosition(0); return; } if (queueIndex > 0) { queueIndex--; load(queue.get(queueIndex)); } else if (player != null) player.setMicrosecondPosition(0); }
   private void removeFromQueue(int index) {
@@ -1321,6 +1544,7 @@ public final class CDPlayer extends JFrame {
     track.setFont(new Font("SansSerif", Font.BOLD, 34)); track.setText("Pick a track to get started."); source.setText("YOUR MUSIC LIBRARY");
     elapsed.setText("0:00"); length.setText("0:00"); progress.setValue(0);
     disc.setCover(null); disc.setLookingUp(false); loadedFile = null; setPlaying(false);
+    currentLyrics = null; lyricsButton.setVisible(false); refreshLyricsIfOpen();
     status.setText(statusMessage);
   }
   /**
@@ -1411,13 +1635,14 @@ public final class CDPlayer extends JFrame {
     int fadeSeconds = crossfadeSlider.getValue();
     // allowCrossfade=true only here: this is the one path where the queue is naturally advancing on its own,
     // not the user actively choosing a different track (see load()'s allowCrossfade doc for the full rationale).
-    // repeat is checked first, unconditionally — matching trackFinished()'s priority — since with repeat on the
+    // repeat-one is checked first, unconditionally — matching trackFinished()'s priority — since with it on the
     // track always loops regardless of queue position; checking nextIndex() first here would crossfade into the
-    // next queue track instead of looping whenever repeat was on but the current track wasn't the last one.
+    // next queue track instead of looping whenever repeat-one was on but the current track wasn't the last one.
     if (!crossfadeStarted && fadeSeconds > 0 && duration > 0 && duration - position <= fadeSeconds * 1_000_000L) {
-      if (repeat && loadedFile != null) { crossfadeStarted = true; load(loadedFile, true, true); } // seamless loop crossfade back into the same track
+      if (repeatMode == RepeatMode.ONE && loadedFile != null) { crossfadeStarted = true; load(loadedFile, true, true); } // seamless loop crossfade back into the same track
       else {
         int next = nextIndex();
+        if (next < 0 && repeatMode == RepeatMode.ALL && !queue.isEmpty()) next = 0; // wrap back to the start, same as trackFinished()
         if (next >= 0) { crossfadeStarted = true; queueIndex = next; load(queue.get(queueIndex), true, true); }
       }
     }
@@ -1821,6 +2046,7 @@ public final class CDPlayer extends JFrame {
     private boolean on;
     private float onProgress; // 0 = fully off, 1 = fully on; animates between them instead of snapping
     private float scale = 1f;
+    private String badgeText; // small text drawn over the glyph (e.g. "1" for repeat-one); null = no badge
     private Timer transitionTimer, pulseTimer;
     ModeIconButton(Glyph glyph, String tooltip) {
       this.glyph = glyph;
@@ -1830,6 +2056,7 @@ public final class CDPlayer extends JFrame {
       Dimension fixed = new Dimension(40, 40);
       setMinimumSize(fixed); setPreferredSize(fixed); setMaximumSize(fixed);
     }
+    void setBadge(String text) { if (java.util.Objects.equals(badgeText, text)) return; badgeText = text; repaint(); }
     void setOn(boolean value) {
       if (on == value) return;
       on = value;
@@ -1886,6 +2113,11 @@ public final class CDPlayer extends JFrame {
       }
       g.setColor(lerp(TEXT, BG, onProgress));
       if (glyph == Glyph.SHUFFLE) drawShuffleGlyph(g, w, h); else drawRepeatGlyph(g, w, h);
+      if (badgeText != null) {
+        g.setFont(new Font("SansSerif", Font.BOLD, Math.max(8, Math.round(w * 0.28f))));
+        java.awt.FontMetrics fm = g.getFontMetrics();
+        g.drawString(badgeText, (w - fm.stringWidth(badgeText)) / 2f, h * 0.5f + fm.getAscent() * 0.32f);
+      }
       g.dispose();
     }
   }
@@ -2026,9 +2258,10 @@ public final class CDPlayer extends JFrame {
    * the card's own bounds, so clicks anywhere else on the overlay pass through to whatever's beneath it, exactly
    * like the original dialog let the main window stay interactive while open.
    */
-  private static final class SettingsOverlay extends JPanel {
+  /** Generic centered fadeable-card overlay — reused as-is for both Settings and the lyrics panel (see lyricsOverlay/showLyrics), since neither one needs anything the other doesn't already have. */
+  private static final class CenteredOverlay extends JPanel {
     final FadeableCard card = new FadeableCard();
-    SettingsOverlay() { setOpaque(false); setLayout(new GridBagLayout()); add(card); }
+    CenteredOverlay() { setOpaque(false); setLayout(new GridBagLayout()); add(card); }
     public boolean contains(int x, int y) {
       java.awt.Point p = SwingUtilities.convertPoint(this, x, y, card);
       return card.contains(p);
@@ -2036,7 +2269,7 @@ public final class CDPlayer extends JFrame {
   }
 
   /**
-   * The theme picker (see showThemeMenu). Unlike SettingsOverlay, this one is NOT pass-through outside its menu:
+   * The theme picker (see showThemeMenu). Unlike CenteredOverlay, this one is NOT pass-through outside its menu:
    * a click anywhere else on it (registered by the owner) closes the menu, matching how a real popup dismisses
    * on an outside click — the menu itself sits at an explicit pixel position (null layout + setBounds()) rather
    * than being centered, since it needs to stay anchored under themeButton.
@@ -2417,10 +2650,12 @@ public final class CDPlayer extends JFrame {
     private Component discRef; // set once from the constructor; lets particles avoid painting over the disc without needing to restructure z-order (see createContent()'s doc comment for why that costs more than it's worth)
     private Component settingsCardRef; // set once Settings is first opened; being the glass pane again means themeOverlay is unconditionally topmost, so without this particles would drift over the Settings card too
     private Component themeMenuRef; // set once the theme menu is first opened; same reasoning as settingsCardRef
+    private Component lyricsCardRef; // set once the lyrics panel is first opened; same reasoning as settingsCardRef
     ThemeOverlay() { setOpaque(false); timer.addActionListener(e -> { advance(); repaint(); }); }
     void setDiscReference(Component disc) { this.discRef = disc; }
     void setSettingsCardReference(Component card) { this.settingsCardRef = card; }
     void setThemeMenuReference(Component menu) { this.themeMenuRef = menu; }
+    void setLyricsCardReference(Component card) { this.lyricsCardRef = card; }
     private void excludeIfShowing(java.awt.geom.Area clip, Component c) {
       if (c == null || !c.isShowing()) return;
       java.awt.Rectangle bounds = SwingUtilities.convertRectangle(c.getParent(), c.getBounds(), this);
@@ -2514,6 +2749,7 @@ public final class CDPlayer extends JFrame {
       excludeIfShowing(clip, discRef);
       excludeIfShowing(clip, settingsCardRef);
       excludeIfShowing(clip, themeMenuRef);
+      excludeIfShowing(clip, lyricsCardRef);
       g.setClip(clip);
       switch (mode) {
         case SNOW: paintSnow(g); break;
