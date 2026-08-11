@@ -982,7 +982,12 @@ public final class CDPlayer extends JFrame {
         public void mousePressed(java.awt.event.MouseEvent e) {
           draggingIndex = index; dragLastScreenY = e.getYOnScreen(); dragAccumulatedY = 0; dragMoved = false;
         }
-        public void mouseReleased(java.awt.event.MouseEvent e) { draggingIndex = -1; updateQueueUI(); }
+        // Only rebuilds (to clear the drag-highlight border) if a real drag actually happened — every swap during
+        // a drag already rebuilds via updateQueueUI() in mouseDragged below, so this just clears that border for
+        // the final position. Rebuilding on every plain click too (i.e. unconditionally) tore the row out from
+        // under the real MOUSE_CLICKED event AWT synthesizes right after MOUSE_RELEASED, before it could still
+        // land on this row the way mouseClicked below expects — clicking a track stopped starting playback.
+        public void mouseReleased(java.awt.event.MouseEvent e) { draggingIndex = -1; if (dragMoved) updateQueueUI(); }
         // Swing's per-component enter/exit events aren't reliable when the cursor moves quickly between sibling
         // rows — a row can be "entered" without a matching "exited" ever reaching its previous neighbor, leaving
         // multiple rows stuck highlighted. Rebuilding every row's hover state from scratch on each entry is
