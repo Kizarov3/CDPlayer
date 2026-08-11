@@ -11,8 +11,9 @@ CDPlayer is a Java desktop app that recreates the tactile feel of a physical CD 
 
 - Built with plain Java and native Swing/AWT — no external UI framework, single self-contained app
 - Plays local audio files through a custom low-latency streaming engine, with FFmpeg handling the formats Java can't decode natively
-- Full queue management: drag-and-drop, shuffle, repeat, crossfade, volume, mono downmix, and per-track removal — queue is saved automatically and restored next launch
-- Nine built-in animated themes, each with its own falling/drifting particle effect and a matching reactive visualizer
+- Full queue management: drag-and-drop, drag-to-reorder, shuffle, repeat, crossfade, volume, mono downmix, and per-track removal — queue is saved automatically and restored next launch
+- Ten built-in themes — nine animated ones plus AUTO, which derives its whole palette from the current track's own album art
+- A sleep timer that pauses playback after a set time, with a live countdown in the header
 - True fullscreen, and a dedicated Settings dialog for theme/crossfade/mono
 - Automatic metadata and album art, with an online lookup fallback when a file has none
 - Works on Windows, macOS, and Linux
@@ -45,6 +46,7 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 
 **Queue**
 - Full queue list with per-track duration, click-to-play, and a hover-to-reveal remove (×) button
+- Drag any row up or down to reorder the queue, even the one currently playing
 - One-click **Clear Queue** button, disabled automatically when there's nothing to clear
 - "Up next" preview and live queue position (e.g. `QUEUE 3 / 10`)
 - The queue, current track, and exact playback position are all saved when you close the app and restored next launch — resumes right where you left off, ready to play but not auto-started
@@ -56,7 +58,8 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - Embedded album art extraction, with automatic iTunes/Deezer cover lookup when a file has none
 
 **Settings**
-- A dedicated Settings dialog (opened from the header) holds the Theme picker, Crossfade slider, Mono Audio toggle, and an Animations toggle, keeping the main screen focused on playback
+- A dedicated Settings dialog (opened from the header) holds the Theme picker, Crossfade slider, Sleep Timer, Mono Audio toggle, and an Animations toggle, keeping the main screen focused on playback
+- Sleep Timer pauses playback after a set number of minutes (up to 120); once armed it shows a live countdown in the header, which you can click at any time to cancel it
 - Fully live: switching themes updates the dialog's own colors immediately, even while it's open
 - Volume, crossfade, mono audio, the animations preference, and your last-used theme all persist across launches instead of resetting to defaults
 - A GitHub link at the bottom (icon + username) opens the project author's profile in your browser
@@ -70,8 +73,9 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 </p>
 
 **Themes**
-- Nine built-in themes — RED, BLUE, SUNSET, FOREST, GALAXY, OCEAN, MATRIX, AUTUMN, SNOW — each with a genuinely distinct palette, and a smooth animated color transition when switching
-- Five of them replace the plain bar visualizer with a themed, audio-reactive shape driven by the exact same levels the bars use:
+- Ten built-in themes — RED, BLUE, SUNSET, FOREST, GALAXY, OCEAN, MATRIX, AUTUMN, SNOW, and AUTO — each with a genuinely distinct palette, and a smooth animated color transition when switching
+- **AUTO** derives the whole palette (background, accents, text) straight from the current track's own album art, and re-derives it every time the track changes while it's active — no particle overlay of its own, so the art stays the visual focus
+- Five of the fixed themes replace the plain bar visualizer with a themed, audio-reactive shape driven by the exact same levels the bars use:
   - **SNOW** — gently falling snow across the whole window; visualizer becomes a small pine tree whose ornament lights pulse with the music
   - **GALAXY** — a twinkling starfield with the occasional shooting star; visualizer becomes a 5-star constellation that brightens with the beat
   - **OCEAN** — bubbles drifting up through the water; visualizer becomes a pair of reactive wave layers

@@ -72,6 +72,11 @@ public final class CDPlayer extends JFrame {
     new Theme("MATRIX", new Color(4, 8, 5), new Color(9, 15, 10), new Color(64, 230, 120), new Color(140, 255, 170), new Color(214, 250, 224), new Color(96, 140, 108)),
     new Theme("AUTUMN", new Color(20, 12, 8), new Color(34, 21, 14), new Color(224, 122, 40), new Color(200, 60, 46), new Color(250, 236, 220), new Color(168, 132, 108)),
     new Theme("SNOW", new Color(14, 16, 20), new Color(23, 26, 30), new Color(214, 44, 54), new Color(46, 168, 96), new Color(248, 248, 250), new Color(152, 154, 160)),
+    // Placeholder colors — always replaced by deriveAutoTheme() before ever being displayed (see switchToTheme,
+    // applyThemeInstant, and DiscView's onCoverChanged callback). AUTO has no particle effect of its own
+    // (ThemeOverlay.Mode.forTheme/VisualizerBars.Mode.forTheme both fall back to NONE/BARS for an unrecognized
+    // name), which reads as intentional here — the album art is the visual, not an overlay competing with it.
+    new Theme("AUTO", new Color(10, 10, 12), new Color(18, 18, 21), new Color(150, 150, 160), new Color(190, 190, 200), new Color(232, 232, 236), new Color(140, 140, 148)),
   };
   private static Color BG = THEMES[0].bg;
   private static Color CARD = THEMES[0].card;
@@ -104,6 +109,15 @@ public final class CDPlayer extends JFrame {
   private final JLabel crossfadeTitle = new JLabel("CROSSFADE");
   private final JSlider crossfadeSlider = new JSlider(0, 15, 0);
   private final JLabel crossfadeValueLabel = new JLabel("OFF");
+  private final JLabel sleepTimerTitle = new JLabel("SLEEP TIMER");
+  private final JSlider sleepTimerSlider = new JSlider(0, 120, 0);
+  private final JLabel sleepTimerValueLabel = new JLabel("OFF");
+  // Small header readout, only non-empty while a sleep timer is armed — not persisted across restarts (a
+  // countdown resuming after the app was actually closed doesn't mean anything), and independent of play/pause:
+  // real sleep timers count down wall-clock time regardless, and just no-op firing if already paused.
+  private final JLabel sleepTimerIndicator = label("", 10, MUTED);
+  private final Timer sleepTimer = new Timer(1000, null);
+  private int sleepSecondsRemaining;
   private final JLabel volumeTitle = new JLabel("VOLUME");
   private final JSlider volumeSlider = new JSlider(0, 100, 100);
   private final JLabel volumeValueLabel = new JLabel("100%");
@@ -117,6 +131,12 @@ public final class CDPlayer extends JFrame {
   private final JPanel queueList = new JPanel();
   private final List<QueueRowUI> queueRows = new ArrayList<QueueRowUI>();
   private int hoveredQueueIndex = -1;
+  // Drag-to-reorder state for the queue list — see updateQueueUI(). draggingIndex tracks the row's current
+  // position live (not the stale index captured when its row was built), since a swap rebuilds every row.
+  private int draggingIndex = -1;
+  private int dragLastScreenY;
+  private int dragAccumulatedY;
+  private boolean dragMoved;
   private boolean shuffle;
   private boolean repeat;
   private StreamPlayer player;
@@ -182,6 +202,7 @@ public final class CDPlayer extends JFrame {
     // physically switching the CD while it's held up out of the case. nextTrack() already no-ops gracefully
     // (returns false) with an empty queue or at the end of it, so no extra guard is needed here.
     disc.setOnEjectPeak(this::nextTrack);
+    disc.setOnCoverChanged(this::onCoverChanged);
     setDropTarget(new DropTarget(this, new DropTargetAdapter() {
       @SuppressWarnings("unchecked") public void drop(DropTargetDropEvent event) {
         try {
@@ -195,6 +216,16 @@ public final class CDPlayer extends JFrame {
     // Wired once here rather than inside buildSettingsPanel(), which is rebuilt fresh every time the Settings
     // dialog opens — attaching it there would stack a duplicate listener on each open.
     themeButton.addActionListener(e -> showThemeMenu());
+    sleepTimer.addActionListener(e -> {
+      sleepSecondsRemaining--;
+      if (sleepSecondsRemaining <= 0) {
+        sleepTimer.stop();
+        sleepSecondsRemaining = 0;
+        if (player != null && player.isRunning()) toggle(); // pause; a no-op if already paused when this fires
+        sleepTimerSlider.setValue(0); // resets the Settings row back to OFF too, if it happens to be open
+      }
+      updateSleepTimerIndicator();
+    });
     Runtime.getRuntime().addShutdownHook(new Thread(this::saveQueueState, "cdplayer-save-queue"));
     Runtime.getRuntime().addShutdownHook(new Thread(this::saveSettingsState, "cdplayer-save-settings"));
     restoreSettingsState();
@@ -439,6 +470,27 @@ public final class CDPlayer extends JFrame {
     card.add(crossfadeRow);
     card.add(javax.swing.Box.createVerticalStrut(22));
 
+    // Sleep timer — arms a one-shot countdown from now (not a persistent preference like crossfade), so moving
+    // the slider only actually (re)arms it once the drag settles, not on every intermediate tick while dragging.
+    // The slider's own position is otherwise independent of the live countdown (see sleepTimerIndicator in the
+    // header), so reopening Settings mid-countdown just shows whatever duration was last armed, unchanged.
+    JPanel sleepRow = new JPanel(); sleepRow.setOpaque(false); sleepRow.setAlignmentX(Component.LEFT_ALIGNMENT); sleepRow.setLayout(new javax.swing.BoxLayout(sleepRow, javax.swing.BoxLayout.X_AXIS));
+    sleepTimerTitle.setFont(new Font("SansSerif", Font.BOLD, 10)); sleepTimerTitle.setForeground(MUTED);
+    sleepTimerSlider.setOpaque(false); sleepTimerSlider.setUI(new AccentSliderUI(sleepTimerSlider)); sleepTimerSlider.setFocusable(false);
+    sleepTimerSlider.setPreferredSize(new Dimension(150, 20)); sleepTimerSlider.setMaximumSize(new Dimension(150, 20));
+    sleepTimerValueLabel.setFont(new Font("SansSerif", Font.BOLD, 10)); sleepTimerValueLabel.setForeground(MUTED); sleepTimerValueLabel.setPreferredSize(new Dimension(34, 16));
+    for (javax.swing.event.ChangeListener l : sleepTimerSlider.getChangeListeners()) sleepTimerSlider.removeChangeListener(l); // rebuilt each open; avoid stacking duplicate listeners
+    sleepTimerSlider.addChangeListener(e -> {
+      int v = sleepTimerSlider.getValue();
+      sleepTimerValueLabel.setText(v == 0 ? "OFF" : v + "M");
+      if (!sleepTimerSlider.getValueIsAdjusting()) armSleepTimer(v);
+    });
+    sleepTimerValueLabel.setText(sleepTimerSlider.getValue() == 0 ? "OFF" : sleepTimerSlider.getValue() + "M");
+    sleepTimerSlider.setToolTipText("Pause playback after a set time (0 = off, up to 120 minutes)");
+    sleepRow.add(sleepTimerTitle); sleepRow.add(javax.swing.Box.createHorizontalStrut(10)); sleepRow.add(sleepTimerSlider); sleepRow.add(javax.swing.Box.createHorizontalStrut(8)); sleepRow.add(sleepTimerValueLabel); sleepRow.add(javax.swing.Box.createHorizontalGlue());
+    card.add(sleepRow);
+    card.add(javax.swing.Box.createVerticalStrut(22));
+
     // Mono audio toggle — downmixes left/right to identical channels in software on the playback pump thread.
     JPanel monoRow = new JPanel(new BorderLayout()); monoRow.setOpaque(false); monoRow.setAlignmentX(Component.LEFT_ALIGNMENT);
     monoRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
@@ -493,6 +545,18 @@ public final class CDPlayer extends JFrame {
     animationsEnabled = value;
     animationsButton.setText(value ? "ON" : "OFF");
   }
+  /** (Re)arms the sleep timer for `minutes` from now, or disarms it entirely at 0 — always restarts fresh from the full duration rather than adjusting an existing countdown, matching a real sleep timer's "set it and forget it" behavior. */
+  private void armSleepTimer(int minutes) {
+    if (sleepTimer.isRunning()) sleepTimer.stop();
+    sleepSecondsRemaining = Math.max(0, minutes) * 60;
+    if (sleepSecondsRemaining > 0) sleepTimer.start();
+    updateSleepTimerIndicator();
+  }
+  private void updateSleepTimerIndicator() {
+    if (sleepSecondsRemaining <= 0) { sleepTimerIndicator.setText(""); return; }
+    int m = sleepSecondsRemaining / 60, s = sleepSecondsRemaining % 60;
+    sleepTimerIndicator.setText("SLEEP " + m + ":" + (s < 10 ? "0" : "") + s);
+  }
 
   /**
    * Opens the theme picker as a plain in-window overlay, anchored beneath themeButton — not a JPopupMenu. A
@@ -542,6 +606,7 @@ public final class CDPlayer extends JFrame {
   private void applyThemeInstant(int index) {
     currentThemeIndex = index;
     Theme to = THEMES[index];
+    if ("AUTO".equals(to.name)) to = refreshAutoTheme(); // no track/cover has loaded yet this early, so this just seeds the placeholder-replacing fallback palette; onCoverChanged() refreshes it for real once a track actually loads
     themeButton.setText(to.name);
     themeOverlay.setMode(ThemeOverlay.Mode.forTheme(to.name));
     visualizer.setMode(VisualizerBars.Mode.forTheme(to.name));
@@ -550,17 +615,25 @@ public final class CDPlayer extends JFrame {
   }
   private void switchToTheme(int index) {
     if (index == currentThemeIndex) return;
-    Theme from = THEMES[currentThemeIndex];
     Theme to = THEMES[index];
     currentThemeIndex = index;
     themeButton.setText(to.name); // the settings row's own "THEME" label already gives context
     themeOverlay.setMode(ThemeOverlay.Mode.forTheme(to.name));
     visualizer.setMode(VisualizerBars.Mode.forTheme(to.name));
+    if ("AUTO".equals(to.name)) to = refreshAutoTheme(); // derive fresh from whatever cover art is showing right now, rather than the stale palette from the last time AUTO was picked
+    animateThemeColors(new Color[] { to.bg, to.card, to.accent, to.accent2, to.text, to.muted });
+  }
+  /**
+   * Animates (or instantly applies, if animations are off) BG/CARD/ACCENT/ACCENT2/TEXT/MUTED from their current
+   * live values to toColors — the color-transition half of switchToTheme(), factored out so onCoverChanged() can
+   * reuse it to fade into a freshly-derived AUTO palette without also re-running the theme-switch bookkeeping
+   * (button text, particle/visualizer mode) that only makes sense when the theme selection itself changes.
+   */
+  private void animateThemeColors(Color[] toColors) {
     Color[] fromColors = { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED };
-    Color[] toColors = { to.bg, to.card, to.accent, to.accent2, to.text, to.muted };
     if (themeAnim != null && themeAnim.isRunning()) themeAnim.stop();
     if (!animationsEnabled) {
-      BG = to.bg; CARD = to.card; ACCENT = to.accent; ACCENT2 = to.accent2; TEXT = to.text; MUTED = to.muted;
+      BG = toColors[0]; CARD = toColors[1]; ACCENT = toColors[2]; ACCENT2 = toColors[3]; TEXT = toColors[4]; MUTED = toColors[5];
       applyThemeColors(); getContentPane().repaint(); refreshSettingsIfOpen(); updateQueueUI();
       return;
     }
@@ -577,6 +650,66 @@ public final class CDPlayer extends JFrame {
       if (t >= 1f) { ((Timer) e.getSource()).stop(); updateQueueUI(); }
     });
     themeAnim.start();
+  }
+  /**
+   * Recomputes the AUTO theme's palette from the disc's current cover art and replaces THEMES[autoIndex] with a
+   * fresh Theme (Theme is immutable, so this swaps the array slot rather than mutating one in place) — callers
+   * that need the derived colors right now (switchToTheme, applyThemeInstant) use the returned value directly;
+   * onCoverChanged() below is what keeps it current as tracks change while AUTO is already the active theme.
+   */
+  private Theme refreshAutoTheme() {
+    int autoIndex = -1;
+    for (int i = 0; i < THEMES.length; i++) if ("AUTO".equals(THEMES[i].name)) { autoIndex = i; break; }
+    if (autoIndex < 0) return THEMES[currentThemeIndex]; // AUTO isn't in THEMES; shouldn't happen, but fail safe rather than throw
+    Theme derived = deriveAutoTheme(disc.getCover());
+    THEMES[autoIndex] = derived;
+    return derived;
+  }
+  /** Called whenever the disc's cover art changes (see DiscView.setOnCoverChanged). Only actually does anything while AUTO is the active theme — everywhere else this is a cheap no-op check. */
+  private void onCoverChanged() {
+    if (currentThemeIndex < 0 || currentThemeIndex >= THEMES.length || !"AUTO".equals(THEMES[currentThemeIndex].name)) return;
+    Theme fresh = refreshAutoTheme();
+    animateThemeColors(new Color[] { fresh.bg, fresh.card, fresh.accent, fresh.accent2, fresh.text, fresh.muted });
+  }
+  /**
+   * Derives a full theme palette from a piece of album art: a circular (hue-wraps-correctly) mean of every
+   * sufficiently colorful sampled pixel's hue, skipping near-gray/near-black/near-white ones so a mostly-white or
+   * mostly-black cover doesn't wash the average out to nothing. The result is built with the same recipe as the
+   * hand-picked themes above — near-black BG, a slightly lighter CARD, a vivid ACCENT, a lighter/desaturated
+   * ACCENT2, near-white TEXT, mid-gray MUTED — just parameterized by the extracted hue/saturation instead of
+   * fixed per theme. Falls back to a neutral blue when there's no cover yet, or it turns out to be essentially
+   * colorless (e.g. black-and-white art) — deriveAutoTheme always returns a usable Theme, never null.
+   */
+  private static Theme deriveAutoTheme(BufferedImage cover) {
+    float hue = 0.58f, sat = 0.55f;
+    if (cover != null) {
+      double sumSin = 0, sumCos = 0; float sumSat = 0; int counted = 0;
+      int w = cover.getWidth(), h = cover.getHeight();
+      int stepX = Math.max(1, w / 24), stepY = Math.max(1, h / 24); // a coarse grid is plenty for a dominant-hue estimate and keeps this cheap regardless of the source image's resolution
+      float[] hsb = new float[3];
+      for (int y = 0; y < h; y += stepY) {
+        for (int x = 0; x < w; x += stepX) {
+          int rgb = cover.getRGB(x, y);
+          Color.RGBtoHSB((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, hsb);
+          if (hsb[1] < 0.15f || hsb[2] < 0.12f || hsb[2] > 0.95f) continue;
+          double angle = hsb[0] * Math.PI * 2;
+          sumSin += Math.sin(angle); sumCos += Math.cos(angle);
+          sumSat += hsb[1];
+          counted++;
+        }
+      }
+      if (counted > 0) {
+        hue = (float) ((Math.atan2(sumSin, sumCos) / (Math.PI * 2) + 1) % 1);
+        sat = Math.max(0.45f, Math.min(0.85f, sumSat / counted));
+      }
+    }
+    Color accent = Color.getHSBColor(hue, sat, 0.72f);
+    Color accent2 = Color.getHSBColor((hue + 0.06f) % 1f, Math.max(0.25f, sat * 0.55f), 0.85f);
+    Color bg = Color.getHSBColor(hue, Math.min(0.55f, sat * 0.6f), 0.06f);
+    Color card = Color.getHSBColor(hue, Math.min(0.5f, sat * 0.55f), 0.12f);
+    Color text = Color.getHSBColor(hue, 0.04f, 0.93f);
+    Color muted = Color.getHSBColor(hue, 0.10f, 0.58f);
+    return new Theme("AUTO", bg, card, accent, accent2, text, muted);
   }
   /** Rebuilds the Settings card's content in place if it's currently open, so it tracks the live BG/CARD/ACCENT/etc. colors during a theme transition instead of sitting frozen on whatever they were when it was opened. */
   private void refreshSettingsIfOpen() {
@@ -665,7 +798,15 @@ public final class CDPlayer extends JFrame {
     JPanel center = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0)); center.setOpaque(false); center.add(statusPill);
     bar.add(center, BorderLayout.CENTER);
     settingsButton.addActionListener(e -> showSettingsDialog());
-    JPanel east = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 8, 0)); east.setOpaque(false); east.add(settingsButton);
+    sleepTimerIndicator.setFont(new Font("SansSerif", Font.BOLD, 10));
+    sleepTimerIndicator.setToolTipText("Click to cancel the sleep timer");
+    sleepTimerIndicator.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+    // header() only ever runs once (called from createContent(), itself a one-time constructor call), unlike
+    // buildSettingsPanel() which rebuilds every open — safe to wire directly here without risking a duplicate.
+    sleepTimerIndicator.addMouseListener(new java.awt.event.MouseAdapter() {
+      public void mouseClicked(java.awt.event.MouseEvent e) { armSleepTimer(0); sleepTimerSlider.setValue(0); }
+    });
+    JPanel east = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 8, 0)); east.setOpaque(false); east.add(sleepTimerIndicator); east.add(settingsButton);
     bar.add(east, BorderLayout.EAST);
     return bar;
   }
@@ -810,6 +951,10 @@ public final class CDPlayer extends JFrame {
       int index = i;
       boolean active = i == queueIndex;
       JPanel row = new JPanel(new BorderLayout(8, 0)); row.setOpaque(false); row.setAlignmentX(Component.LEFT_ALIGNMENT); row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 18));
+      // A thin top/bottom rule while this exact row is mid-drag, so there's a clear cue for which one is moving
+      // (the row itself can't visually "float" above its siblings the way a real drag-and-drop library would —
+      // see the drag handlers below for why a live swap-as-you-cross-a-row-boundary approach was used instead).
+      if (i == draggingIndex) row.setBorder(BorderFactory.createMatteBorder(1, 0, 1, 0, ACCENT));
       JLabel entry = label((i + 1) + ". " + escape(queueDisplay(f)), 10, active ? ACCENT : MUTED);
       if (active) entry.setFont(new Font("SansSerif", Font.BOLD, 10));
       JLabel durationLabel = label(formatDuration(getDuration(f)), 10, active ? ACCENT2 : MUTED);
@@ -827,7 +972,17 @@ public final class CDPlayer extends JFrame {
       row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); row.setToolTipText("Play " + queueDisplay(f));
       queueRows.add(new QueueRowUI(entry, eastCards, eastPanel, index));
       row.addMouseListener(new java.awt.event.MouseAdapter() {
-        public void mouseClicked(java.awt.event.MouseEvent e) { queueIndex = index; load(f); }
+        // Only plays the track if this press/release didn't turn into a drag — dragMoved is set the instant the
+        // gesture crosses the swap threshold below, so a real reorder never also fires a play.
+        public void mouseClicked(java.awt.event.MouseEvent e) { if (!dragMoved) { queueIndex = index; load(f); } }
+        // draggingIndex (not the captured `index`) is the live position: once a swap rebuilds the list, this same
+        // physical row component keeps receiving drag events (AWT grabs the mouse to whichever component received
+        // the press, even after it's removed from its parent), but `index` is now stale — draggingIndex is kept
+        // in sync with every swap in mouseDragged below instead.
+        public void mousePressed(java.awt.event.MouseEvent e) {
+          draggingIndex = index; dragLastScreenY = e.getYOnScreen(); dragAccumulatedY = 0; dragMoved = false;
+        }
+        public void mouseReleased(java.awt.event.MouseEvent e) { draggingIndex = -1; updateQueueUI(); }
         // Swing's per-component enter/exit events aren't reliable when the cursor moves quickly between sibling
         // rows — a row can be "entered" without a matching "exited" ever reaching its previous neighbor, leaving
         // multiple rows stuck highlighted. Rebuilding every row's hover state from scratch on each entry is
@@ -840,6 +995,30 @@ public final class CDPlayer extends JFrame {
         public void mouseExited(java.awt.event.MouseEvent e) {
           if (row.getMousePosition() != null) return;
           clearHoveredQueueRow(index);
+        }
+      });
+      // Reorders by swapping with a neighbor every time the drag crosses one row's height, rebuilding the list
+      // immediately for live feedback — simpler and more robust than a floating "ghost row" drag visual, and this
+      // codebase has no drag-and-drop infrastructure elsewhere to build on.
+      row.addMouseMotionListener(new java.awt.event.MouseMotionAdapter() {
+        public void mouseDragged(java.awt.event.MouseEvent e) {
+          if (draggingIndex < 0) return;
+          int nowY = e.getYOnScreen();
+          dragAccumulatedY += nowY - dragLastScreenY;
+          dragLastScreenY = nowY;
+          int rowStep = 21; // 18px row height + 3px gap between rows, matching the layout above
+          while (Math.abs(dragAccumulatedY) >= rowStep && queue.size() > 1) {
+            int direction = dragAccumulatedY > 0 ? 1 : -1;
+            int target = draggingIndex + direction;
+            if (target < 0 || target >= queue.size()) break;
+            dragMoved = true;
+            java.util.Collections.swap(queue, draggingIndex, target);
+            if (queueIndex == draggingIndex) queueIndex = target;
+            else if (queueIndex == target) queueIndex = draggingIndex;
+            draggingIndex = target;
+            dragAccumulatedY -= direction * rowStep;
+            updateQueueUI();
+          }
         }
       });
       queueList.add(row);
@@ -2425,6 +2604,7 @@ public final class CDPlayer extends JFrame {
 
   private static final class DiscView extends JPanel {
     private double angle; private boolean spinning; private boolean lookingUp; private BufferedImage cover; private final Timer motion = new Timer(16, e -> { angle += .045; repaint(); });
+    private Runnable onCoverChanged; // notifies the AUTO theme (see CDPlayer.onCoverChanged) to re-derive its palette; null everywhere else
     // maximumSize matters here, not just preferredSize: the drawn disc itself is capped at 300px (see side=
     // Math.min(300, ...) in paintComponent below), but GridBagLayout's fill=BOTH + weightx/weighty=1 on this
     // column otherwise stretches the *component's actual bounds* to fill all available space in its cell —
@@ -2450,7 +2630,9 @@ public final class CDPlayer extends JFrame {
     // which measured as never keeping up with a track changing every few seconds: ~600MB of IOAccelerator-backed
     // surfaces accumulated, unbounded, over a stress run that swapped cover art on every track change). Flushing
     // the old cover explicitly here, right before dropping the reference, releases it immediately instead.
-    void setCover(BufferedImage image) { if (cover != null && cover != image) cover.flush(); cover = image; repaint(); }
+    void setCover(BufferedImage image) { if (cover != null && cover != image) cover.flush(); cover = image; repaint(); if (onCoverChanged != null) onCoverChanged.run(); }
+    BufferedImage getCover() { return cover; }
+    void setOnCoverChanged(Runnable callback) { this.onCoverChanged = callback; }
     void setLookingUp(boolean value) { lookingUp = value; repaint(); }
 
     // Easter egg: double-click the disc and it lifts partway out of the case, tilts, holds briefly, then settles
