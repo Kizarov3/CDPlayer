@@ -140,7 +140,8 @@ public final class CDPlayer extends JFrame {
   private final JButton monoButton = textButton("OFF");
   private final JButton animationsButton = textButton("ON");
   private SettingsOverlay settingsOverlay;
-  private JPanel contentStack; // the OverlayLayout stack: settingsOverlay (topmost, added lazily) > foreground > themeOverlay > background
+  private ThemeMenuOverlay themeMenuOverlay;
+  private JPanel contentStack; // the OverlayLayout stack: themeMenuOverlay / settingsOverlay (topmost, added lazily) > foreground > themeOverlay > background
   private java.awt.Rectangle preFullscreenBounds;
   private boolean fullscreen;
 
@@ -211,11 +212,13 @@ public final class CDPlayer extends JFrame {
     bindKey(inputMap, actionMap, "J", "previousTrackJ", e -> previousTrack());
     bindKey(inputMap, actionMap, "L", "nextTrackL", e -> nextTrack());
     bindKey(inputMap, actionMap, "F", "toggleFullscreen", e -> toggleFullscreen());
-    // Settings takes priority: Escape closes it if open, otherwise exits fullscreen if active. Settings is a
-    // plain in-window overlay (not a separate JDialog — see showSettingsDialog), so this single WHEN_IN_FOCUSED_WINDOW
-    // binding on the main frame handles both cases; there's no separate window with its own key bindings to manage.
+    // Closest-thing-open takes priority: the theme menu, then Settings, then fullscreen. Both overlays are plain
+    // in-window components (not separate JDialog/JPopupMenu windows — see showSettingsDialog/showThemeMenu), so
+    // this single WHEN_IN_FOCUSED_WINDOW binding on the main frame handles all three; there's no separate window
+    // with its own key bindings to manage.
     bindKey(inputMap, actionMap, "ESCAPE", "escapeAction", e -> {
-      if (settingsOverlay != null && settingsOverlay.isVisible()) closeSettingsDialog();
+      if (themeMenuOverlay != null && themeMenuOverlay.isVisible()) hideThemeMenu();
+      else if (settingsOverlay != null && settingsOverlay.isVisible()) closeSettingsDialog();
       else if (fullscreen) toggleFullscreen();
     });
   }
@@ -349,7 +352,7 @@ public final class CDPlayer extends JFrame {
     settingsOverlay.setVisible(true);
     animateSettingsIn();
   }
-  private void closeSettingsDialog() { if (settingsOverlay != null) animateSettingsOut(); }
+  private void closeSettingsDialog() { hideThemeMenu(); if (settingsOverlay != null) animateSettingsOut(); }
   private Timer settingsAnimTimer;
   /** Grows the settings card from 90% to 100% size (eased) with a fade-in, instead of it just popping into existence. Implemented as a component-level scale/alpha transform in FadeableCard.paint() rather than Window.setOpacity(), since this is no longer a separate Window. */
   private void animateSettingsIn() {
@@ -491,9 +494,28 @@ public final class CDPlayer extends JFrame {
     animationsButton.setText(value ? "ON" : "OFF");
   }
 
+  /**
+   * Opens the theme picker as a plain in-window overlay, anchored beneath themeButton — not a JPopupMenu. A
+   * JPopupMenu still creates a real heavyweight Window even with setDefaultLightWeightPopupEnabled(true) (Swing's
+   * PopupFactory decides that for itself), and a real top-level window doesn't reliably render above this app's
+   * own exclusive-fullscreen GraphicsDevice, or above native OS fullscreen — the same failure mode Settings hit
+   * before it moved off JDialog. Confirmed via Window.getWindows(): the popup's Popup$HeavyWeightWindow reported
+   * itself fully visible/showing, matching Swing's own bookkeeping, while never actually appearing on screen.
+   */
   private void showThemeMenu() {
-    javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
-    menu.setBackground(CARD); menu.setBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 30)));
+    if (themeMenuOverlay == null) {
+      themeMenuOverlay = new ThemeMenuOverlay();
+      themeMenuOverlay.addMouseListener(new java.awt.event.MouseAdapter() {
+        public void mousePressed(java.awt.event.MouseEvent e) { hideThemeMenu(); }
+      });
+      contentStack.add(themeMenuOverlay, 0); // index 0 = topmost, above settingsOverlay too (opened from a button inside it)
+      themeOverlay.setThemeMenuReference(themeMenuOverlay.menu);
+      contentStack.validate();
+    }
+    JPanel menu = themeMenuOverlay.menu;
+    menu.removeAll();
+    menu.setBackground(CARD);
+    menu.setBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 30)));
     for (int i = 0; i < THEMES.length; i++) {
       Theme theme = THEMES[i]; int index = i;
       javax.swing.JMenuItem item = new javax.swing.JMenuItem(theme.name, new SwatchIcon(theme.accent, theme.accent2));
@@ -501,11 +523,20 @@ public final class CDPlayer extends JFrame {
       item.setForeground(index == currentThemeIndex ? ACCENT : TEXT);
       item.setBackground(CARD); item.setOpaque(true);
       item.setIconTextGap(10); item.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 16));
-      item.addActionListener(e -> switchToTheme(index));
+      item.addActionListener(e -> { switchToTheme(index); hideThemeMenu(); });
       menu.add(item);
     }
-    menu.show(themeButton, 0, themeButton.getHeight() + 6);
+    // Anchored the same way menu.show(themeButton, 0, themeButton.getHeight() + 6) used to, then clamped so it
+    // can't be positioned partly off the (possibly much smaller, possibly fullscreen-sized) overlay.
+    Dimension pref = menu.getPreferredSize();
+    java.awt.Point anchor = SwingUtilities.convertPoint(themeButton, 0, themeButton.getHeight() + 6, themeMenuOverlay);
+    int mx = Math.max(4, Math.min(anchor.x, themeMenuOverlay.getWidth() - pref.width - 4));
+    int my = Math.max(4, Math.min(anchor.y, themeMenuOverlay.getHeight() - pref.height - 4));
+    menu.setBounds(mx, my, pref.width, pref.height);
+    menu.validate(); // immediate, not deferred — see showSettingsDialog()'s note on why validate() over revalidate() here; needed every open, not just the first, since the items are rebuilt fresh each time
+    themeMenuOverlay.setVisible(true);
   }
+  private void hideThemeMenu() { if (themeMenuOverlay != null) themeMenuOverlay.setVisible(false); }
 
   /** Applies a theme immediately, without switchToTheme()'s color-lerp animation — used only by restoreSettingsState() at startup, before the window is first shown, where an instant application is correct (no from-color transition makes sense yet, and an animated one risks a brief flash from the default theme to the restored one right as the app opens). */
   private void applyThemeInstant(int index) {
@@ -1820,6 +1851,21 @@ public final class CDPlayer extends JFrame {
     }
   }
 
+  /**
+   * The theme picker (see showThemeMenu). Unlike SettingsOverlay, this one is NOT pass-through outside its menu:
+   * a click anywhere else on it (registered by the owner) closes the menu, matching how a real popup dismisses
+   * on an outside click — the menu itself sits at an explicit pixel position (null layout + setBounds()) rather
+   * than being centered, since it needs to stay anchored under themeButton.
+   */
+  private static final class ThemeMenuOverlay extends JPanel {
+    final JPanel menu = new JPanel();
+    ThemeMenuOverlay() {
+      setOpaque(false); setLayout(null);
+      menu.setLayout(new javax.swing.BoxLayout(menu, javax.swing.BoxLayout.Y_AXIS));
+      add(menu);
+    }
+  }
+
   private static final class BarbedDivider extends JPanel {
     BarbedDivider() { setOpaque(false); setPreferredSize(new Dimension(0, 14)); }
     protected void paintComponent(Graphics raw) {
@@ -2186,9 +2232,11 @@ public final class CDPlayer extends JFrame {
     private double clock;
     private Component discRef; // set once from the constructor; lets particles avoid painting over the disc without needing to restructure z-order (see createContent()'s doc comment for why that costs more than it's worth)
     private Component settingsCardRef; // set once Settings is first opened; being the glass pane again means themeOverlay is unconditionally topmost, so without this particles would drift over the Settings card too
+    private Component themeMenuRef; // set once the theme menu is first opened; same reasoning as settingsCardRef
     ThemeOverlay() { setOpaque(false); timer.addActionListener(e -> { advance(); repaint(); }); }
     void setDiscReference(Component disc) { this.discRef = disc; }
     void setSettingsCardReference(Component card) { this.settingsCardRef = card; }
+    void setThemeMenuReference(Component menu) { this.themeMenuRef = menu; }
     private void excludeIfShowing(java.awt.geom.Area clip, Component c) {
       if (c == null || !c.isShowing()) return;
       java.awt.Rectangle bounds = SwingUtilities.convertRectangle(c.getParent(), c.getBounds(), this);
@@ -2281,6 +2329,7 @@ public final class CDPlayer extends JFrame {
       java.awt.geom.Area clip = new java.awt.geom.Area(new java.awt.Rectangle(0, 0, getWidth(), getHeight()));
       excludeIfShowing(clip, discRef);
       excludeIfShowing(clip, settingsCardRef);
+      excludeIfShowing(clip, themeMenuRef);
       g.setClip(clip);
       switch (mode) {
         case SNOW: paintSnow(g); break;
