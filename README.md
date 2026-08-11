@@ -58,7 +58,7 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 **Settings**
 - A dedicated Settings dialog (opened from the header) holds the Theme picker, Crossfade slider, Mono Audio toggle, and an Animations toggle, keeping the main screen focused on playback
 - Fully live: switching themes updates the dialog's own colors immediately, even while it's open
-- Volume, crossfade, mono audio, and the animations preference all persist across launches instead of resetting to defaults
+- Volume, crossfade, mono audio, the animations preference, and your last-used theme all persist across launches instead of resetting to defaults
 - A GitHub link at the bottom (icon + username) opens the project author's profile in your browser
 
 **Motion**
@@ -74,7 +74,7 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - Five of them replace the plain bar visualizer with a themed, audio-reactive shape driven by the exact same levels the bars use:
   - **SNOW** — gently falling snow across the whole window; visualizer becomes a small pine tree whose ornament lights pulse with the music
   - **GALAXY** — a twinkling starfield with the occasional shooting star; visualizer becomes a 5-star constellation that brightens with the beat
-  - **OCEAN** — rising bubbles with a soft light shimmer sweeping across the water; visualizer becomes a pair of reactive wave layers
+  - **OCEAN** — bubbles drifting up through the water; visualizer becomes a pair of reactive wave layers
   - **MATRIX** — falling green code rain; visualizer becomes a miniature version of the same rain, column heights driven by the audio
   - **AUTUMN** — drifting, tumbling autumn leaves; visualizer becomes a small branch whose leaves brighten and grow with the music
 
