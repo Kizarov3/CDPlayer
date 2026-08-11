@@ -14,6 +14,7 @@ CDPlayer is a Java desktop app that recreates the tactile feel of a physical CD 
 - Full queue management: drag-and-drop, drag-to-reorder, shuffle, repeat, crossfade, volume, mono downmix, and per-track removal — queue is saved automatically and restored next launch
 - Ten built-in themes — nine animated ones plus AUTO, which derives its whole palette from the current track's own album art
 - A sleep timer that pauses playback after a set time, with a live countdown in the header
+- A menu bar / system tray mini-player — closing the main window keeps CDPlayer running with playback controllable from the tray, instead of quitting
 - True fullscreen, and a dedicated Settings dialog for theme/crossfade/mono
 - Automatic metadata and album art, with an online lookup fallback when a file has none
 - Works on Windows, macOS, and Linux
@@ -43,6 +44,7 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - Mono audio toggle — sums left/right channels together, useful for a single speaker or one earbud
 - True fullscreen (`F` to enter, `Esc` to exit) that hides the OS menu bar/dock, not just a resized window
 - Keyboard shortcuts: `Space` / `K` play-pause, `J` / `L` previous/next track, `←` / `→` skip 15 seconds
+- A menu bar (system tray) icon shows the current track as its tooltip and offers Play/Pause, Previous/Next, and Show/Quit from a right-click menu — closing the main window hides it instead of quitting, so playback keeps going; Quit (from the tray, or the OS's own Cmd+Q/dock menu) is what actually exits
 
 **Queue**
 - Full queue list with per-track duration, click-to-play, and a hover-to-reveal remove (×) button

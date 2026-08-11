@@ -165,6 +165,8 @@ public final class CDPlayer extends JFrame {
   private CenteredOverlay settingsOverlay;
   private CenteredOverlay lyricsOverlay;
   private ThemeMenuOverlay themeMenuOverlay;
+  private java.awt.TrayIcon trayIcon;
+  private java.awt.MenuItem trayPlayPauseItem;
   private JPanel contentStack; // the OverlayLayout stack: themeMenuOverlay / settingsOverlay / lyricsOverlay (topmost, added lazily) > foreground > themeOverlay > background
   private java.awt.Rectangle preFullscreenBounds;
   private boolean fullscreen;
@@ -235,6 +237,7 @@ public final class CDPlayer extends JFrame {
     Runtime.getRuntime().addShutdownHook(new Thread(this::saveSettingsState, "cdplayer-save-settings"));
     restoreSettingsState();
     restoreQueueState();
+    setupSystemTray();
   }
 
   private void bindKeys() {
@@ -258,6 +261,71 @@ public final class CDPlayer extends JFrame {
       else if (settingsOverlay != null && settingsOverlay.isVisible()) closeSettingsDialog();
       else if (fullscreen) toggleFullscreen();
     });
+  }
+  /**
+   * A menu bar (system tray) mini-player: current track as the icon's tooltip, and a right-click menu for
+   * play/pause, previous/next, bringing the window back, and quitting. Only actually useful if the main window
+   * can be CLOSED (not just unfocused) while still controlling playback — so on success this also switches the
+   * window's close operation from EXIT_ON_CLOSE to HIDE_ON_CLOSE, moving the real "quit" action to the tray menu
+   * (and to the OS's own Cmd+Q / dock quit, which still work normally — hiding a window doesn't intercept those).
+   * If the platform doesn't support a tray at all, none of this runs and the window keeps its original
+   * close-quits-the-app behavior, since there'd be no way to get a hidden app back otherwise.
+   */
+  private void setupSystemTray() {
+    if (!java.awt.SystemTray.isSupported()) return;
+    try {
+      java.awt.SystemTray tray = java.awt.SystemTray.getSystemTray();
+      trayIcon = new java.awt.TrayIcon(buildTrayIconImage(), "CDPlayer");
+      trayIcon.setImageAutoSize(true);
+      java.awt.PopupMenu menu = new java.awt.PopupMenu();
+      java.awt.MenuItem show = new java.awt.MenuItem("Show CDPlayer");
+      show.addActionListener(e -> { setVisible(true); setState(java.awt.Frame.NORMAL); toFront(); requestFocus(); });
+      menu.add(show);
+      menu.addSeparator();
+      trayPlayPauseItem = new java.awt.MenuItem(loadedFile != null && player != null && player.isRunning() ? "Pause" : "Play");
+      trayPlayPauseItem.addActionListener(e -> toggle());
+      menu.add(trayPlayPauseItem);
+      java.awt.MenuItem prev = new java.awt.MenuItem("Previous Track");
+      prev.addActionListener(e -> previousTrack());
+      menu.add(prev);
+      java.awt.MenuItem next = new java.awt.MenuItem("Next Track");
+      next.addActionListener(e -> nextTrack());
+      menu.add(next);
+      menu.addSeparator();
+      java.awt.MenuItem quit = new java.awt.MenuItem("Quit CDPlayer");
+      quit.addActionListener(e -> System.exit(0)); // still runs the save-queue/save-settings shutdown hooks, same as a normal window close used to
+      menu.add(quit);
+      trayIcon.setPopupMenu(menu);
+      // Where the platform fires it (double-click on Windows/Linux; unreliable on macOS, where the popup menu
+      // above is really the primary interaction) — a bonus shortcut back to the window, not depended on.
+      trayIcon.addActionListener(e -> { setVisible(true); setState(java.awt.Frame.NORMAL); toFront(); requestFocus(); });
+      tray.add(trayIcon);
+      setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE);
+      updateTrayInfo(false);
+    } catch (Exception ignored) { trayIcon = null; } // best-effort; the app works exactly as before if the tray can't be set up for any reason
+  }
+  /** Drawn, not loaded from a bundled asset file — this single-file app has no resource-loading path that's reliable both when run from source and packaged, so everything visual is already hand-drawn (see Glyph/DiscView/etc.); a small disc keeps that consistent. */
+  private static java.awt.Image buildTrayIconImage() {
+    int size = 44; // large enough to stay crisp once setImageAutoSize scales it down into the platform's actual menu-bar slot
+    BufferedImage image = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+    Graphics2D g = image.createGraphics();
+    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+    g.setColor(new Color(225, 225, 228));
+    g.fillOval(3, 3, size - 6, size - 6);
+    g.setColor(new Color(60, 60, 64));
+    g.setStroke(new BasicStroke(1.4f));
+    g.drawOval(3, 3, size - 6, size - 6);
+    int hole = size / 4;
+    g.setColor(new Color(30, 30, 33));
+    g.fillOval((size - hole) / 2, (size - hole) / 2, hole, hole);
+    g.dispose();
+    return image;
+  }
+  /** Refreshes the tray icon's tooltip and its Play/Pause menu item label — called from setPlaying() (which already knows the new state directly) and once at setup. No-ops if the tray was never set up. */
+  private void updateTrayInfo(boolean playing) {
+    if (trayIcon == null) return;
+    if (trayPlayPauseItem != null) trayPlayPauseItem.setLabel(playing ? "Pause" : "Play");
+    trayIcon.setToolTip(loadedFile == null ? "CDPlayer" : "CDPlayer — " + queueDisplay(loadedFile));
   }
   /**
    * True OS-level exclusive fullscreen via GraphicsDevice, not just resizing to the screen's bounds. Simply
@@ -1740,7 +1808,7 @@ public final class CDPlayer extends JFrame {
       }
     }
   }
-  private void setPlaying(boolean playing) { disc.setSpinning(playing); play.setGlyph(playing ? Glyph.PAUSE : Glyph.PLAY); play.pulse(); status.setText(playing ? "●  NOW SPINNING" : (loadedFile == null ? "●  READY TO PLAY" : "●  PAUSED")); visualizer.setActive(playing); if (playing) clock.start(); else clock.stop(); }
+  private void setPlaying(boolean playing) { disc.setSpinning(playing); play.setGlyph(playing ? Glyph.PAUSE : Glyph.PLAY); play.pulse(); status.setText(playing ? "●  NOW SPINNING" : (loadedFile == null ? "●  READY TO PLAY" : "●  PAUSED")); visualizer.setActive(playing); if (playing) clock.start(); else clock.stop(); updateTrayInfo(playing); }
   private double[] computeLevels(int bars, int windowMillis) {
     try {
       if (rawAudio == null || audioFormat == null || player == null) return null;
