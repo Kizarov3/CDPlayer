@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -52,12 +53,14 @@ import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JSlider;
+import javax.swing.JTextField;
 import javax.swing.JScrollPane;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.UIManager;
 import javax.swing.plaf.basic.BasicSliderUI;
+import javax.swing.plaf.basic.BasicScrollBarUI;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
 /** A standalone, dependency-free Java desktop music player. */
@@ -72,6 +75,11 @@ public final class CDPlayer extends JFrame {
     new Theme("MATRIX", new Color(4, 8, 5), new Color(9, 15, 10), new Color(64, 230, 120), new Color(140, 255, 170), new Color(214, 250, 224), new Color(96, 140, 108)),
     new Theme("AUTUMN", new Color(20, 12, 8), new Color(34, 21, 14), new Color(224, 122, 40), new Color(200, 60, 46), new Color(250, 236, 220), new Color(168, 132, 108)),
     new Theme("SNOW", new Color(14, 16, 20), new Color(23, 26, 30), new Color(214, 44, 54), new Color(46, 168, 96), new Color(248, 248, 250), new Color(152, 154, 160)),
+    // Placeholder colors — always replaced by deriveAutoTheme() before ever being displayed (see switchToTheme,
+    // applyThemeInstant, and DiscView's onCoverChanged callback). AUTO has no particle effect of its own
+    // (ThemeOverlay.Mode.forTheme/VisualizerBars.Mode.forTheme both fall back to NONE/BARS for an unrecognized
+    // name), which reads as intentional here — the album art is the visual, not an overlay competing with it.
+    new Theme("AUTO", new Color(10, 10, 12), new Color(18, 18, 21), new Color(150, 150, 160), new Color(190, 190, 200), new Color(232, 232, 236), new Color(140, 140, 148)),
   };
   private static Color BG = THEMES[0].bg;
   private static Color CARD = THEMES[0].card;
@@ -87,8 +95,21 @@ public final class CDPlayer extends JFrame {
   private Timer themeAnim;
   private Timer nowPlayingFadeTimer;
   private final DiscView disc = new DiscView();
+  private JPanel headerPanel; // the status pill + History/Settings row — hidden in CD view, unlike the triangle divider below it
+  private JPanel playerPanelWrap; // track info, transport controls, queue — hidden in CD view
+  private JPanel bodyPanel; // the GridBagLayout row holding discColumn + playerPanelWrap — see applyCdViewState() for why this needs to be reachable
+  private GridBagConstraints playerPanelWrapConstraints; // saved so playerPanelWrap can be re-added at its original cell when leaving CD view — see applyCdViewState()
+  private JLabel hintLabel; // the keyboard-shortcuts line at the bottom — hidden in CD view
+  private final JButton cdViewButton = textButton("CD VIEW");
+  private boolean cdViewEnabled = false;
+  private final JLabel cdViewTrackLabel = new JLabel(); // mirrors track's text (see setTrackTitle) — shown centered at the bottom of the window, only in CD view
+  private final JLabel cdViewArtistLabel = new JLabel(); // mirrors artistLabel's text (see setTrackTitle) — sits under cdViewTrackLabel in the same bottom info block
+  private JPanel cdViewInfoPanel; // wraps cdViewTrackLabel + cdViewArtistLabel, swapped in for hintLabel at the bottom of the window while in CD view — see applyCdViewState()
+  private SnapshotFadeOverlay cdViewTransitionOverlay;
+  private Timer cdViewTransitionTimer;
   private final JLabel status = label("●  READY TO PLAY", 11, ACCENT);
   private final JLabel track = new JLabel("Pick a track to get started.");
+  private final JLabel artistLabel = new JLabel(); // author's name under the song title in normal view — hidden when the track has no artist tag
   private final JLabel source = label("YOUR MUSIC LIBRARY", 11, MUTED);
   private final JLabel elapsed = label("0:00", 10, MUTED);
   private final JLabel length = label("0:00", 10, MUTED);
@@ -98,12 +119,36 @@ public final class CDPlayer extends JFrame {
   private final ModeIconButton repeatButton = new ModeIconButton(Glyph.REPEAT, "Repeat");
   private final JButton clearQueueButton = textButton("CLEAR QUEUE");
   private final JButton themeButton = textButton(THEMES[0].name);
+  private final JButton lyricsButton = textButton("LYRICS");
+  private String currentLyrics; // the loaded track's embedded lyrics, or null — drives lyricsButton's visibility
+  private final JButton eqButton = textButton("EQ");
+  private double[] eqGains = new double[Equalizer.BANDS]; // all 0 = flat; applied to the live player and persisted across launches
+  private final java.util.List<EqPreset> customEqPresets = new ArrayList<EqPreset>();
+  private final JButton historyButton = textButton("HISTORY");
+  private static final int HISTORY_LIMIT = 50;
+  private final java.util.List<File> playHistory = new ArrayList<File>(); // most-recently-played first
+  private static final int SEARCH_RESULTS_LIMIT = 100;
+  private final java.util.List<File> searchIndex = new ArrayList<File>(); // every audio file found under the last-used folder, filename-filtered live as the user types
+  private int searchScanGeneration = 0; // bumped on every rescan so a slow background scan can't clobber results with stale data from a folder that's since changed
+  private boolean searchScanning = false;
+  private JTextField searchField; // live query box; a field so the background scan's completion callback can re-filter against whatever's currently typed
+  private JPanel searchResultsList; // rebuilt in place on every keystroke, without rebuilding the whole card
+  private JLabel searchStatusLabel;
   private final JLabel nowPlayingLabel = new JLabel("NOW PLAYING");
   private final JLabel queueInfo = label("QUEUE EMPTY", 10, MUTED);
   private final JLabel queueNext = label("DROP SONGS OR A FOLDER TO BUILD A QUEUE", 9, MUTED);
   private final JLabel crossfadeTitle = new JLabel("CROSSFADE");
   private final JSlider crossfadeSlider = new JSlider(0, 15, 0);
   private final JLabel crossfadeValueLabel = new JLabel("OFF");
+  private final JLabel sleepTimerTitle = new JLabel("SLEEP TIMER");
+  private final JSlider sleepTimerSlider = new JSlider(0, 120, 0);
+  private final JLabel sleepTimerValueLabel = new JLabel("OFF");
+  // Small header readout, only non-empty while a sleep timer is armed — not persisted across restarts (a
+  // countdown resuming after the app was actually closed doesn't mean anything), and independent of play/pause:
+  // real sleep timers count down wall-clock time regardless, and just no-op firing if already paused.
+  private final JLabel sleepTimerIndicator = label("", 10, MUTED);
+  private final Timer sleepTimer = new Timer(1000, null);
+  private int sleepSecondsRemaining;
   private final JLabel volumeTitle = new JLabel("VOLUME");
   private final JSlider volumeSlider = new JSlider(0, 100, 100);
   private final JLabel volumeValueLabel = new JLabel("100%");
@@ -111,14 +156,30 @@ public final class CDPlayer extends JFrame {
   private final ThemeOverlay themeOverlay = new ThemeOverlay();
   private final List<File> queue = new ArrayList<File>();
   private int queueIndex = -1;
-  private final Map<File, SongDetails> metadataCache = new HashMap<File, SongDetails>();
-  private final Map<File, Long> durationCache = new HashMap<File, Long>();
+  // Bounded LRU, not a plain HashMap — SongDetails carries a full-resolution embedded-cover BufferedImage (easily
+  // several MB apiece), and an unbounded cache here meant memory grew for as long as the session kept touching new
+  // files (History, Search, shuffle/repeat over a large library all do), with nothing ever evicted. Eldest-first
+  // eviction (access-order=true) once the cap is exceeded keeps a generous working set without an unbounded tail.
+  private static final int METADATA_CACHE_LIMIT = 200;
+  private final Map<File, SongDetails> metadataCache = new LinkedHashMap<File, SongDetails>(16, 0.75f, true) {
+    protected boolean removeEldestEntry(Map.Entry<File, SongDetails> eldest) { return size() > METADATA_CACHE_LIMIT; }
+  };
+  private final Map<File, Long> durationCache = new LinkedHashMap<File, Long>(16, 0.75f, true) {
+    protected boolean removeEldestEntry(Map.Entry<File, Long> eldest) { return size() > METADATA_CACHE_LIMIT; }
+  };
   // Panel that lists all queued songs; displayed under queue headers.
   private final JPanel queueList = new JPanel();
   private final List<QueueRowUI> queueRows = new ArrayList<QueueRowUI>();
   private int hoveredQueueIndex = -1;
+  // Drag-to-reorder state for the queue list — see updateQueueUI(). draggingIndex tracks the row's current
+  // position live (not the stale index captured when its row was built), since a swap rebuilds every row.
+  private int draggingIndex = -1;
+  private int dragLastScreenY;
+  private int dragAccumulatedY;
+  private boolean dragMoved;
   private boolean shuffle;
-  private boolean repeat;
+  private enum RepeatMode { OFF, ONE, ALL }
+  private RepeatMode repeatMode = RepeatMode.OFF;
   private StreamPlayer player;
   private File loadedFile;
   private File temporaryAudio;
@@ -127,8 +188,16 @@ public final class CDPlayer extends JFrame {
   private boolean crossfading;
   private float volume = 1f;
   private boolean monoAudio;
+  // Beat detection state for the visualizer — a classic "energy vs. its own rolling average" onset detector: no
+  // FFT/frequency analysis, just broadband RMS energy (levels[] from computeLevels() is already that) compared
+  // against its recent history. Transients (drum/bass hits) spike broadband energy anyway, so this reads as
+  // genuinely beat-synced for most music without needing real spectral analysis.
+  private final double[] beatEnergyHistory = new double[24]; // ~1.7s of history at the 70ms tick rate
+  private int beatEnergyHistoryIndex;
+  private double beatPulse; // 0..1, spikes to 1 on a detected beat and decays each tick; visualizer levels are boosted by this
   private byte[] rawAudio;
   private AudioFormat audioFormat;
+  private WaveformSliderUI waveformSliderUI;
   private final Timer clock = new Timer(70, this::tick);
   private static final Pattern ITUNES_COVER = Pattern.compile("\\\"artworkUrl100\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
   private static final Pattern DEEZER_COVER = Pattern.compile("\\\"cover_xl\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
@@ -136,11 +205,36 @@ public final class CDPlayer extends JFrame {
   private static final File ONBOARDING_FLAG_FILE = new File(System.getProperty("user.home"), ".cdplayer/onboarded");
   private static final File LAST_PATH_FILE = new File(System.getProperty("user.home"), ".cdplayer/lastpath.txt");
   private static final File SETTINGS_FILE = new File(System.getProperty("user.home"), ".cdplayer/settings.txt");
+  private static final File EQ_PRESETS_FILE = new File(System.getProperty("user.home"), ".cdplayer/eq-presets.txt");
+  private static final File HISTORY_FILE = new File(System.getProperty("user.home"), ".cdplayer/history.txt");
+  /** A named set of 10 band gains (dB). Built-in presets are fixed; user-saved ones (see customEqPresets) use the same type and live alongside them in the picker. */
+  private static final class EqPreset {
+    final String name; final double[] gains;
+    EqPreset(String name, double... gains) { this.name = name; this.gains = gains; }
+  }
+  // Classic graphic-EQ preset shapes across the 10 ISO bands (31, 62, 125, 250, 500, 1k, 2k, 4k, 8k, 16k Hz).
+  private static final EqPreset[] BUILTIN_EQ_PRESETS = {
+    new EqPreset("Flat", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+    new EqPreset("Bass Boost", 6, 5, 4, 2, 0, 0, 0, 0, 0, 0),
+    new EqPreset("Treble Boost", 0, 0, 0, 0, 0, 0, 2, 4, 5, 6),
+    new EqPreset("Vocal", -2, -1, 0, 2, 4, 4, 3, 1, 0, -1),
+    new EqPreset("Rock", 4, 3, 2, 0, -1, 0, 1, 2, 3, 4),
+    new EqPreset("Pop", -1, 0, 2, 3, 3, 2, 0, -1, -1, -1),
+    new EqPreset("Classical", 3, 2, 0, 0, 0, 0, 0, 2, 3, 4),
+    new EqPreset("Electronic", 5, 4, 1, 0, -2, 0, 1, 2, 4, 5),
+  };
   private final JButton settingsButton = textButton("SETTINGS");
   private final JButton monoButton = textButton("OFF");
+  private final JButton waveformButton = textButton("ON");
+  private boolean waveformEnabled = true;
   private final JButton animationsButton = textButton("ON");
-  private SettingsOverlay settingsOverlay;
-  private JPanel contentStack; // the OverlayLayout stack: settingsOverlay (topmost, added lazily) > foreground > themeOverlay > background
+  private CenteredOverlay settingsOverlay;
+  private CenteredOverlay lyricsOverlay;
+  private CenteredOverlay eqOverlay;
+  private CenteredOverlay historyOverlay;
+  private CenteredOverlay searchOverlay;
+  private ThemeMenuOverlay themeMenuOverlay;
+  private JPanel contentStack; // the OverlayLayout stack: themeMenuOverlay / settingsOverlay / lyricsOverlay / historyOverlay / searchOverlay (topmost, added lazily) > foreground > themeOverlay > background
   private java.awt.Rectangle preFullscreenBounds;
   private boolean fullscreen;
 
@@ -181,6 +275,7 @@ public final class CDPlayer extends JFrame {
     // physically switching the CD while it's held up out of the case. nextTrack() already no-ops gracefully
     // (returns false) with an empty queue or at the end of it, so no extra guard is needed here.
     disc.setOnEjectPeak(this::nextTrack);
+    disc.setOnCoverChanged(this::onCoverChanged);
     setDropTarget(new DropTarget(this, new DropTargetAdapter() {
       @SuppressWarnings("unchecked") public void drop(DropTargetDropEvent event) {
         try {
@@ -194,8 +289,22 @@ public final class CDPlayer extends JFrame {
     // Wired once here rather than inside buildSettingsPanel(), which is rebuilt fresh every time the Settings
     // dialog opens — attaching it there would stack a duplicate listener on each open.
     themeButton.addActionListener(e -> showThemeMenu());
+    lyricsButton.addActionListener(e -> showLyrics());
+    eqButton.addActionListener(e -> showEq());
+    sleepTimer.addActionListener(e -> {
+      sleepSecondsRemaining--;
+      if (sleepSecondsRemaining <= 0) {
+        sleepTimer.stop();
+        sleepSecondsRemaining = 0;
+        if (player != null && player.isRunning()) toggle(); // pause; a no-op if already paused when this fires
+        sleepTimerSlider.setValue(0); // resets the Settings row back to OFF too, if it happens to be open
+      }
+      updateSleepTimerIndicator();
+    });
     Runtime.getRuntime().addShutdownHook(new Thread(this::saveQueueState, "cdplayer-save-queue"));
     Runtime.getRuntime().addShutdownHook(new Thread(this::saveSettingsState, "cdplayer-save-settings"));
+    loadCustomEqPresets();
+    loadHistory();
     restoreSettingsState();
     restoreQueueState();
   }
@@ -211,13 +320,102 @@ public final class CDPlayer extends JFrame {
     bindKey(inputMap, actionMap, "J", "previousTrackJ", e -> previousTrack());
     bindKey(inputMap, actionMap, "L", "nextTrackL", e -> nextTrack());
     bindKey(inputMap, actionMap, "F", "toggleFullscreen", e -> toggleFullscreen());
-    // Settings takes priority: Escape closes it if open, otherwise exits fullscreen if active. Settings is a
-    // plain in-window overlay (not a separate JDialog — see showSettingsDialog), so this single WHEN_IN_FOCUSED_WINDOW
-    // binding on the main frame handles both cases; there's no separate window with its own key bindings to manage.
+    bindKey(inputMap, actionMap, "C", "toggleCdView", e -> toggleCdView());
+    // Closest-thing-open takes priority: the theme menu, then Settings, then CD view, then fullscreen. Both
+    // overlays are plain in-window components (not separate JDialog/JPopupMenu windows — see
+    // showSettingsDialog/showThemeMenu), so this single WHEN_IN_FOCUSED_WINDOW binding on the main frame handles
+    // all of these; there's no separate window with its own key bindings to manage.
     bindKey(inputMap, actionMap, "ESCAPE", "escapeAction", e -> {
-      if (settingsOverlay != null && settingsOverlay.isVisible()) closeSettingsDialog();
+      if (themeMenuOverlay != null && themeMenuOverlay.isVisible()) hideThemeMenu();
+      else if (lyricsOverlay != null && lyricsOverlay.isVisible()) closeLyrics();
+      else if (eqOverlay != null && eqOverlay.isVisible()) closeEq();
+      else if (historyOverlay != null && historyOverlay.isVisible()) closeHistory();
+      else if (searchOverlay != null && searchOverlay.isVisible()) closeSearch();
+      else if (settingsOverlay != null && settingsOverlay.isVisible()) closeSettingsDialog();
+      else if (cdViewEnabled) toggleCdView();
       else if (fullscreen) toggleFullscreen();
     });
+  }
+  /**
+   * CD view: a distraction-free "now playing" look — hides the header row (status pill, History/Settings), the
+   * whole track/transport/queue column, and the keyboard-shortcuts hint line, leaving only the disc (enlarged,
+   * see DiscView.setEnlarged) and the triangle divider below where the header row was. The song name and author
+   * swap in for the hint line at the bottom of the window instead (see cdViewInfoPanel), not tucked under the
+   * disc, so they stay put and legible regardless of the disc's own size. Independent of true fullscreen (F) —
+   * either can be on, off, or both at once.
+   *
+   * The transition itself is a snapshot crossfade (see SnapshotFadeOverlay), not an animation of each component's
+   * own visibility/size: with the header, the whole track/transport/queue column, and the disc's size all
+   * changing in the same instant, animating each of those individually (fading several unrelated Swing
+   * containers in place, resizing a GridBagLayout cell smoothly) would mean either reworking each of those
+   * components to support a live opacity/size tween or fighting the layout manager mid-animation. A single
+   * frozen "before" snapshot fading away to reveal the already-applied "after" state underneath gets a smooth
+   * transition without any of that, the same trick FadeableCard already uses for the overlays.
+   */
+  private void toggleCdView() {
+    cdViewEnabled = !cdViewEnabled;
+    if (!animationsEnabled) { applyCdViewState(); return; }
+
+    if (cdViewTransitionTimer != null && cdViewTransitionTimer.isRunning()) cdViewTransitionTimer.stop();
+    if (cdViewTransitionOverlay != null) { contentStack.remove(cdViewTransitionOverlay); cdViewTransitionOverlay.releaseSnapshot(); cdViewTransitionOverlay = null; } // clean up an interrupted previous transition, if "C" was pressed again mid-fade
+
+    int w = Math.max(1, contentStack.getWidth()), h = Math.max(1, contentStack.getHeight());
+    BufferedImage before = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+    Graphics2D bg = before.createGraphics();
+    bg.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+    contentStack.paint(bg);
+    bg.dispose();
+
+    applyCdViewState(); // instantly applied, underneath the frozen "before" snapshot about to cover it
+
+    SnapshotFadeOverlay overlay = new SnapshotFadeOverlay(before);
+    overlay.setPreferredSize(new Dimension(w, h)); overlay.setMaximumSize(new Dimension(w, h));
+    cdViewTransitionOverlay = overlay;
+    contentStack.add(overlay, 0);
+    contentStack.validate();
+
+    final int steps = 14;
+    final int[] step = { 0 };
+    cdViewTransitionTimer = new Timer(14, null);
+    cdViewTransitionTimer.addActionListener(e -> {
+      step[0]++;
+      float t = Math.min(1f, step[0] / (float) steps);
+      overlay.setAlpha(1f - t);
+      if (t >= 1f) {
+        ((Timer) e.getSource()).stop();
+        contentStack.remove(overlay);
+        overlay.releaseSnapshot();
+        if (cdViewTransitionOverlay == overlay) cdViewTransitionOverlay = null;
+        contentStack.repaint();
+      }
+    });
+    cdViewTransitionTimer.start();
+  }
+  /**
+   * playerPanelWrap.setVisible(false) alone isn't enough to free up its column's width for the enlarged disc:
+   * GridBagLayout counts an invisible component's preferred size toward its column's width demand regardless of
+   * visibility (confirmed directly — a minimal GridBagLayout with one hidden 600px-preferred column still
+   * squeezed a 760px-preferred sibling down to its 260px floor). So playerPanelWrap is removed from bodyPanel
+   * entirely while in CD view, and re-added at its original cell (playerPanelWrapConstraints) on the way back.
+   * contentStack.validate() (immediate, not a deferred revalidate) is used for the same reason every overlay
+   * open/close in this file uses it: several components change visibility/size/membership at once, and the
+   * layout needs to re-center the disc in the newly-freed space right away, not on whatever the next natural
+   * repaint cycle happens to be.
+   */
+  private void applyCdViewState() {
+    headerPanel.setVisible(!cdViewEnabled);
+    hintLabel.setVisible(!cdViewEnabled);
+    cdViewInfoPanel.setVisible(cdViewEnabled);
+    disc.setEnlarged(cdViewEnabled);
+    cdViewButton.setText(cdViewEnabled ? "EXIT CD VIEW" : "CD VIEW");
+    if (cdViewEnabled) {
+      if (playerPanelWrap.getParent() == bodyPanel) bodyPanel.remove(playerPanelWrap);
+    } else if (playerPanelWrap.getParent() != bodyPanel) {
+      bodyPanel.add(playerPanelWrap, playerPanelWrapConstraints);
+    }
+    playerPanelWrap.setVisible(!cdViewEnabled);
+    bodyPanel.invalidate();
+    contentStack.validate();
   }
   /**
    * True OS-level exclusive fullscreen via GraphicsDevice, not just resizing to the screen's bounds. Simply
@@ -250,7 +448,17 @@ public final class CDPlayer extends JFrame {
 
   private static void bindKey(javax.swing.InputMap inputMap, javax.swing.ActionMap actionMap, String key, String name, java.util.function.Consumer<ActionEvent> action) {
     inputMap.put(javax.swing.KeyStroke.getKeyStroke(key), name);
-    actionMap.put(name, new javax.swing.AbstractAction() { public void actionPerformed(ActionEvent e) { action.accept(e); } });
+    actionMap.put(name, new javax.swing.AbstractAction() {
+      public void actionPerformed(ActionEvent e) {
+        // WHEN_IN_FOCUSED_WINDOW bindings fire no matter which component has focus, and a plain JTextField
+        // doesn't shadow/consume simple letter keys — typing inserts characters through a separate mechanism
+        // from the keystroke-to-action bindings used here, so without this guard, typing "j"/"k"/"l" or a space
+        // while naming an EQ preset would also skip tracks, toggle play/pause, etc.
+        Component focused = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+        if (focused instanceof javax.swing.text.JTextComponent) return;
+        action.accept(e);
+      }
+    });
   }
 
   /** Shows a one-time welcome dialog on the very first launch, gated by a marker file — never shown again once dismissed, on this machine. */
@@ -334,7 +542,7 @@ public final class CDPlayer extends JFrame {
    */
   private void showSettingsDialog() {
     if (settingsOverlay == null) {
-      settingsOverlay = new SettingsOverlay();
+      settingsOverlay = new CenteredOverlay();
       settingsOverlay.setVisible(false);
       contentStack.add(settingsOverlay, 0); // index 0 = topmost in the OverlayLayout stack, above the disc/theme particles/background
       themeOverlay.setSettingsCardReference(settingsOverlay.card); // themeOverlay is the glass pane (always topmost) — without this, particles would drift over the open Settings card too
@@ -349,13 +557,13 @@ public final class CDPlayer extends JFrame {
     settingsOverlay.setVisible(true);
     animateSettingsIn();
   }
-  private void closeSettingsDialog() { if (settingsOverlay != null) animateSettingsOut(); }
+  private void closeSettingsDialog() { hideThemeMenu(); if (settingsOverlay != null) animateSettingsOut(); }
   private Timer settingsAnimTimer;
   /** Grows the settings card from 90% to 100% size (eased) with a fade-in, instead of it just popping into existence. Implemented as a component-level scale/alpha transform in FadeableCard.paint() rather than Window.setOpacity(), since this is no longer a separate Window. */
   private void animateSettingsIn() {
     if (settingsAnimTimer != null && settingsAnimTimer.isRunning()) settingsAnimTimer.stop();
     FadeableCard card = settingsOverlay.card;
-    if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; settingsOverlay.repaint(); return; }
+    if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; card.repaint(); return; }
     card.beginTransformAnimation();
     card.opacity = 0f; card.scale = 0.9f;
     final int steps = 10;
@@ -367,7 +575,11 @@ public final class CDPlayer extends JFrame {
       float eased = 1f - (float) Math.pow(1f - t, 3); // ease-out cubic
       card.opacity = eased;
       card.scale = 0.9f + 0.1f * eased;
-      settingsOverlay.repaint();
+      // card.repaint(), not settingsOverlay.repaint() — the overlay now spans the whole window (see CenteredOverlay,
+      // for the dimmed backdrop that blocks clicks to what's underneath), so repainting the WHOLE overlay on every
+      // 12ms tick meant recompositing the entire window ~80 times/second for an animation that only ever changes
+      // the card's own opacity/scale. Scoped to the card, this is back to a small, cheap dirty region.
+      card.repaint();
       if (t >= 1f) { ((Timer) e.getSource()).stop(); card.opacity = 1f; card.scale = 1f; card.endTransformAnimation(); }
     });
     settingsAnimTimer.start();
@@ -387,7 +599,7 @@ public final class CDPlayer extends JFrame {
       float t = Math.min(1f, step[0] / (float) steps);
       card.opacity = 1f - t;
       card.scale = 1f - 0.1f * t;
-      settingsOverlay.repaint();
+      card.repaint(); // see animateSettingsIn()'s note on why this is card.repaint(), not settingsOverlay.repaint()
       if (t >= 1f) {
         ((Timer) e.getSource()).stop();
         settingsOverlay.setVisible(false);
@@ -422,6 +634,16 @@ public final class CDPlayer extends JFrame {
     card.add(themeRow);
     card.add(javax.swing.Box.createVerticalStrut(22));
 
+    // Equalizer — opens its own overlay on top of Settings, same as the theme picker above; both stay open together.
+    JPanel eqRow = new JPanel(new BorderLayout()); eqRow.setOpaque(false); eqRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+    eqRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+    JLabel eqLabel = label("EQUALIZER", 10, MUTED);
+    eqRow.add(eqLabel, BorderLayout.WEST);
+    JPanel eqButtonWrap = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0)); eqButtonWrap.setOpaque(false); eqButtonWrap.add(eqButton);
+    eqRow.add(eqButtonWrap, BorderLayout.EAST);
+    card.add(eqRow);
+    card.add(javax.swing.Box.createVerticalStrut(22));
+
     // Crossfade slider — relocated here from the main screen, same fields/behavior as before.
     JPanel crossfadeRow = new JPanel(); crossfadeRow.setOpaque(false); crossfadeRow.setAlignmentX(Component.LEFT_ALIGNMENT); crossfadeRow.setLayout(new javax.swing.BoxLayout(crossfadeRow, javax.swing.BoxLayout.X_AXIS));
     crossfadeTitle.setFont(new Font("SansSerif", Font.BOLD, 10)); crossfadeTitle.setForeground(MUTED);
@@ -434,6 +656,27 @@ public final class CDPlayer extends JFrame {
     crossfadeSlider.setToolTipText("Crossfade between tracks (0 = off, up to 15s)");
     crossfadeRow.add(crossfadeTitle); crossfadeRow.add(javax.swing.Box.createHorizontalStrut(10)); crossfadeRow.add(crossfadeSlider); crossfadeRow.add(javax.swing.Box.createHorizontalStrut(8)); crossfadeRow.add(crossfadeValueLabel); crossfadeRow.add(javax.swing.Box.createHorizontalGlue());
     card.add(crossfadeRow);
+    card.add(javax.swing.Box.createVerticalStrut(22));
+
+    // Sleep timer — arms a one-shot countdown from now (not a persistent preference like crossfade), so moving
+    // the slider only actually (re)arms it once the drag settles, not on every intermediate tick while dragging.
+    // The slider's own position is otherwise independent of the live countdown (see sleepTimerIndicator in the
+    // header), so reopening Settings mid-countdown just shows whatever duration was last armed, unchanged.
+    JPanel sleepRow = new JPanel(); sleepRow.setOpaque(false); sleepRow.setAlignmentX(Component.LEFT_ALIGNMENT); sleepRow.setLayout(new javax.swing.BoxLayout(sleepRow, javax.swing.BoxLayout.X_AXIS));
+    sleepTimerTitle.setFont(new Font("SansSerif", Font.BOLD, 10)); sleepTimerTitle.setForeground(MUTED);
+    sleepTimerSlider.setOpaque(false); sleepTimerSlider.setUI(new AccentSliderUI(sleepTimerSlider)); sleepTimerSlider.setFocusable(false);
+    sleepTimerSlider.setPreferredSize(new Dimension(150, 20)); sleepTimerSlider.setMaximumSize(new Dimension(150, 20));
+    sleepTimerValueLabel.setFont(new Font("SansSerif", Font.BOLD, 10)); sleepTimerValueLabel.setForeground(MUTED); sleepTimerValueLabel.setPreferredSize(new Dimension(34, 16));
+    for (javax.swing.event.ChangeListener l : sleepTimerSlider.getChangeListeners()) sleepTimerSlider.removeChangeListener(l); // rebuilt each open; avoid stacking duplicate listeners
+    sleepTimerSlider.addChangeListener(e -> {
+      int v = sleepTimerSlider.getValue();
+      sleepTimerValueLabel.setText(v == 0 ? "OFF" : v + "M");
+      if (!sleepTimerSlider.getValueIsAdjusting()) armSleepTimer(v);
+    });
+    sleepTimerValueLabel.setText(sleepTimerSlider.getValue() == 0 ? "OFF" : sleepTimerSlider.getValue() + "M");
+    sleepTimerSlider.setToolTipText("Pause playback after a set time (0 = off, up to 120 minutes)");
+    sleepRow.add(sleepTimerTitle); sleepRow.add(javax.swing.Box.createHorizontalStrut(10)); sleepRow.add(sleepTimerSlider); sleepRow.add(javax.swing.Box.createHorizontalStrut(8)); sleepRow.add(sleepTimerValueLabel); sleepRow.add(javax.swing.Box.createHorizontalGlue());
+    card.add(sleepRow);
     card.add(javax.swing.Box.createVerticalStrut(22));
 
     // Mono audio toggle — downmixes left/right to identical channels in software on the playback pump thread.
@@ -451,6 +694,18 @@ public final class CDPlayer extends JFrame {
     monoHint.setForeground(MUTED); monoHint.setFont(new Font("SansSerif", Font.PLAIN, 10));
     monoHint.setAlignmentX(Component.LEFT_ALIGNMENT);
     card.add(monoHint);
+    card.add(javax.swing.Box.createVerticalStrut(22));
+
+    // Waveform toggle — the progress bar shows the current track's real amplitude shape instead of a plain line.
+    JPanel waveformRow = new JPanel(new BorderLayout()); waveformRow.setOpaque(false); waveformRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+    waveformRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+    JLabel waveformLabel = label("WAVEFORM", 10, MUTED);
+    for (java.awt.event.ActionListener l : waveformButton.getActionListeners()) waveformButton.removeActionListener(l); // rebuilt each open; avoid stacking duplicate listeners
+    waveformButton.addActionListener(e -> setWaveformEnabled(!waveformEnabled));
+    waveformRow.add(waveformLabel, BorderLayout.WEST);
+    JPanel waveformButtonWrap = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0)); waveformButtonWrap.setOpaque(false); waveformButtonWrap.add(waveformButton);
+    waveformRow.add(waveformButtonWrap, BorderLayout.EAST);
+    card.add(waveformRow);
     card.add(javax.swing.Box.createVerticalStrut(22));
 
     // Animations toggle — hover fades, pulses, on/off crossfades, dialog open/close, the now-playing fade-in, and
@@ -485,15 +740,57 @@ public final class CDPlayer extends JFrame {
     monoButton.setText(value ? "ON" : "OFF"); // the row's own "MONO AUDIO" label already gives context, so the button itself is just a plain on/off toggle
     if (player != null) player.setMono(value);
   }
+  /** Purely a display toggle — the waveform keeps computing/caching in the background either way, this just controls whether the progress bar shows it (falling back to the plain line when off). */
+  private void setWaveformEnabled(boolean value) {
+    waveformEnabled = value;
+    waveformButton.setText(value ? "ON" : "OFF");
+    waveformSliderUI.setEnabled(value);
+  }
+  /** Applies new band gains to the live player (if any) and remembers them for the next track load / app restart. Takes effect within about one 20ms chunk, same as gain/mono. */
+  private void setEqGains(double[] gains) {
+    eqGains = gains;
+    if (player != null) player.setEqGains(gains);
+  }
   /** Flips the global animations flag before updating the button's own text, so turning animations on still gets an animated flourish on the button itself, and turning them off snaps the button (and everything else) instantly. */
   private void setAnimationsEnabled(boolean value) {
     animationsEnabled = value;
     animationsButton.setText(value ? "ON" : "OFF");
   }
+  /** (Re)arms the sleep timer for `minutes` from now, or disarms it entirely at 0 — always restarts fresh from the full duration rather than adjusting an existing countdown, matching a real sleep timer's "set it and forget it" behavior. */
+  private void armSleepTimer(int minutes) {
+    if (sleepTimer.isRunning()) sleepTimer.stop();
+    sleepSecondsRemaining = Math.max(0, minutes) * 60;
+    if (sleepSecondsRemaining > 0) sleepTimer.start();
+    updateSleepTimerIndicator();
+  }
+  private void updateSleepTimerIndicator() {
+    if (sleepSecondsRemaining <= 0) { sleepTimerIndicator.setText(""); return; }
+    int m = sleepSecondsRemaining / 60, s = sleepSecondsRemaining % 60;
+    sleepTimerIndicator.setText("SLEEP " + m + ":" + (s < 10 ? "0" : "") + s);
+  }
 
+  /**
+   * Opens the theme picker as a plain in-window overlay, anchored beneath themeButton — not a JPopupMenu. A
+   * JPopupMenu still creates a real heavyweight Window even with setDefaultLightWeightPopupEnabled(true) (Swing's
+   * PopupFactory decides that for itself), and a real top-level window doesn't reliably render above this app's
+   * own exclusive-fullscreen GraphicsDevice, or above native OS fullscreen — the same failure mode Settings hit
+   * before it moved off JDialog. Confirmed via Window.getWindows(): the popup's Popup$HeavyWeightWindow reported
+   * itself fully visible/showing, matching Swing's own bookkeeping, while never actually appearing on screen.
+   */
   private void showThemeMenu() {
-    javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
-    menu.setBackground(CARD); menu.setBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 30)));
+    if (themeMenuOverlay == null) {
+      themeMenuOverlay = new ThemeMenuOverlay();
+      themeMenuOverlay.addMouseListener(new java.awt.event.MouseAdapter() {
+        public void mousePressed(java.awt.event.MouseEvent e) { hideThemeMenu(); }
+      });
+      contentStack.add(themeMenuOverlay, 0); // index 0 = topmost, above settingsOverlay too (opened from a button inside it)
+      themeOverlay.setThemeMenuReference(themeMenuOverlay.menu);
+      contentStack.validate();
+    }
+    JPanel menu = themeMenuOverlay.menu;
+    menu.removeAll();
+    menu.setBackground(CARD);
+    menu.setBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 30)));
     for (int i = 0; i < THEMES.length; i++) {
       Theme theme = THEMES[i]; int index = i;
       javax.swing.JMenuItem item = new javax.swing.JMenuItem(theme.name, new SwatchIcon(theme.accent, theme.accent2));
@@ -501,16 +798,26 @@ public final class CDPlayer extends JFrame {
       item.setForeground(index == currentThemeIndex ? ACCENT : TEXT);
       item.setBackground(CARD); item.setOpaque(true);
       item.setIconTextGap(10); item.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 16));
-      item.addActionListener(e -> switchToTheme(index));
+      item.addActionListener(e -> { switchToTheme(index); hideThemeMenu(); });
       menu.add(item);
     }
-    menu.show(themeButton, 0, themeButton.getHeight() + 6);
+    // Anchored the same way menu.show(themeButton, 0, themeButton.getHeight() + 6) used to, then clamped so it
+    // can't be positioned partly off the (possibly much smaller, possibly fullscreen-sized) overlay.
+    Dimension pref = menu.getPreferredSize();
+    java.awt.Point anchor = SwingUtilities.convertPoint(themeButton, 0, themeButton.getHeight() + 6, themeMenuOverlay);
+    int mx = Math.max(4, Math.min(anchor.x, themeMenuOverlay.getWidth() - pref.width - 4));
+    int my = Math.max(4, Math.min(anchor.y, themeMenuOverlay.getHeight() - pref.height - 4));
+    menu.setBounds(mx, my, pref.width, pref.height);
+    menu.validate(); // immediate, not deferred — see showSettingsDialog()'s note on why validate() over revalidate() here; needed every open, not just the first, since the items are rebuilt fresh each time
+    themeMenuOverlay.setVisible(true);
   }
+  private void hideThemeMenu() { if (themeMenuOverlay != null) themeMenuOverlay.setVisible(false); }
 
   /** Applies a theme immediately, without switchToTheme()'s color-lerp animation — used only by restoreSettingsState() at startup, before the window is first shown, where an instant application is correct (no from-color transition makes sense yet, and an animated one risks a brief flash from the default theme to the restored one right as the app opens). */
   private void applyThemeInstant(int index) {
     currentThemeIndex = index;
     Theme to = THEMES[index];
+    if ("AUTO".equals(to.name)) to = refreshAutoTheme(); // no track/cover has loaded yet this early, so this just seeds the placeholder-replacing fallback palette; onCoverChanged() refreshes it for real once a track actually loads
     themeButton.setText(to.name);
     themeOverlay.setMode(ThemeOverlay.Mode.forTheme(to.name));
     visualizer.setMode(VisualizerBars.Mode.forTheme(to.name));
@@ -519,17 +826,25 @@ public final class CDPlayer extends JFrame {
   }
   private void switchToTheme(int index) {
     if (index == currentThemeIndex) return;
-    Theme from = THEMES[currentThemeIndex];
     Theme to = THEMES[index];
     currentThemeIndex = index;
     themeButton.setText(to.name); // the settings row's own "THEME" label already gives context
     themeOverlay.setMode(ThemeOverlay.Mode.forTheme(to.name));
     visualizer.setMode(VisualizerBars.Mode.forTheme(to.name));
+    if ("AUTO".equals(to.name)) to = refreshAutoTheme(); // derive fresh from whatever cover art is showing right now, rather than the stale palette from the last time AUTO was picked
+    animateThemeColors(new Color[] { to.bg, to.card, to.accent, to.accent2, to.text, to.muted });
+  }
+  /**
+   * Animates (or instantly applies, if animations are off) BG/CARD/ACCENT/ACCENT2/TEXT/MUTED from their current
+   * live values to toColors — the color-transition half of switchToTheme(), factored out so onCoverChanged() can
+   * reuse it to fade into a freshly-derived AUTO palette without also re-running the theme-switch bookkeeping
+   * (button text, particle/visualizer mode) that only makes sense when the theme selection itself changes.
+   */
+  private void animateThemeColors(Color[] toColors) {
     Color[] fromColors = { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED };
-    Color[] toColors = { to.bg, to.card, to.accent, to.accent2, to.text, to.muted };
     if (themeAnim != null && themeAnim.isRunning()) themeAnim.stop();
     if (!animationsEnabled) {
-      BG = to.bg; CARD = to.card; ACCENT = to.accent; ACCENT2 = to.accent2; TEXT = to.text; MUTED = to.muted;
+      BG = toColors[0]; CARD = toColors[1]; ACCENT = toColors[2]; ACCENT2 = toColors[3]; TEXT = toColors[4]; MUTED = toColors[5];
       applyThemeColors(); getContentPane().repaint(); refreshSettingsIfOpen(); updateQueueUI();
       return;
     }
@@ -547,6 +862,114 @@ public final class CDPlayer extends JFrame {
     });
     themeAnim.start();
   }
+  /**
+   * Recomputes the AUTO theme's palette from the disc's current cover art and replaces THEMES[autoIndex] with a
+   * fresh Theme (Theme is immutable, so this swaps the array slot rather than mutating one in place) — callers
+   * that need the derived colors right now (switchToTheme, applyThemeInstant) use the returned value directly;
+   * onCoverChanged() below is what keeps it current as tracks change while AUTO is already the active theme.
+   */
+  private Theme refreshAutoTheme() {
+    int autoIndex = -1;
+    for (int i = 0; i < THEMES.length; i++) if ("AUTO".equals(THEMES[i].name)) { autoIndex = i; break; }
+    if (autoIndex < 0) return THEMES[currentThemeIndex]; // AUTO isn't in THEMES; shouldn't happen, but fail safe rather than throw
+    Theme derived = deriveAutoTheme(disc.getCover());
+    THEMES[autoIndex] = derived;
+    return derived;
+  }
+  /** Called whenever the disc's cover art changes (see DiscView.setOnCoverChanged). Only actually does anything while AUTO is the active theme — everywhere else this is a cheap no-op check. */
+  private void onCoverChanged() {
+    if (currentThemeIndex < 0 || currentThemeIndex >= THEMES.length || !"AUTO".equals(THEMES[currentThemeIndex].name)) return;
+    Theme fresh = refreshAutoTheme();
+    animateThemeColors(new Color[] { fresh.bg, fresh.card, fresh.accent, fresh.accent2, fresh.text, fresh.muted });
+  }
+  /**
+   * Derives a full theme palette from a piece of album art: buckets sampled pixels into hue bins — skipping
+   * near-gray/near-black/near-white ones so a mostly-white or mostly-black cover doesn't wash things out — and
+   * picks the bin that carries the most actual *color*, not just the most pixels. Every pixel's contribution to
+   * its bin (both the bin's weight and its hue-averaging vector) is scaled by that pixel's own saturation, so a
+   * small but vivid detail — a logo, a splash of color on an otherwise grayscale band photo — can out-weigh a
+   * much larger area of weakly-tinted pixels instead of being outvoted by sheer pixel count. The result is built
+   * with the same recipe as the hand-picked themes above — near-black BG, a slightly lighter CARD, a vivid
+   * ACCENT, a lighter/desaturated ACCENT2, near-white TEXT, mid-gray MUTED — just parameterized by the extracted
+   * hue/saturation instead of fixed per theme. Falls back to a neutral blue when there's no cover yet, or it
+   * turns out to be essentially colorless (e.g. black-and-white art) — deriveAutoTheme always returns a usable
+   * Theme, never null.
+   */
+  private static Theme deriveAutoTheme(BufferedImage cover) {
+    float hue = 0.58f, sat = 0.55f;
+    // Set only when the art has a second dominant hue cluster clearly distinct from the first — lets the
+    // accent -> accent2 gradient (used throughout: buttons, the disc, the visualizer) reflect two real colors
+    // actually present in the cover, instead of always being accent nudged by an arbitrary fixed hue offset
+    // regardless of what the art looks like.
+    Float hue2 = null;
+    if (cover != null) {
+      final int bins = 24; // 15 degrees per bin — coarse enough to survive per-pixel noise, fine enough to separate genuinely different colors
+      double[] binWeight = new double[bins]; // sum of saturation, not a raw pixel count — see method doc
+      int[] binCount = new int[bins];
+      double[] binSin = new double[bins], binCos = new double[bins];
+      double[] binSatSum = new double[bins];
+      int w = cover.getWidth(), h = cover.getHeight();
+      // 48, not 24: embedded/looked-up cover art is often a fairly small thumbnail, and a small colorful detail
+      // (a logo, a title in a colored font) sitting on an otherwise grayscale photo can fall entirely between
+      // grid points at 24 samples/axis and never get counted at all. Still cheap — 48x48 is at most ~2300
+      // samples, done once per track load/cover change, not per frame.
+      int gridSize = 48;
+      int stepX = Math.max(1, w / gridSize), stepY = Math.max(1, h / gridSize);
+      double totalWeight = 0;
+      float[] hsb = new float[3];
+      for (int y = 0; y < h; y += stepY) {
+        for (int x = 0; x < w; x += stepX) {
+          int rgb = cover.getRGB(x, y);
+          Color.RGBtoHSB((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, hsb);
+          if (hsb[1] < 0.15f || hsb[2] < 0.12f || hsb[2] > 0.95f) continue;
+          double weight = hsb[1]; // more saturated pixels count for more, both in bin weight and hue direction
+          double angle = hsb[0] * Math.PI * 2;
+          int bin = Math.min(bins - 1, (int) (hsb[0] * bins));
+          binWeight[bin] += weight; binCount[bin]++; binSatSum[bin] += hsb[1];
+          binSin[bin] += Math.sin(angle) * weight; binCos[bin] += Math.cos(angle) * weight;
+          totalWeight += weight;
+        }
+      }
+      if (totalWeight > 0) {
+        // The dominant hue is the most-saturation-weighted bin's own (weighted) hue, not a circular mean across
+        // every qualifying pixel — a whole-image mean washes out multi-color art into a blended, arbitrary hue
+        // that matches neither of its real colors (e.g. a 50/50 red-and-blue cover averaging out to magenta),
+        // while the bin approach picks up whichever color is actually dominant, and — see hue2 below — a second
+        // real color when the art has one.
+        int topBin = -1; double topWeight = 0;
+        for (int b = 0; b < bins; b++) if (binWeight[b] > topWeight) { topWeight = binWeight[b]; topBin = b; }
+        hue = (float) ((Math.atan2(binSin[topBin], binCos[topBin]) / (Math.PI * 2) + 1) % 1);
+        // The winning bin's OWN average saturation, not an average across every colorful pixel in the whole
+        // image: a vivid-but-small detail (this bin) shouldn't have its saturation diluted by unrelated, more
+        // weakly-tinted pixels elsewhere in the cover that didn't even vote for this hue.
+        sat = Math.max(0.45f, Math.min(0.92f, (float) (binSatSum[topBin] / binCount[topBin])));
+        // The runner-up bin, but only if it's both far enough from the dominant hue to read as a genuinely
+        // different color (not just noise scattered around the same one) and common enough to not be a
+        // handful of stray outlier pixels.
+        int bestBin = -1; double bestWeight = 0;
+        for (int b = 0; b < bins; b++) {
+          if (b == topBin || binCount[b] == 0) continue;
+          float binHue = (float) ((Math.atan2(binSin[b], binCos[b]) / (Math.PI * 2) + 1) % 1);
+          float diff = Math.abs(binHue - hue); if (diff > 0.5f) diff = 1f - diff; // circular distance
+          if (diff < 0.12f) continue;
+          if (binWeight[b] > bestWeight) { bestWeight = binWeight[b]; bestBin = b; }
+        }
+        if (bestBin >= 0 && bestWeight >= totalWeight * 0.08) {
+          hue2 = (float) ((Math.atan2(binSin[bestBin], binCos[bestBin]) / (Math.PI * 2) + 1) % 1);
+        }
+      }
+    }
+    Color accent = Color.getHSBColor(hue, sat, 0.72f);
+    // A genuinely second dominant color from the art when one clearly exists, otherwise the same small fixed hue
+    // nudge as before — still a tasteful two-tone gradient for largely monochrome covers.
+    float accent2Hue = hue2 != null ? hue2 : (hue + 0.06f) % 1f;
+    Color accent2 = Color.getHSBColor(accent2Hue, Math.max(0.25f, sat * 0.55f), 0.85f);
+    Color bg = Color.getHSBColor(hue, Math.min(0.55f, sat * 0.6f), 0.06f);
+    Color card = Color.getHSBColor(hue, Math.min(0.5f, sat * 0.55f), 0.12f);
+    Color text = Color.getHSBColor(hue, 0.04f, 0.93f);
+    Color muted = Color.getHSBColor(hue, 0.10f, 0.58f);
+    return new Theme("AUTO", bg, card, accent, accent2, text, muted);
+  }
   /** Rebuilds the Settings card's content in place if it's currently open, so it tracks the live BG/CARD/ACCENT/etc. colors during a theme transition instead of sitting frozen on whatever they were when it was opened. */
   private void refreshSettingsIfOpen() {
     if (settingsOverlay == null || !settingsOverlay.isVisible()) return;
@@ -556,8 +979,762 @@ public final class CDPlayer extends JFrame {
     settingsOverlay.card.repaint();
   }
 
+  /** Opens the lyrics panel — same in-window-overlay approach as Settings (see showSettingsDialog), and for the same reason: a separate window doesn't reliably layer above this app's own or the OS's fullscreen. Uses its own CenteredOverlay/Timer rather than sharing Settings' — both can be triggered independently (the lyrics button lives on the main screen, not inside Settings), and stopping one's in-progress animation whenever the other opens would leave it visibly frozen mid-transition. */
+  private void showLyrics() {
+    if (currentLyrics == null) return;
+    if (lyricsOverlay == null) {
+      lyricsOverlay = new CenteredOverlay();
+      lyricsOverlay.setVisible(false);
+      contentStack.add(lyricsOverlay, 0);
+      themeOverlay.setLyricsCardReference(lyricsOverlay.card);
+    }
+    lyricsOverlay.card.removeAll();
+    lyricsOverlay.card.add(buildLyricsPanel(), BorderLayout.CENTER);
+    contentStack.validate(); // see showSettingsDialog()'s note on why this must be immediate, and run after the card's content is populated
+    updateLyricsSync(); // now that validate() has given every line label real bounds, this can scroll to the right one immediately instead of waiting for the next tick
+    lyricsOverlay.setVisible(true);
+    animateLyricsIn();
+  }
+  private void closeLyrics() { if (lyricsOverlay != null) animateLyricsOut(); }
+  /** Rebuilds the lyrics card in place if it's open and a new track just loaded, so it tracks whatever's actually playing instead of showing a stale track's words — closes itself if the new track has none. */
+  private void refreshLyricsIfOpen() {
+    if (lyricsOverlay == null || !lyricsOverlay.isVisible()) return;
+    if (currentLyrics == null) { closeLyrics(); return; }
+    lyricsOverlay.card.removeAll();
+    lyricsOverlay.card.add(buildLyricsPanel(), BorderLayout.CENTER);
+    contentStack.validate();
+    updateLyricsSync();
+    lyricsOverlay.card.repaint();
+  }
+  private Timer lyricsAnimTimer;
+  private void animateLyricsIn() {
+    if (lyricsAnimTimer != null && lyricsAnimTimer.isRunning()) lyricsAnimTimer.stop();
+    FadeableCard card = lyricsOverlay.card;
+    if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; card.repaint(); return; }
+    card.beginTransformAnimation();
+    card.opacity = 0f; card.scale = 0.9f;
+    final int steps = 10;
+    final int[] step = { 0 };
+    lyricsAnimTimer = new Timer(12, null);
+    lyricsAnimTimer.addActionListener(e -> {
+      step[0]++;
+      float t = Math.min(1f, step[0] / (float) steps);
+      float eased = 1f - (float) Math.pow(1f - t, 3);
+      card.opacity = eased; card.scale = 0.9f + 0.1f * eased;
+      // card.repaint(), not lyricsOverlay.repaint() — see animateSettingsIn()'s note: the overlay spans the whole
+      // window now (the dimmed click-blocking backdrop), so repainting it on every tick recomposited the entire
+      // window ~80 times/second for an animation that only changes the card.
+      card.repaint();
+      if (t >= 1f) { ((Timer) e.getSource()).stop(); card.opacity = 1f; card.scale = 1f; card.endTransformAnimation(); }
+    });
+    lyricsAnimTimer.start();
+  }
+  private void animateLyricsOut() {
+    if (!lyricsOverlay.isVisible()) return;
+    if (lyricsAnimTimer != null && lyricsAnimTimer.isRunning()) lyricsAnimTimer.stop();
+    FadeableCard card = lyricsOverlay.card;
+    if (!animationsEnabled) { lyricsOverlay.setVisible(false); card.opacity = 1f; card.scale = 1f; return; }
+    card.beginTransformAnimation();
+    final int steps = 8;
+    final int[] step = { 0 };
+    lyricsAnimTimer = new Timer(12, null);
+    lyricsAnimTimer.addActionListener(e -> {
+      step[0]++;
+      float t = Math.min(1f, step[0] / (float) steps);
+      card.opacity = 1f - t; card.scale = 1f - 0.1f * t;
+      card.repaint(); // see animateSettingsIn()'s note on why this is card.repaint(), not lyricsOverlay.repaint()
+      if (t >= 1f) {
+        ((Timer) e.getSource()).stop();
+        lyricsOverlay.setVisible(false);
+        card.opacity = 1f; card.scale = 1f;
+        card.endTransformAnimation();
+      }
+    });
+    lyricsAnimTimer.start();
+  }
+  /** Opens the recently-played panel — same in-window-overlay approach as Settings/Lyrics/EQ, and its own CenteredOverlay/Timer for the same "must not stomp another overlay's in-progress animation" reason given on showLyrics(). */
+  private void showHistory() {
+    if (historyOverlay == null) {
+      historyOverlay = new CenteredOverlay();
+      historyOverlay.setVisible(false);
+      contentStack.add(historyOverlay, 0);
+      themeOverlay.setHistoryCardReference(historyOverlay.card);
+    }
+    historyOverlay.card.removeAll();
+    historyOverlay.card.add(buildHistoryPanel(), BorderLayout.CENTER);
+    contentStack.validate(); // see showSettingsDialog()'s note on why this must be immediate
+    historyOverlay.setVisible(true);
+    animateHistoryIn();
+  }
+  private void closeHistory() { if (historyOverlay != null) animateHistoryOut(); }
+  /** Rebuilds the history card in place if it's open and a track just finished loading, so a newly-recorded play shows up live instead of only after reopening. */
+  private void refreshHistoryIfOpen() {
+    if (historyOverlay == null || !historyOverlay.isVisible()) return;
+    historyOverlay.card.removeAll();
+    historyOverlay.card.add(buildHistoryPanel(), BorderLayout.CENTER);
+    contentStack.validate();
+    historyOverlay.card.repaint();
+  }
+  private Timer historyAnimTimer;
+  private void animateHistoryIn() {
+    if (historyAnimTimer != null && historyAnimTimer.isRunning()) historyAnimTimer.stop();
+    FadeableCard card = historyOverlay.card;
+    if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; card.repaint(); return; }
+    card.beginTransformAnimation();
+    card.opacity = 0f; card.scale = 0.9f;
+    final int steps = 10;
+    final int[] step = { 0 };
+    historyAnimTimer = new Timer(12, null);
+    historyAnimTimer.addActionListener(e -> {
+      step[0]++;
+      float t = Math.min(1f, step[0] / (float) steps);
+      float eased = 1f - (float) Math.pow(1f - t, 3);
+      card.opacity = eased; card.scale = 0.9f + 0.1f * eased;
+      // card.repaint(), not historyOverlay.repaint() — see animateSettingsIn()'s note: the overlay spans the whole
+      // window now (the dimmed click-blocking backdrop), so repainting it on every tick recomposited the entire
+      // window ~80 times/second for an animation that only changes the card.
+      card.repaint();
+      if (t >= 1f) { ((Timer) e.getSource()).stop(); card.opacity = 1f; card.scale = 1f; card.endTransformAnimation(); }
+    });
+    historyAnimTimer.start();
+  }
+  private void animateHistoryOut() {
+    if (!historyOverlay.isVisible()) return;
+    if (historyAnimTimer != null && historyAnimTimer.isRunning()) historyAnimTimer.stop();
+    FadeableCard card = historyOverlay.card;
+    if (!animationsEnabled) { historyOverlay.setVisible(false); card.opacity = 1f; card.scale = 1f; return; }
+    card.beginTransformAnimation();
+    final int steps = 8;
+    final int[] step = { 0 };
+    historyAnimTimer = new Timer(12, null);
+    historyAnimTimer.addActionListener(e -> {
+      step[0]++;
+      float t = Math.min(1f, step[0] / (float) steps);
+      card.opacity = 1f - t; card.scale = 1f - 0.1f * t;
+      card.repaint(); // see animateSettingsIn()'s note on why this is card.repaint(), not historyOverlay.repaint()
+      if (t >= 1f) {
+        ((Timer) e.getSource()).stop();
+        historyOverlay.setVisible(false);
+        card.opacity = 1f; card.scale = 1f;
+        card.endTransformAnimation();
+      }
+    });
+    historyAnimTimer.start();
+  }
+  /** Opens the library search panel — same in-window-overlay approach as Settings/Lyrics/History, and its own CenteredOverlay/Timer for the same "must not stomp another overlay's in-progress animation" reason given on showLyrics(). Kicks off a fresh recursive scan of the last-used music folder every time it opens, since the folder's contents (or the folder itself, via Load a Track) may have changed since the last time it was open. */
+  private void showSearch() {
+    if (searchOverlay == null) {
+      searchOverlay = new CenteredOverlay();
+      searchOverlay.setVisible(false);
+      contentStack.add(searchOverlay, 0);
+      themeOverlay.setSearchCardReference(searchOverlay.card);
+    }
+    startLibraryScan(); // before building the panel, so its initial render already reflects "scanning" state instead of a blank flash
+    searchOverlay.card.removeAll();
+    searchOverlay.card.add(buildSearchPanel(), BorderLayout.CENTER);
+    contentStack.validate(); // see showSettingsDialog()'s note on why this must be immediate
+    searchOverlay.setVisible(true);
+    animateSearchIn();
+  }
+  private void closeSearch() { if (searchOverlay != null) animateSearchOut(); }
+  private Timer searchAnimTimer;
+  private void animateSearchIn() {
+    if (searchAnimTimer != null && searchAnimTimer.isRunning()) searchAnimTimer.stop();
+    FadeableCard card = searchOverlay.card;
+    if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; card.repaint(); return; }
+    card.beginTransformAnimation();
+    card.opacity = 0f; card.scale = 0.9f;
+    final int steps = 10;
+    final int[] step = { 0 };
+    searchAnimTimer = new Timer(12, null);
+    searchAnimTimer.addActionListener(e -> {
+      step[0]++;
+      float t = Math.min(1f, step[0] / (float) steps);
+      float eased = 1f - (float) Math.pow(1f - t, 3);
+      card.opacity = eased; card.scale = 0.9f + 0.1f * eased;
+      // card.repaint(), not searchOverlay.repaint() — see animateSettingsIn()'s note: the overlay spans the whole
+      // window now (the dimmed click-blocking backdrop), so repainting it on every tick recomposited the entire
+      // window ~80 times/second for an animation that only changes the card.
+      card.repaint();
+      if (t >= 1f) { ((Timer) e.getSource()).stop(); card.opacity = 1f; card.scale = 1f; card.endTransformAnimation(); }
+    });
+    searchAnimTimer.start();
+  }
+  private void animateSearchOut() {
+    if (!searchOverlay.isVisible()) return;
+    if (searchAnimTimer != null && searchAnimTimer.isRunning()) searchAnimTimer.stop();
+    FadeableCard card = searchOverlay.card;
+    if (!animationsEnabled) { searchOverlay.setVisible(false); card.opacity = 1f; card.scale = 1f; return; }
+    card.beginTransformAnimation();
+    final int steps = 8;
+    final int[] step = { 0 };
+    searchAnimTimer = new Timer(12, null);
+    searchAnimTimer.addActionListener(e -> {
+      step[0]++;
+      float t = Math.min(1f, step[0] / (float) steps);
+      card.opacity = 1f - t; card.scale = 1f - 0.1f * t;
+      card.repaint(); // see animateSettingsIn()'s note on why this is card.repaint(), not searchOverlay.repaint()
+      if (t >= 1f) {
+        ((Timer) e.getSource()).stop();
+        searchOverlay.setVisible(false);
+        card.opacity = 1f; card.scale = 1f;
+        card.endTransformAnimation();
+      }
+    });
+    searchAnimTimer.start();
+  }
+  /** Opens the EQ panel — same in-window-overlay approach as Settings/Lyrics, and its own CenteredOverlay/Timer for the same "must not stomp another overlay's in-progress animation" reason given on showLyrics(). */
+  private void showEq() {
+    if (eqOverlay == null) {
+      eqOverlay = new CenteredOverlay();
+      eqOverlay.setVisible(false);
+      contentStack.add(eqOverlay, 0);
+      themeOverlay.setEqCardReference(eqOverlay.card);
+    }
+    eqOverlay.card.removeAll();
+    eqOverlay.card.add(buildEqPanel(), BorderLayout.CENTER);
+    contentStack.validate();
+    eqOverlay.setVisible(true);
+    animateEqIn();
+  }
+  private void closeEq() { if (eqOverlay != null) animateEqOut(); }
+  /** Rebuilds the EQ card in place if it's open — used right after saving a new custom preset, so the new preset button appears immediately without closing/reopening the panel. */
+  private void refreshEqIfOpen() {
+    if (eqOverlay == null || !eqOverlay.isVisible()) return;
+    eqOverlay.card.removeAll();
+    eqOverlay.card.add(buildEqPanel(), BorderLayout.CENTER);
+    contentStack.validate();
+    eqOverlay.card.repaint();
+  }
+  private Timer eqAnimTimer;
+  private void animateEqIn() {
+    if (eqAnimTimer != null && eqAnimTimer.isRunning()) eqAnimTimer.stop();
+    FadeableCard card = eqOverlay.card;
+    if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; card.repaint(); return; }
+    card.beginTransformAnimation();
+    card.opacity = 0f; card.scale = 0.9f;
+    final int steps = 10;
+    final int[] step = { 0 };
+    eqAnimTimer = new Timer(12, null);
+    eqAnimTimer.addActionListener(e -> {
+      step[0]++;
+      float t = Math.min(1f, step[0] / (float) steps);
+      float eased = 1f - (float) Math.pow(1f - t, 3);
+      card.opacity = eased; card.scale = 0.9f + 0.1f * eased;
+      // card.repaint(), not eqOverlay.repaint() — see animateSettingsIn()'s note: the overlay spans the whole
+      // window now (the dimmed click-blocking backdrop), so repainting it on every tick recomposited the entire
+      // window ~80 times/second for an animation that only changes the card.
+      card.repaint();
+      if (t >= 1f) { ((Timer) e.getSource()).stop(); card.opacity = 1f; card.scale = 1f; card.endTransformAnimation(); }
+    });
+    eqAnimTimer.start();
+  }
+  private void animateEqOut() {
+    if (!eqOverlay.isVisible()) return;
+    if (eqAnimTimer != null && eqAnimTimer.isRunning()) eqAnimTimer.stop();
+    FadeableCard card = eqOverlay.card;
+    if (!animationsEnabled) { eqOverlay.setVisible(false); card.opacity = 1f; card.scale = 1f; return; }
+    card.beginTransformAnimation();
+    final int steps = 8;
+    final int[] step = { 0 };
+    eqAnimTimer = new Timer(12, null);
+    eqAnimTimer.addActionListener(e -> {
+      step[0]++;
+      float t = Math.min(1f, step[0] / (float) steps);
+      card.opacity = 1f - t; card.scale = 1f - 0.1f * t;
+      card.repaint(); // see animateSettingsIn()'s note on why this is card.repaint(), not eqOverlay.repaint()
+      if (t >= 1f) {
+        ((Timer) e.getSource()).stop();
+        eqOverlay.setVisible(false);
+        card.opacity = 1f; card.scale = 1f;
+        card.endTransformAnimation();
+      }
+    });
+    eqAnimTimer.start();
+  }
+  private EqPreset[] allEqPresets() {
+    EqPreset[] all = new EqPreset[BUILTIN_EQ_PRESETS.length + customEqPresets.size()];
+    System.arraycopy(BUILTIN_EQ_PRESETS, 0, all, 0, BUILTIN_EQ_PRESETS.length);
+    for (int i = 0; i < customEqPresets.size(); i++) all[BUILTIN_EQ_PRESETS.length + i] = customEqPresets.get(i);
+    return all;
+  }
+  private static String formatDbLabel(double db) { long rounded = Math.round(db); return (rounded > 0 ? "+" : "") + rounded + "dB"; }
+  private static String formatFrequencyLabel(int freqHz) { return freqHz >= 1000 ? (freqHz / 1000) + "K" : String.valueOf(freqHz); }
+  /**
+   * Ten horizontal band rows (label + slider + dB value) rather than the traditional vertical-fader graphic-EQ
+   * look — AccentSliderUI (the app's one custom slider look, used everywhere else) is hardcoded horizontal, and
+   * this reuses it as-is instead of teaching it a second, vertical rendering/scrubbing mode for just this panel.
+   * Presets are plain inline buttons and "save as preset" is an inline name field, not a JComboBox/JOptionPane —
+   * both create real popup/dialog windows, the same class of thing that doesn't reliably render above this app's
+   * fullscreen (see showThemeMenu's doc comment) and had to be fixed twice already for Settings and the theme
+   * picker; nothing new here should risk reintroducing that.
+   */
+  private JPanel buildEqPanel() {
+    JPanel card = new JPanel();
+    card.setLayout(new javax.swing.BoxLayout(card, javax.swing.BoxLayout.Y_AXIS));
+    card.setBackground(CARD); card.setOpaque(true);
+    card.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 40), 1), BorderFactory.createEmptyBorder(26, 30, 22, 30)));
+    JLabel title = label("EQUALIZER", 16, ACCENT);
+    title.setAlignmentX(Component.LEFT_ALIGNMENT);
+    card.add(title);
+    card.add(javax.swing.Box.createVerticalStrut(18));
+
+    JSlider[] bandSliders = new JSlider[Equalizer.BANDS];
+    for (int i = 0; i < Equalizer.BANDS; i++) {
+      final int bandIndex = i;
+      JPanel row = new JPanel(); row.setOpaque(false); row.setAlignmentX(Component.LEFT_ALIGNMENT); row.setLayout(new javax.swing.BoxLayout(row, javax.swing.BoxLayout.X_AXIS));
+      JLabel freqLabel = new JLabel(formatFrequencyLabel(Equalizer.FREQUENCIES[i]));
+      freqLabel.setFont(new Font("SansSerif", Font.BOLD, 10)); freqLabel.setForeground(MUTED); freqLabel.setPreferredSize(new Dimension(30, 16));
+      JSlider slider = new JSlider(-12, 12, (int) Math.round(eqGains[i]));
+      slider.setOpaque(false); slider.setUI(new AccentSliderUI(slider)); slider.setFocusable(false);
+      slider.setPreferredSize(new Dimension(240, 20)); slider.setMaximumSize(new Dimension(240, 20));
+      JLabel valueLabel = new JLabel(formatDbLabel(eqGains[i]));
+      valueLabel.setFont(new Font("SansSerif", Font.BOLD, 10)); valueLabel.setForeground(MUTED); valueLabel.setPreferredSize(new Dimension(36, 16));
+      slider.addChangeListener(e -> {
+        double[] newGains = eqGains.clone();
+        newGains[bandIndex] = slider.getValue();
+        valueLabel.setText(formatDbLabel(newGains[bandIndex]));
+        setEqGains(newGains);
+      });
+      bandSliders[i] = slider;
+      row.add(freqLabel); row.add(javax.swing.Box.createHorizontalStrut(10)); row.add(slider); row.add(javax.swing.Box.createHorizontalStrut(8)); row.add(valueLabel);
+      card.add(row);
+      card.add(javax.swing.Box.createVerticalStrut(5));
+    }
+    card.add(javax.swing.Box.createVerticalStrut(10));
+
+    JLabel presetsLabel = label("PRESETS", 10, MUTED);
+    presetsLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+    card.add(presetsLabel);
+    card.add(javax.swing.Box.createVerticalStrut(8));
+    ScrollableFlowPanel presetsWrap = new ScrollableFlowPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 6, 4));
+    presetsWrap.setOpaque(false);
+    EqPreset[] allPresets = allEqPresets();
+    for (int p = 0; p < allPresets.length; p++) {
+      EqPreset preset = allPresets[p];
+      boolean isCustom = p >= BUILTIN_EQ_PRESETS.length; // built-ins aren't deletable, so only custom ones get the × button
+      JButton presetButton = textButton(preset.name);
+      // Each slider's own ChangeListener above updates eqGains + its label incrementally as setValue() fires it,
+      // so by the time this loop finishes every slider has been moved, the app's live EQ matches the preset
+      // exactly, and every label is already correct — no separate "apply the whole preset" step needed.
+      presetButton.addActionListener(e -> { for (int i = 0; i < Equalizer.BANDS; i++) bandSliders[i].setValue((int) Math.round(preset.gains[i])); });
+      if (!isCustom) { presetsWrap.add(presetButton); continue; }
+      JPanel presetItem = new JPanel(new BorderLayout(2, 0)); presetItem.setOpaque(false);
+      // Same look/behavior as the queue list's own remove (×) button, for the same "small, always-available delete" role.
+      JButton deleteButton = new JButton("×"); deleteButton.setFont(new Font("SansSerif", Font.BOLD, 13)); deleteButton.setForeground(MUTED);
+      deleteButton.setFocusPainted(false); deleteButton.setBorderPainted(false); deleteButton.setContentAreaFilled(false); deleteButton.setOpaque(false);
+      deleteButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); deleteButton.setMargin(new Insets(0, 6, 0, 2)); deleteButton.setToolTipText("Delete preset \"" + preset.name + "\"");
+      deleteButton.setFocusable(false);
+      attachColorHover(deleteButton, MUTED, TEXT);
+      deleteButton.addActionListener(e -> { deleteEqPreset(preset.name); refreshEqIfOpen(); });
+      presetItem.add(presetButton, BorderLayout.CENTER);
+      presetItem.add(deleteButton, BorderLayout.EAST);
+      presetsWrap.add(presetItem);
+    }
+    // Scrolls instead of overflowing once there are enough presets (built-in + saved) to outgrow a fixed height —
+    // FlowLayout wraps to as many rows as it needs, which without a scroll pane just runs off the bottom of the card.
+    JScrollPane presetsScroll = new JScrollPane(presetsWrap);
+    presetsScroll.setOpaque(false); presetsScroll.getViewport().setOpaque(false); presetsScroll.setBorder(null);
+    presetsScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
+    presetsScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+    presetsScroll.setPreferredSize(new Dimension(480, 96));
+    presetsScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 96));
+    presetsScroll.getVerticalScrollBar().setUnitIncrement(16);
+    presetsScroll.getVerticalScrollBar().setUI(new GreyScrollBarUI());
+    card.add(presetsScroll);
+    card.add(javax.swing.Box.createVerticalStrut(14));
+
+    JPanel saveArea = new JPanel(); saveArea.setLayout(new javax.swing.BoxLayout(saveArea, javax.swing.BoxLayout.Y_AXIS));
+    saveArea.setOpaque(false); saveArea.setAlignmentX(Component.LEFT_ALIGNMENT);
+    JButton saveTrigger = textButton("SAVE AS PRESET");
+    saveTrigger.setAlignmentX(Component.LEFT_ALIGNMENT);
+    JPanel saveInputRow = new JPanel(); saveInputRow.setOpaque(false); saveInputRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+    saveInputRow.setLayout(new javax.swing.BoxLayout(saveInputRow, javax.swing.BoxLayout.X_AXIS));
+    saveInputRow.setVisible(false);
+    JTextField nameField = new JTextField(14);
+    nameField.setMaximumSize(new Dimension(140, 24));
+    JButton confirmSave = textButton("SAVE"), cancelSave = textButton("CANCEL");
+    saveInputRow.add(nameField); saveInputRow.add(javax.swing.Box.createHorizontalStrut(8)); saveInputRow.add(confirmSave); saveInputRow.add(javax.swing.Box.createHorizontalStrut(4)); saveInputRow.add(cancelSave);
+    // contentStack.validate() (immediate, top-down), not a local revalidate() — saveArea's preferred size changes
+    // when the input row appears, and CenteredOverlay re-centers `card` via GridBagLayout based on that size;
+    // a revalidate() starting from saveArea only reflows within card's *already-fixed* bounds from when showEq()
+    // first validated it, so the row's own bounds come out valid but the card never grows to actually show it.
+    // Same class of bug as showSettingsDialog()'s card/content-size note, same fix.
+    saveTrigger.addActionListener(e -> { saveTrigger.setVisible(false); saveInputRow.setVisible(true); nameField.requestFocusInWindow(); contentStack.validate(); });
+    Runnable doSave = () -> {
+      String name = nameField.getText().trim();
+      if (!name.isEmpty()) { saveNewEqPreset(name, eqGains.clone()); refreshEqIfOpen(); }
+    };
+    confirmSave.addActionListener(e -> doSave.run());
+    nameField.addActionListener(e -> doSave.run()); // Enter key submits, same as clicking SAVE
+    cancelSave.addActionListener(e -> { saveInputRow.setVisible(false); saveTrigger.setVisible(true); nameField.setText(""); contentStack.validate(); });
+    saveArea.add(saveTrigger); saveArea.add(saveInputRow);
+    card.add(saveArea);
+    card.add(javax.swing.Box.createVerticalStrut(14));
+
+    JButton close = textButton("CLOSE");
+    close.addActionListener(e -> closeEq());
+    JPanel buttonRow = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0));
+    buttonRow.setOpaque(false); buttonRow.setAlignmentX(Component.LEFT_ALIGNMENT); buttonRow.add(close);
+    card.add(buttonRow);
+    return card;
+  }
+  /**
+   * One parsed LRC timing point. A single source line can carry more than one leading [mm:ss.xx] tag (LRC's way
+   * of repeating the same text at multiple points), which parseLrc() expands into one LyricLine per timestamp —
+   * so this always represents one timestamp/text pair, never a whole raw line.
+   */
+  private static final class LyricLine {
+    final long micros; final String text;
+    LyricLine(long micros, String text) { this.micros = micros; this.text = text; }
+  }
+  private static final java.util.regex.Pattern LRC_TIMESTAMP = java.util.regex.Pattern.compile("^\\[(\\d{1,2}):(\\d{2})(?:\\.(\\d{1,3}))?\\]");
+  /** Parses LRC timing tags out of raw tag text; returns an empty list (not null) if it isn't LRC-timed at all, which the caller uses to fall back to a plain, unsynced scrollable view. */
+  private static List<LyricLine> parseLrc(String raw) {
+    List<LyricLine> result = new ArrayList<LyricLine>();
+    for (String rawLine : raw.split("\\R", -1)) {
+      String remaining = rawLine;
+      List<Long> stamps = new ArrayList<Long>();
+      while (true) {
+        java.util.regex.Matcher m = LRC_TIMESTAMP.matcher(remaining);
+        if (!m.find()) break;
+        int minutes = Integer.parseInt(m.group(1)), seconds = Integer.parseInt(m.group(2));
+        String frac = m.group(3);
+        int millis = frac == null ? 0 : (int) (Double.parseDouble("0." + frac) * 1000);
+        stamps.add((minutes * 60L + seconds) * 1_000_000L + millis * 1000L);
+        remaining = remaining.substring(m.end());
+      }
+      if (stamps.isEmpty()) continue; // a header tag like [ti:...] or genuinely untimed lyrics — neither starts with digits
+      String text = remaining.trim();
+      for (long micros : stamps) result.add(new LyricLine(micros, text));
+    }
+    result.sort((a, b) -> Long.compare(a.micros, b.micros));
+    return result;
+  }
+  private List<LyricLine> currentLyricLines = java.util.Collections.emptyList();
+  private List<JLabel> lyricsLineLabels; // parallel to currentLyricLines; null when showing the plain unsynced fallback instead
+  private JScrollPane lyricsScrollPane;
+  private int lyricsHighlightIndex = -1;
+  private JPanel buildLyricsPanel() {
+    JPanel card = new JPanel(new BorderLayout(0, 16));
+    card.setBackground(CARD); card.setOpaque(true);
+    card.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 40), 1), BorderFactory.createEmptyBorder(26, 30, 22, 30)));
+    JLabel title = label("LYRICS", 16, ACCENT);
+    card.add(title, BorderLayout.NORTH);
+    currentLyricLines = currentLyrics == null ? java.util.Collections.<LyricLine>emptyList() : parseLrc(currentLyrics);
+    lyricsHighlightIndex = -1;
+    javax.swing.JComponent body;
+    if (currentLyricLines.isEmpty()) {
+      // Not LRC-timed (or no lyrics at all) — same plain scrollable text as before, no line-by-line sync possible.
+      javax.swing.JTextArea text = new javax.swing.JTextArea(currentLyrics == null ? "" : formatLyricsForDisplay(currentLyrics));
+      text.setEditable(false); text.setLineWrap(true); text.setWrapStyleWord(true);
+      text.setOpaque(false); text.setForeground(TEXT); text.setFont(new Font("SansSerif", Font.PLAIN, 13));
+      text.setCaretPosition(0); // JTextArea otherwise scrolls to wherever setText() last left the caret (the end), opening on the last line instead of the first
+      body = text;
+      lyricsLineLabels = null;
+    } else {
+      // One JLabel per line (not a single JTextArea) so updateLyricsSync() can restyle just the current line on
+      // every tick without rebuilding or re-flowing the whole panel — cheap enough to call every 70ms.
+      JPanel lines = new JPanel();
+      lines.setOpaque(false);
+      lines.setLayout(new javax.swing.BoxLayout(lines, javax.swing.BoxLayout.Y_AXIS));
+      lyricsLineLabels = new ArrayList<JLabel>();
+      for (LyricLine ll : currentLyricLines) {
+        JLabel lbl = new JLabel(ll.text.isEmpty() ? " " : ll.text);
+        lbl.setForeground(MUTED); lbl.setFont(new Font("SansSerif", Font.PLAIN, 13));
+        lbl.setAlignmentX(Component.LEFT_ALIGNMENT);
+        lbl.setBorder(BorderFactory.createEmptyBorder(3, 0, 3, 0));
+        lyricsLineLabels.add(lbl);
+        lines.add(lbl);
+      }
+      body = lines;
+    }
+    JScrollPane scroll = new JScrollPane(body);
+    scroll.setOpaque(false); scroll.getViewport().setOpaque(false); scroll.setBorder(null);
+    scroll.setPreferredSize(new Dimension(420, 380));
+    scroll.getVerticalScrollBar().setUnitIncrement(16);
+    scroll.getVerticalScrollBar().setUI(new GreyScrollBarUI());
+    lyricsScrollPane = scroll;
+    card.add(scroll, BorderLayout.CENTER);
+    JButton close = textButton("CLOSE");
+    close.addActionListener(e -> closeLyrics());
+    JPanel buttonRow = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0));
+    buttonRow.setOpaque(false); buttonRow.add(close);
+    card.add(buttonRow, BorderLayout.SOUTH);
+    return card;
+  }
+  private JPanel buildHistoryPanel() {
+    JPanel card = new JPanel(new BorderLayout(0, 16));
+    card.setBackground(CARD); card.setOpaque(true);
+    card.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 40), 1), BorderFactory.createEmptyBorder(26, 30, 22, 30)));
+    JLabel title = label("RECENTLY PLAYED", 16, ACCENT);
+    card.add(title, BorderLayout.NORTH);
+    javax.swing.JComponent body;
+    if (playHistory.isEmpty()) {
+      JLabel empty = label("NOTHING PLAYED YET", 12, MUTED);
+      JPanel wrap = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
+      wrap.setOpaque(false); wrap.add(empty);
+      wrap.setPreferredSize(new Dimension(420, 60));
+      body = wrap;
+    } else {
+      JPanel list = new JPanel();
+      list.setOpaque(false); list.setLayout(new javax.swing.BoxLayout(list, javax.swing.BoxLayout.Y_AXIS));
+      for (File file : playHistory) {
+        // 34px, not the queue row's 18-20px — the ADD button (a PillButton, 8px top/bottom padding around its text) is ~30px tall on its own, and a shorter row cap clips it.
+        JPanel row = new JPanel(new BorderLayout(8, 0)); row.setOpaque(false); row.setAlignmentX(Component.LEFT_ALIGNMENT); row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 34));
+        JLabel entry = label(escape(queueDisplay(file)), 11, TEXT);
+        row.add(entry, BorderLayout.CENTER);
+        JButton addButton = textButton("ADD");
+        addButton.setToolTipText("Add to queue");
+        addButton.addActionListener(e -> addToQueue(java.util.Collections.singletonList(file)));
+        JPanel east = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0)); east.setOpaque(false); east.add(addButton);
+        row.add(east, BorderLayout.EAST);
+        row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        row.setToolTipText("Play " + queueDisplay(file));
+        java.awt.event.MouseAdapter playOnClick = new java.awt.event.MouseAdapter() {
+          public void mouseClicked(java.awt.event.MouseEvent e) { playFromHistory(file); }
+        };
+        // Also on the label, not just the row: Swing delivers a click to the single deepest component under the
+        // cursor and does NOT bubble it up automatically, so without this, clicking directly on the track name
+        // (the label, which — via BorderLayout.CENTER — spans nearly the whole row) would silently do nothing.
+        row.addMouseListener(playOnClick);
+        entry.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        entry.addMouseListener(playOnClick);
+        list.add(row);
+        list.add(javax.swing.Box.createVerticalStrut(4));
+      }
+      JScrollPane scroll = new JScrollPane(list);
+      scroll.setOpaque(false); scroll.getViewport().setOpaque(false); scroll.setBorder(null);
+      scroll.setPreferredSize(new Dimension(420, 380));
+      scroll.getVerticalScrollBar().setUnitIncrement(16);
+      scroll.getVerticalScrollBar().setUI(new GreyScrollBarUI());
+      body = scroll;
+    }
+    card.add(body, BorderLayout.CENTER);
+    JButton close = textButton("CLOSE");
+    close.addActionListener(e -> closeHistory());
+    JPanel buttonRow = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0));
+    buttonRow.setOpaque(false); buttonRow.add(close);
+    card.add(buttonRow, BorderLayout.SOUTH);
+    return card;
+  }
+  /** Appends a track to the end of the live queue and jumps straight to it, same as any other manual track pick — shared by History and Search's "click a row to play it now" behavior. Returns false (no-op) if the file has since moved or been deleted. */
+  private boolean appendAndPlay(File file) {
+    if (!file.isFile()) return false;
+    queue.add(file);
+    queueIndex = queue.size() - 1;
+    load(file);
+    return true;
+  }
+  /** Plays a track picked from Recently Played immediately. Re-checks the file still exists first, since history can outlive a moved/deleted file. */
+  private void playFromHistory(File file) {
+    if (!appendAndPlay(file)) { status.setText("●  FILE NO LONGER FOUND"); loadHistory(); refreshHistoryIfOpen(); return; }
+    closeHistory();
+  }
+  /** Reads previously-played track paths (most-recent first, one per line) from disk, silently dropping any that no longer exist so the panel never shows dead entries. */
+  private void loadHistory() {
+    playHistory.clear();
+    try {
+      if (!HISTORY_FILE.isFile()) return;
+      for (String line : java.nio.file.Files.readAllLines(HISTORY_FILE.toPath(), StandardCharsets.UTF_8)) {
+        String path = line.trim();
+        if (path.isEmpty()) continue;
+        File file = new File(path);
+        if (file.isFile()) playHistory.add(file);
+        if (playHistory.size() >= HISTORY_LIMIT) break;
+      }
+    } catch (Exception ignored) { /* corrupt or unreadable history file; just start with none */ }
+  }
+  private void saveHistory() {
+    try {
+      File parent = HISTORY_FILE.getParentFile();
+      if (parent != null) parent.mkdirs();
+      StringBuilder content = new StringBuilder();
+      for (File file : playHistory) content.append(file.getAbsolutePath()).append('\n');
+      java.nio.file.Files.write(HISTORY_FILE.toPath(), content.toString().getBytes(StandardCharsets.UTF_8));
+    } catch (Exception ignored) { /* best-effort; a failed save just means history isn't there next launch */ }
+  }
+  /** Records a freshly-started track at the front of the recently-played list, relocating it there instead of duplicating it if it's already present, and capping the list so it can't grow without bound. */
+  private void recordHistory(File file) {
+    playHistory.remove(file);
+    playHistory.add(0, file);
+    while (playHistory.size() > HISTORY_LIMIT) playHistory.remove(playHistory.size() - 1);
+    saveHistory();
+    refreshHistoryIfOpen();
+  }
+  private JPanel buildSearchPanel() {
+    JPanel card = new JPanel(new BorderLayout(0, 12));
+    card.setBackground(CARD); card.setOpaque(true);
+    card.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 40), 1), BorderFactory.createEmptyBorder(26, 30, 22, 30)));
+    JLabel title = label("SEARCH LIBRARY", 16, ACCENT);
+    card.add(title, BorderLayout.NORTH);
+
+    JPanel center = new JPanel();
+    center.setOpaque(false); center.setLayout(new javax.swing.BoxLayout(center, javax.swing.BoxLayout.Y_AXIS));
+
+    searchStatusLabel = label("", 10, MUTED);
+    searchStatusLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+    center.add(searchStatusLabel);
+    center.add(javax.swing.Box.createVerticalStrut(10));
+
+    searchField = new JTextField();
+    searchField.setAlignmentX(Component.LEFT_ALIGNMENT);
+    searchField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
+    searchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+      public void insertUpdate(javax.swing.event.DocumentEvent e) { refreshSearchResults(); }
+      public void removeUpdate(javax.swing.event.DocumentEvent e) { refreshSearchResults(); }
+      public void changedUpdate(javax.swing.event.DocumentEvent e) { refreshSearchResults(); }
+    });
+    center.add(searchField);
+    center.add(javax.swing.Box.createVerticalStrut(10));
+
+    searchResultsList = new JPanel();
+    searchResultsList.setOpaque(false);
+    searchResultsList.setLayout(new javax.swing.BoxLayout(searchResultsList, javax.swing.BoxLayout.Y_AXIS));
+    JScrollPane scroll = new JScrollPane(searchResultsList);
+    scroll.setOpaque(false); scroll.getViewport().setOpaque(false); scroll.setBorder(null);
+    scroll.setAlignmentX(Component.LEFT_ALIGNMENT);
+    scroll.setPreferredSize(new Dimension(420, 340));
+    scroll.getVerticalScrollBar().setUnitIncrement(16);
+    scroll.getVerticalScrollBar().setUI(new GreyScrollBarUI());
+    center.add(scroll);
+
+    card.add(center, BorderLayout.CENTER);
+    JButton close = textButton("CLOSE");
+    close.addActionListener(e -> closeSearch());
+    JPanel buttonRow = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0));
+    buttonRow.setOpaque(false); buttonRow.add(close);
+    card.add(buttonRow, BorderLayout.SOUTH);
+
+    refreshSearchResults(); // reflects whatever startLibraryScan() already set up (called by showSearch() just before this)
+    return card;
+  }
+  /** Recursively scans the last-used music folder (readLastPath(), the same folder Load a Track / playlist save/load remember) in the background, then re-filters live. Filename-only match, no per-file tag reads, to stay fast even over a large library. The generation counter guards against a slow scan overwriting a newer one's results if the panel is closed/reopened (or the folder changes) while it's still running. */
+  private void startLibraryScan() {
+    File folder = readLastPath();
+    int generation = ++searchScanGeneration;
+    searchIndex.clear(); // clear immediately so a previous folder's results don't linger while this one scans
+    if (folder == null || !folder.isDirectory()) { searchScanning = false; return; }
+    searchScanning = true;
+    Thread worker = new Thread(() -> {
+      List<File> found = new ArrayList<File>();
+      collectAudio(folder, found);
+      Collections.sort(found, (left, right) -> left.getName().compareToIgnoreCase(right.getName()));
+      SwingUtilities.invokeLater(() -> {
+        if (generation != searchScanGeneration) return; // superseded by a newer scan
+        searchIndex.clear();
+        searchIndex.addAll(found);
+        searchScanning = false;
+        if (searchOverlay != null && searchOverlay.isVisible()) refreshSearchResults();
+      });
+    }, "cdplayer-search-index");
+    worker.setDaemon(true);
+    worker.start();
+  }
+  /** Filters searchIndex by the live query (case-insensitive filename substring) and rebuilds the results list in place. Called on every keystroke and once the background scan completes. */
+  private void refreshSearchResults() {
+    if (searchResultsList == null) return;
+    String query = searchField == null ? "" : searchField.getText().trim().toLowerCase();
+    searchResultsList.removeAll();
+    File folder = readLastPath();
+    if (folder == null || !folder.isDirectory()) {
+      if (searchStatusLabel != null) searchStatusLabel.setText("LOAD A TRACK FIRST TO SET A FOLDER TO SEARCH");
+    } else {
+      List<File> matches = new ArrayList<File>();
+      for (File file : searchIndex) {
+        if (query.isEmpty() || file.getName().toLowerCase().contains(query)) {
+          matches.add(file);
+          if (matches.size() >= SEARCH_RESULTS_LIMIT) break;
+        }
+      }
+      if (searchStatusLabel != null) {
+        searchStatusLabel.setText(searchScanning
+            ? "SCANNING " + folder.getName() + "…"
+            : matches.size() + (matches.size() >= SEARCH_RESULTS_LIMIT ? "+" : "") + " MATCH" + (matches.size() == 1 ? "" : "ES") + " IN " + folder.getName());
+      }
+      for (File file : matches) {
+        // 34px, not the queue row's 18-20px — the ADD button (a PillButton, 8px top/bottom padding around its text) is ~30px tall on its own, and a shorter row cap clips it.
+        JPanel row = new JPanel(new BorderLayout(8, 0)); row.setOpaque(false); row.setAlignmentX(Component.LEFT_ALIGNMENT); row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 34));
+        JLabel entry = label(escape(file.getName()), 11, TEXT);
+        row.add(entry, BorderLayout.CENTER);
+        JButton addButton = textButton("ADD");
+        addButton.setToolTipText("Add to queue");
+        addButton.addActionListener(e -> addToQueue(java.util.Collections.singletonList(file)));
+        JPanel east = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0)); east.setOpaque(false); east.add(addButton);
+        row.add(east, BorderLayout.EAST);
+        row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        row.setToolTipText("Play " + file.getName());
+        java.awt.event.MouseAdapter playOnClick = new java.awt.event.MouseAdapter() {
+          public void mouseClicked(java.awt.event.MouseEvent e) { playFromSearch(file); }
+        };
+        // Also on the label, not just the row — see the identical note on the History row above.
+        row.addMouseListener(playOnClick);
+        entry.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        entry.addMouseListener(playOnClick);
+        searchResultsList.add(row);
+        searchResultsList.add(javax.swing.Box.createVerticalStrut(4));
+      }
+      if (matches.isEmpty()) {
+        JLabel empty = label(searchScanning ? "SCANNING…" : "NO MATCHES", 11, MUTED);
+        searchResultsList.add(empty);
+      }
+    }
+    searchResultsList.revalidate();
+    searchResultsList.repaint();
+  }
+  /** Plays a track picked from search results immediately. Re-checks the file still exists first, since the index can outlive a file that's moved/been deleted mid-session. */
+  private void playFromSearch(File file) {
+    if (!appendAndPlay(file)) { status.setText("●  FILE NO LONGER FOUND"); startLibraryScan(); refreshSearchResults(); return; }
+    closeSearch();
+  }
+  /**
+   * Restyles whichever line covers the player's current position and scrolls it into view — called after every
+   * open/rebuild (once bounds are valid, so the scroll math is correct) and on every tick/seek while the panel is
+   * open. A cheap linear scan: real lyrics files are at most a few hundred lines, and this only runs while the
+   * lyrics panel is actually visible.
+   */
+  private void updateLyricsSync() {
+    if (lyricsLineLabels == null || lyricsLineLabels.isEmpty() || player == null) return;
+    long position = player.getMicrosecondPosition();
+    int index = -1;
+    for (int i = 0; i < currentLyricLines.size(); i++) {
+      if (currentLyricLines.get(i).micros <= position) index = i; else break;
+    }
+    if (index == lyricsHighlightIndex) return;
+    if (lyricsHighlightIndex >= 0 && lyricsHighlightIndex < lyricsLineLabels.size()) {
+      JLabel old = lyricsLineLabels.get(lyricsHighlightIndex);
+      old.setForeground(MUTED); old.setFont(new Font("SansSerif", Font.PLAIN, 13));
+    }
+    lyricsHighlightIndex = index;
+    if (index >= 0) {
+      JLabel current = lyricsLineLabels.get(index);
+      current.setForeground(ACCENT); current.setFont(new Font("SansSerif", Font.BOLD, 14));
+      if (lyricsScrollPane != null) {
+        java.awt.Rectangle bounds = current.getBounds();
+        int targetY = Math.max(0, bounds.y - lyricsScrollPane.getViewport().getExtentSize().height / 2 + bounds.height / 2);
+        lyricsScrollPane.getVerticalScrollBar().setValue(targetY);
+      }
+    }
+  }
+  /**
+   * Strips LRC-style furniture for display only — currentLyrics itself stays exactly as extracted. Leading
+   * [mm:ss.xx] timing markers and [ti:]/[ar:]/[al:]/[by:]/etc. header lines are extremely common in lyrics pulled
+   * from LRC files (every real-world example seen while building this was tagged that way) and aren't something
+   * anyone wants to read line by line; anything that isn't in one of those two specific forms is left untouched,
+   * so plain, non-LRC lyrics text just passes through as-is.
+   */
+  private static String formatLyricsForDisplay(String raw) {
+    StringBuilder out = new StringBuilder();
+    for (String line : raw.split("\\R", -1)) {
+      String stripped = line.replaceFirst("^\\[\\d{1,2}:\\d{2}(?:\\.\\d{1,3})?\\]\\s*", "");
+      if (stripped.matches("^\\[(ti|ar|al|by|offset|length|re|ve):[^\\]]*\\]\\s*$")) continue;
+      out.append(stripped).append('\n');
+    }
+    return out.toString().trim();
+  }
+
   private void applyThemeColors() {
-    status.setForeground(ACCENT); track.setForeground(TEXT); source.setForeground(MUTED);
+    status.setForeground(ACCENT); track.setForeground(TEXT); artistLabel.setForeground(ACCENT2); source.setForeground(MUTED); cdViewTrackLabel.setForeground(TEXT); cdViewArtistLabel.setForeground(ACCENT2);
     elapsed.setForeground(MUTED); length.setForeground(MUTED); queueInfo.setForeground(MUTED); queueNext.setForeground(MUTED);
     nowPlayingLabel.setForeground(ACCENT2); crossfadeTitle.setForeground(MUTED); crossfadeValueLabel.setForeground(MUTED);
     volumeTitle.setForeground(MUTED); volumeValueLabel.setForeground(MUTED);
@@ -590,25 +1767,61 @@ public final class CDPlayer extends JFrame {
     JPanel root = new BrushedMetalPanel();
     root.setBorder(BorderFactory.createEmptyBorder(32, 64, 28, 64));
     JPanel headerBlock = new JPanel(new BorderLayout()); headerBlock.setOpaque(false);
-    headerBlock.add(header(), BorderLayout.NORTH); headerBlock.add(new BarbedDivider(), BorderLayout.SOUTH);
+    headerPanel = header();
+    headerBlock.add(headerPanel, BorderLayout.NORTH); headerBlock.add(new BarbedDivider(), BorderLayout.SOUTH); // headerBlock itself always stays visible so the divider (kept visible in CD view) still renders — only headerPanel toggles
     root.add(headerBlock, BorderLayout.NORTH);
-    JPanel body = new JPanel(new GridBagLayout()); body.setOpaque(false);
+    bodyPanel = new JPanel(new GridBagLayout()); JPanel body = bodyPanel; body.setOpaque(false);
     GridBagConstraints constraints = new GridBagConstraints();
     constraints.gridy = 0; constraints.weighty = 1;
-    // NONE (not BOTH) for the disc specifically: its cell still claims its weightx share of the row so the
-    // overall layout is unaffected, but the component itself is centered at its natural size instead of being
-    // stretched to fill the cell. GridBagLayout doesn't reliably honor a component's maximumSize when fill=BOTH
-    // — measured DiscView's actual bounds growing from 231x611 windowed to 1923x2671 at a 5K fullscreen
-    // resolution even with maximumSize(480, 480) set, because the disc spins on a 16ms Timer while playing and
-    // (being non-opaque) forces the opaque background panel beneath it to redraw its full dirty rectangle on
-    // every tick — over 5 million pixels/frame at that stretched size vs ~140K windowed, regardless of theme.
-    constraints.fill = GridBagConstraints.NONE;
-    constraints.gridx = 0; constraints.weightx = 1; constraints.insets = new Insets(10, 0, 10, 44); body.add(disc, constraints);
+    // BOTH on discColumn (a plain wrapper, not disc itself) so it stretches to fill its cell — GridBagLayout's
+    // fill=NONE turned out to have its own, worse bug: measured it collapsing a fill=NONE component all the way
+    // down to its *minimum* size (not preferred) whenever the row's available height came in even slightly under
+    // the component's preferred height, which the enlarged 760px CD-view disc hits at ordinary window sizes
+    // (confirmed directly — a bare 760px-preferred child in a 992x746 GridBagLayout cell landed at 10x10, its
+    // Swing-default minimum, despite ample width). Capping disc's own actual size is left to BoxLayout instead:
+    // disc keeps its maximumSize (set in DiscView.setEnlarged), and BoxLayout — unlike GridBagLayout — reliably
+    // honors a child's maximumSize, which is exactly why fill=BOTH was avoided *directly on disc* in the first
+    // place (see DiscView's own maximumSize comment: GridBagLayout ignored it and let the disc's spinning-timer
+    // repaint cost balloon at 5K fullscreen). Glue above/below inside discColumn does the vertical centering
+    // fill=BOTH would otherwise skip, since BoxLayout doesn't center children along its own axis on its own.
     constraints.fill = GridBagConstraints.BOTH;
-    constraints.gridx = 1; constraints.weightx = 1.05; constraints.insets = new Insets(36, 0, 20, 0); body.add(playerPanel(), constraints);
+    JPanel discColumn = new JPanel(); discColumn.setOpaque(false); discColumn.setLayout(new javax.swing.BoxLayout(discColumn, javax.swing.BoxLayout.Y_AXIS));
+    disc.setAlignmentX(Component.CENTER_ALIGNMENT);
+    discColumn.add(javax.swing.Box.createVerticalGlue());
+    discColumn.add(disc);
+    discColumn.add(javax.swing.Box.createVerticalGlue());
+    constraints.gridx = 0; constraints.weightx = 1; constraints.insets = new Insets(10, 0, 10, 44); body.add(discColumn, constraints);
+    // With fill=BOTH directly on playerPanel(), it stretched to the full window width on anything wider than the
+    // ~1120px default, dragging every row's centered content (and the trailing LOAD A TRACK / CLEAR QUEUE column)
+    // far from the disc and opening up a large, obviously empty gap on the left of the transport controls.
+    // fill=VERTICAL alone doesn't fix this either — measured GridBagLayout still not honoring the component's own
+    // preferred width even then (590px preferred, squeezed down to 484px actual in a 1120px window, clipping the
+    // transport row's rightmost buttons). Wrapping in BorderLayout.WEST sidesteps GridBagLayout's fill/weightx
+    // sizing entirely: the wrapper still stretches BOTH to fill the cell (simple, predictable), but WEST always
+    // gives its child its own true preferred size and anchors it top-left, leaving any extra stretched space as
+    // plain empty margin in the wrapper's unused CENTER — exactly where extra width on a wide window should go.
+    playerPanelWrap = new JPanel(new BorderLayout()); playerPanelWrap.setOpaque(false);
+    playerPanelWrap.add(playerPanel(), BorderLayout.WEST);
+    constraints.fill = GridBagConstraints.BOTH;
+    constraints.gridx = 1; constraints.weightx = 1.05; constraints.insets = new Insets(36, 0, 20, 0);
+    playerPanelWrapConstraints = (GridBagConstraints) constraints.clone();
+    body.add(playerPanelWrap, constraints);
     root.add(body, BorderLayout.CENTER);
-    JLabel hint = label("DROP WAV · AIFF · AU · FLAC · M4A · MP3 — SPACE/K PLAY · J/L PREV/NEXT · ←/→ SKIP 15S · F FULLSCREEN · ESC EXIT", 10, new Color(120, 122, 126));
-    hint.setHorizontalAlignment(SwingConstants.CENTER); hint.setBorder(BorderFactory.createEmptyBorder(18, 0, 0, 0)); root.add(hint, BorderLayout.SOUTH);
+    hintLabel = label("DROP WAV · AIFF · AU · FLAC · M4A · MP3 — SPACE/K PLAY · J/L PREV/NEXT · ←/→ SKIP 15S · C CD VIEW · F FULLSCREEN · ESC EXIT", 10, new Color(120, 122, 126));
+    hintLabel.setHorizontalAlignment(SwingConstants.CENTER); hintLabel.setBorder(BorderFactory.createEmptyBorder(18, 0, 0, 0));
+    // Song name + author, centered at the bottom of the window in CD view — a footer, not tucked under the disc,
+    // so it stays legible regardless of the disc's own size. Shares hintLabel's SOUTH slot: only one of the two
+    // is ever visible at a time (see applyCdViewState()), and BoxLayout skips invisible children, so the
+    // wrapper's own height shrinks to whichever one is currently showing instead of reserving room for both.
+    cdViewInfoPanel = new JPanel(); cdViewInfoPanel.setOpaque(false); cdViewInfoPanel.setLayout(new javax.swing.BoxLayout(cdViewInfoPanel, javax.swing.BoxLayout.Y_AXIS));
+    cdViewInfoPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
+    cdViewTrackLabel.setHorizontalAlignment(SwingConstants.CENTER); cdViewTrackLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+    cdViewArtistLabel.setHorizontalAlignment(SwingConstants.CENTER); cdViewArtistLabel.setAlignmentX(Component.CENTER_ALIGNMENT); cdViewArtistLabel.setVisible(false);
+    cdViewInfoPanel.add(cdViewTrackLabel); cdViewInfoPanel.add(javax.swing.Box.createVerticalStrut(4)); cdViewInfoPanel.add(cdViewArtistLabel);
+    cdViewInfoPanel.setVisible(false);
+    JPanel southBlock = new JPanel(); southBlock.setOpaque(false); southBlock.setLayout(new javax.swing.BoxLayout(southBlock, javax.swing.BoxLayout.Y_AXIS));
+    southBlock.add(hintLabel); southBlock.add(cdViewInfoPanel);
+    root.add(southBlock, BorderLayout.SOUTH);
 
     // isOptimizedDrawingEnabled must return false: JComponent defaults to true, which tells Swing's repaint
     // machinery "children never overlap" so an incremental repaint (the seek bar ticking, the disc spinning)
@@ -626,29 +1839,62 @@ public final class CDPlayer extends JFrame {
   }
 
   private JPanel header() {
-    JPanel bar = new JPanel(new BorderLayout()); bar.setOpaque(false); bar.setPreferredSize(new Dimension(0, 56));
+    // OverlayLayout, not BorderLayout: with a plain BorderLayout, CENTER only gets the space left over after
+    // EAST claims its own width, so a FlowLayout.CENTER pill inside it lands centered on that leftover region —
+    // biased noticeably left of the bar's true midpoint by roughly half the east button cluster's width, not
+    // actually centered on the window. Overlaying two independent full-bar-width layers instead — one centering
+    // the pill against the WHOLE bar, one right-anchoring the buttons against the WHOLE bar — centers the pill
+    // for real, regardless of how wide the button cluster happens to be.
+    JPanel bar = new JPanel() {
+      // Same reasoning as contentStack's override elsewhere in this file: the two layers below now genuinely
+      // overlap (both stretched to the bar's full bounds), so the default "children never overlap" repaint
+      // optimization would risk stale pixels wherever the transparent parts of one layer sit on top of the other.
+      public boolean isOptimizedDrawingEnabled() { return false; }
+    };
+    bar.setOpaque(false); bar.setPreferredSize(new Dimension(0, 56));
+    bar.setLayout(new javax.swing.OverlayLayout(bar));
     JPanel statusPill = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0)) {
       protected void paintComponent(Graphics raw) { Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON); g.setColor(new Color(0,0,0,90)); g.fillRoundRect(0, 0, getWidth(), getHeight(), 4, 4); g.setColor(new Color(255,255,255,30)); g.setStroke(new BasicStroke(1)); g.drawRoundRect(0, 0, getWidth()-1, getHeight()-1, 4, 4); g.dispose(); super.paintComponent(raw); }
     };
     statusPill.setOpaque(false); statusPill.setBorder(BorderFactory.createEmptyBorder(6, 16, 6, 16)); statusPill.add(status);
     JPanel center = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0)); center.setOpaque(false); center.add(statusPill);
-    bar.add(center, BorderLayout.CENTER);
+    center.setAlignmentX(Component.CENTER_ALIGNMENT); center.setAlignmentY(Component.CENTER_ALIGNMENT);
+    center.setMaximumSize(new Dimension(Short.MAX_VALUE, Short.MAX_VALUE)); // stretch to the bar's full actual width under OverlayLayout — see the method-level comment above
     settingsButton.addActionListener(e -> showSettingsDialog());
-    JPanel east = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 8, 0)); east.setOpaque(false); east.add(settingsButton);
-    bar.add(east, BorderLayout.EAST);
+    sleepTimerIndicator.setFont(new Font("SansSerif", Font.BOLD, 10));
+    sleepTimerIndicator.setToolTipText("Click to cancel the sleep timer");
+    sleepTimerIndicator.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+    // header() only ever runs once (called from createContent(), itself a one-time constructor call), unlike
+    // buildSettingsPanel() which rebuilds every open — safe to wire directly here without risking a duplicate.
+    sleepTimerIndicator.addMouseListener(new java.awt.event.MouseAdapter() {
+      public void mouseClicked(java.awt.event.MouseEvent e) { armSleepTimer(0); sleepTimerSlider.setValue(0); }
+    });
+    historyButton.addActionListener(e -> showHistory());
+    cdViewButton.setToolTipText("Distraction-free view: just the disc");
+    cdViewButton.addActionListener(e -> toggleCdView());
+    JPanel east = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 8, 0)); east.setOpaque(false); east.add(sleepTimerIndicator); east.add(historyButton); east.add(cdViewButton); east.add(settingsButton);
+    JPanel eastLayer = new JPanel(new BorderLayout()); eastLayer.setOpaque(false); eastLayer.add(east, BorderLayout.EAST);
+    eastLayer.setAlignmentX(Component.CENTER_ALIGNMENT); eastLayer.setAlignmentY(Component.CENTER_ALIGNMENT);
+    eastLayer.setMaximumSize(new Dimension(Short.MAX_VALUE, Short.MAX_VALUE));
+    bar.add(eastLayer); bar.add(center); // both stretch to fill the whole bar (see maximumSize above) — order doesn't affect the (non-overlapping, in practice) content, only which layer would win a click in the sliver where they could theoretically touch
     return bar;
   }
 
   private JPanel playerPanel() {
     JPanel panel = new JPanel(); panel.setOpaque(false); panel.setLayout(new javax.swing.BoxLayout(panel, javax.swing.BoxLayout.Y_AXIS));
     JPanel nowRow = new JPanel(); nowRow.setOpaque(false); nowRow.setAlignmentX(Component.LEFT_ALIGNMENT); nowRow.setLayout(new javax.swing.BoxLayout(nowRow, javax.swing.BoxLayout.X_AXIS));
-    JLabel now = nowPlayingLabel; now.setText("NOW PLAYING"); now.setForeground(ACCENT2); now.setFont(new Font("SansSerif", Font.BOLD, 11)); nowRow.add(now); nowRow.add(javax.swing.Box.createHorizontalStrut(12)); nowRow.add(visualizer); panel.add(nowRow);
+    JLabel now = nowPlayingLabel; now.setText("NOW PLAYING"); now.setForeground(ACCENT2); now.setFont(new Font("SansSerif", Font.BOLD, 11)); nowRow.add(now); nowRow.add(javax.swing.Box.createHorizontalStrut(12)); nowRow.add(visualizer);
+    nowRow.add(javax.swing.Box.createHorizontalGlue());
+    lyricsButton.setVisible(false); // shown only once a loaded track actually has lyrics — see load()
+    nowRow.add(lyricsButton);
+    panel.add(nowRow);
     panel.add(javax.swing.Box.createVerticalStrut(14));
     track.setForeground(TEXT); track.setFont(new Font("SansSerif", Font.BOLD, 34)); track.setAlignmentX(Component.LEFT_ALIGNMENT); track.setPreferredSize(new Dimension(460, 44)); track.setMaximumSize(new Dimension(460, 44)); track.setMinimumSize(new Dimension(460, 44)); panel.add(track);
-    panel.add(javax.swing.Box.createVerticalStrut(10)); source.setAlignmentX(Component.LEFT_ALIGNMENT); source.setFont(new Font("SansSerif", Font.PLAIN, 12)); source.setPreferredSize(new Dimension(460, 16)); source.setMaximumSize(new Dimension(460, 16)); source.setMinimumSize(new Dimension(460, 16)); panel.add(source);
+    panel.add(javax.swing.Box.createVerticalStrut(4)); artistLabel.setForeground(ACCENT2); artistLabel.setFont(new Font("SansSerif", Font.PLAIN, 15)); artistLabel.setAlignmentX(Component.LEFT_ALIGNMENT); artistLabel.setPreferredSize(new Dimension(460, 20)); artistLabel.setMaximumSize(new Dimension(460, 20)); artistLabel.setMinimumSize(new Dimension(460, 20)); artistLabel.setVisible(false); panel.add(artistLabel);
+    panel.add(javax.swing.Box.createVerticalStrut(6)); source.setAlignmentX(Component.LEFT_ALIGNMENT); source.setFont(new Font("SansSerif", Font.PLAIN, 12)); source.setPreferredSize(new Dimension(460, 16)); source.setMaximumSize(new Dimension(460, 16)); source.setMinimumSize(new Dimension(460, 16)); panel.add(source);
     panel.add(javax.swing.Box.createVerticalStrut(38));
-    progress.setOpaque(false); progress.setUI(new AccentSliderUI(progress)); progress.setAlignmentX(Component.LEFT_ALIGNMENT); progress.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20)); progress.setFocusable(false);
-    progress.addChangeListener(e -> { if (player != null && progress.getValueIsAdjusting()) adjusting = true; else if (player != null && adjusting) { player.setMicrosecondPosition((long) (player.getMicrosecondLength() * progress.getValue() / 1000.0)); adjusting = false; } });
+    progress.setOpaque(false); waveformSliderUI = new WaveformSliderUI(progress); progress.setUI(waveformSliderUI); progress.setAlignmentX(Component.LEFT_ALIGNMENT); progress.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20)); progress.setFocusable(false);
+    progress.addChangeListener(e -> { if (player != null && progress.getValueIsAdjusting()) adjusting = true; else if (player != null && adjusting) { player.setMicrosecondPosition((long) (player.getMicrosecondLength() * progress.getValue() / 1000.0)); adjusting = false; if (lyricsOverlay != null && lyricsOverlay.isVisible()) updateLyricsSync(); } });
     panel.add(progress);
     JPanel times = new JPanel(new BorderLayout()); times.setOpaque(false); times.setMaximumSize(new Dimension(Integer.MAX_VALUE, 16)); elapsed.setFont(new Font("SansSerif", Font.PLAIN, 11)); length.setFont(new Font("SansSerif", Font.PLAIN, 11)); times.add(elapsed, BorderLayout.WEST); times.add(length, BorderLayout.EAST); panel.add(times);
     panel.add(javax.swing.Box.createVerticalStrut(28));
@@ -659,28 +1905,97 @@ public final class CDPlayer extends JFrame {
     JButton forward = roundButton(Glyph.NEXT_TRACK, 44, false); forward.setToolTipText("Next track"); forward.addActionListener(e -> nextTrack()); transportCluster.add(forward); transportCluster.add(javax.swing.Box.createHorizontalStrut(10));
     JButton skipForward = roundButton(Glyph.SKIP_FORWARD_15, 36, false); skipForward.setToolTipText("Forward 15 seconds"); skipForward.addActionListener(e -> seek(15)); transportCluster.add(skipForward);
     JButton load = textButton("LOAD A TRACK  +"); load.addActionListener(e -> choose());
-    // Both trailing buttons (load / clear queue) reserve the same width, so the transport cluster and the
-    // shuffle/repeat cluster below — each centered in the space left of its own trailing button — land on the
-    // exact same x position instead of merely looking "roughly centered" and drifting apart on resize.
-    int trailingWidth = Math.max(load.getPreferredSize().width, clearQueueButton.getPreferredSize().width);
-    JPanel controls = new JPanel(new BorderLayout()); controls.setOpaque(false); controls.setAlignmentX(Component.LEFT_ALIGNMENT);
-    controls.setMaximumSize(new Dimension(Integer.MAX_VALUE, 68)); // BorderLayout reports an unbounded max size otherwise, letting this row swallow vertical space meant for the rows below
-    controls.add(transportCluster, BorderLayout.CENTER);
-    JPanel loadWrap = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0)); loadWrap.setOpaque(false);
-    loadWrap.setPreferredSize(new Dimension(trailingWidth, 1)); loadWrap.add(load);
-    controls.add(loadWrap, BorderLayout.EAST);
+    // Playlist save/load (.m3u) — playerPanel() only ever runs once (unlike buildSettingsPanel(), which rebuilds
+    // on every open), so these can just be local variables here with no listener-stacking guard needed.
+    JButton savePlaylistButton = textButton("SAVE"); savePlaylistButton.setToolTipText("Save the current queue as a .m3u playlist file");
+    savePlaylistButton.addActionListener(e -> savePlaylist());
+    JButton loadPlaylistButton = textButton("LOAD"); loadPlaylistButton.setToolTipText("Add every track from a .m3u playlist file to the queue");
+    loadPlaylistButton.addActionListener(e -> loadPlaylist());
+    JButton searchButton = textButton("SEARCH"); searchButton.setToolTipText("Search your music folder");
+    searchButton.addActionListener(e -> showSearch());
+    // Names the SAVE/LOAD pair so it doesn't read as two stray, unexplained buttons.
+    JLabel playlistLabel = label("PLAYLIST", 9, MUTED);
+    // Both trailing columns (load button / clear queue) reserve the same width, and that same width is mirrored
+    // as an invisible column on the LEFT of the transport/shuffle rows too — so the transport cluster and the
+    // shuffle/repeat cluster below are genuinely centered in the row's full width (flanked symmetrically), not
+    // just centered in whatever space happens to be left over after a lopsided trailing column.
+    // The +6 covers FlowLayout.RIGHT's own hgap accounting: it reserves hgap as trailing padding even for a
+    // single component, so without this the wrap panel was exactly as wide as the button itself with no room
+    // for that padding, pushing the button to a negative x — its left few pixels were then clipped by the
+    // panel's own bounds instead of just rendering flush against the right edge.
+    int trailingWidth = Math.max(load.getPreferredSize().width, clearQueueButton.getPreferredSize().width) + 6;
+    // BoxLayout + glue, not BorderLayout's WEST/CENTER/EAST: BorderLayout's CENTER only ever gets whatever width
+    // is left after WEST/EAST, and if the surrounding BoxLayout chain hands this row even a few px less than its
+    // own reported preferred width (measured happening — a few px lost to layout rounding several containers up),
+    // that shortfall lands entirely on CENTER, and FlowLayout.CENTER doesn't degrade gracefully when squeezed —
+    // it silently wraps the rightmost button onto an invisible second row instead of just tightening up. Glue on
+    // both sides of transportCluster (capped at its own preferred size so it can't be handed extra room either)
+    // absorbs any slack or shortfall instead, so transportCluster always renders at exactly its natural size.
+    transportCluster.setMaximumSize(transportCluster.getPreferredSize());
+    JPanel controls = new JPanel(); controls.setLayout(new javax.swing.BoxLayout(controls, javax.swing.BoxLayout.X_AXIS));
+    controls.setOpaque(false); controls.setAlignmentX(Component.LEFT_ALIGNMENT);
+    controls.setMaximumSize(new Dimension(Integer.MAX_VALUE, 68));
+    controls.add(javax.swing.Box.createHorizontalStrut(trailingWidth)); // mirrors loadWrap's width so transportCluster centers on the same axis loadWrap is anchored to, not the raw row width
+    controls.add(javax.swing.Box.createHorizontalGlue());
+    controls.add(transportCluster);
+    controls.add(javax.swing.Box.createHorizontalGlue());
+    controls.add(javax.swing.Box.createHorizontalStrut(24)); // a real minimum gap, not just glue — at the default window width both glues above shrink to 0 with nothing left over, otherwise leaving Load a Track flush against the transport buttons
+    JPanel loadWrap = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 6, 0)); loadWrap.setOpaque(false);
+    // Height left free (not pinned to load's own preferred height) and centered via the default alignmentY, so it
+    // sits vertically centered against transportCluster's taller round buttons instead of being squashed to fit.
+    loadWrap.setPreferredSize(new Dimension(trailingWidth, load.getPreferredSize().height));
+    loadWrap.setMaximumSize(new Dimension(trailingWidth, Integer.MAX_VALUE));
+    loadWrap.add(load);
+    controls.add(loadWrap);
     panel.add(controls);
-    panel.add(javax.swing.Box.createVerticalStrut(26));
+    panel.add(javax.swing.Box.createVerticalStrut(10));
+    // Playlist/search cluster gets its own row directly under the transport controls, instead of crowding that
+    // row — it was wrapping to two lines once this cluster grew past a few buttons. Left-aligned, starting at
+    // the same x as the transport cluster's own left edge (the matching leading strut below), not right-aligned
+    // under Load a Track — reads as grouped with the controls above it rather than orphaned under the far-right
+    // Load a Track button.
+    JPanel playlistRow = new JPanel(); playlistRow.setLayout(new javax.swing.BoxLayout(playlistRow, javax.swing.BoxLayout.X_AXIS));
+    playlistRow.setOpaque(false); playlistRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+    playlistRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+    JPanel playlistWrap = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 6, 0)); playlistWrap.setOpaque(false);
+    playlistWrap.add(playlistLabel); playlistWrap.add(savePlaylistButton); playlistWrap.add(loadPlaylistButton); playlistWrap.add(searchButton);
+    playlistRow.add(javax.swing.Box.createHorizontalStrut(trailingWidth));
+    playlistRow.add(playlistWrap);
+    playlistRow.add(javax.swing.Box.createHorizontalGlue());
+    panel.add(playlistRow);
+    panel.add(javax.swing.Box.createVerticalStrut(16));
     JPanel modesCluster = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0)); modesCluster.setOpaque(false);
     shuffleButton.addActionListener(e -> { shuffle = !shuffle; shuffleButton.setOn(shuffle); shuffleNextCacheIndex = Integer.MIN_VALUE; updateQueueUI(); }); modesCluster.add(shuffleButton); modesCluster.add(javax.swing.Box.createHorizontalStrut(20));
-    repeatButton.addActionListener(e -> { repeat = !repeat; repeatButton.setOn(repeat); updateQueueUI(); }); modesCluster.add(repeatButton);
+    // Cycles OFF -> ONE -> ALL -> OFF. setOn() (the button's existing binary gradient fill) tracks "not OFF", and
+    // a small "1" badge distinguishes ONE from ALL without needing a whole second visual state in the button.
+    repeatButton.addActionListener(e -> {
+      repeatMode = repeatMode == RepeatMode.OFF ? RepeatMode.ONE : repeatMode == RepeatMode.ONE ? RepeatMode.ALL : RepeatMode.OFF;
+      repeatButton.setOn(repeatMode != RepeatMode.OFF);
+      repeatButton.setBadge(repeatMode == RepeatMode.ONE ? "1" : null);
+      repeatButton.setToolTipText(repeatMode == RepeatMode.OFF ? "Repeat" : repeatMode == RepeatMode.ONE ? "Repeat: one track" : "Repeat: whole queue");
+      updateQueueUI();
+    });
+    modesCluster.add(repeatButton);
     clearQueueButton.addActionListener(e -> clearQueue());
-    JPanel modes = new JPanel(new BorderLayout()); modes.setOpaque(false); modes.setAlignmentX(Component.LEFT_ALIGNMENT);
+    // Same BoxLayout + glue construction as controls above, and the same reasoning: modesCluster capped at its
+    // own preferred size so it can't be handed extra room, leaving glue to absorb any slack or shortfall instead
+    // of BorderLayout's CENTER silently squeezing modesCluster's FlowLayout into wrapping.
+    modesCluster.setMaximumSize(modesCluster.getPreferredSize());
+    JPanel modes = new JPanel(); modes.setLayout(new javax.swing.BoxLayout(modes, javax.swing.BoxLayout.X_AXIS));
+    modes.setOpaque(false); modes.setAlignmentX(Component.LEFT_ALIGNMENT);
     modes.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40)); // see controls' setMaximumSize above
-    modes.add(modesCluster, BorderLayout.CENTER);
-    JPanel clearWrap = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0)); clearWrap.setOpaque(false);
-    clearWrap.setPreferredSize(new Dimension(trailingWidth, 1)); clearWrap.add(clearQueueButton);
-    modes.add(clearWrap, BorderLayout.EAST);
+    modes.add(javax.swing.Box.createHorizontalStrut(trailingWidth));
+    modes.add(javax.swing.Box.createHorizontalGlue());
+    modes.add(modesCluster);
+    modes.add(javax.swing.Box.createHorizontalGlue());
+    // hgap must match loadWrap's (6, not 0) — FlowLayout reserves hgap as trailing padding even for a single
+    // component, so a mismatched hgap here was leaving CLEAR QUEUE's right edge a few px off from LOAD A TRACK's,
+    // even though both wraps are given the exact same trailingWidth.
+    JPanel clearWrap = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 6, 0)); clearWrap.setOpaque(false);
+    clearWrap.setPreferredSize(new Dimension(trailingWidth, clearQueueButton.getPreferredSize().height));
+    clearWrap.setMaximumSize(new Dimension(trailingWidth, Integer.MAX_VALUE));
+    clearWrap.add(clearQueueButton);
+    modes.add(clearWrap);
     panel.add(modes);
     panel.add(javax.swing.Box.createVerticalStrut(18));
     // Crossfade now lives in the Settings dialog (see buildSettingsPanel) — it's a set-once preference, not
@@ -717,6 +2032,7 @@ public final class CDPlayer extends JFrame {
     // queueList isn't a Scrollable, so the default per-notch unit increment is a sluggish 1px; scale it to roughly one row (18px row + 3px gap) per notch.
     queueScroll.getVerticalScrollBar().setUnitIncrement(21);
     queueScroll.getVerticalScrollBar().setBlockIncrement(126);
+    queueScroll.getVerticalScrollBar().setUI(new GreyScrollBarUI());
     queueCard.add(javax.swing.Box.createVerticalStrut(8)); queueCard.add(queueScroll);
     panel.add(queueCard);
     return panel;
@@ -735,6 +2051,53 @@ public final class CDPlayer extends JFrame {
       addToQueue(java.util.Arrays.asList(selected));
       saveLastPath(chooser.getCurrentDirectory()); // wherever the chooser was browsing when the user picked, not just the file's own folder
     }
+  }
+  /** Writes the current queue out as a standard .m3u (UTF-8, so #EXTM3U is implicitly the "extended" M3U8 dialect) — absolute paths, so the file stays valid regardless of where it's later opened from. */
+  private void savePlaylist() {
+    if (queue.isEmpty()) { status.setText("●  QUEUE IS EMPTY"); return; }
+    JFileChooser chooser = new JFileChooser();
+    chooser.setSelectedFile(new File("playlist.m3u"));
+    File lastDir = readLastPath();
+    if (lastDir != null && lastDir.isDirectory()) chooser.setCurrentDirectory(lastDir);
+    if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
+    File target = chooser.getSelectedFile();
+    if (!target.getName().toLowerCase().endsWith(".m3u") && !target.getName().toLowerCase().endsWith(".m3u8")) {
+      target = new File(target.getParentFile(), target.getName() + ".m3u");
+    }
+    try (java.io.PrintWriter writer = new java.io.PrintWriter(new java.io.OutputStreamWriter(new java.io.FileOutputStream(target), StandardCharsets.UTF_8))) {
+      writer.println("#EXTM3U");
+      for (File f : queue) { writer.println("#EXTINF:-1," + queueDisplay(f)); writer.println(f.getAbsolutePath()); }
+      status.setText("●  SAVED PLAYLIST · " + target.getName());
+      saveLastPath(chooser.getCurrentDirectory());
+    } catch (Exception ex) { status.setText("●  COULDN'T SAVE PLAYLIST"); }
+  }
+  /** Reads a .m3u/.m3u8 file and queues whatever tracks in it still exist and are playable — anything else (missing files, unsupported formats, blank lines, comments other than #EXTINF) is silently skipped rather than failing the whole load. A relative path in the file resolves against the playlist's own folder, matching how every other player treats them. */
+  private void loadPlaylist() {
+    JFileChooser chooser = new JFileChooser();
+    chooser.setFileFilter(new FileNameExtensionFilter("Playlist (M3U)", "m3u", "m3u8"));
+    File lastDir = readLastPath();
+    if (lastDir != null && lastDir.isDirectory()) chooser.setCurrentDirectory(lastDir);
+    if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) return;
+    File source = chooser.getSelectedFile();
+    List<File> tracks = new ArrayList<File>();
+    try {
+      for (String rawLine : java.nio.file.Files.readAllLines(source.toPath(), StandardCharsets.UTF_8)) {
+        String line = rawLine.trim();
+        if (line.isEmpty() || line.startsWith("#")) continue;
+        File f = new File(line);
+        if (!f.isAbsolute()) f = new File(source.getParentFile(), line);
+        if (f.isFile() && isSupportedAudio(f)) tracks.add(f);
+      }
+    } catch (Exception ex) { status.setText("●  COULDN'T READ PLAYLIST"); return; }
+    saveLastPath(chooser.getCurrentDirectory());
+    if (tracks.isEmpty()) { status.setText("●  NO PLAYABLE TRACKS IN PLAYLIST"); return; }
+    // Appends in file order rather than going through addToQueue() — that alphabetically re-sorts everything it
+    // adds, which makes sense for a drag-and-dropped batch of files but would silently discard the whole point of
+    // a playlist: the curated order it was saved in (very possibly built with the queue's own drag-to-reorder).
+    queue.addAll(tracks);
+    status.setText("●  LOADED PLAYLIST · " + tracks.size() + " TRACK" + (tracks.size() == 1 ? "" : "S"));
+    updateQueueUI();
+    if (queueIndex < 0) { queueIndex = 0; load(queue.get(queueIndex)); }
   }
   private static File readLastPath() {
     try {
@@ -768,10 +2131,12 @@ public final class CDPlayer extends JFrame {
       return;
     }
     queueInfo.setText("QUEUE " + (queueIndex + 1) + " / " + queue.size() + (shuffle ? " · SHUFFLED" : ""));
-    // trackFinished() loops the current track whenever repeat is on, regardless of queue position — so that (not
-    // whatever nextIndex() would return) is what actually plays next, and must take priority in this label.
+    // trackFinished() loops the current track whenever repeat-one is on, regardless of queue position — so that
+    // (not whatever nextIndex() would return) is what actually plays next, and must take priority in this label.
+    // Repeat-all wraps back to the front of the queue once nextIndex() runs out, same as trackFinished()/tick().
     int next = nextIndex();
-    queueNext.setText(repeat ? "REPEATING THIS TRACK" : (next >= 0 && next != queueIndex ? "UP NEXT · " + queueDisplay(queue.get(next)) : "END OF QUEUE"));
+    if (next < 0 && repeatMode == RepeatMode.ALL && !queue.isEmpty()) next = 0;
+    queueNext.setText(repeatMode == RepeatMode.ONE ? "REPEATING THIS TRACK" : (next >= 0 && next != queueIndex ? "UP NEXT · " + queueDisplay(queue.get(next)) : "END OF QUEUE"));
     // rebuild the full queue list UI
     queueList.removeAll();
     for (int i = 0; i < queue.size(); i++) {
@@ -779,6 +2144,10 @@ public final class CDPlayer extends JFrame {
       int index = i;
       boolean active = i == queueIndex;
       JPanel row = new JPanel(new BorderLayout(8, 0)); row.setOpaque(false); row.setAlignmentX(Component.LEFT_ALIGNMENT); row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 18));
+      // A thin top/bottom rule while this exact row is mid-drag, so there's a clear cue for which one is moving
+      // (the row itself can't visually "float" above its siblings the way a real drag-and-drop library would —
+      // see the drag handlers below for why a live swap-as-you-cross-a-row-boundary approach was used instead).
+      if (i == draggingIndex) row.setBorder(BorderFactory.createMatteBorder(1, 0, 1, 0, ACCENT));
       JLabel entry = label((i + 1) + ". " + escape(queueDisplay(f)), 10, active ? ACCENT : MUTED);
       if (active) entry.setFont(new Font("SansSerif", Font.BOLD, 10));
       JLabel durationLabel = label(formatDuration(getDuration(f)), 10, active ? ACCENT2 : MUTED);
@@ -794,9 +2163,25 @@ public final class CDPlayer extends JFrame {
       eastPanel.add(closeButton, "close");
       row.add(entry, BorderLayout.CENTER); row.add(eastPanel, BorderLayout.EAST);
       row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); row.setToolTipText("Play " + queueDisplay(f));
+      entry.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
       queueRows.add(new QueueRowUI(entry, eastCards, eastPanel, index));
-      row.addMouseListener(new java.awt.event.MouseAdapter() {
-        public void mouseClicked(java.awt.event.MouseEvent e) { queueIndex = index; load(f); }
+      java.awt.event.MouseAdapter rowMouseHandler = new java.awt.event.MouseAdapter() {
+        // Only plays the track if this press/release didn't turn into a drag — dragMoved is set the instant the
+        // gesture crosses the swap threshold below, so a real reorder never also fires a play.
+        public void mouseClicked(java.awt.event.MouseEvent e) { if (!dragMoved) { queueIndex = index; load(f); } }
+        // draggingIndex (not the captured `index`) is the live position: once a swap rebuilds the list, this same
+        // physical row component keeps receiving drag events (AWT grabs the mouse to whichever component received
+        // the press, even after it's removed from its parent), but `index` is now stale — draggingIndex is kept
+        // in sync with every swap in mouseDragged below instead.
+        public void mousePressed(java.awt.event.MouseEvent e) {
+          draggingIndex = index; dragLastScreenY = e.getYOnScreen(); dragAccumulatedY = 0; dragMoved = false;
+        }
+        // Only rebuilds (to clear the drag-highlight border) if a real drag actually happened — every swap during
+        // a drag already rebuilds via updateQueueUI() in mouseDragged below, so this just clears that border for
+        // the final position. Rebuilding on every plain click too (i.e. unconditionally) tore the row out from
+        // under the real MOUSE_CLICKED event AWT synthesizes right after MOUSE_RELEASED, before it could still
+        // land on this row the way mouseClicked below expects — clicking a track stopped starting playback.
+        public void mouseReleased(java.awt.event.MouseEvent e) { draggingIndex = -1; if (dragMoved) updateQueueUI(); }
         // Swing's per-component enter/exit events aren't reliable when the cursor moves quickly between sibling
         // rows — a row can be "entered" without a matching "exited" ever reaching its previous neighbor, leaving
         // multiple rows stuck highlighted. Rebuilding every row's hover state from scratch on each entry is
@@ -810,7 +2195,39 @@ public final class CDPlayer extends JFrame {
           if (row.getMousePosition() != null) return;
           clearHoveredQueueRow(index);
         }
-      });
+      };
+      // Reorders by swapping with a neighbor every time the drag crosses one row's height, rebuilding the list
+      // immediately for live feedback — simpler and more robust than a floating "ghost row" drag visual, and this
+      // codebase has no drag-and-drop infrastructure elsewhere to build on.
+      java.awt.event.MouseMotionAdapter rowDragHandler = new java.awt.event.MouseMotionAdapter() {
+        public void mouseDragged(java.awt.event.MouseEvent e) {
+          if (draggingIndex < 0) return;
+          int nowY = e.getYOnScreen();
+          dragAccumulatedY += nowY - dragLastScreenY;
+          dragLastScreenY = nowY;
+          int rowStep = 21; // 18px row height + 3px gap between rows, matching the layout above
+          while (Math.abs(dragAccumulatedY) >= rowStep && queue.size() > 1) {
+            int direction = dragAccumulatedY > 0 ? 1 : -1;
+            int target = draggingIndex + direction;
+            if (target < 0 || target >= queue.size()) break;
+            dragMoved = true;
+            java.util.Collections.swap(queue, draggingIndex, target);
+            if (queueIndex == draggingIndex) queueIndex = target;
+            else if (queueIndex == target) queueIndex = draggingIndex;
+            draggingIndex = target;
+            dragAccumulatedY -= direction * rowStep;
+            updateQueueUI();
+          }
+        }
+      };
+      row.addMouseListener(rowMouseHandler);
+      row.addMouseMotionListener(rowDragHandler);
+      // Also on the label, not just the row: Swing delivers a click (or drag-start press) to the single deepest
+      // component under the cursor and does NOT bubble it up automatically, so without this, clicking or starting
+      // a drag directly on the track name (the label, which — via BorderLayout.CENTER — spans nearly the whole
+      // row) would silently do nothing.
+      entry.addMouseListener(rowMouseHandler);
+      entry.addMouseMotionListener(rowDragHandler);
       queueList.add(row);
       if (i < queue.size() - 1) queueList.add(javax.swing.Box.createVerticalStrut(3));
     }
@@ -897,14 +2314,18 @@ public final class CDPlayer extends JFrame {
       // Pulled from the player, not the raw decode above: StreamPlayer may have normalized the format to 16-bit
       // PCM internally, and computeLevels() below must read the exact bytes/format actually being played.
       player = opened; loadedFile = file; rawAudio = opened.getAudioBytes(); audioFormat = opened.getFormat(); crossfadeStarted = false;
+      if (autoPlay) recordHistory(file); // not on the silent session-restore load (autoPlay=false) — that's not a new play, just resuming where we left off
+      waveformSliderUI.setWaveform(null); // clear immediately so the previous track's shape doesn't linger while this one's computes
+      computeWaveformAsync(rawAudio, audioFormat);
       opened.setMono(monoAudio);
+      opened.setEqGains(eqGains);
       opened.onFinished = () -> trackFinished(opened);
       // getSongDetails() (not inspectSong() directly) so a replayed track — common with shuffle/repeat over a
       // long session — reuses the cached result instead of re-spawning ffprobe + an ffmpeg cover extraction on
       // every single play.
       SongDetails details = getSongDetails(file);
       String name = details.title;
-      setTrackTitle(name); source.setText("LOCAL AUDIO FILE · " + file.getName().substring(file.getName().lastIndexOf('.') + 1).toUpperCase());
+      setTrackTitle(name, details.artist); source.setText("LOCAL AUDIO FILE · " + file.getName().substring(file.getName().lastIndexOf('.') + 1).toUpperCase());
       fadeInNowPlaying();
       length.setText(format(opened.getMicrosecondLength())); elapsed.setText("0:00"); progress.setValue(0); status.setText("●  TRACK LOADED");
       boolean canLookUp = details.embeddedCover == null && details.title != null && !details.title.trim().isEmpty();
@@ -912,6 +2333,9 @@ public final class CDPlayer extends JFrame {
       if (details.embeddedCover != null) source.setText("EMBEDDED ALBUM ART · " + extension(file).toUpperCase());
       else if (canLookUp) findCover(details.lookupQuery(), file);
       else source.setText("NO EMBEDDED COVER · ADD SONG METADATA");
+      currentLyrics = details.lyrics;
+      lyricsButton.setVisible(currentLyrics != null);
+      refreshLyricsIfOpen();
       updateQueueUI();
       opened.setGain(doCrossfade ? 0f : volume);
       if (autoPlay) {
@@ -995,7 +2419,8 @@ public final class CDPlayer extends JFrame {
     } catch (Exception ignored) { /* FFmpeg metadata is optional. */ }
     finally { if (probe != null) closeProcessStreams(probe); }
     BufferedImage embeddedCover = extractEmbeddedCover(file);
-    return new SongDetails(title == null || title.isEmpty() ? fallbackTitle : title, artist, album, embeddedCover);
+    String lyrics = extractLyrics(file);
+    return new SongDetails(title == null || title.isEmpty() ? fallbackTitle : title, artist, album, embeddedCover, lyrics);
   }
   private static BufferedImage extractEmbeddedCover(File file) {
     File image = null;
@@ -1008,9 +2433,29 @@ public final class CDPlayer extends JFrame {
     finally { if (image != null) image.delete(); if (extract != null) closeProcessStreams(extract); }
     return null;
   }
+  /**
+   * A dedicated call per tag name, not folded into the title/artist/album probe above: that one relies on
+   * ffprobe's plain "TAG:key=value" output being one tag per line, which breaks for a value that itself contains
+   * newlines — exactly what lyrics are. Fetching just one tag at a time with nokey=1 (no "TAG:key=" prefix at
+   * all) sidesteps that entirely: the raw stdout, trimmed, IS the tag's full value, multi-line and all. There's
+   * no single standard tag name for lyrics across formats/taggers, so this tries the two common ones in order.
+   */
+  private static String extractLyrics(File file) {
+    for (String tagName : new String[] { "lyrics", "unsyncedlyrics" }) {
+      Process probe = null;
+      try {
+        probe = new ProcessBuilder(resolveBinary("ffprobe"), "-v", "error", "-show_entries", "format_tags=" + tagName, "-of", "default=noprint_wrappers=1:nokey=1", file.getAbsolutePath()).redirectErrorStream(true).start();
+        String raw = new String(readAll(probe.getInputStream()), StandardCharsets.UTF_8); probe.waitFor();
+        String trimmed = raw.trim();
+        if (!trimmed.isEmpty()) return trimmed;
+      } catch (Exception ignored) { /* Lyrics are optional, and so is FFmpeg itself. */ }
+      finally { if (probe != null) closeProcessStreams(probe); }
+    }
+    return null;
+  }
   private static final class SongDetails {
-    final String title, artist, album; final BufferedImage embeddedCover;
-    SongDetails(String title, String artist, String album, BufferedImage embeddedCover) { this.title = title; this.artist = artist; this.album = album; this.embeddedCover = embeddedCover; }
+    final String title, artist, album; final BufferedImage embeddedCover; final String lyrics;
+    SongDetails(String title, String artist, String album, BufferedImage embeddedCover, String lyrics) { this.title = title; this.artist = artist; this.album = album; this.embeddedCover = embeddedCover; this.lyrics = lyrics; }
     boolean hasArtist() { return artist != null && !artist.trim().isEmpty(); }
     String lookupQuery() { return (hasArtist() ? artist + " " : "") + title; }
   }
@@ -1075,8 +2520,24 @@ public final class CDPlayer extends JFrame {
     try { process.getErrorStream().close(); } catch (Exception ignored) { }
   }
   private void toggle() { if (player == null) { choose(); return; } if (player.isRunning()) { player.pause(); setPlaying(false); } else { player.start(); setPlaying(true); } }
-  private void trackFinished(StreamPlayer finishedPlayer) { if (player != finishedPlayer) return; if (repeat) { player.setMicrosecondPosition(0); player.start(); setPlaying(true); } else if (!nextTrack()) setPlaying(false); }
-  private boolean nextTrack() { int next = nextIndex(); if (next < 0) return false; queueIndex = next; load(queue.get(queueIndex)); return true; }
+  private void trackFinished(StreamPlayer finishedPlayer) {
+    if (player != finishedPlayer) return;
+    if (repeatMode == RepeatMode.ONE) { player.setMicrosecondPosition(0); player.start(); setPlaying(true); return; }
+    if (nextTrack()) return;
+    setPlaying(false);
+  }
+  /**
+   * Advances to the next queue track, wrapping back to the front when repeat-all is on and the queue's already at
+   * its end. The wraparound used to live only in trackFinished()'s own fallback, so it worked when a track ended
+   * naturally but not when nextTrack() was called directly — the Next button and the L shortcut both call this
+   * directly, so pressing Next on the last track with repeat-all on silently did nothing instead of looping back.
+   */
+  private boolean nextTrack() {
+    int next = nextIndex();
+    if (next < 0 && repeatMode == RepeatMode.ALL && !queue.isEmpty()) next = 0; // shuffle's nextIndex() always has somewhere to go with >1 track, so this only ever triggers at the true end of a non-shuffled queue
+    if (next < 0) return false;
+    queueIndex = next; load(queue.get(queueIndex)); return true;
+  }
   private void previousTrack() { if (player != null && player.getMicrosecondPosition() > 5_000_000L) { player.setMicrosecondPosition(0); return; } if (queueIndex > 0) { queueIndex--; load(queue.get(queueIndex)); } else if (player != null) player.setMicrosecondPosition(0); }
   private void removeFromQueue(int index) {
     if (index < 0 || index >= queue.size()) return;
@@ -1103,9 +2564,11 @@ public final class CDPlayer extends JFrame {
     queueIndex = -1;
     if (player != null) { StreamPlayer closing = player; player = null; closing.close(); }
     deleteTemporaryAudio();
-    track.setFont(new Font("SansSerif", Font.BOLD, 34)); track.setText("Pick a track to get started."); source.setText("YOUR MUSIC LIBRARY");
+    setTrackTitle("Pick a track to get started.", null); source.setText("YOUR MUSIC LIBRARY");
     elapsed.setText("0:00"); length.setText("0:00"); progress.setValue(0);
     disc.setCover(null); disc.setLookingUp(false); loadedFile = null; setPlaying(false);
+    currentLyrics = null; lyricsButton.setVisible(false); refreshLyricsIfOpen();
+    waveformSliderUI.setWaveform(null);
     status.setText(statusMessage);
   }
   /**
@@ -1156,16 +2619,18 @@ public final class CDPlayer extends JFrame {
       }
     } catch (Exception ignored) { /* corrupt or unreadable state file; just start with an empty queue */ }
   }
-  /** Persists volume, crossfade, mono audio, the animations toggle, and the current theme so they carry over to the next launch instead of resetting to defaults. Runs on the same shutdown hook as {@link #saveQueueState()}, same EDT-quiescence rationale. Theme is stored by name (not index) so it survives THEMES being reordered later. */
+  /** Persists volume, crossfade, mono audio, the animations toggle, the current theme, and the EQ band gains so they carry over to the next launch instead of resetting to defaults. Runs on the same shutdown hook as {@link #saveQueueState()}, same EDT-quiescence rationale. Theme is stored by name (not index) so it survives THEMES being reordered later. */
   private void saveSettingsState() {
     try {
       File parent = SETTINGS_FILE.getParentFile();
       if (parent != null) parent.mkdirs();
-      String content = volumeSlider.getValue() + "\n" + crossfadeSlider.getValue() + "\n" + (monoAudio ? "1" : "0") + "\n" + (animationsEnabled ? "1" : "0") + "\n" + THEMES[currentThemeIndex].name + "\n";
+      StringBuilder eqLine = new StringBuilder();
+      for (int i = 0; i < eqGains.length; i++) { if (i > 0) eqLine.append(','); eqLine.append(eqGains[i]); }
+      String content = volumeSlider.getValue() + "\n" + crossfadeSlider.getValue() + "\n" + (monoAudio ? "1" : "0") + "\n" + (animationsEnabled ? "1" : "0") + "\n" + THEMES[currentThemeIndex].name + "\n" + eqLine + "\n" + (waveformEnabled ? "1" : "0") + "\n";
       java.nio.file.Files.write(SETTINGS_FILE.toPath(), content.getBytes(StandardCharsets.UTF_8));
     } catch (Exception ignored) { /* best-effort persistence; a failed save just means defaults next launch */ }
   }
-  /** Restores settings saved by {@link #saveSettingsState()}. Must run after createContent() has wired up the sliders' change listeners, so setting each value here also updates its label/live state the same way a manual drag would. The animations and theme lines are optional (absent in files saved before those existed), defaulting to enabled / RED. */
+  /** Restores settings saved by {@link #saveSettingsState()}. Must run after createContent() has wired up the sliders' change listeners, so setting each value here also updates its label/live state the same way a manual drag would. The animations, theme, EQ, and waveform lines are optional (absent in files saved before those existed), defaulting to enabled / RED / flat / enabled. */
   private void restoreSettingsState() {
     try {
       if (!SETTINGS_FILE.isFile()) return;
@@ -1176,36 +2641,111 @@ public final class CDPlayer extends JFrame {
       boolean savedMono = "1".equals(lines.get(2).trim());
       boolean savedAnimations = lines.size() < 4 || "1".equals(lines.get(3).trim());
       String savedThemeName = lines.size() >= 5 ? lines.get(4).trim() : null;
+      String savedEq = lines.size() >= 6 ? lines.get(5).trim() : null;
+      boolean savedWaveform = lines.size() < 7 || "1".equals(lines.get(6).trim());
       volumeSlider.setValue(Math.max(0, Math.min(100, savedVolume)));
       crossfadeSlider.setValue(Math.max(0, Math.min(15, savedCrossfade)));
       setMonoAudio(savedMono);
       setAnimationsEnabled(savedAnimations);
+      setWaveformEnabled(savedWaveform);
       if (savedThemeName != null) {
         for (int i = 0; i < THEMES.length; i++) {
           if (THEMES[i].name.equals(savedThemeName)) { applyThemeInstant(i); break; }
         }
       }
+      if (savedEq != null && !savedEq.isEmpty()) {
+        String[] parts = savedEq.split(",");
+        if (parts.length == Equalizer.BANDS) {
+          double[] gains = new double[Equalizer.BANDS];
+          for (int i = 0; i < parts.length; i++) gains[i] = Double.parseDouble(parts[i].trim());
+          setEqGains(gains); // player is still null this early — just seeds eqGains for load() to pick up
+        }
+      }
     } catch (Exception ignored) { /* corrupt or unreadable state file; just start with defaults */ }
   }
-  private void seek(int seconds) { if (player == null) return; long target = Math.max(0, Math.min(player.getMicrosecondLength(), player.getMicrosecondPosition() + seconds * 1_000_000L)); player.setMicrosecondPosition(target); long duration = player.getMicrosecondLength(); progress.setValue(duration == 0 ? 0 : (int) (target * 1000 / duration)); elapsed.setText(format(target)); }
+  /** One preset per line: name|gain1,gain2,...,gain10. Loaded once at startup into customEqPresets, which the EQ panel's preset row reads directly. */
+  private void loadCustomEqPresets() {
+    customEqPresets.clear();
+    try {
+      if (!EQ_PRESETS_FILE.isFile()) return;
+      for (String line : java.nio.file.Files.readAllLines(EQ_PRESETS_FILE.toPath(), StandardCharsets.UTF_8)) {
+        int bar = line.indexOf('|');
+        if (bar < 1) continue;
+        String name = line.substring(0, bar).trim();
+        String[] parts = line.substring(bar + 1).split(",");
+        if (name.isEmpty() || parts.length != Equalizer.BANDS) continue;
+        double[] gains = new double[Equalizer.BANDS];
+        for (int i = 0; i < parts.length; i++) gains[i] = Double.parseDouble(parts[i].trim());
+        customEqPresets.add(new EqPreset(name, gains));
+      }
+    } catch (Exception ignored) { /* corrupt or unreadable presets file; just start with none */ }
+  }
+  private void saveCustomEqPresets() {
+    try {
+      File parent = EQ_PRESETS_FILE.getParentFile();
+      if (parent != null) parent.mkdirs();
+      StringBuilder content = new StringBuilder();
+      for (EqPreset preset : customEqPresets) {
+        content.append(preset.name).append('|');
+        for (int i = 0; i < preset.gains.length; i++) { if (i > 0) content.append(','); content.append(preset.gains[i]); }
+        content.append('\n');
+      }
+      java.nio.file.Files.write(EQ_PRESETS_FILE.toPath(), content.toString().getBytes(StandardCharsets.UTF_8));
+    } catch (Exception ignored) { /* best-effort; a failed save just means this preset isn't there next launch */ }
+  }
+  /** Adds (or overwrites, if the name matches an existing custom preset) a preset built from the EQ panel's current sliders, and persists the whole list immediately. */
+  private void saveNewEqPreset(String name, double[] gains) {
+    for (int i = 0; i < customEqPresets.size(); i++) {
+      if (customEqPresets.get(i).name.equalsIgnoreCase(name)) { customEqPresets.set(i, new EqPreset(name, gains)); saveCustomEqPresets(); return; }
+    }
+    customEqPresets.add(new EqPreset(name, gains));
+    saveCustomEqPresets();
+  }
+  /** Only ever called on a custom preset's own delete button, so there's no built-in name to accidentally match — still scoped to customEqPresets regardless, since built-ins live in a separate fixed array entirely. */
+  private void deleteEqPreset(String name) {
+    for (int i = 0; i < customEqPresets.size(); i++) {
+      if (customEqPresets.get(i).name.equals(name)) { customEqPresets.remove(i); saveCustomEqPresets(); return; }
+    }
+  }
+  private void seek(int seconds) { if (player == null) return; long target = Math.max(0, Math.min(player.getMicrosecondLength(), player.getMicrosecondPosition() + seconds * 1_000_000L)); player.setMicrosecondPosition(target); long duration = player.getMicrosecondLength(); progress.setValue(duration == 0 ? 0 : (int) (target * 1000 / duration)); elapsed.setText(format(target)); if (lyricsOverlay != null && lyricsOverlay.isVisible()) updateLyricsSync(); }
   private void tick(ActionEvent event) {
     if (player == null || adjusting) return;
     long duration = player.getMicrosecondLength(); long position = player.getMicrosecondPosition();
     progress.setValue(duration == 0 ? 0 : (int) (position * 1000 / duration)); elapsed.setText(format(position));
-    double[] levels = computeLevels(5, 90); visualizer.setLevels(levels != null ? levels : fallbackLevels());
+    double[] levels = computeLevels(5, 90);
+    if (levels != null) {
+      double instantEnergy = 0; for (double v : levels) instantEnergy += v; instantEnergy /= levels.length;
+      updateBeatDetection(instantEnergy);
+      if (beatPulse > 0) for (int i = 0; i < levels.length; i++) levels[i] = Math.min(1.0, levels[i] * (1 + beatPulse * 0.6));
+      visualizer.setLevels(levels);
+    } else {
+      visualizer.setLevels(fallbackLevels());
+    }
+    if (lyricsOverlay != null && lyricsOverlay.isVisible()) updateLyricsSync();
     int fadeSeconds = crossfadeSlider.getValue();
     // allowCrossfade=true only here: this is the one path where the queue is naturally advancing on its own,
     // not the user actively choosing a different track (see load()'s allowCrossfade doc for the full rationale).
-    // repeat is checked first, unconditionally — matching trackFinished()'s priority — since with repeat on the
+    // repeat-one is checked first, unconditionally — matching trackFinished()'s priority — since with it on the
     // track always loops regardless of queue position; checking nextIndex() first here would crossfade into the
-    // next queue track instead of looping whenever repeat was on but the current track wasn't the last one.
+    // next queue track instead of looping whenever repeat-one was on but the current track wasn't the last one.
     if (!crossfadeStarted && fadeSeconds > 0 && duration > 0 && duration - position <= fadeSeconds * 1_000_000L) {
-      if (repeat && loadedFile != null) { crossfadeStarted = true; load(loadedFile, true, true); } // seamless loop crossfade back into the same track
+      if (repeatMode == RepeatMode.ONE && loadedFile != null) { crossfadeStarted = true; load(loadedFile, true, true); } // seamless loop crossfade back into the same track
       else {
         int next = nextIndex();
+        if (next < 0 && repeatMode == RepeatMode.ALL && !queue.isEmpty()) next = 0; // wrap back to the start, same as trackFinished()
         if (next >= 0) { crossfadeStarted = true; queueIndex = next; load(queue.get(queueIndex), true, true); }
       }
     }
+  }
+  /** Feeds one more instant-energy sample into the rolling history and decides whether this tick counts as a beat — see beatEnergyHistory's field comment for the technique. beatPulse decays a bit each tick regardless, so a detected beat reads as a snap-and-fade pulse rather than a hard on/off flicker. */
+  private void updateBeatDetection(double instantEnergy) {
+    double sum = 0;
+    for (double e : beatEnergyHistory) sum += e;
+    double average = sum / beatEnergyHistory.length;
+    boolean isBeat = instantEnergy > 0.015 && instantEnergy > average * 1.4;
+    beatEnergyHistory[beatEnergyHistoryIndex] = instantEnergy;
+    beatEnergyHistoryIndex = (beatEnergyHistoryIndex + 1) % beatEnergyHistory.length;
+    beatPulse = isBeat ? 1.0 : Math.max(0, beatPulse - 0.15);
   }
   private void setPlaying(boolean playing) { disc.setSpinning(playing); play.setGlyph(playing ? Glyph.PAUSE : Glyph.PLAY); play.pulse(); status.setText(playing ? "●  NOW SPINNING" : (loadedFile == null ? "●  READY TO PLAY" : "●  PAUSED")); visualizer.setActive(playing); if (playing) clock.start(); else clock.stop(); }
   private double[] computeLevels(int bars, int windowMillis) {
@@ -1246,6 +2786,60 @@ public final class CDPlayer extends JFrame {
     int value = bigEndian ? ((b0 << 8) | b1) : ((b1 << 8) | b0);
     return unsigned ? value - 32768 : (short) value;
   }
+  /**
+   * Scans the *whole* track (unlike computeLevels(), which only looks at a small window around the current
+   * position) to build a fixed-size amplitude summary for the progress bar's waveform — cheap enough (a single
+   * pass over already-decoded PCM) that it doesn't need caching to disk, but still dispatched on a background
+   * thread from load() rather than blocking track-load itself, since a long track is a few tens of millions of
+   * samples. The audioBytesSnapshot identity check in the caller guards against a stale result from a track
+   * that's since been replaced by a fast next/previous landing after this finishes.
+   */
+  private void computeWaveformAsync(byte[] audioBytesSnapshot, AudioFormat formatSnapshot) {
+    Thread worker = new Thread(() -> {
+      float[] data = computeWaveformSync(audioBytesSnapshot, formatSnapshot, 220);
+      SwingUtilities.invokeLater(() -> { if (audioBytesSnapshot == rawAudio) waveformSliderUI.setWaveform(data); });
+    }, "cdplayer-waveform");
+    worker.setDaemon(true);
+    worker.start();
+  }
+  private static float[] computeWaveformSync(byte[] audioBytes, AudioFormat format, int buckets) {
+    try {
+      if (audioBytes == null || format == null) return null;
+      AudioFormat.Encoding encoding = format.getEncoding();
+      if (encoding != AudioFormat.Encoding.PCM_SIGNED && encoding != AudioFormat.Encoding.PCM_UNSIGNED) return null;
+      int frameSize = format.getFrameSize();
+      int bytesPerSample = format.getSampleSizeInBits() / 8;
+      if (frameSize <= 0 || bytesPerSample <= 0) return null;
+      boolean bigEndian = format.isBigEndian();
+      boolean unsigned = encoding == AudioFormat.Encoding.PCM_UNSIGNED;
+      int totalFrames = audioBytes.length / frameSize;
+      if (totalFrames <= 0) return null;
+      int framesPerBucket = Math.max(1, totalFrames / buckets);
+      double[] rmsPerBucket = new double[buckets];
+      double peak = 0;
+      for (int b = 0; b < buckets; b++) {
+        long sumSquares = 0; int count = 0;
+        int startFrame = b * framesPerBucket, endFrame = Math.min(totalFrames, startFrame + framesPerBucket);
+        for (int f = startFrame; f < endFrame; f++) {
+          int offset = f * frameSize;
+          if (offset + bytesPerSample > audioBytes.length) break;
+          int sample = readSample(audioBytes, offset, bytesPerSample, bigEndian, unsigned);
+          sumSquares += (long) sample * sample; count++;
+        }
+        double rms = count > 0 ? Math.sqrt((double) sumSquares / count) : 0;
+        rmsPerBucket[b] = rms;
+        peak = Math.max(peak, rms);
+      }
+      // Normalized against this track's own loudest bucket, not a fixed fraction of the theoretical sample-format
+      // ceiling (what computeLevels() does, tuned for the live visualizer's much shorter window) — a full-track
+      // RMS-per-bucket scan naturally averages out transients into a smoother, generally louder-reading baseline,
+      // and different masters sit at very different overall loudness levels. Without per-track normalization,
+      // most buckets clipped to the visual max and the waveform read as an almost flat line.
+      float[] result = new float[buckets];
+      if (peak > 0) for (int b = 0; b < buckets; b++) result[b] = (float) Math.min(1.0, rmsPerBucket[b] / peak);
+      return result;
+    } catch (Exception ignored) { return null; }
+  }
   private double[] fallbackLevels() {
     double t = System.nanoTime() / 1e8;
     double[] levels = new double[5];
@@ -1277,29 +2871,50 @@ public final class CDPlayer extends JFrame {
     finally { if (probe != null) closeProcessStreams(probe); }
   }
   private static String escape(String value) { return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"); }
-  /** Sets the now-playing title, shrinking the font (34pt down to 20pt) to fit long names in the fixed-width label before falling back to an ellipsis, so the box's size never has to change. */
-  private void setTrackTitle(String name) {
-    int maxWidth = 456;
-    int size = 34;
-    Font font = new Font("SansSerif", Font.BOLD, size);
-    java.awt.FontMetrics metrics = track.getFontMetrics(font);
-    while (metrics.stringWidth(name) > maxWidth && size > 20) {
-      size--;
-      font = new Font("SansSerif", Font.BOLD, size);
-      metrics = track.getFontMetrics(font);
+  /**
+   * Sets the now-playing title and (when present) author, shrinking each label's font to fit before falling back
+   * to an ellipsis, so none of the four boxes involved (normal-view title/artist, CD-view title/artist) ever have
+   * to change size. CD view's copies get their own, wider fit pass rather than reusing the normal-view text as-is
+   * (already possibly truncated for its narrower box) — cdViewTrackLabel/cdViewArtistLabel now sit in a
+   * full-width footer at the bottom of the window (see createContent()'s cdViewInfoPanel), not squeezed under
+   * the disc, so they have much more room to work with.
+   */
+  private void setTrackTitle(String name, String artist) {
+    fitText(track, name, 456, 34, 20, true);
+    fitText(cdViewTrackLabel, name, 860, 30, 18, true);
+    boolean hasArtist = artist != null && !artist.trim().isEmpty();
+    artistLabel.setVisible(hasArtist);
+    cdViewArtistLabel.setVisible(hasArtist);
+    if (hasArtist) {
+      fitText(artistLabel, artist, 456, 15, 12, false);
+      fitText(cdViewArtistLabel, artist, 860, 18, 13, false);
+    } else {
+      artistLabel.setText(""); cdViewArtistLabel.setText("");
     }
-    track.setFont(font);
-    track.setText("<html>" + escape(ellipsize(track, name, maxWidth)) + "</html>");
   }
-  /** Fades the track title and source labels in from transparent to their current (already-themed) color, so a new track's info eases into view instead of just snapping into place. Captures each label's own foreground as the fade target, so it stays correct under whatever theme is active. */
+  /** Shrinks label's font from startSize down to minSize (stepping by 1pt) until text fits maxWidth, falling back to an ellipsis if it still doesn't fit at minSize. */
+  private static void fitText(JLabel label, String text, int maxWidth, int startSize, int minSize, boolean bold) {
+    int size = startSize;
+    Font font = new Font("SansSerif", bold ? Font.BOLD : Font.PLAIN, size);
+    java.awt.FontMetrics metrics = label.getFontMetrics(font);
+    while (metrics.stringWidth(text) > maxWidth && size > minSize) {
+      size--;
+      font = new Font("SansSerif", bold ? Font.BOLD : Font.PLAIN, size);
+      metrics = label.getFontMetrics(font);
+    }
+    label.setFont(font);
+    label.setText("<html>" + escape(ellipsize(label, text, maxWidth)) + "</html>");
+  }
+  /** Fades the track title, artist, and source labels in from transparent to their current (already-themed) color, so a new track's info eases into view instead of just snapping into place. Captures each label's own foreground as the fade target, so it stays correct under whatever theme is active. */
   private void fadeInNowPlaying() {
     if (nowPlayingFadeTimer != null && nowPlayingFadeTimer.isRunning()) nowPlayingFadeTimer.stop();
-    final Color trackColor = track.getForeground(), sourceColor = source.getForeground();
+    final Color trackColor = track.getForeground(), artistColor = artistLabel.getForeground(), sourceColor = source.getForeground();
     // Force full opacity rather than reusing trackColor/sourceColor as-is: if a previous fade was still mid-flight
     // when animations got disabled, the label's current color could itself be partially transparent, and simply
     // reapplying it would "snap" to that same partial state instead of actually becoming fully visible.
     if (!animationsEnabled) {
       track.setForeground(new Color(trackColor.getRed(), trackColor.getGreen(), trackColor.getBlue(), 255));
+      artistLabel.setForeground(new Color(artistColor.getRed(), artistColor.getGreen(), artistColor.getBlue(), 255));
       source.setForeground(new Color(sourceColor.getRed(), sourceColor.getGreen(), sourceColor.getBlue(), 255));
       return;
     }
@@ -1311,6 +2926,7 @@ public final class CDPlayer extends JFrame {
       float t = Math.min(1f, step[0] / (float) steps);
       int alpha = (int) (255 * t);
       track.setForeground(new Color(trackColor.getRed(), trackColor.getGreen(), trackColor.getBlue(), alpha));
+      artistLabel.setForeground(new Color(artistColor.getRed(), artistColor.getGreen(), artistColor.getBlue(), alpha));
       source.setForeground(new Color(sourceColor.getRed(), sourceColor.getGreen(), sourceColor.getBlue(), alpha));
       if (t >= 1f) ((Timer) e.getSource()).stop();
     });
@@ -1606,6 +3222,7 @@ public final class CDPlayer extends JFrame {
     private boolean on;
     private float onProgress; // 0 = fully off, 1 = fully on; animates between them instead of snapping
     private float scale = 1f;
+    private String badgeText; // small text drawn over the glyph (e.g. "1" for repeat-one); null = no badge
     private Timer transitionTimer, pulseTimer;
     ModeIconButton(Glyph glyph, String tooltip) {
       this.glyph = glyph;
@@ -1615,6 +3232,7 @@ public final class CDPlayer extends JFrame {
       Dimension fixed = new Dimension(40, 40);
       setMinimumSize(fixed); setPreferredSize(fixed); setMaximumSize(fixed);
     }
+    void setBadge(String text) { if (java.util.Objects.equals(badgeText, text)) return; badgeText = text; repaint(); }
     void setOn(boolean value) {
       if (on == value) return;
       on = value;
@@ -1671,6 +3289,11 @@ public final class CDPlayer extends JFrame {
       }
       g.setColor(lerp(TEXT, BG, onProgress));
       if (glyph == Glyph.SHUFFLE) drawShuffleGlyph(g, w, h); else drawRepeatGlyph(g, w, h);
+      if (badgeText != null) {
+        g.setFont(new Font("SansSerif", Font.BOLD, Math.max(8, Math.round(w * 0.28f))));
+        java.awt.FontMetrics fm = g.getFontMetrics();
+        g.drawString(badgeText, (w - fm.stringWidth(badgeText)) / 2f, h * 0.5f + fm.getAscent() * 0.32f);
+      }
       g.dispose();
     }
   }
@@ -1716,7 +3339,34 @@ public final class CDPlayer extends JFrame {
     }
   }
 
-  private static final class AccentSliderUI extends BasicSliderUI {
+  /**
+   * A flat, neutral-grey scrollbar (no arrow buttons, transparent track, a rounded grey thumb) applied to every
+   * JScrollPane in the app — the system Look and Feel's default scrollbar otherwise renders with its own accent
+   * color and a light track that clashes with this app's uniformly dark theme backgrounds.
+   */
+  private static final class GreyScrollBarUI extends BasicScrollBarUI {
+    protected void configureScrollBarColors() { /* deliberately empty — colors are hardcoded directly in paintThumb/paintTrack below instead of relying on the *Color fields this would otherwise set, since we also skip the arrow buttons and default track painting entirely */ }
+    protected JButton createDecreaseButton(int orientation) { return zeroSizeButton(); }
+    protected JButton createIncreaseButton(int orientation) { return zeroSizeButton(); }
+    private JButton zeroSizeButton() {
+      JButton button = new JButton();
+      button.setPreferredSize(new Dimension(0, 0));
+      button.setMinimumSize(new Dimension(0, 0));
+      button.setMaximumSize(new Dimension(0, 0));
+      return button;
+    }
+    protected void paintTrack(Graphics g, javax.swing.JComponent c, java.awt.Rectangle trackBounds) { /* transparent — nothing to paint */ }
+    protected void paintThumb(Graphics raw, javax.swing.JComponent c, java.awt.Rectangle thumbBounds) {
+      if (thumbBounds.isEmpty() || !c.isEnabled()) return;
+      Graphics2D g = (Graphics2D) raw.create();
+      g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      g.setColor(new Color(150, 150, 150, 130));
+      int inset = 2;
+      g.fillRoundRect(thumbBounds.x + inset, thumbBounds.y + inset, thumbBounds.width - inset * 2, thumbBounds.height - inset * 2, 8, 8);
+      g.dispose();
+    }
+  }
+  private static class AccentSliderUI extends BasicSliderUI {
     AccentSliderUI(JSlider slider) { super(slider); }
     public void paintTrack(Graphics raw) { Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON); int y = trackRect.y + trackRect.height / 2 - 1; g.setColor(new Color(255,255,255,18)); g.fillRoundRect(trackRect.x, y, trackRect.width, 3, 3, 3); int fill = thumbRect.x + thumbRect.width / 2 - trackRect.x; g.setPaint(new GradientPaint(trackRect.x, y, ACCENT, trackRect.x + Math.max(1, fill), y, ACCENT2)); g.fillRoundRect(trackRect.x, y, Math.max(0, fill), 3, 3, 3); g.dispose(); }
     public void paintThumb(Graphics raw) { Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON); g.setColor(new Color(255,255,255,35)); g.fillOval(thumbRect.x - 3, thumbRect.y - 3, thumbRect.width + 6, thumbRect.height + 6); g.setColor(TEXT); g.fillOval(thumbRect.x, thumbRect.y, thumbRect.width, thumbRect.height); g.dispose(); }
@@ -1735,6 +3385,87 @@ public final class CDPlayer extends JFrame {
           slider.setValue(valueForXPosition(e.getX()));
         }
       };
+    }
+  }
+
+  /**
+   * The progress slider's UI, extended to draw a real waveform (from PCM already decoded in memory for the
+   * current track — see computeWaveformSync()) instead of the plain thin line, once it's been computed. The
+   * waveform bars entirely replace the base class's line-and-fill track when present; falls back to the normal
+   * AccentSliderUI look whenever it's null (no track loaded yet, or the background computation hasn't finished).
+   */
+  private static final class WaveformSliderUI extends AccentSliderUI {
+    private float[] waveform;
+    private boolean enabled = true; // the Settings toggle — data stays cached/computed either way, this just controls whether paintTrack() uses it
+    WaveformSliderUI(JSlider slider) { super(slider); }
+    void setWaveform(float[] data) { waveform = data; slider.repaint(); }
+    void setEnabled(boolean value) { if (enabled == value) return; enabled = value; slider.repaint(); }
+    public void paintTrack(Graphics raw) {
+      if (!enabled || waveform == null || waveform.length == 0) { super.paintTrack(raw); return; }
+      Graphics2D g = (Graphics2D) raw.create();
+      g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      int centerY = trackRect.y + trackRect.height / 2;
+      int maxBarHeight = Math.max(4, trackRect.height - 2);
+      int fillX = thumbRect.x + thumbRect.width / 2; // same played/unplayed boundary the base class's fill uses
+      int n = waveform.length;
+      for (int i = 0; i < n; i++) {
+        int x = trackRect.x + i * trackRect.width / n;
+        int barWidth = Math.max(1, (trackRect.x + (i + 1) * trackRect.width / n) - x - 1);
+        int barHeight = Math.max(2, Math.round(waveform[i] * maxBarHeight));
+        g.setColor(x <= fillX ? ACCENT : new Color(255, 255, 255, 35));
+        g.fillRoundRect(x, centerY - barHeight / 2, barWidth, barHeight, 2, 2);
+      }
+      g.dispose();
+    }
+  }
+
+  /**
+   * A FlowLayout panel that wraps to the viewport's width instead of just growing wider forever — plain JPanel
+   * doesn't implement Scrollable, so a JScrollPane around one gives FlowLayout an unconstrained width to lay out
+   * in, and it never wraps to a second row at all; it just runs off the edge and gets clipped instead of
+   * scrolling. Used for the EQ panel's presets list once there are enough presets to need it.
+   */
+  private static final class ScrollableFlowPanel extends JPanel implements javax.swing.Scrollable {
+    ScrollableFlowPanel(java.awt.FlowLayout layout) { super(layout); }
+    public Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
+    public int getScrollableUnitIncrement(java.awt.Rectangle visibleRect, int orientation, int direction) { return 16; }
+    public int getScrollableBlockIncrement(java.awt.Rectangle visibleRect, int orientation, int direction) { return 64; }
+    public boolean getScrollableTracksViewportWidth() { return true; }
+    public boolean getScrollableTracksViewportHeight() { return false; }
+    /**
+     * FlowLayout.preferredLayoutSize() always reports "everything laid out in a single row," regardless of any
+     * width the container might actually be constrained to — there's no "preferred height for a given width"
+     * concept in the plain LayoutManager contract it implements. That's exactly wrong for a wrap-and-scroll
+     * panel: getScrollableTracksViewportWidth() above correctly constrains this panel's WIDTH to the viewport
+     * (so FlowLayout really does wrap when actually laid out), but the viewport sizes the view's HEIGHT from this
+     * method, so without overriding it the view never gets tall enough to hold the wrapped rows — everything
+     * past the first row is allocated no space at all, not just scrolled out of view. This simulates FlowLayout's
+     * own wrapping logic against the current width to compute the height it should have reported in the first place.
+     */
+    public Dimension getPreferredSize() {
+      int width = getWidth();
+      if (width <= 0 && getParent() != null) width = getParent().getWidth();
+      if (width <= 0) return super.getPreferredSize();
+      Insets insets = getInsets();
+      int maxRowWidth = Math.max(1, width - insets.left - insets.right);
+      java.awt.FlowLayout flow = (java.awt.FlowLayout) getLayout();
+      int hgap = flow.getHgap(), vgap = flow.getVgap();
+      int rowWidth = 0, rowHeight = 0, totalHeight = vgap;
+      boolean firstInRow = true;
+      for (Component c : getComponents()) {
+        if (!c.isVisible()) continue;
+        Dimension d = c.getPreferredSize();
+        if (!firstInRow && rowWidth + hgap + d.width > maxRowWidth) {
+          totalHeight += rowHeight + vgap;
+          rowWidth = 0; rowHeight = 0; firstInRow = true;
+        }
+        if (!firstInRow) rowWidth += hgap;
+        rowWidth += d.width;
+        rowHeight = Math.max(rowHeight, d.height);
+        firstInRow = false;
+      }
+      totalHeight += rowHeight + vgap;
+      return new Dimension(maxRowWidth, totalHeight);
     }
   }
 
@@ -1802,21 +3533,85 @@ public final class CDPlayer extends JFrame {
   }
 
   /**
-   * Hosts the Settings card as a full-window overlay layer (added to contentStack, see createContent) instead of
-   * a separate JDialog. A separate top-level window doesn't reliably layer above either the OS's native
-   * fullscreen (opens on an entirely different Space) or this app's own exclusive GraphicsDevice fullscreen
-   * (didn't appear at all). Being a plain component in the same window sidesteps both: it's always positioned
-   * and painted correctly relative to the main window's current bounds, fullscreen or not.
-   * Non-modal by design (matching the previous JDialog's own non-modal flag): contains() only reports true over
-   * the card's own bounds, so clicks anywhere else on the overlay pass through to whatever's beneath it, exactly
-   * like the original dialog let the main window stay interactive while open.
+   * A one-shot full-window crossfade: painted as a frozen snapshot of "how things looked right before" a layout
+   * change, then faded out over a short animation to reveal the already-applied "how things look now" underneath
+   * — used by toggleCdView() so switching to/from CD view dissolves smoothly instead of the header/track panel/
+   * hint line just vanishing and the disc snapping straight to its new size. Same snapshot-blit idea as
+   * FadeableCard (see its own doc comment on why: cheap, and avoids the native-surface leak a live transformed
+   * repaint measured), just a plain fade with no scale, and covering the whole window instead of one card.
    */
-  private static final class SettingsOverlay extends JPanel {
+  private static final class SnapshotFadeOverlay extends javax.swing.JComponent {
+    private final BufferedImage snapshot;
+    private float alpha = 1f;
+    SnapshotFadeOverlay(BufferedImage snapshot) { this.snapshot = snapshot; setOpaque(false); }
+    void setAlpha(float value) { alpha = value; repaint(); }
+    // Same rationale as DiscView.setCover's flush(): once drawn, a BufferedImage can pick up an off-heap
+    // GPU-accelerated cache surface that outlives the plain Java heap reference and isn't reclaimed until GC
+    // gets around to the wrapper object — measured as never keeping up under a rapid-fire stress test elsewhere
+    // in this file. Each CD-view toggle allocates a fresh full-window snapshot, so releasing it explicitly the
+    // moment this overlay is discarded (toggleCdView, on both the normal-completion and interrupted-mid-fade
+    // paths) matters here for the same reason.
+    void releaseSnapshot() { snapshot.flush(); }
+    protected void paintComponent(Graphics raw) {
+      if (alpha <= 0f) return;
+      Graphics2D g = (Graphics2D) raw.create();
+      g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.max(0f, Math.min(1f, alpha))));
+      g.drawImage(snapshot, 0, 0, null);
+      g.dispose();
+    }
+  }
+
+  /**
+   * Hosts a card (Settings/Lyrics/EQ/History/Search) as a full-window overlay layer (added to contentStack, see
+   * createContent) instead of a separate JDialog. A separate top-level window doesn't reliably layer above either
+   * the OS's native fullscreen (opens on an entirely different Space) or this app's own exclusive GraphicsDevice
+   * fullscreen (didn't appear at all). Being a plain component in the same window sidesteps both: it's always
+   * positioned and painted correctly relative to the main window's current bounds, fullscreen or not.
+   * Modal: sized to fill the whole contentStack (see getMaximumSize()) and paints a dimmed backdrop behind the
+   * card, so it's the topmost thing hit-tested everywhere in the window while open, not just over the card
+   * itself. This used to be deliberately non-modal instead (contains() reported true only over the card, so a
+   * click anywhere else on the overlay fell through to whatever was beneath it — matching the original JDialog's
+   * non-modal flag), but the card routinely sits close enough to real transport/queue controls in the main
+   * window (confirmed via screen recording: Settings' own rows sit directly beside the live Skip Forward 15s /
+   * Load a Track / queue buttons, fully exposed) that a click meant for the card, or just outside it, could land
+   * on and trigger a real control in the player behind it instead. A click on the dimmed backdrop is simply
+   * absorbed (there's no listener on this panel at all, so it does nothing) rather than closing the panel —
+   * that was tried first (matching ThemeMenuOverlay's click-outside-to-dismiss), but the backdrop still shows
+   * the dimmed app underneath, so it doesn't read as "outside" the panel — closing on a click there felt like
+   * clicking blank space inside Settings randomly closed it.
+   */
+  private static final class CenteredOverlay extends JPanel {
     final FadeableCard card = new FadeableCard();
-    SettingsOverlay() { setOpaque(false); setLayout(new GridBagLayout()); add(card); }
-    public boolean contains(int x, int y) {
-      java.awt.Point p = SwingUtilities.convertPoint(this, x, y, card);
-      return card.contains(p);
+    CenteredOverlay() {
+      // Deliberately NOT opaque, even though paintComponent() always fully covers its own bounds: marking it
+      // opaque triggers a Swing paint optimization that skips repainting whatever's underneath an opaque
+      // component — exactly what contentStack's own isOptimizedDrawingEnabled() override (see createContent) is
+      // there to prevent for ITS overlapping children, but that override doesn't reach this deep; the visible
+      // effect was the dimmed backdrop coming out fully opaque black instead of translucent over the app.
+      setOpaque(false); setLayout(new GridBagLayout()); add(card);
+    }
+    // Forces OverlayLayout to stretch this to the full contentStack size (its natural preferred size, from
+    // GridBagLayout wrapping just the card, would otherwise only be as big as the card) — that's what makes the
+    // backdrop actually cover the whole window instead of just a tight box around the card.
+    public Dimension getMaximumSize() { return new Dimension(Short.MAX_VALUE, Short.MAX_VALUE); }
+    protected void paintComponent(Graphics g) {
+      g.setColor(new Color(0, 0, 0, 140));
+      g.fillRect(0, 0, getWidth(), getHeight());
+    }
+  }
+
+  /**
+   * The theme picker (see showThemeMenu). Unlike CenteredOverlay, this one is NOT pass-through outside its menu:
+   * a click anywhere else on it (registered by the owner) closes the menu, matching how a real popup dismisses
+   * on an outside click — the menu itself sits at an explicit pixel position (null layout + setBounds()) rather
+   * than being centered, since it needs to stay anchored under themeButton.
+   */
+  private static final class ThemeMenuOverlay extends JPanel {
+    final JPanel menu = new JPanel();
+    ThemeMenuOverlay() {
+      setOpaque(false); setLayout(null);
+      menu.setLayout(new javax.swing.BoxLayout(menu, javax.swing.BoxLayout.Y_AXIS));
+      add(menu);
     }
   }
 
@@ -1861,6 +3656,12 @@ public final class CDPlayer extends JFrame {
     private volatile boolean closed;
     private volatile float gain = 1f;
     private volatile boolean mono;
+    // null = flat/bypassed (skip EQ processing entirely — the common case). Rebuilt wholesale and published via
+    // this single volatile reference whenever gains change, so the pump thread never sees a half-updated set of
+    // coefficients; the filter STATE below is only ever touched by the pump thread itself, never cross-thread.
+    private volatile double[] eqCoefficients;
+    private final double[] eqStateL = new double[Equalizer.BANDS * 4]; // per band: x1, x2, y1, y2
+    private final double[] eqStateR = new double[Equalizer.BANDS * 4];
     private Thread pumpThread;
     /** Invoked on the EDT when playback reaches the end of the audio on its own (not on pause/close). */
     Runnable onFinished;
@@ -1911,6 +3712,33 @@ public final class CDPlayer extends JFrame {
     boolean isRunning() { return playing; }
     void setGain(float value) { gain = value; }
     void setMono(boolean value) { mono = value; }
+    /** Rebuilds and publishes the filter coefficients from scratch — cheap (10 bands' worth of trig/pow calls), so recomputing the whole set on every slider tweak rather than patching one band is simplest and not worth optimizing. Null/all-flat gains bypass EQ processing entirely instead of running an identity filter chain. */
+    void setEqGains(double[] gainsDb) {
+      if (gainsDb == null) { eqCoefficients = null; return; }
+      boolean allFlat = true;
+      for (double g : gainsDb) if (Math.abs(g) > 0.05) { allFlat = false; break; }
+      if (allFlat) { eqCoefficients = null; return; }
+      double[] coeffs = new double[Equalizer.BANDS * 5];
+      for (int i = 0; i < Equalizer.BANDS; i++) {
+        double[] c = Equalizer.computeCoefficients(Equalizer.FREQUENCIES[i], gainsDb[i], format.getSampleRate());
+        System.arraycopy(c, 0, coeffs, i * 5, 5);
+      }
+      eqCoefficients = coeffs;
+    }
+    /** Runs one sample through all 10 bands in series, each band's output feeding the next — state[bandOffset..+3] holds that band's own x1,x2,y1,y2 history (the running `y` local is what gets fed to each successive band, not the state array). */
+    private static double applyEqChain(double x, double[] coeffs, double[] state) {
+      double y = x;
+      for (int band = 0; band < Equalizer.BANDS; band++) {
+        int cOff = band * 5, sOff = band * 4;
+        double b0 = coeffs[cOff], b1 = coeffs[cOff + 1], b2 = coeffs[cOff + 2], a1 = coeffs[cOff + 3], a2 = coeffs[cOff + 4];
+        double x1 = state[sOff], x2 = state[sOff + 1], y1 = state[sOff + 2], y2 = state[sOff + 3];
+        double out = b0 * y + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+        state[sOff + 1] = x1; state[sOff] = y;
+        state[sOff + 3] = y1; state[sOff + 2] = out;
+        y = out;
+      }
+      return y;
+    }
     long getMicrosecondPosition() { return (long) (framePosition / format.getFrameRate() * 1_000_000L); }
     long getMicrosecondLength() { return (long) (totalFrames / format.getFrameRate() * 1_000_000L); }
     long getFramePosition() { return framePosition; }
@@ -1952,13 +3780,25 @@ public final class CDPlayer extends JFrame {
     private void applyGainAndMono(byte[] chunk, int length) {
       float g = gain;
       boolean applyMono = mono && format.getChannels() == 2;
-      if (g == 1f && !applyMono) return;
+      double[] eqCoeffs = eqCoefficients; // one snapshot per chunk — a torn read across the chunk isn't a concern, same tolerance already accepted for gain changes mid-chunk
+      boolean applyEq = eqCoeffs != null;
+      if (g == 1f && !applyMono && !applyEq) return;
       int channels = format.getChannels();
+      // Signal chain order: mono downmix (if any) first, then EQ shapes the (possibly-combined) signal, then gain
+      // is the final stage — matches how a real hardware chain would be laid out.
       for (int off = 0; off + frameSize <= length; off += frameSize) {
         if (applyMono) {
           int left = readS16(chunk, off), right = readS16(chunk, off + 2);
           int avg = (left + right) / 2;
           writeS16(chunk, off, avg); writeS16(chunk, off + 2, avg);
+        }
+        if (applyEq) {
+          int left = readS16(chunk, off);
+          writeS16(chunk, off, Math.max(-32768, Math.min(32767, (int) Math.round(applyEqChain(left, eqCoeffs, eqStateL)))));
+          if (channels == 2) {
+            int right = readS16(chunk, off + 2);
+            writeS16(chunk, off + 2, Math.max(-32768, Math.min(32767, (int) Math.round(applyEqChain(right, eqCoeffs, eqStateR)))));
+          }
         }
         if (g != 1f) {
           for (int c = 0; c < channels; c++) {
@@ -1971,6 +3811,29 @@ public final class CDPlayer extends JFrame {
     }
     private static int readS16(byte[] data, int offset) { return (short) ((data[offset] & 0xFF) | (data[offset + 1] << 8)); } // little-endian
     private static void writeS16(byte[] data, int offset, int value) { data[offset] = (byte) (value & 0xFF); data[offset + 1] = (byte) ((value >> 8) & 0xFF); }
+  }
+
+  /**
+   * A 10-band graphic EQ: cascaded RBJ "peaking" biquad filters (the standard Audio EQ Cookbook formula), one per
+   * classic ISO octave-band frequency. Just the coefficient math lives here — each StreamPlayer owns its own
+   * filter state (see StreamPlayer.eqStateL/R), since two can be running at once during a crossfade and must not
+   * share filter history, while the gain values themselves are one shared, global EQ setting (CDPlayer.eqGains)
+   * applied to whichever StreamPlayer(s) happen to be running.
+   */
+  private static final class Equalizer {
+    static final int[] FREQUENCIES = { 31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000 };
+    static final int BANDS = FREQUENCIES.length;
+    /** {b0,b1,b2,a1,a2}, already normalized by a0 — a fixed Q of 1.2 gives each band a reasonable, slightly-overlapping bandwidth for a graphic EQ (narrower would leave audible gaps between bands; wider would blur them together). */
+    static double[] computeCoefficients(double freqHz, double gainDb, float sampleRate) {
+      double a = Math.pow(10, gainDb / 40.0);
+      double w0 = 2 * Math.PI * freqHz / sampleRate;
+      double q = 1.2;
+      double alpha = Math.sin(w0) / (2 * q);
+      double cosw0 = Math.cos(w0);
+      double b0 = 1 + alpha * a, b1 = -2 * cosw0, b2 = 1 - alpha * a;
+      double a0 = 1 + alpha / a, a1 = -2 * cosw0, a2 = 1 - alpha / a;
+      return new double[] { b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0 };
+    }
   }
 
   private static final class Theme {
@@ -2186,9 +4049,19 @@ public final class CDPlayer extends JFrame {
     private double clock;
     private Component discRef; // set once from the constructor; lets particles avoid painting over the disc without needing to restructure z-order (see createContent()'s doc comment for why that costs more than it's worth)
     private Component settingsCardRef; // set once Settings is first opened; being the glass pane again means themeOverlay is unconditionally topmost, so without this particles would drift over the Settings card too
+    private Component themeMenuRef; // set once the theme menu is first opened; same reasoning as settingsCardRef
+    private Component lyricsCardRef; // set once the lyrics panel is first opened; same reasoning as settingsCardRef
+    private Component eqCardRef; // set once the EQ panel is first opened; same reasoning as settingsCardRef
+    private Component historyCardRef; // set once the History panel is first opened; same reasoning as settingsCardRef
+    private Component searchCardRef; // set once the Search panel is first opened; same reasoning as settingsCardRef
     ThemeOverlay() { setOpaque(false); timer.addActionListener(e -> { advance(); repaint(); }); }
     void setDiscReference(Component disc) { this.discRef = disc; }
     void setSettingsCardReference(Component card) { this.settingsCardRef = card; }
+    void setThemeMenuReference(Component menu) { this.themeMenuRef = menu; }
+    void setLyricsCardReference(Component card) { this.lyricsCardRef = card; }
+    void setEqCardReference(Component card) { this.eqCardRef = card; }
+    void setHistoryCardReference(Component card) { this.historyCardRef = card; }
+    void setSearchCardReference(Component card) { this.searchCardRef = card; }
     private void excludeIfShowing(java.awt.geom.Area clip, Component c) {
       if (c == null || !c.isShowing()) return;
       java.awt.Rectangle bounds = SwingUtilities.convertRectangle(c.getParent(), c.getBounds(), this);
@@ -2281,6 +4154,11 @@ public final class CDPlayer extends JFrame {
       java.awt.geom.Area clip = new java.awt.geom.Area(new java.awt.Rectangle(0, 0, getWidth(), getHeight()));
       excludeIfShowing(clip, discRef);
       excludeIfShowing(clip, settingsCardRef);
+      excludeIfShowing(clip, themeMenuRef);
+      excludeIfShowing(clip, lyricsCardRef);
+      excludeIfShowing(clip, eqCardRef);
+      excludeIfShowing(clip, historyCardRef);
+      excludeIfShowing(clip, searchCardRef);
       g.setClip(clip);
       switch (mode) {
         case SNOW: paintSnow(g); break;
@@ -2376,6 +4254,7 @@ public final class CDPlayer extends JFrame {
 
   private static final class DiscView extends JPanel {
     private double angle; private boolean spinning; private boolean lookingUp; private BufferedImage cover; private final Timer motion = new Timer(16, e -> { angle += .045; repaint(); });
+    private Runnable onCoverChanged; // notifies the AUTO theme (see CDPlayer.onCoverChanged) to re-derive its palette; null everywhere else
     // maximumSize matters here, not just preferredSize: the drawn disc itself is capped at 300px (see side=
     // Math.min(300, ...) in paintComponent below), but GridBagLayout's fill=BOTH + weightx/weighty=1 on this
     // column otherwise stretches the *component's actual bounds* to fill all available space in its cell —
@@ -2388,11 +4267,21 @@ public final class CDPlayer extends JFrame {
     // GridBagLayout will compress even a fill=NONE component below its preferred size when the container is
     // tighter than the sum of every column's preferred size, and with no floor that shrank the disc to as little
     // as 10x10 at the app's default 1120x820 window — a visual regression, not just wasted layout space.
+    private static final int NORMAL_COMPONENT_SIDE = 480, NORMAL_DISC_CAP = 300;
+    private static final int ENLARGED_COMPONENT_SIDE = 760, ENLARGED_DISC_CAP = 640; // CD view (see CDPlayer.toggleCdView) — a deliberate, bounded size increase, not the unbounded fill=BOTH stretch the maximumSize cap above exists to prevent
+    private int discCapPx = NORMAL_DISC_CAP;
     DiscView() {
-      setOpaque(false); setMinimumSize(new Dimension(260, 260)); setPreferredSize(new Dimension(480, 480)); setMaximumSize(new Dimension(480, 480));
+      setOpaque(false); setMinimumSize(new Dimension(260, 260)); setPreferredSize(new Dimension(NORMAL_COMPONENT_SIDE, NORMAL_COMPONENT_SIDE)); setMaximumSize(new Dimension(NORMAL_COMPONENT_SIDE, NORMAL_COMPONENT_SIDE));
       addMouseListener(new java.awt.event.MouseAdapter() {
         public void mouseClicked(java.awt.event.MouseEvent e) { if (e.getClickCount() == 2) startEject(); }
       });
+    }
+    /** CD view: a bigger, fixed size for both the component and the drawn disc's own cap (see side= below) — still bounded, so the same repaint-cost reasoning above still holds, just at a deliberately larger fixed number instead of an accidental unbounded one. */
+    void setEnlarged(boolean enlarged) {
+      int side = enlarged ? ENLARGED_COMPONENT_SIDE : NORMAL_COMPONENT_SIDE;
+      discCapPx = enlarged ? ENLARGED_DISC_CAP : NORMAL_DISC_CAP;
+      setPreferredSize(new Dimension(side, side)); setMaximumSize(new Dimension(side, side));
+      revalidate(); repaint();
     }
     void setSpinning(boolean value) { spinning = value; if (value) motion.start(); else motion.stop(); repaint(); }
     // flush() releases the native/GPU-accelerated surface Java2D caches behind an image the moment it's drawn
@@ -2401,7 +4290,9 @@ public final class CDPlayer extends JFrame {
     // which measured as never keeping up with a track changing every few seconds: ~600MB of IOAccelerator-backed
     // surfaces accumulated, unbounded, over a stress run that swapped cover art on every track change). Flushing
     // the old cover explicitly here, right before dropping the reference, releases it immediately instead.
-    void setCover(BufferedImage image) { if (cover != null && cover != image) cover.flush(); cover = image; repaint(); }
+    void setCover(BufferedImage image) { if (cover != null && cover != image) cover.flush(); cover = image; repaint(); if (onCoverChanged != null) onCoverChanged.run(); }
+    BufferedImage getCover() { return cover; }
+    void setOnCoverChanged(Runnable callback) { this.onCoverChanged = callback; }
     void setLookingUp(boolean value) { lookingUp = value; repaint(); }
 
     // Easter egg: double-click the disc and it lifts partway out of the case, tilts, holds briefly, then settles
@@ -2434,7 +4325,7 @@ public final class CDPlayer extends JFrame {
     }
     protected void paintComponent(Graphics raw) {
       super.paintComponent(raw); Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-      int side = Math.min(300, Math.min(getWidth(), getHeight()) - 40);
+      int side = Math.min(discCapPx, Math.min(getWidth(), getHeight()) - 40);
       int x = (getWidth() - side) / 2, y = (getHeight() - side) / 2, centerX = x + side / 2, centerY = y + side / 2;
 
       // jewel case backdrop behind the disc
@@ -2445,7 +4336,7 @@ public final class CDPlayer extends JFrame {
       g.drawLine(caseX + 10, caseY + 10, caseX + caseSide - 10, caseY + 10);
       g.drawLine(caseX + 10, caseY + caseSide - 10, caseX + caseSide - 10, caseY + caseSide - 10);
       if (cover != null) {
-        int thumb = 58;
+        int thumb = Math.round(side * 0.193f); // proportional to the disc, not a flat 58px — otherwise the thumbnail stayed tiny next to the much bigger disc in CD view (see setEnlarged)
         g.setColor(new Color(0, 0, 0, 120)); g.fillRoundRect(caseX + 14, caseY + 14, thumb, thumb, 6, 6);
         g.drawImage(cover, caseX + 17, caseY + 17, thumb - 6, thumb - 6, null);
         g.setColor(ACCENT2); g.setStroke(new BasicStroke(1.2f)); g.drawRoundRect(caseX + 16, caseY + 16, thumb - 4, thumb - 4, 5, 5);
