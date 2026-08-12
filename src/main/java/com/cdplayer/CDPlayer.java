@@ -260,6 +260,19 @@ public final class CDPlayer extends JFrame {
 
   public CDPlayer() {
     super("CDPlayer");
+    try (InputStream in =
+            CDPlayer.class.getResourceAsStream("/com/cdplayer/icon.png")) {
+
+        if (in != null) {
+            BufferedImage icon = ImageIO.read(in);
+
+            if (icon != null) {
+                setIconImage(icon);
+            }
+        }
+
+    } catch (IOException ignored) {
+    }
     setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
     // The vertical stack of labels/sliders/buttons/queue-card genuinely needs ~720px of content height at its
     // component minimums (measured directly via Swing's own getMinimumSize()) — the previous 560 floor was
