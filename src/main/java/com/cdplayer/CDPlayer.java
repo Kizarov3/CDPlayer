@@ -95,8 +95,21 @@ public final class CDPlayer extends JFrame {
   private Timer themeAnim;
   private Timer nowPlayingFadeTimer;
   private final DiscView disc = new DiscView();
+  private JPanel headerPanel; // the status pill + History/Settings row — hidden in CD view, unlike the triangle divider below it
+  private JPanel playerPanelWrap; // track info, transport controls, queue — hidden in CD view
+  private JPanel bodyPanel; // the GridBagLayout row holding discColumn + playerPanelWrap — see applyCdViewState() for why this needs to be reachable
+  private GridBagConstraints playerPanelWrapConstraints; // saved so playerPanelWrap can be re-added at its original cell when leaving CD view — see applyCdViewState()
+  private JLabel hintLabel; // the keyboard-shortcuts line at the bottom — hidden in CD view
+  private final JButton cdViewButton = textButton("CD VIEW");
+  private boolean cdViewEnabled = false;
+  private final JLabel cdViewTrackLabel = new JLabel(); // mirrors track's text (see setTrackTitle) — shown centered at the bottom of the window, only in CD view
+  private final JLabel cdViewArtistLabel = new JLabel(); // mirrors artistLabel's text (see setTrackTitle) — sits under cdViewTrackLabel in the same bottom info block
+  private JPanel cdViewInfoPanel; // wraps cdViewTrackLabel + cdViewArtistLabel, swapped in for hintLabel at the bottom of the window while in CD view — see applyCdViewState()
+  private SnapshotFadeOverlay cdViewTransitionOverlay;
+  private Timer cdViewTransitionTimer;
   private final JLabel status = label("●  READY TO PLAY", 11, ACCENT);
   private final JLabel track = new JLabel("Pick a track to get started.");
+  private final JLabel artistLabel = new JLabel(); // author's name under the song title in normal view — hidden when the track has no artist tag
   private final JLabel source = label("YOUR MUSIC LIBRARY", 11, MUTED);
   private final JLabel elapsed = label("0:00", 10, MUTED);
   private final JLabel length = label("0:00", 10, MUTED);
@@ -307,10 +320,11 @@ public final class CDPlayer extends JFrame {
     bindKey(inputMap, actionMap, "J", "previousTrackJ", e -> previousTrack());
     bindKey(inputMap, actionMap, "L", "nextTrackL", e -> nextTrack());
     bindKey(inputMap, actionMap, "F", "toggleFullscreen", e -> toggleFullscreen());
-    // Closest-thing-open takes priority: the theme menu, then Settings, then fullscreen. Both overlays are plain
-    // in-window components (not separate JDialog/JPopupMenu windows — see showSettingsDialog/showThemeMenu), so
-    // this single WHEN_IN_FOCUSED_WINDOW binding on the main frame handles all three; there's no separate window
-    // with its own key bindings to manage.
+    bindKey(inputMap, actionMap, "C", "toggleCdView", e -> toggleCdView());
+    // Closest-thing-open takes priority: the theme menu, then Settings, then CD view, then fullscreen. Both
+    // overlays are plain in-window components (not separate JDialog/JPopupMenu windows — see
+    // showSettingsDialog/showThemeMenu), so this single WHEN_IN_FOCUSED_WINDOW binding on the main frame handles
+    // all of these; there's no separate window with its own key bindings to manage.
     bindKey(inputMap, actionMap, "ESCAPE", "escapeAction", e -> {
       if (themeMenuOverlay != null && themeMenuOverlay.isVisible()) hideThemeMenu();
       else if (lyricsOverlay != null && lyricsOverlay.isVisible()) closeLyrics();
@@ -318,8 +332,90 @@ public final class CDPlayer extends JFrame {
       else if (historyOverlay != null && historyOverlay.isVisible()) closeHistory();
       else if (searchOverlay != null && searchOverlay.isVisible()) closeSearch();
       else if (settingsOverlay != null && settingsOverlay.isVisible()) closeSettingsDialog();
+      else if (cdViewEnabled) toggleCdView();
       else if (fullscreen) toggleFullscreen();
     });
+  }
+  /**
+   * CD view: a distraction-free "now playing" look — hides the header row (status pill, History/Settings), the
+   * whole track/transport/queue column, and the keyboard-shortcuts hint line, leaving only the disc (enlarged,
+   * see DiscView.setEnlarged) and the triangle divider below where the header row was. The song name and author
+   * swap in for the hint line at the bottom of the window instead (see cdViewInfoPanel), not tucked under the
+   * disc, so they stay put and legible regardless of the disc's own size. Independent of true fullscreen (F) —
+   * either can be on, off, or both at once.
+   *
+   * The transition itself is a snapshot crossfade (see SnapshotFadeOverlay), not an animation of each component's
+   * own visibility/size: with the header, the whole track/transport/queue column, and the disc's size all
+   * changing in the same instant, animating each of those individually (fading several unrelated Swing
+   * containers in place, resizing a GridBagLayout cell smoothly) would mean either reworking each of those
+   * components to support a live opacity/size tween or fighting the layout manager mid-animation. A single
+   * frozen "before" snapshot fading away to reveal the already-applied "after" state underneath gets a smooth
+   * transition without any of that, the same trick FadeableCard already uses for the overlays.
+   */
+  private void toggleCdView() {
+    cdViewEnabled = !cdViewEnabled;
+    if (!animationsEnabled) { applyCdViewState(); return; }
+
+    if (cdViewTransitionTimer != null && cdViewTransitionTimer.isRunning()) cdViewTransitionTimer.stop();
+    if (cdViewTransitionOverlay != null) { contentStack.remove(cdViewTransitionOverlay); cdViewTransitionOverlay.releaseSnapshot(); cdViewTransitionOverlay = null; } // clean up an interrupted previous transition, if "C" was pressed again mid-fade
+
+    int w = Math.max(1, contentStack.getWidth()), h = Math.max(1, contentStack.getHeight());
+    BufferedImage before = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+    Graphics2D bg = before.createGraphics();
+    bg.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+    contentStack.paint(bg);
+    bg.dispose();
+
+    applyCdViewState(); // instantly applied, underneath the frozen "before" snapshot about to cover it
+
+    SnapshotFadeOverlay overlay = new SnapshotFadeOverlay(before);
+    overlay.setPreferredSize(new Dimension(w, h)); overlay.setMaximumSize(new Dimension(w, h));
+    cdViewTransitionOverlay = overlay;
+    contentStack.add(overlay, 0);
+    contentStack.validate();
+
+    final int steps = 14;
+    final int[] step = { 0 };
+    cdViewTransitionTimer = new Timer(14, null);
+    cdViewTransitionTimer.addActionListener(e -> {
+      step[0]++;
+      float t = Math.min(1f, step[0] / (float) steps);
+      overlay.setAlpha(1f - t);
+      if (t >= 1f) {
+        ((Timer) e.getSource()).stop();
+        contentStack.remove(overlay);
+        overlay.releaseSnapshot();
+        if (cdViewTransitionOverlay == overlay) cdViewTransitionOverlay = null;
+        contentStack.repaint();
+      }
+    });
+    cdViewTransitionTimer.start();
+  }
+  /**
+   * playerPanelWrap.setVisible(false) alone isn't enough to free up its column's width for the enlarged disc:
+   * GridBagLayout counts an invisible component's preferred size toward its column's width demand regardless of
+   * visibility (confirmed directly — a minimal GridBagLayout with one hidden 600px-preferred column still
+   * squeezed a 760px-preferred sibling down to its 260px floor). So playerPanelWrap is removed from bodyPanel
+   * entirely while in CD view, and re-added at its original cell (playerPanelWrapConstraints) on the way back.
+   * contentStack.validate() (immediate, not a deferred revalidate) is used for the same reason every overlay
+   * open/close in this file uses it: several components change visibility/size/membership at once, and the
+   * layout needs to re-center the disc in the newly-freed space right away, not on whatever the next natural
+   * repaint cycle happens to be.
+   */
+  private void applyCdViewState() {
+    headerPanel.setVisible(!cdViewEnabled);
+    hintLabel.setVisible(!cdViewEnabled);
+    cdViewInfoPanel.setVisible(cdViewEnabled);
+    disc.setEnlarged(cdViewEnabled);
+    cdViewButton.setText(cdViewEnabled ? "EXIT CD VIEW" : "CD VIEW");
+    if (cdViewEnabled) {
+      if (playerPanelWrap.getParent() == bodyPanel) bodyPanel.remove(playerPanelWrap);
+    } else if (playerPanelWrap.getParent() != bodyPanel) {
+      bodyPanel.add(playerPanelWrap, playerPanelWrapConstraints);
+    }
+    playerPanelWrap.setVisible(!cdViewEnabled);
+    bodyPanel.invalidate();
+    contentStack.validate();
   }
   /**
    * True OS-level exclusive fullscreen via GraphicsDevice, not just resizing to the screen's bounds. Simply
@@ -787,13 +883,17 @@ public final class CDPlayer extends JFrame {
     animateThemeColors(new Color[] { fresh.bg, fresh.card, fresh.accent, fresh.accent2, fresh.text, fresh.muted });
   }
   /**
-   * Derives a full theme palette from a piece of album art: a circular (hue-wraps-correctly) mean of every
-   * sufficiently colorful sampled pixel's hue, skipping near-gray/near-black/near-white ones so a mostly-white or
-   * mostly-black cover doesn't wash the average out to nothing. The result is built with the same recipe as the
-   * hand-picked themes above — near-black BG, a slightly lighter CARD, a vivid ACCENT, a lighter/desaturated
-   * ACCENT2, near-white TEXT, mid-gray MUTED — just parameterized by the extracted hue/saturation instead of
-   * fixed per theme. Falls back to a neutral blue when there's no cover yet, or it turns out to be essentially
-   * colorless (e.g. black-and-white art) — deriveAutoTheme always returns a usable Theme, never null.
+   * Derives a full theme palette from a piece of album art: buckets sampled pixels into hue bins — skipping
+   * near-gray/near-black/near-white ones so a mostly-white or mostly-black cover doesn't wash things out — and
+   * picks the bin that carries the most actual *color*, not just the most pixels. Every pixel's contribution to
+   * its bin (both the bin's weight and its hue-averaging vector) is scaled by that pixel's own saturation, so a
+   * small but vivid detail — a logo, a splash of color on an otherwise grayscale band photo — can out-weigh a
+   * much larger area of weakly-tinted pixels instead of being outvoted by sheer pixel count. The result is built
+   * with the same recipe as the hand-picked themes above — near-black BG, a slightly lighter CARD, a vivid
+   * ACCENT, a lighter/desaturated ACCENT2, near-white TEXT, mid-gray MUTED — just parameterized by the extracted
+   * hue/saturation instead of fixed per theme. Falls back to a neutral blue when there's no cover yet, or it
+   * turns out to be essentially colorless (e.g. black-and-white art) — deriveAutoTheme always returns a usable
+   * Theme, never null.
    */
   private static Theme deriveAutoTheme(BufferedImage cover) {
     float hue = 0.58f, sat = 0.55f;
@@ -803,47 +903,58 @@ public final class CDPlayer extends JFrame {
     // regardless of what the art looks like.
     Float hue2 = null;
     if (cover != null) {
-      float sumSat = 0; int counted = 0;
       final int bins = 24; // 15 degrees per bin — coarse enough to survive per-pixel noise, fine enough to separate genuinely different colors
-      int[] binCounts = new int[bins];
+      double[] binWeight = new double[bins]; // sum of saturation, not a raw pixel count — see method doc
+      int[] binCount = new int[bins];
       double[] binSin = new double[bins], binCos = new double[bins];
+      double[] binSatSum = new double[bins];
       int w = cover.getWidth(), h = cover.getHeight();
-      int stepX = Math.max(1, w / 24), stepY = Math.max(1, h / 24); // a coarse grid is plenty for a dominant-hue estimate and keeps this cheap regardless of the source image's resolution
+      // 48, not 24: embedded/looked-up cover art is often a fairly small thumbnail, and a small colorful detail
+      // (a logo, a title in a colored font) sitting on an otherwise grayscale photo can fall entirely between
+      // grid points at 24 samples/axis and never get counted at all. Still cheap — 48x48 is at most ~2300
+      // samples, done once per track load/cover change, not per frame.
+      int gridSize = 48;
+      int stepX = Math.max(1, w / gridSize), stepY = Math.max(1, h / gridSize);
+      double totalWeight = 0;
       float[] hsb = new float[3];
       for (int y = 0; y < h; y += stepY) {
         for (int x = 0; x < w; x += stepX) {
           int rgb = cover.getRGB(x, y);
           Color.RGBtoHSB((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, hsb);
           if (hsb[1] < 0.15f || hsb[2] < 0.12f || hsb[2] > 0.95f) continue;
+          double weight = hsb[1]; // more saturated pixels count for more, both in bin weight and hue direction
           double angle = hsb[0] * Math.PI * 2;
-          sumSat += hsb[1];
-          counted++;
           int bin = Math.min(bins - 1, (int) (hsb[0] * bins));
-          binSin[bin] += Math.sin(angle); binCos[bin] += Math.cos(angle); binCounts[bin]++;
+          binWeight[bin] += weight; binCount[bin]++; binSatSum[bin] += hsb[1];
+          binSin[bin] += Math.sin(angle) * weight; binCos[bin] += Math.cos(angle) * weight;
+          totalWeight += weight;
         }
       }
-      if (counted > 0) {
-        sat = Math.max(0.45f, Math.min(0.85f, sumSat / counted));
-        // The dominant hue is the most-populous bin's own (weighted) hue, not a circular mean across every
-        // qualifying pixel — a whole-image mean washes out multi-color art into a blended, arbitrary hue that
-        // matches neither of its real colors (e.g. a 50/50 red-and-blue cover averaging out to magenta), while
-        // the bin approach picks up whichever color is actually dominant, and — see hue2 below — a second real
-        // color when the art has one.
-        int topBin = -1, topCount = 0;
-        for (int b = 0; b < bins; b++) if (binCounts[b] > topCount) { topCount = binCounts[b]; topBin = b; }
+      if (totalWeight > 0) {
+        // The dominant hue is the most-saturation-weighted bin's own (weighted) hue, not a circular mean across
+        // every qualifying pixel — a whole-image mean washes out multi-color art into a blended, arbitrary hue
+        // that matches neither of its real colors (e.g. a 50/50 red-and-blue cover averaging out to magenta),
+        // while the bin approach picks up whichever color is actually dominant, and — see hue2 below — a second
+        // real color when the art has one.
+        int topBin = -1; double topWeight = 0;
+        for (int b = 0; b < bins; b++) if (binWeight[b] > topWeight) { topWeight = binWeight[b]; topBin = b; }
         hue = (float) ((Math.atan2(binSin[topBin], binCos[topBin]) / (Math.PI * 2) + 1) % 1);
+        // The winning bin's OWN average saturation, not an average across every colorful pixel in the whole
+        // image: a vivid-but-small detail (this bin) shouldn't have its saturation diluted by unrelated, more
+        // weakly-tinted pixels elsewhere in the cover that didn't even vote for this hue.
+        sat = Math.max(0.45f, Math.min(0.92f, (float) (binSatSum[topBin] / binCount[topBin])));
         // The runner-up bin, but only if it's both far enough from the dominant hue to read as a genuinely
         // different color (not just noise scattered around the same one) and common enough to not be a
         // handful of stray outlier pixels.
-        int bestBin = -1, bestCount = 0;
+        int bestBin = -1; double bestWeight = 0;
         for (int b = 0; b < bins; b++) {
-          if (b == topBin || binCounts[b] == 0) continue;
+          if (b == topBin || binCount[b] == 0) continue;
           float binHue = (float) ((Math.atan2(binSin[b], binCos[b]) / (Math.PI * 2) + 1) % 1);
           float diff = Math.abs(binHue - hue); if (diff > 0.5f) diff = 1f - diff; // circular distance
           if (diff < 0.12f) continue;
-          if (binCounts[b] > bestCount) { bestCount = binCounts[b]; bestBin = b; }
+          if (binWeight[b] > bestWeight) { bestWeight = binWeight[b]; bestBin = b; }
         }
-        if (bestBin >= 0 && bestCount >= counted * 0.08) {
+        if (bestBin >= 0 && bestWeight >= totalWeight * 0.08) {
           hue2 = (float) ((Math.atan2(binSin[bestBin], binCos[bestBin]) / (Math.PI * 2) + 1) % 1);
         }
       }
@@ -1623,7 +1734,7 @@ public final class CDPlayer extends JFrame {
   }
 
   private void applyThemeColors() {
-    status.setForeground(ACCENT); track.setForeground(TEXT); source.setForeground(MUTED);
+    status.setForeground(ACCENT); track.setForeground(TEXT); artistLabel.setForeground(ACCENT2); source.setForeground(MUTED); cdViewTrackLabel.setForeground(TEXT); cdViewArtistLabel.setForeground(ACCENT2);
     elapsed.setForeground(MUTED); length.setForeground(MUTED); queueInfo.setForeground(MUTED); queueNext.setForeground(MUTED);
     nowPlayingLabel.setForeground(ACCENT2); crossfadeTitle.setForeground(MUTED); crossfadeValueLabel.setForeground(MUTED);
     volumeTitle.setForeground(MUTED); volumeValueLabel.setForeground(MUTED);
@@ -1656,20 +1767,30 @@ public final class CDPlayer extends JFrame {
     JPanel root = new BrushedMetalPanel();
     root.setBorder(BorderFactory.createEmptyBorder(32, 64, 28, 64));
     JPanel headerBlock = new JPanel(new BorderLayout()); headerBlock.setOpaque(false);
-    headerBlock.add(header(), BorderLayout.NORTH); headerBlock.add(new BarbedDivider(), BorderLayout.SOUTH);
+    headerPanel = header();
+    headerBlock.add(headerPanel, BorderLayout.NORTH); headerBlock.add(new BarbedDivider(), BorderLayout.SOUTH); // headerBlock itself always stays visible so the divider (kept visible in CD view) still renders — only headerPanel toggles
     root.add(headerBlock, BorderLayout.NORTH);
-    JPanel body = new JPanel(new GridBagLayout()); body.setOpaque(false);
+    bodyPanel = new JPanel(new GridBagLayout()); JPanel body = bodyPanel; body.setOpaque(false);
     GridBagConstraints constraints = new GridBagConstraints();
     constraints.gridy = 0; constraints.weighty = 1;
-    // NONE (not BOTH) for the disc specifically: its cell still claims its weightx share of the row so the
-    // overall layout is unaffected, but the component itself is centered at its natural size instead of being
-    // stretched to fill the cell. GridBagLayout doesn't reliably honor a component's maximumSize when fill=BOTH
-    // — measured DiscView's actual bounds growing from 231x611 windowed to 1923x2671 at a 5K fullscreen
-    // resolution even with maximumSize(480, 480) set, because the disc spins on a 16ms Timer while playing and
-    // (being non-opaque) forces the opaque background panel beneath it to redraw its full dirty rectangle on
-    // every tick — over 5 million pixels/frame at that stretched size vs ~140K windowed, regardless of theme.
-    constraints.fill = GridBagConstraints.NONE;
-    constraints.gridx = 0; constraints.weightx = 1; constraints.insets = new Insets(10, 0, 10, 44); body.add(disc, constraints);
+    // BOTH on discColumn (a plain wrapper, not disc itself) so it stretches to fill its cell — GridBagLayout's
+    // fill=NONE turned out to have its own, worse bug: measured it collapsing a fill=NONE component all the way
+    // down to its *minimum* size (not preferred) whenever the row's available height came in even slightly under
+    // the component's preferred height, which the enlarged 760px CD-view disc hits at ordinary window sizes
+    // (confirmed directly — a bare 760px-preferred child in a 992x746 GridBagLayout cell landed at 10x10, its
+    // Swing-default minimum, despite ample width). Capping disc's own actual size is left to BoxLayout instead:
+    // disc keeps its maximumSize (set in DiscView.setEnlarged), and BoxLayout — unlike GridBagLayout — reliably
+    // honors a child's maximumSize, which is exactly why fill=BOTH was avoided *directly on disc* in the first
+    // place (see DiscView's own maximumSize comment: GridBagLayout ignored it and let the disc's spinning-timer
+    // repaint cost balloon at 5K fullscreen). Glue above/below inside discColumn does the vertical centering
+    // fill=BOTH would otherwise skip, since BoxLayout doesn't center children along its own axis on its own.
+    constraints.fill = GridBagConstraints.BOTH;
+    JPanel discColumn = new JPanel(); discColumn.setOpaque(false); discColumn.setLayout(new javax.swing.BoxLayout(discColumn, javax.swing.BoxLayout.Y_AXIS));
+    disc.setAlignmentX(Component.CENTER_ALIGNMENT);
+    discColumn.add(javax.swing.Box.createVerticalGlue());
+    discColumn.add(disc);
+    discColumn.add(javax.swing.Box.createVerticalGlue());
+    constraints.gridx = 0; constraints.weightx = 1; constraints.insets = new Insets(10, 0, 10, 44); body.add(discColumn, constraints);
     // With fill=BOTH directly on playerPanel(), it stretched to the full window width on anything wider than the
     // ~1120px default, dragging every row's centered content (and the trailing LOAD A TRACK / CLEAR QUEUE column)
     // far from the disc and opening up a large, obviously empty gap on the left of the transport controls.
@@ -1679,13 +1800,28 @@ public final class CDPlayer extends JFrame {
     // sizing entirely: the wrapper still stretches BOTH to fill the cell (simple, predictable), but WEST always
     // gives its child its own true preferred size and anchors it top-left, leaving any extra stretched space as
     // plain empty margin in the wrapper's unused CENTER — exactly where extra width on a wide window should go.
-    JPanel playerPanelWrap = new JPanel(new BorderLayout()); playerPanelWrap.setOpaque(false);
+    playerPanelWrap = new JPanel(new BorderLayout()); playerPanelWrap.setOpaque(false);
     playerPanelWrap.add(playerPanel(), BorderLayout.WEST);
     constraints.fill = GridBagConstraints.BOTH;
-    constraints.gridx = 1; constraints.weightx = 1.05; constraints.insets = new Insets(36, 0, 20, 0); body.add(playerPanelWrap, constraints);
+    constraints.gridx = 1; constraints.weightx = 1.05; constraints.insets = new Insets(36, 0, 20, 0);
+    playerPanelWrapConstraints = (GridBagConstraints) constraints.clone();
+    body.add(playerPanelWrap, constraints);
     root.add(body, BorderLayout.CENTER);
-    JLabel hint = label("DROP WAV · AIFF · AU · FLAC · M4A · MP3 — SPACE/K PLAY · J/L PREV/NEXT · ←/→ SKIP 15S · F FULLSCREEN · ESC EXIT", 10, new Color(120, 122, 126));
-    hint.setHorizontalAlignment(SwingConstants.CENTER); hint.setBorder(BorderFactory.createEmptyBorder(18, 0, 0, 0)); root.add(hint, BorderLayout.SOUTH);
+    hintLabel = label("DROP WAV · AIFF · AU · FLAC · M4A · MP3 — SPACE/K PLAY · J/L PREV/NEXT · ←/→ SKIP 15S · C CD VIEW · F FULLSCREEN · ESC EXIT", 10, new Color(120, 122, 126));
+    hintLabel.setHorizontalAlignment(SwingConstants.CENTER); hintLabel.setBorder(BorderFactory.createEmptyBorder(18, 0, 0, 0));
+    // Song name + author, centered at the bottom of the window in CD view — a footer, not tucked under the disc,
+    // so it stays legible regardless of the disc's own size. Shares hintLabel's SOUTH slot: only one of the two
+    // is ever visible at a time (see applyCdViewState()), and BoxLayout skips invisible children, so the
+    // wrapper's own height shrinks to whichever one is currently showing instead of reserving room for both.
+    cdViewInfoPanel = new JPanel(); cdViewInfoPanel.setOpaque(false); cdViewInfoPanel.setLayout(new javax.swing.BoxLayout(cdViewInfoPanel, javax.swing.BoxLayout.Y_AXIS));
+    cdViewInfoPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
+    cdViewTrackLabel.setHorizontalAlignment(SwingConstants.CENTER); cdViewTrackLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+    cdViewArtistLabel.setHorizontalAlignment(SwingConstants.CENTER); cdViewArtistLabel.setAlignmentX(Component.CENTER_ALIGNMENT); cdViewArtistLabel.setVisible(false);
+    cdViewInfoPanel.add(cdViewTrackLabel); cdViewInfoPanel.add(javax.swing.Box.createVerticalStrut(4)); cdViewInfoPanel.add(cdViewArtistLabel);
+    cdViewInfoPanel.setVisible(false);
+    JPanel southBlock = new JPanel(); southBlock.setOpaque(false); southBlock.setLayout(new javax.swing.BoxLayout(southBlock, javax.swing.BoxLayout.Y_AXIS));
+    southBlock.add(hintLabel); southBlock.add(cdViewInfoPanel);
+    root.add(southBlock, BorderLayout.SOUTH);
 
     // isOptimizedDrawingEnabled must return false: JComponent defaults to true, which tells Swing's repaint
     // machinery "children never overlap" so an incremental repaint (the seek bar ticking, the disc spinning)
@@ -1703,13 +1839,27 @@ public final class CDPlayer extends JFrame {
   }
 
   private JPanel header() {
-    JPanel bar = new JPanel(new BorderLayout()); bar.setOpaque(false); bar.setPreferredSize(new Dimension(0, 56));
+    // OverlayLayout, not BorderLayout: with a plain BorderLayout, CENTER only gets the space left over after
+    // EAST claims its own width, so a FlowLayout.CENTER pill inside it lands centered on that leftover region —
+    // biased noticeably left of the bar's true midpoint by roughly half the east button cluster's width, not
+    // actually centered on the window. Overlaying two independent full-bar-width layers instead — one centering
+    // the pill against the WHOLE bar, one right-anchoring the buttons against the WHOLE bar — centers the pill
+    // for real, regardless of how wide the button cluster happens to be.
+    JPanel bar = new JPanel() {
+      // Same reasoning as contentStack's override elsewhere in this file: the two layers below now genuinely
+      // overlap (both stretched to the bar's full bounds), so the default "children never overlap" repaint
+      // optimization would risk stale pixels wherever the transparent parts of one layer sit on top of the other.
+      public boolean isOptimizedDrawingEnabled() { return false; }
+    };
+    bar.setOpaque(false); bar.setPreferredSize(new Dimension(0, 56));
+    bar.setLayout(new javax.swing.OverlayLayout(bar));
     JPanel statusPill = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0)) {
       protected void paintComponent(Graphics raw) { Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON); g.setColor(new Color(0,0,0,90)); g.fillRoundRect(0, 0, getWidth(), getHeight(), 4, 4); g.setColor(new Color(255,255,255,30)); g.setStroke(new BasicStroke(1)); g.drawRoundRect(0, 0, getWidth()-1, getHeight()-1, 4, 4); g.dispose(); super.paintComponent(raw); }
     };
     statusPill.setOpaque(false); statusPill.setBorder(BorderFactory.createEmptyBorder(6, 16, 6, 16)); statusPill.add(status);
     JPanel center = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0)); center.setOpaque(false); center.add(statusPill);
-    bar.add(center, BorderLayout.CENTER);
+    center.setAlignmentX(Component.CENTER_ALIGNMENT); center.setAlignmentY(Component.CENTER_ALIGNMENT);
+    center.setMaximumSize(new Dimension(Short.MAX_VALUE, Short.MAX_VALUE)); // stretch to the bar's full actual width under OverlayLayout — see the method-level comment above
     settingsButton.addActionListener(e -> showSettingsDialog());
     sleepTimerIndicator.setFont(new Font("SansSerif", Font.BOLD, 10));
     sleepTimerIndicator.setToolTipText("Click to cancel the sleep timer");
@@ -1720,8 +1870,13 @@ public final class CDPlayer extends JFrame {
       public void mouseClicked(java.awt.event.MouseEvent e) { armSleepTimer(0); sleepTimerSlider.setValue(0); }
     });
     historyButton.addActionListener(e -> showHistory());
-    JPanel east = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 8, 0)); east.setOpaque(false); east.add(sleepTimerIndicator); east.add(historyButton); east.add(settingsButton);
-    bar.add(east, BorderLayout.EAST);
+    cdViewButton.setToolTipText("Distraction-free view: just the disc");
+    cdViewButton.addActionListener(e -> toggleCdView());
+    JPanel east = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 8, 0)); east.setOpaque(false); east.add(sleepTimerIndicator); east.add(historyButton); east.add(cdViewButton); east.add(settingsButton);
+    JPanel eastLayer = new JPanel(new BorderLayout()); eastLayer.setOpaque(false); eastLayer.add(east, BorderLayout.EAST);
+    eastLayer.setAlignmentX(Component.CENTER_ALIGNMENT); eastLayer.setAlignmentY(Component.CENTER_ALIGNMENT);
+    eastLayer.setMaximumSize(new Dimension(Short.MAX_VALUE, Short.MAX_VALUE));
+    bar.add(eastLayer); bar.add(center); // both stretch to fill the whole bar (see maximumSize above) — order doesn't affect the (non-overlapping, in practice) content, only which layer would win a click in the sliver where they could theoretically touch
     return bar;
   }
 
@@ -1735,7 +1890,8 @@ public final class CDPlayer extends JFrame {
     panel.add(nowRow);
     panel.add(javax.swing.Box.createVerticalStrut(14));
     track.setForeground(TEXT); track.setFont(new Font("SansSerif", Font.BOLD, 34)); track.setAlignmentX(Component.LEFT_ALIGNMENT); track.setPreferredSize(new Dimension(460, 44)); track.setMaximumSize(new Dimension(460, 44)); track.setMinimumSize(new Dimension(460, 44)); panel.add(track);
-    panel.add(javax.swing.Box.createVerticalStrut(10)); source.setAlignmentX(Component.LEFT_ALIGNMENT); source.setFont(new Font("SansSerif", Font.PLAIN, 12)); source.setPreferredSize(new Dimension(460, 16)); source.setMaximumSize(new Dimension(460, 16)); source.setMinimumSize(new Dimension(460, 16)); panel.add(source);
+    panel.add(javax.swing.Box.createVerticalStrut(4)); artistLabel.setForeground(ACCENT2); artistLabel.setFont(new Font("SansSerif", Font.PLAIN, 15)); artistLabel.setAlignmentX(Component.LEFT_ALIGNMENT); artistLabel.setPreferredSize(new Dimension(460, 20)); artistLabel.setMaximumSize(new Dimension(460, 20)); artistLabel.setMinimumSize(new Dimension(460, 20)); artistLabel.setVisible(false); panel.add(artistLabel);
+    panel.add(javax.swing.Box.createVerticalStrut(6)); source.setAlignmentX(Component.LEFT_ALIGNMENT); source.setFont(new Font("SansSerif", Font.PLAIN, 12)); source.setPreferredSize(new Dimension(460, 16)); source.setMaximumSize(new Dimension(460, 16)); source.setMinimumSize(new Dimension(460, 16)); panel.add(source);
     panel.add(javax.swing.Box.createVerticalStrut(38));
     progress.setOpaque(false); waveformSliderUI = new WaveformSliderUI(progress); progress.setUI(waveformSliderUI); progress.setAlignmentX(Component.LEFT_ALIGNMENT); progress.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20)); progress.setFocusable(false);
     progress.addChangeListener(e -> { if (player != null && progress.getValueIsAdjusting()) adjusting = true; else if (player != null && adjusting) { player.setMicrosecondPosition((long) (player.getMicrosecondLength() * progress.getValue() / 1000.0)); adjusting = false; if (lyricsOverlay != null && lyricsOverlay.isVisible()) updateLyricsSync(); } });
@@ -2169,7 +2325,7 @@ public final class CDPlayer extends JFrame {
       // every single play.
       SongDetails details = getSongDetails(file);
       String name = details.title;
-      setTrackTitle(name); source.setText("LOCAL AUDIO FILE · " + file.getName().substring(file.getName().lastIndexOf('.') + 1).toUpperCase());
+      setTrackTitle(name, details.artist); source.setText("LOCAL AUDIO FILE · " + file.getName().substring(file.getName().lastIndexOf('.') + 1).toUpperCase());
       fadeInNowPlaying();
       length.setText(format(opened.getMicrosecondLength())); elapsed.setText("0:00"); progress.setValue(0); status.setText("●  TRACK LOADED");
       boolean canLookUp = details.embeddedCover == null && details.title != null && !details.title.trim().isEmpty();
@@ -2368,12 +2524,20 @@ public final class CDPlayer extends JFrame {
     if (player != finishedPlayer) return;
     if (repeatMode == RepeatMode.ONE) { player.setMicrosecondPosition(0); player.start(); setPlaying(true); return; }
     if (nextTrack()) return;
-    // nextTrack() only fails at the true end of a non-shuffled queue (shuffle's nextIndex() always has somewhere
-    // to go as long as there's more than one track) — repeat-all wraps back to the front instead of stopping.
-    if (repeatMode == RepeatMode.ALL && !queue.isEmpty()) { queueIndex = 0; load(queue.get(0)); return; }
     setPlaying(false);
   }
-  private boolean nextTrack() { int next = nextIndex(); if (next < 0) return false; queueIndex = next; load(queue.get(queueIndex)); return true; }
+  /**
+   * Advances to the next queue track, wrapping back to the front when repeat-all is on and the queue's already at
+   * its end. The wraparound used to live only in trackFinished()'s own fallback, so it worked when a track ended
+   * naturally but not when nextTrack() was called directly — the Next button and the L shortcut both call this
+   * directly, so pressing Next on the last track with repeat-all on silently did nothing instead of looping back.
+   */
+  private boolean nextTrack() {
+    int next = nextIndex();
+    if (next < 0 && repeatMode == RepeatMode.ALL && !queue.isEmpty()) next = 0; // shuffle's nextIndex() always has somewhere to go with >1 track, so this only ever triggers at the true end of a non-shuffled queue
+    if (next < 0) return false;
+    queueIndex = next; load(queue.get(queueIndex)); return true;
+  }
   private void previousTrack() { if (player != null && player.getMicrosecondPosition() > 5_000_000L) { player.setMicrosecondPosition(0); return; } if (queueIndex > 0) { queueIndex--; load(queue.get(queueIndex)); } else if (player != null) player.setMicrosecondPosition(0); }
   private void removeFromQueue(int index) {
     if (index < 0 || index >= queue.size()) return;
@@ -2400,7 +2564,7 @@ public final class CDPlayer extends JFrame {
     queueIndex = -1;
     if (player != null) { StreamPlayer closing = player; player = null; closing.close(); }
     deleteTemporaryAudio();
-    track.setFont(new Font("SansSerif", Font.BOLD, 34)); track.setText("Pick a track to get started."); source.setText("YOUR MUSIC LIBRARY");
+    setTrackTitle("Pick a track to get started.", null); source.setText("YOUR MUSIC LIBRARY");
     elapsed.setText("0:00"); length.setText("0:00"); progress.setValue(0);
     disc.setCover(null); disc.setLookingUp(false); loadedFile = null; setPlaying(false);
     currentLyrics = null; lyricsButton.setVisible(false); refreshLyricsIfOpen();
@@ -2707,29 +2871,50 @@ public final class CDPlayer extends JFrame {
     finally { if (probe != null) closeProcessStreams(probe); }
   }
   private static String escape(String value) { return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"); }
-  /** Sets the now-playing title, shrinking the font (34pt down to 20pt) to fit long names in the fixed-width label before falling back to an ellipsis, so the box's size never has to change. */
-  private void setTrackTitle(String name) {
-    int maxWidth = 456;
-    int size = 34;
-    Font font = new Font("SansSerif", Font.BOLD, size);
-    java.awt.FontMetrics metrics = track.getFontMetrics(font);
-    while (metrics.stringWidth(name) > maxWidth && size > 20) {
-      size--;
-      font = new Font("SansSerif", Font.BOLD, size);
-      metrics = track.getFontMetrics(font);
+  /**
+   * Sets the now-playing title and (when present) author, shrinking each label's font to fit before falling back
+   * to an ellipsis, so none of the four boxes involved (normal-view title/artist, CD-view title/artist) ever have
+   * to change size. CD view's copies get their own, wider fit pass rather than reusing the normal-view text as-is
+   * (already possibly truncated for its narrower box) — cdViewTrackLabel/cdViewArtistLabel now sit in a
+   * full-width footer at the bottom of the window (see createContent()'s cdViewInfoPanel), not squeezed under
+   * the disc, so they have much more room to work with.
+   */
+  private void setTrackTitle(String name, String artist) {
+    fitText(track, name, 456, 34, 20, true);
+    fitText(cdViewTrackLabel, name, 860, 30, 18, true);
+    boolean hasArtist = artist != null && !artist.trim().isEmpty();
+    artistLabel.setVisible(hasArtist);
+    cdViewArtistLabel.setVisible(hasArtist);
+    if (hasArtist) {
+      fitText(artistLabel, artist, 456, 15, 12, false);
+      fitText(cdViewArtistLabel, artist, 860, 18, 13, false);
+    } else {
+      artistLabel.setText(""); cdViewArtistLabel.setText("");
     }
-    track.setFont(font);
-    track.setText("<html>" + escape(ellipsize(track, name, maxWidth)) + "</html>");
   }
-  /** Fades the track title and source labels in from transparent to their current (already-themed) color, so a new track's info eases into view instead of just snapping into place. Captures each label's own foreground as the fade target, so it stays correct under whatever theme is active. */
+  /** Shrinks label's font from startSize down to minSize (stepping by 1pt) until text fits maxWidth, falling back to an ellipsis if it still doesn't fit at minSize. */
+  private static void fitText(JLabel label, String text, int maxWidth, int startSize, int minSize, boolean bold) {
+    int size = startSize;
+    Font font = new Font("SansSerif", bold ? Font.BOLD : Font.PLAIN, size);
+    java.awt.FontMetrics metrics = label.getFontMetrics(font);
+    while (metrics.stringWidth(text) > maxWidth && size > minSize) {
+      size--;
+      font = new Font("SansSerif", bold ? Font.BOLD : Font.PLAIN, size);
+      metrics = label.getFontMetrics(font);
+    }
+    label.setFont(font);
+    label.setText("<html>" + escape(ellipsize(label, text, maxWidth)) + "</html>");
+  }
+  /** Fades the track title, artist, and source labels in from transparent to their current (already-themed) color, so a new track's info eases into view instead of just snapping into place. Captures each label's own foreground as the fade target, so it stays correct under whatever theme is active. */
   private void fadeInNowPlaying() {
     if (nowPlayingFadeTimer != null && nowPlayingFadeTimer.isRunning()) nowPlayingFadeTimer.stop();
-    final Color trackColor = track.getForeground(), sourceColor = source.getForeground();
+    final Color trackColor = track.getForeground(), artistColor = artistLabel.getForeground(), sourceColor = source.getForeground();
     // Force full opacity rather than reusing trackColor/sourceColor as-is: if a previous fade was still mid-flight
     // when animations got disabled, the label's current color could itself be partially transparent, and simply
     // reapplying it would "snap" to that same partial state instead of actually becoming fully visible.
     if (!animationsEnabled) {
       track.setForeground(new Color(trackColor.getRed(), trackColor.getGreen(), trackColor.getBlue(), 255));
+      artistLabel.setForeground(new Color(artistColor.getRed(), artistColor.getGreen(), artistColor.getBlue(), 255));
       source.setForeground(new Color(sourceColor.getRed(), sourceColor.getGreen(), sourceColor.getBlue(), 255));
       return;
     }
@@ -2741,6 +2926,7 @@ public final class CDPlayer extends JFrame {
       float t = Math.min(1f, step[0] / (float) steps);
       int alpha = (int) (255 * t);
       track.setForeground(new Color(trackColor.getRed(), trackColor.getGreen(), trackColor.getBlue(), alpha));
+      artistLabel.setForeground(new Color(artistColor.getRed(), artistColor.getGreen(), artistColor.getBlue(), alpha));
       source.setForeground(new Color(sourceColor.getRed(), sourceColor.getGreen(), sourceColor.getBlue(), alpha));
       if (t >= 1f) ((Timer) e.getSource()).stop();
     });
@@ -3343,6 +3529,35 @@ public final class CDPlayer extends JFrame {
       if (opacity < 1f) g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.max(0f, Math.min(1f, opacity))));
       g2.drawImage(snapshot, 0, 0, null);
       g2.dispose();
+    }
+  }
+
+  /**
+   * A one-shot full-window crossfade: painted as a frozen snapshot of "how things looked right before" a layout
+   * change, then faded out over a short animation to reveal the already-applied "how things look now" underneath
+   * — used by toggleCdView() so switching to/from CD view dissolves smoothly instead of the header/track panel/
+   * hint line just vanishing and the disc snapping straight to its new size. Same snapshot-blit idea as
+   * FadeableCard (see its own doc comment on why: cheap, and avoids the native-surface leak a live transformed
+   * repaint measured), just a plain fade with no scale, and covering the whole window instead of one card.
+   */
+  private static final class SnapshotFadeOverlay extends javax.swing.JComponent {
+    private final BufferedImage snapshot;
+    private float alpha = 1f;
+    SnapshotFadeOverlay(BufferedImage snapshot) { this.snapshot = snapshot; setOpaque(false); }
+    void setAlpha(float value) { alpha = value; repaint(); }
+    // Same rationale as DiscView.setCover's flush(): once drawn, a BufferedImage can pick up an off-heap
+    // GPU-accelerated cache surface that outlives the plain Java heap reference and isn't reclaimed until GC
+    // gets around to the wrapper object — measured as never keeping up under a rapid-fire stress test elsewhere
+    // in this file. Each CD-view toggle allocates a fresh full-window snapshot, so releasing it explicitly the
+    // moment this overlay is discarded (toggleCdView, on both the normal-completion and interrupted-mid-fade
+    // paths) matters here for the same reason.
+    void releaseSnapshot() { snapshot.flush(); }
+    protected void paintComponent(Graphics raw) {
+      if (alpha <= 0f) return;
+      Graphics2D g = (Graphics2D) raw.create();
+      g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.max(0f, Math.min(1f, alpha))));
+      g.drawImage(snapshot, 0, 0, null);
+      g.dispose();
     }
   }
 
@@ -4052,11 +4267,21 @@ public final class CDPlayer extends JFrame {
     // GridBagLayout will compress even a fill=NONE component below its preferred size when the container is
     // tighter than the sum of every column's preferred size, and with no floor that shrank the disc to as little
     // as 10x10 at the app's default 1120x820 window — a visual regression, not just wasted layout space.
+    private static final int NORMAL_COMPONENT_SIDE = 480, NORMAL_DISC_CAP = 300;
+    private static final int ENLARGED_COMPONENT_SIDE = 760, ENLARGED_DISC_CAP = 640; // CD view (see CDPlayer.toggleCdView) — a deliberate, bounded size increase, not the unbounded fill=BOTH stretch the maximumSize cap above exists to prevent
+    private int discCapPx = NORMAL_DISC_CAP;
     DiscView() {
-      setOpaque(false); setMinimumSize(new Dimension(260, 260)); setPreferredSize(new Dimension(480, 480)); setMaximumSize(new Dimension(480, 480));
+      setOpaque(false); setMinimumSize(new Dimension(260, 260)); setPreferredSize(new Dimension(NORMAL_COMPONENT_SIDE, NORMAL_COMPONENT_SIDE)); setMaximumSize(new Dimension(NORMAL_COMPONENT_SIDE, NORMAL_COMPONENT_SIDE));
       addMouseListener(new java.awt.event.MouseAdapter() {
         public void mouseClicked(java.awt.event.MouseEvent e) { if (e.getClickCount() == 2) startEject(); }
       });
+    }
+    /** CD view: a bigger, fixed size for both the component and the drawn disc's own cap (see side= below) — still bounded, so the same repaint-cost reasoning above still holds, just at a deliberately larger fixed number instead of an accidental unbounded one. */
+    void setEnlarged(boolean enlarged) {
+      int side = enlarged ? ENLARGED_COMPONENT_SIDE : NORMAL_COMPONENT_SIDE;
+      discCapPx = enlarged ? ENLARGED_DISC_CAP : NORMAL_DISC_CAP;
+      setPreferredSize(new Dimension(side, side)); setMaximumSize(new Dimension(side, side));
+      revalidate(); repaint();
     }
     void setSpinning(boolean value) { spinning = value; if (value) motion.start(); else motion.stop(); repaint(); }
     // flush() releases the native/GPU-accelerated surface Java2D caches behind an image the moment it's drawn
@@ -4100,7 +4325,7 @@ public final class CDPlayer extends JFrame {
     }
     protected void paintComponent(Graphics raw) {
       super.paintComponent(raw); Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-      int side = Math.min(300, Math.min(getWidth(), getHeight()) - 40);
+      int side = Math.min(discCapPx, Math.min(getWidth(), getHeight()) - 40);
       int x = (getWidth() - side) / 2, y = (getHeight() - side) / 2, centerX = x + side / 2, centerY = y + side / 2;
 
       // jewel case backdrop behind the disc
@@ -4111,7 +4336,7 @@ public final class CDPlayer extends JFrame {
       g.drawLine(caseX + 10, caseY + 10, caseX + caseSide - 10, caseY + 10);
       g.drawLine(caseX + 10, caseY + caseSide - 10, caseX + caseSide - 10, caseY + caseSide - 10);
       if (cover != null) {
-        int thumb = 58;
+        int thumb = Math.round(side * 0.193f); // proportional to the disc, not a flat 58px — otherwise the thumbnail stayed tiny next to the much bigger disc in CD view (see setEnlarged)
         g.setColor(new Color(0, 0, 0, 120)); g.fillRoundRect(caseX + 14, caseY + 14, thumb, thumb, 6, 6);
         g.drawImage(cover, caseX + 17, caseY + 17, thumb - 6, thumb - 6, null);
         g.setColor(ACCENT2); g.setStroke(new BasicStroke(1.2f)); g.drawRoundRect(caseX + 16, caseY + 16, thumb - 4, thumb - 4, 5, 5);

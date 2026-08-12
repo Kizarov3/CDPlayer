@@ -63,6 +63,7 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - Embedded album art extraction, with automatic iTunes/Deezer cover lookup when a file has none
 - A **Lyrics** button appears whenever the current track has embedded lyrics, opening a panel that follows the track — for LRC-timed lyrics, the current line highlights and auto-scrolls in sync with playback, karaoke-style; otherwise it's a plain scrollable read
 - A **History** button in the header opens Recently Played — your last 50 tracks, most recent first, each one click away from playing again or adding back to the queue
+- **CD view** (`C`, or the header button) hides everything but the spinning disc — enlarged — and the header divider for a distraction-free "now playing" look; press `C` or `Esc` again to bring the rest of the UI back
 
 **Settings**
 - A dedicated Settings dialog (opened from the header) holds the Theme picker, Equalizer, Crossfade slider, Sleep Timer, Mono Audio toggle, Waveform toggle, and an Animations toggle, keeping the main screen focused on playback
@@ -164,6 +165,7 @@ java -cp out com.cdplayer.CDPlayer
 | `←` | Skip back 15 seconds |
 | `→` | Skip forward 15 seconds |
 | `F` | Toggle fullscreen |
+| `C` | Toggle CD view |
 | `Esc` | Exit fullscreen |
 
 ## License
