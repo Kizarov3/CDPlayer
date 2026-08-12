@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -59,6 +60,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.UIManager;
 import javax.swing.plaf.basic.BasicSliderUI;
+import javax.swing.plaf.basic.BasicScrollBarUI;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
 /** A standalone, dependency-free Java desktop music player. */
@@ -141,8 +143,17 @@ public final class CDPlayer extends JFrame {
   private final ThemeOverlay themeOverlay = new ThemeOverlay();
   private final List<File> queue = new ArrayList<File>();
   private int queueIndex = -1;
-  private final Map<File, SongDetails> metadataCache = new HashMap<File, SongDetails>();
-  private final Map<File, Long> durationCache = new HashMap<File, Long>();
+  // Bounded LRU, not a plain HashMap — SongDetails carries a full-resolution embedded-cover BufferedImage (easily
+  // several MB apiece), and an unbounded cache here meant memory grew for as long as the session kept touching new
+  // files (History, Search, shuffle/repeat over a large library all do), with nothing ever evicted. Eldest-first
+  // eviction (access-order=true) once the cap is exceeded keeps a generous working set without an unbounded tail.
+  private static final int METADATA_CACHE_LIMIT = 200;
+  private final Map<File, SongDetails> metadataCache = new LinkedHashMap<File, SongDetails>(16, 0.75f, true) {
+    protected boolean removeEldestEntry(Map.Entry<File, SongDetails> eldest) { return size() > METADATA_CACHE_LIMIT; }
+  };
+  private final Map<File, Long> durationCache = new LinkedHashMap<File, Long>(16, 0.75f, true) {
+    protected boolean removeEldestEntry(Map.Entry<File, Long> eldest) { return size() > METADATA_CACHE_LIMIT; }
+  };
   // Panel that lists all queued songs; displayed under queue headers.
   private final JPanel queueList = new JPanel();
   private final List<QueueRowUI> queueRows = new ArrayList<QueueRowUI>();
@@ -456,7 +467,7 @@ public final class CDPlayer extends JFrame {
   private void animateSettingsIn() {
     if (settingsAnimTimer != null && settingsAnimTimer.isRunning()) settingsAnimTimer.stop();
     FadeableCard card = settingsOverlay.card;
-    if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; settingsOverlay.repaint(); return; }
+    if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; card.repaint(); return; }
     card.beginTransformAnimation();
     card.opacity = 0f; card.scale = 0.9f;
     final int steps = 10;
@@ -468,7 +479,11 @@ public final class CDPlayer extends JFrame {
       float eased = 1f - (float) Math.pow(1f - t, 3); // ease-out cubic
       card.opacity = eased;
       card.scale = 0.9f + 0.1f * eased;
-      settingsOverlay.repaint();
+      // card.repaint(), not settingsOverlay.repaint() — the overlay now spans the whole window (see CenteredOverlay,
+      // for the dimmed backdrop that blocks clicks to what's underneath), so repainting the WHOLE overlay on every
+      // 12ms tick meant recompositing the entire window ~80 times/second for an animation that only ever changes
+      // the card's own opacity/scale. Scoped to the card, this is back to a small, cheap dirty region.
+      card.repaint();
       if (t >= 1f) { ((Timer) e.getSource()).stop(); card.opacity = 1f; card.scale = 1f; card.endTransformAnimation(); }
     });
     settingsAnimTimer.start();
@@ -488,7 +503,7 @@ public final class CDPlayer extends JFrame {
       float t = Math.min(1f, step[0] / (float) steps);
       card.opacity = 1f - t;
       card.scale = 1f - 0.1f * t;
-      settingsOverlay.repaint();
+      card.repaint(); // see animateSettingsIn()'s note on why this is card.repaint(), not settingsOverlay.repaint()
       if (t >= 1f) {
         ((Timer) e.getSource()).stop();
         settingsOverlay.setVisible(false);
@@ -782,8 +797,16 @@ public final class CDPlayer extends JFrame {
    */
   private static Theme deriveAutoTheme(BufferedImage cover) {
     float hue = 0.58f, sat = 0.55f;
+    // Set only when the art has a second dominant hue cluster clearly distinct from the first — lets the
+    // accent -> accent2 gradient (used throughout: buttons, the disc, the visualizer) reflect two real colors
+    // actually present in the cover, instead of always being accent nudged by an arbitrary fixed hue offset
+    // regardless of what the art looks like.
+    Float hue2 = null;
     if (cover != null) {
-      double sumSin = 0, sumCos = 0; float sumSat = 0; int counted = 0;
+      float sumSat = 0; int counted = 0;
+      final int bins = 24; // 15 degrees per bin — coarse enough to survive per-pixel noise, fine enough to separate genuinely different colors
+      int[] binCounts = new int[bins];
+      double[] binSin = new double[bins], binCos = new double[bins];
       int w = cover.getWidth(), h = cover.getHeight();
       int stepX = Math.max(1, w / 24), stepY = Math.max(1, h / 24); // a coarse grid is plenty for a dominant-hue estimate and keeps this cheap regardless of the source image's resolution
       float[] hsb = new float[3];
@@ -793,18 +816,43 @@ public final class CDPlayer extends JFrame {
           Color.RGBtoHSB((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, hsb);
           if (hsb[1] < 0.15f || hsb[2] < 0.12f || hsb[2] > 0.95f) continue;
           double angle = hsb[0] * Math.PI * 2;
-          sumSin += Math.sin(angle); sumCos += Math.cos(angle);
           sumSat += hsb[1];
           counted++;
+          int bin = Math.min(bins - 1, (int) (hsb[0] * bins));
+          binSin[bin] += Math.sin(angle); binCos[bin] += Math.cos(angle); binCounts[bin]++;
         }
       }
       if (counted > 0) {
-        hue = (float) ((Math.atan2(sumSin, sumCos) / (Math.PI * 2) + 1) % 1);
         sat = Math.max(0.45f, Math.min(0.85f, sumSat / counted));
+        // The dominant hue is the most-populous bin's own (weighted) hue, not a circular mean across every
+        // qualifying pixel — a whole-image mean washes out multi-color art into a blended, arbitrary hue that
+        // matches neither of its real colors (e.g. a 50/50 red-and-blue cover averaging out to magenta), while
+        // the bin approach picks up whichever color is actually dominant, and — see hue2 below — a second real
+        // color when the art has one.
+        int topBin = -1, topCount = 0;
+        for (int b = 0; b < bins; b++) if (binCounts[b] > topCount) { topCount = binCounts[b]; topBin = b; }
+        hue = (float) ((Math.atan2(binSin[topBin], binCos[topBin]) / (Math.PI * 2) + 1) % 1);
+        // The runner-up bin, but only if it's both far enough from the dominant hue to read as a genuinely
+        // different color (not just noise scattered around the same one) and common enough to not be a
+        // handful of stray outlier pixels.
+        int bestBin = -1, bestCount = 0;
+        for (int b = 0; b < bins; b++) {
+          if (b == topBin || binCounts[b] == 0) continue;
+          float binHue = (float) ((Math.atan2(binSin[b], binCos[b]) / (Math.PI * 2) + 1) % 1);
+          float diff = Math.abs(binHue - hue); if (diff > 0.5f) diff = 1f - diff; // circular distance
+          if (diff < 0.12f) continue;
+          if (binCounts[b] > bestCount) { bestCount = binCounts[b]; bestBin = b; }
+        }
+        if (bestBin >= 0 && bestCount >= counted * 0.08) {
+          hue2 = (float) ((Math.atan2(binSin[bestBin], binCos[bestBin]) / (Math.PI * 2) + 1) % 1);
+        }
       }
     }
     Color accent = Color.getHSBColor(hue, sat, 0.72f);
-    Color accent2 = Color.getHSBColor((hue + 0.06f) % 1f, Math.max(0.25f, sat * 0.55f), 0.85f);
+    // A genuinely second dominant color from the art when one clearly exists, otherwise the same small fixed hue
+    // nudge as before — still a tasteful two-tone gradient for largely monochrome covers.
+    float accent2Hue = hue2 != null ? hue2 : (hue + 0.06f) % 1f;
+    Color accent2 = Color.getHSBColor(accent2Hue, Math.max(0.25f, sat * 0.55f), 0.85f);
     Color bg = Color.getHSBColor(hue, Math.min(0.55f, sat * 0.6f), 0.06f);
     Color card = Color.getHSBColor(hue, Math.min(0.5f, sat * 0.55f), 0.12f);
     Color text = Color.getHSBColor(hue, 0.04f, 0.93f);
@@ -851,7 +899,7 @@ public final class CDPlayer extends JFrame {
   private void animateLyricsIn() {
     if (lyricsAnimTimer != null && lyricsAnimTimer.isRunning()) lyricsAnimTimer.stop();
     FadeableCard card = lyricsOverlay.card;
-    if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; lyricsOverlay.repaint(); return; }
+    if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; card.repaint(); return; }
     card.beginTransformAnimation();
     card.opacity = 0f; card.scale = 0.9f;
     final int steps = 10;
@@ -862,7 +910,10 @@ public final class CDPlayer extends JFrame {
       float t = Math.min(1f, step[0] / (float) steps);
       float eased = 1f - (float) Math.pow(1f - t, 3);
       card.opacity = eased; card.scale = 0.9f + 0.1f * eased;
-      lyricsOverlay.repaint();
+      // card.repaint(), not lyricsOverlay.repaint() — see animateSettingsIn()'s note: the overlay spans the whole
+      // window now (the dimmed click-blocking backdrop), so repainting it on every tick recomposited the entire
+      // window ~80 times/second for an animation that only changes the card.
+      card.repaint();
       if (t >= 1f) { ((Timer) e.getSource()).stop(); card.opacity = 1f; card.scale = 1f; card.endTransformAnimation(); }
     });
     lyricsAnimTimer.start();
@@ -880,7 +931,7 @@ public final class CDPlayer extends JFrame {
       step[0]++;
       float t = Math.min(1f, step[0] / (float) steps);
       card.opacity = 1f - t; card.scale = 1f - 0.1f * t;
-      lyricsOverlay.repaint();
+      card.repaint(); // see animateSettingsIn()'s note on why this is card.repaint(), not lyricsOverlay.repaint()
       if (t >= 1f) {
         ((Timer) e.getSource()).stop();
         lyricsOverlay.setVisible(false);
@@ -917,7 +968,7 @@ public final class CDPlayer extends JFrame {
   private void animateHistoryIn() {
     if (historyAnimTimer != null && historyAnimTimer.isRunning()) historyAnimTimer.stop();
     FadeableCard card = historyOverlay.card;
-    if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; historyOverlay.repaint(); return; }
+    if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; card.repaint(); return; }
     card.beginTransformAnimation();
     card.opacity = 0f; card.scale = 0.9f;
     final int steps = 10;
@@ -928,7 +979,10 @@ public final class CDPlayer extends JFrame {
       float t = Math.min(1f, step[0] / (float) steps);
       float eased = 1f - (float) Math.pow(1f - t, 3);
       card.opacity = eased; card.scale = 0.9f + 0.1f * eased;
-      historyOverlay.repaint();
+      // card.repaint(), not historyOverlay.repaint() — see animateSettingsIn()'s note: the overlay spans the whole
+      // window now (the dimmed click-blocking backdrop), so repainting it on every tick recomposited the entire
+      // window ~80 times/second for an animation that only changes the card.
+      card.repaint();
       if (t >= 1f) { ((Timer) e.getSource()).stop(); card.opacity = 1f; card.scale = 1f; card.endTransformAnimation(); }
     });
     historyAnimTimer.start();
@@ -946,7 +1000,7 @@ public final class CDPlayer extends JFrame {
       step[0]++;
       float t = Math.min(1f, step[0] / (float) steps);
       card.opacity = 1f - t; card.scale = 1f - 0.1f * t;
-      historyOverlay.repaint();
+      card.repaint(); // see animateSettingsIn()'s note on why this is card.repaint(), not historyOverlay.repaint()
       if (t >= 1f) {
         ((Timer) e.getSource()).stop();
         historyOverlay.setVisible(false);
@@ -976,7 +1030,7 @@ public final class CDPlayer extends JFrame {
   private void animateSearchIn() {
     if (searchAnimTimer != null && searchAnimTimer.isRunning()) searchAnimTimer.stop();
     FadeableCard card = searchOverlay.card;
-    if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; searchOverlay.repaint(); return; }
+    if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; card.repaint(); return; }
     card.beginTransformAnimation();
     card.opacity = 0f; card.scale = 0.9f;
     final int steps = 10;
@@ -987,7 +1041,10 @@ public final class CDPlayer extends JFrame {
       float t = Math.min(1f, step[0] / (float) steps);
       float eased = 1f - (float) Math.pow(1f - t, 3);
       card.opacity = eased; card.scale = 0.9f + 0.1f * eased;
-      searchOverlay.repaint();
+      // card.repaint(), not searchOverlay.repaint() — see animateSettingsIn()'s note: the overlay spans the whole
+      // window now (the dimmed click-blocking backdrop), so repainting it on every tick recomposited the entire
+      // window ~80 times/second for an animation that only changes the card.
+      card.repaint();
       if (t >= 1f) { ((Timer) e.getSource()).stop(); card.opacity = 1f; card.scale = 1f; card.endTransformAnimation(); }
     });
     searchAnimTimer.start();
@@ -1005,7 +1062,7 @@ public final class CDPlayer extends JFrame {
       step[0]++;
       float t = Math.min(1f, step[0] / (float) steps);
       card.opacity = 1f - t; card.scale = 1f - 0.1f * t;
-      searchOverlay.repaint();
+      card.repaint(); // see animateSettingsIn()'s note on why this is card.repaint(), not searchOverlay.repaint()
       if (t >= 1f) {
         ((Timer) e.getSource()).stop();
         searchOverlay.setVisible(false);
@@ -1042,7 +1099,7 @@ public final class CDPlayer extends JFrame {
   private void animateEqIn() {
     if (eqAnimTimer != null && eqAnimTimer.isRunning()) eqAnimTimer.stop();
     FadeableCard card = eqOverlay.card;
-    if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; eqOverlay.repaint(); return; }
+    if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; card.repaint(); return; }
     card.beginTransformAnimation();
     card.opacity = 0f; card.scale = 0.9f;
     final int steps = 10;
@@ -1053,7 +1110,10 @@ public final class CDPlayer extends JFrame {
       float t = Math.min(1f, step[0] / (float) steps);
       float eased = 1f - (float) Math.pow(1f - t, 3);
       card.opacity = eased; card.scale = 0.9f + 0.1f * eased;
-      eqOverlay.repaint();
+      // card.repaint(), not eqOverlay.repaint() — see animateSettingsIn()'s note: the overlay spans the whole
+      // window now (the dimmed click-blocking backdrop), so repainting it on every tick recomposited the entire
+      // window ~80 times/second for an animation that only changes the card.
+      card.repaint();
       if (t >= 1f) { ((Timer) e.getSource()).stop(); card.opacity = 1f; card.scale = 1f; card.endTransformAnimation(); }
     });
     eqAnimTimer.start();
@@ -1071,7 +1131,7 @@ public final class CDPlayer extends JFrame {
       step[0]++;
       float t = Math.min(1f, step[0] / (float) steps);
       card.opacity = 1f - t; card.scale = 1f - 0.1f * t;
-      eqOverlay.repaint();
+      card.repaint(); // see animateSettingsIn()'s note on why this is card.repaint(), not eqOverlay.repaint()
       if (t >= 1f) {
         ((Timer) e.getSource()).stop();
         eqOverlay.setVisible(false);
@@ -1169,6 +1229,7 @@ public final class CDPlayer extends JFrame {
     presetsScroll.setPreferredSize(new Dimension(480, 96));
     presetsScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 96));
     presetsScroll.getVerticalScrollBar().setUnitIncrement(16);
+    presetsScroll.getVerticalScrollBar().setUI(new GreyScrollBarUI());
     card.add(presetsScroll);
     card.add(javax.swing.Box.createVerticalStrut(14));
 
@@ -1281,6 +1342,7 @@ public final class CDPlayer extends JFrame {
     scroll.setOpaque(false); scroll.getViewport().setOpaque(false); scroll.setBorder(null);
     scroll.setPreferredSize(new Dimension(420, 380));
     scroll.getVerticalScrollBar().setUnitIncrement(16);
+    scroll.getVerticalScrollBar().setUI(new GreyScrollBarUI());
     lyricsScrollPane = scroll;
     card.add(scroll, BorderLayout.CENTER);
     JButton close = textButton("CLOSE");
@@ -1307,7 +1369,8 @@ public final class CDPlayer extends JFrame {
       JPanel list = new JPanel();
       list.setOpaque(false); list.setLayout(new javax.swing.BoxLayout(list, javax.swing.BoxLayout.Y_AXIS));
       for (File file : playHistory) {
-        JPanel row = new JPanel(new BorderLayout(8, 0)); row.setOpaque(false); row.setAlignmentX(Component.LEFT_ALIGNMENT); row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20));
+        // 34px, not the queue row's 18-20px — the ADD button (a PillButton, 8px top/bottom padding around its text) is ~30px tall on its own, and a shorter row cap clips it.
+        JPanel row = new JPanel(new BorderLayout(8, 0)); row.setOpaque(false); row.setAlignmentX(Component.LEFT_ALIGNMENT); row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 34));
         JLabel entry = label(escape(queueDisplay(file)), 11, TEXT);
         row.add(entry, BorderLayout.CENTER);
         JButton addButton = textButton("ADD");
@@ -1317,16 +1380,23 @@ public final class CDPlayer extends JFrame {
         row.add(east, BorderLayout.EAST);
         row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         row.setToolTipText("Play " + queueDisplay(file));
-        row.addMouseListener(new java.awt.event.MouseAdapter() {
+        java.awt.event.MouseAdapter playOnClick = new java.awt.event.MouseAdapter() {
           public void mouseClicked(java.awt.event.MouseEvent e) { playFromHistory(file); }
-        });
+        };
+        // Also on the label, not just the row: Swing delivers a click to the single deepest component under the
+        // cursor and does NOT bubble it up automatically, so without this, clicking directly on the track name
+        // (the label, which — via BorderLayout.CENTER — spans nearly the whole row) would silently do nothing.
+        row.addMouseListener(playOnClick);
+        entry.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        entry.addMouseListener(playOnClick);
         list.add(row);
-        list.add(javax.swing.Box.createVerticalStrut(3));
+        list.add(javax.swing.Box.createVerticalStrut(4));
       }
       JScrollPane scroll = new JScrollPane(list);
       scroll.setOpaque(false); scroll.getViewport().setOpaque(false); scroll.setBorder(null);
       scroll.setPreferredSize(new Dimension(420, 380));
       scroll.getVerticalScrollBar().setUnitIncrement(16);
+      scroll.getVerticalScrollBar().setUI(new GreyScrollBarUI());
       body = scroll;
     }
     card.add(body, BorderLayout.CENTER);
@@ -1415,6 +1485,7 @@ public final class CDPlayer extends JFrame {
     scroll.setAlignmentX(Component.LEFT_ALIGNMENT);
     scroll.setPreferredSize(new Dimension(420, 340));
     scroll.getVerticalScrollBar().setUnitIncrement(16);
+    scroll.getVerticalScrollBar().setUI(new GreyScrollBarUI());
     center.add(scroll);
 
     card.add(center, BorderLayout.CENTER);
@@ -1471,7 +1542,8 @@ public final class CDPlayer extends JFrame {
             : matches.size() + (matches.size() >= SEARCH_RESULTS_LIMIT ? "+" : "") + " MATCH" + (matches.size() == 1 ? "" : "ES") + " IN " + folder.getName());
       }
       for (File file : matches) {
-        JPanel row = new JPanel(new BorderLayout(8, 0)); row.setOpaque(false); row.setAlignmentX(Component.LEFT_ALIGNMENT); row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20));
+        // 34px, not the queue row's 18-20px — the ADD button (a PillButton, 8px top/bottom padding around its text) is ~30px tall on its own, and a shorter row cap clips it.
+        JPanel row = new JPanel(new BorderLayout(8, 0)); row.setOpaque(false); row.setAlignmentX(Component.LEFT_ALIGNMENT); row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 34));
         JLabel entry = label(escape(file.getName()), 11, TEXT);
         row.add(entry, BorderLayout.CENTER);
         JButton addButton = textButton("ADD");
@@ -1481,11 +1553,15 @@ public final class CDPlayer extends JFrame {
         row.add(east, BorderLayout.EAST);
         row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         row.setToolTipText("Play " + file.getName());
-        row.addMouseListener(new java.awt.event.MouseAdapter() {
+        java.awt.event.MouseAdapter playOnClick = new java.awt.event.MouseAdapter() {
           public void mouseClicked(java.awt.event.MouseEvent e) { playFromSearch(file); }
-        });
+        };
+        // Also on the label, not just the row — see the identical note on the History row above.
+        row.addMouseListener(playOnClick);
+        entry.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        entry.addMouseListener(playOnClick);
         searchResultsList.add(row);
-        searchResultsList.add(javax.swing.Box.createVerticalStrut(3));
+        searchResultsList.add(javax.swing.Box.createVerticalStrut(4));
       }
       if (matches.isEmpty()) {
         JLabel empty = label(searchScanning ? "SCANNING…" : "NO MATCHES", 11, MUTED);
@@ -1594,8 +1670,19 @@ public final class CDPlayer extends JFrame {
     // every tick — over 5 million pixels/frame at that stretched size vs ~140K windowed, regardless of theme.
     constraints.fill = GridBagConstraints.NONE;
     constraints.gridx = 0; constraints.weightx = 1; constraints.insets = new Insets(10, 0, 10, 44); body.add(disc, constraints);
+    // With fill=BOTH directly on playerPanel(), it stretched to the full window width on anything wider than the
+    // ~1120px default, dragging every row's centered content (and the trailing LOAD A TRACK / CLEAR QUEUE column)
+    // far from the disc and opening up a large, obviously empty gap on the left of the transport controls.
+    // fill=VERTICAL alone doesn't fix this either — measured GridBagLayout still not honoring the component's own
+    // preferred width even then (590px preferred, squeezed down to 484px actual in a 1120px window, clipping the
+    // transport row's rightmost buttons). Wrapping in BorderLayout.WEST sidesteps GridBagLayout's fill/weightx
+    // sizing entirely: the wrapper still stretches BOTH to fill the cell (simple, predictable), but WEST always
+    // gives its child its own true preferred size and anchors it top-left, leaving any extra stretched space as
+    // plain empty margin in the wrapper's unused CENTER — exactly where extra width on a wide window should go.
+    JPanel playerPanelWrap = new JPanel(new BorderLayout()); playerPanelWrap.setOpaque(false);
+    playerPanelWrap.add(playerPanel(), BorderLayout.WEST);
     constraints.fill = GridBagConstraints.BOTH;
-    constraints.gridx = 1; constraints.weightx = 1.05; constraints.insets = new Insets(36, 0, 20, 0); body.add(playerPanel(), constraints);
+    constraints.gridx = 1; constraints.weightx = 1.05; constraints.insets = new Insets(36, 0, 20, 0); body.add(playerPanelWrap, constraints);
     root.add(body, BorderLayout.CENTER);
     JLabel hint = label("DROP WAV · AIFF · AU · FLAC · M4A · MP3 — SPACE/K PLAY · J/L PREV/NEXT · ←/→ SKIP 15S · F FULLSCREEN · ESC EXIT", 10, new Color(120, 122, 126));
     hint.setHorizontalAlignment(SwingConstants.CENTER); hint.setBorder(BorderFactory.createEmptyBorder(18, 0, 0, 0)); root.add(hint, BorderLayout.SOUTH);
@@ -1670,20 +1757,57 @@ public final class CDPlayer extends JFrame {
     loadPlaylistButton.addActionListener(e -> loadPlaylist());
     JButton searchButton = textButton("SEARCH"); searchButton.setToolTipText("Search your music folder");
     searchButton.addActionListener(e -> showSearch());
-    // Both trailing columns (load cluster / clear queue) reserve the same width, so the transport cluster and the
-    // shuffle/repeat cluster below — each centered in the space left of its own trailing column — land on the
-    // exact same x position instead of merely looking "roughly centered" and drifting apart on resize.
-    int loadClusterWidth = savePlaylistButton.getPreferredSize().width + 6 + loadPlaylistButton.getPreferredSize().width + 6 + searchButton.getPreferredSize().width + 6 + load.getPreferredSize().width;
-    int trailingWidth = Math.max(loadClusterWidth, clearQueueButton.getPreferredSize().width);
-    JPanel controls = new JPanel(new BorderLayout()); controls.setOpaque(false); controls.setAlignmentX(Component.LEFT_ALIGNMENT);
-    controls.setMaximumSize(new Dimension(Integer.MAX_VALUE, 68)); // BorderLayout reports an unbounded max size otherwise, letting this row swallow vertical space meant for the rows below
-    controls.add(transportCluster, BorderLayout.CENTER);
+    // Names the SAVE/LOAD pair so it doesn't read as two stray, unexplained buttons.
+    JLabel playlistLabel = label("PLAYLIST", 9, MUTED);
+    // Both trailing columns (load button / clear queue) reserve the same width, and that same width is mirrored
+    // as an invisible column on the LEFT of the transport/shuffle rows too — so the transport cluster and the
+    // shuffle/repeat cluster below are genuinely centered in the row's full width (flanked symmetrically), not
+    // just centered in whatever space happens to be left over after a lopsided trailing column.
+    // The +6 covers FlowLayout.RIGHT's own hgap accounting: it reserves hgap as trailing padding even for a
+    // single component, so without this the wrap panel was exactly as wide as the button itself with no room
+    // for that padding, pushing the button to a negative x — its left few pixels were then clipped by the
+    // panel's own bounds instead of just rendering flush against the right edge.
+    int trailingWidth = Math.max(load.getPreferredSize().width, clearQueueButton.getPreferredSize().width) + 6;
+    // BoxLayout + glue, not BorderLayout's WEST/CENTER/EAST: BorderLayout's CENTER only ever gets whatever width
+    // is left after WEST/EAST, and if the surrounding BoxLayout chain hands this row even a few px less than its
+    // own reported preferred width (measured happening — a few px lost to layout rounding several containers up),
+    // that shortfall lands entirely on CENTER, and FlowLayout.CENTER doesn't degrade gracefully when squeezed —
+    // it silently wraps the rightmost button onto an invisible second row instead of just tightening up. Glue on
+    // both sides of transportCluster (capped at its own preferred size so it can't be handed extra room either)
+    // absorbs any slack or shortfall instead, so transportCluster always renders at exactly its natural size.
+    transportCluster.setMaximumSize(transportCluster.getPreferredSize());
+    JPanel controls = new JPanel(); controls.setLayout(new javax.swing.BoxLayout(controls, javax.swing.BoxLayout.X_AXIS));
+    controls.setOpaque(false); controls.setAlignmentX(Component.LEFT_ALIGNMENT);
+    controls.setMaximumSize(new Dimension(Integer.MAX_VALUE, 68));
+    controls.add(javax.swing.Box.createHorizontalStrut(trailingWidth)); // mirrors loadWrap's width so transportCluster centers on the same axis loadWrap is anchored to, not the raw row width
+    controls.add(javax.swing.Box.createHorizontalGlue());
+    controls.add(transportCluster);
+    controls.add(javax.swing.Box.createHorizontalGlue());
+    controls.add(javax.swing.Box.createHorizontalStrut(24)); // a real minimum gap, not just glue — at the default window width both glues above shrink to 0 with nothing left over, otherwise leaving Load a Track flush against the transport buttons
     JPanel loadWrap = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 6, 0)); loadWrap.setOpaque(false);
-    loadWrap.setPreferredSize(new Dimension(trailingWidth, 1));
-    loadWrap.add(savePlaylistButton); loadWrap.add(loadPlaylistButton); loadWrap.add(searchButton); loadWrap.add(load);
-    controls.add(loadWrap, BorderLayout.EAST);
+    // Height left free (not pinned to load's own preferred height) and centered via the default alignmentY, so it
+    // sits vertically centered against transportCluster's taller round buttons instead of being squashed to fit.
+    loadWrap.setPreferredSize(new Dimension(trailingWidth, load.getPreferredSize().height));
+    loadWrap.setMaximumSize(new Dimension(trailingWidth, Integer.MAX_VALUE));
+    loadWrap.add(load);
+    controls.add(loadWrap);
     panel.add(controls);
-    panel.add(javax.swing.Box.createVerticalStrut(26));
+    panel.add(javax.swing.Box.createVerticalStrut(10));
+    // Playlist/search cluster gets its own row directly under the transport controls, instead of crowding that
+    // row — it was wrapping to two lines once this cluster grew past a few buttons. Left-aligned, starting at
+    // the same x as the transport cluster's own left edge (the matching leading strut below), not right-aligned
+    // under Load a Track — reads as grouped with the controls above it rather than orphaned under the far-right
+    // Load a Track button.
+    JPanel playlistRow = new JPanel(); playlistRow.setLayout(new javax.swing.BoxLayout(playlistRow, javax.swing.BoxLayout.X_AXIS));
+    playlistRow.setOpaque(false); playlistRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+    playlistRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+    JPanel playlistWrap = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 6, 0)); playlistWrap.setOpaque(false);
+    playlistWrap.add(playlistLabel); playlistWrap.add(savePlaylistButton); playlistWrap.add(loadPlaylistButton); playlistWrap.add(searchButton);
+    playlistRow.add(javax.swing.Box.createHorizontalStrut(trailingWidth));
+    playlistRow.add(playlistWrap);
+    playlistRow.add(javax.swing.Box.createHorizontalGlue());
+    panel.add(playlistRow);
+    panel.add(javax.swing.Box.createVerticalStrut(16));
     JPanel modesCluster = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0)); modesCluster.setOpaque(false);
     shuffleButton.addActionListener(e -> { shuffle = !shuffle; shuffleButton.setOn(shuffle); shuffleNextCacheIndex = Integer.MIN_VALUE; updateQueueUI(); }); modesCluster.add(shuffleButton); modesCluster.add(javax.swing.Box.createHorizontalStrut(20));
     // Cycles OFF -> ONE -> ALL -> OFF. setOn() (the button's existing binary gradient fill) tracks "not OFF", and
@@ -1697,12 +1821,25 @@ public final class CDPlayer extends JFrame {
     });
     modesCluster.add(repeatButton);
     clearQueueButton.addActionListener(e -> clearQueue());
-    JPanel modes = new JPanel(new BorderLayout()); modes.setOpaque(false); modes.setAlignmentX(Component.LEFT_ALIGNMENT);
+    // Same BoxLayout + glue construction as controls above, and the same reasoning: modesCluster capped at its
+    // own preferred size so it can't be handed extra room, leaving glue to absorb any slack or shortfall instead
+    // of BorderLayout's CENTER silently squeezing modesCluster's FlowLayout into wrapping.
+    modesCluster.setMaximumSize(modesCluster.getPreferredSize());
+    JPanel modes = new JPanel(); modes.setLayout(new javax.swing.BoxLayout(modes, javax.swing.BoxLayout.X_AXIS));
+    modes.setOpaque(false); modes.setAlignmentX(Component.LEFT_ALIGNMENT);
     modes.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40)); // see controls' setMaximumSize above
-    modes.add(modesCluster, BorderLayout.CENTER);
-    JPanel clearWrap = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0)); clearWrap.setOpaque(false);
-    clearWrap.setPreferredSize(new Dimension(trailingWidth, 1)); clearWrap.add(clearQueueButton);
-    modes.add(clearWrap, BorderLayout.EAST);
+    modes.add(javax.swing.Box.createHorizontalStrut(trailingWidth));
+    modes.add(javax.swing.Box.createHorizontalGlue());
+    modes.add(modesCluster);
+    modes.add(javax.swing.Box.createHorizontalGlue());
+    // hgap must match loadWrap's (6, not 0) — FlowLayout reserves hgap as trailing padding even for a single
+    // component, so a mismatched hgap here was leaving CLEAR QUEUE's right edge a few px off from LOAD A TRACK's,
+    // even though both wraps are given the exact same trailingWidth.
+    JPanel clearWrap = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 6, 0)); clearWrap.setOpaque(false);
+    clearWrap.setPreferredSize(new Dimension(trailingWidth, clearQueueButton.getPreferredSize().height));
+    clearWrap.setMaximumSize(new Dimension(trailingWidth, Integer.MAX_VALUE));
+    clearWrap.add(clearQueueButton);
+    modes.add(clearWrap);
     panel.add(modes);
     panel.add(javax.swing.Box.createVerticalStrut(18));
     // Crossfade now lives in the Settings dialog (see buildSettingsPanel) — it's a set-once preference, not
@@ -1739,6 +1876,7 @@ public final class CDPlayer extends JFrame {
     // queueList isn't a Scrollable, so the default per-notch unit increment is a sluggish 1px; scale it to roughly one row (18px row + 3px gap) per notch.
     queueScroll.getVerticalScrollBar().setUnitIncrement(21);
     queueScroll.getVerticalScrollBar().setBlockIncrement(126);
+    queueScroll.getVerticalScrollBar().setUI(new GreyScrollBarUI());
     queueCard.add(javax.swing.Box.createVerticalStrut(8)); queueCard.add(queueScroll);
     panel.add(queueCard);
     return panel;
@@ -1869,8 +2007,9 @@ public final class CDPlayer extends JFrame {
       eastPanel.add(closeButton, "close");
       row.add(entry, BorderLayout.CENTER); row.add(eastPanel, BorderLayout.EAST);
       row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); row.setToolTipText("Play " + queueDisplay(f));
+      entry.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
       queueRows.add(new QueueRowUI(entry, eastCards, eastPanel, index));
-      row.addMouseListener(new java.awt.event.MouseAdapter() {
+      java.awt.event.MouseAdapter rowMouseHandler = new java.awt.event.MouseAdapter() {
         // Only plays the track if this press/release didn't turn into a drag — dragMoved is set the instant the
         // gesture crosses the swap threshold below, so a real reorder never also fires a play.
         public void mouseClicked(java.awt.event.MouseEvent e) { if (!dragMoved) { queueIndex = index; load(f); } }
@@ -1900,11 +2039,11 @@ public final class CDPlayer extends JFrame {
           if (row.getMousePosition() != null) return;
           clearHoveredQueueRow(index);
         }
-      });
+      };
       // Reorders by swapping with a neighbor every time the drag crosses one row's height, rebuilding the list
       // immediately for live feedback — simpler and more robust than a floating "ghost row" drag visual, and this
       // codebase has no drag-and-drop infrastructure elsewhere to build on.
-      row.addMouseMotionListener(new java.awt.event.MouseMotionAdapter() {
+      java.awt.event.MouseMotionAdapter rowDragHandler = new java.awt.event.MouseMotionAdapter() {
         public void mouseDragged(java.awt.event.MouseEvent e) {
           if (draggingIndex < 0) return;
           int nowY = e.getYOnScreen();
@@ -1924,7 +2063,15 @@ public final class CDPlayer extends JFrame {
             updateQueueUI();
           }
         }
-      });
+      };
+      row.addMouseListener(rowMouseHandler);
+      row.addMouseMotionListener(rowDragHandler);
+      // Also on the label, not just the row: Swing delivers a click (or drag-start press) to the single deepest
+      // component under the cursor and does NOT bubble it up automatically, so without this, clicking or starting
+      // a drag directly on the track name (the label, which — via BorderLayout.CENTER — spans nearly the whole
+      // row) would silently do nothing.
+      entry.addMouseListener(rowMouseHandler);
+      entry.addMouseMotionListener(rowDragHandler);
       queueList.add(row);
       if (i < queue.size() - 1) queueList.add(javax.swing.Box.createVerticalStrut(3));
     }
@@ -3006,6 +3153,33 @@ public final class CDPlayer extends JFrame {
     }
   }
 
+  /**
+   * A flat, neutral-grey scrollbar (no arrow buttons, transparent track, a rounded grey thumb) applied to every
+   * JScrollPane in the app — the system Look and Feel's default scrollbar otherwise renders with its own accent
+   * color and a light track that clashes with this app's uniformly dark theme backgrounds.
+   */
+  private static final class GreyScrollBarUI extends BasicScrollBarUI {
+    protected void configureScrollBarColors() { /* deliberately empty — colors are hardcoded directly in paintThumb/paintTrack below instead of relying on the *Color fields this would otherwise set, since we also skip the arrow buttons and default track painting entirely */ }
+    protected JButton createDecreaseButton(int orientation) { return zeroSizeButton(); }
+    protected JButton createIncreaseButton(int orientation) { return zeroSizeButton(); }
+    private JButton zeroSizeButton() {
+      JButton button = new JButton();
+      button.setPreferredSize(new Dimension(0, 0));
+      button.setMinimumSize(new Dimension(0, 0));
+      button.setMaximumSize(new Dimension(0, 0));
+      return button;
+    }
+    protected void paintTrack(Graphics g, javax.swing.JComponent c, java.awt.Rectangle trackBounds) { /* transparent — nothing to paint */ }
+    protected void paintThumb(Graphics raw, javax.swing.JComponent c, java.awt.Rectangle thumbBounds) {
+      if (thumbBounds.isEmpty() || !c.isEnabled()) return;
+      Graphics2D g = (Graphics2D) raw.create();
+      g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      g.setColor(new Color(150, 150, 150, 130));
+      int inset = 2;
+      g.fillRoundRect(thumbBounds.x + inset, thumbBounds.y + inset, thumbBounds.width - inset * 2, thumbBounds.height - inset * 2, 8, 8);
+      g.dispose();
+    }
+  }
   private static class AccentSliderUI extends BasicSliderUI {
     AccentSliderUI(JSlider slider) { super(slider); }
     public void paintTrack(Graphics raw) { Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON); int y = trackRect.y + trackRect.height / 2 - 1; g.setColor(new Color(255,255,255,18)); g.fillRoundRect(trackRect.x, y, trackRect.width, 3, 3, 3); int fill = thumbRect.x + thumbRect.width / 2 - trackRect.x; g.setPaint(new GradientPaint(trackRect.x, y, ACCENT, trackRect.x + Math.max(1, fill), y, ACCENT2)); g.fillRoundRect(trackRect.x, y, Math.max(0, fill), 3, 3, 3); g.dispose(); }
@@ -3173,22 +3347,41 @@ public final class CDPlayer extends JFrame {
   }
 
   /**
-   * Hosts the Settings card as a full-window overlay layer (added to contentStack, see createContent) instead of
-   * a separate JDialog. A separate top-level window doesn't reliably layer above either the OS's native
-   * fullscreen (opens on an entirely different Space) or this app's own exclusive GraphicsDevice fullscreen
-   * (didn't appear at all). Being a plain component in the same window sidesteps both: it's always positioned
-   * and painted correctly relative to the main window's current bounds, fullscreen or not.
-   * Non-modal by design (matching the previous JDialog's own non-modal flag): contains() only reports true over
-   * the card's own bounds, so clicks anywhere else on the overlay pass through to whatever's beneath it, exactly
-   * like the original dialog let the main window stay interactive while open.
+   * Hosts a card (Settings/Lyrics/EQ/History/Search) as a full-window overlay layer (added to contentStack, see
+   * createContent) instead of a separate JDialog. A separate top-level window doesn't reliably layer above either
+   * the OS's native fullscreen (opens on an entirely different Space) or this app's own exclusive GraphicsDevice
+   * fullscreen (didn't appear at all). Being a plain component in the same window sidesteps both: it's always
+   * positioned and painted correctly relative to the main window's current bounds, fullscreen or not.
+   * Modal: sized to fill the whole contentStack (see getMaximumSize()) and paints a dimmed backdrop behind the
+   * card, so it's the topmost thing hit-tested everywhere in the window while open, not just over the card
+   * itself. This used to be deliberately non-modal instead (contains() reported true only over the card, so a
+   * click anywhere else on the overlay fell through to whatever was beneath it — matching the original JDialog's
+   * non-modal flag), but the card routinely sits close enough to real transport/queue controls in the main
+   * window (confirmed via screen recording: Settings' own rows sit directly beside the live Skip Forward 15s /
+   * Load a Track / queue buttons, fully exposed) that a click meant for the card, or just outside it, could land
+   * on and trigger a real control in the player behind it instead. A click on the dimmed backdrop is simply
+   * absorbed (there's no listener on this panel at all, so it does nothing) rather than closing the panel —
+   * that was tried first (matching ThemeMenuOverlay's click-outside-to-dismiss), but the backdrop still shows
+   * the dimmed app underneath, so it doesn't read as "outside" the panel — closing on a click there felt like
+   * clicking blank space inside Settings randomly closed it.
    */
-  /** Generic centered fadeable-card overlay — reused as-is for both Settings and the lyrics panel (see lyricsOverlay/showLyrics), since neither one needs anything the other doesn't already have. */
   private static final class CenteredOverlay extends JPanel {
     final FadeableCard card = new FadeableCard();
-    CenteredOverlay() { setOpaque(false); setLayout(new GridBagLayout()); add(card); }
-    public boolean contains(int x, int y) {
-      java.awt.Point p = SwingUtilities.convertPoint(this, x, y, card);
-      return card.contains(p);
+    CenteredOverlay() {
+      // Deliberately NOT opaque, even though paintComponent() always fully covers its own bounds: marking it
+      // opaque triggers a Swing paint optimization that skips repainting whatever's underneath an opaque
+      // component — exactly what contentStack's own isOptimizedDrawingEnabled() override (see createContent) is
+      // there to prevent for ITS overlapping children, but that override doesn't reach this deep; the visible
+      // effect was the dimmed backdrop coming out fully opaque black instead of translucent over the app.
+      setOpaque(false); setLayout(new GridBagLayout()); add(card);
+    }
+    // Forces OverlayLayout to stretch this to the full contentStack size (its natural preferred size, from
+    // GridBagLayout wrapping just the card, would otherwise only be as big as the card) — that's what makes the
+    // backdrop actually cover the whole window instead of just a tight box around the card.
+    public Dimension getMaximumSize() { return new Dimension(Short.MAX_VALUE, Short.MAX_VALUE); }
+    protected void paintComponent(Graphics g) {
+      g.setColor(new Color(0, 0, 0, 140));
+      g.fillRect(0, 0, getWidth(), getHeight());
     }
   }
 
