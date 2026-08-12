@@ -14,7 +14,7 @@ CDPlayer is a Java desktop app that recreates the tactile feel of a physical CD 
 - Full queue management: drag-and-drop, drag-to-reorder, shuffle, repeat, crossfade, volume, mono downmix, and per-track removal — queue is saved automatically and restored next launch
 - Ten built-in themes — nine animated ones plus AUTO, which derives its whole palette from the current track's own album art
 - A sleep timer that pauses playback after a set time, with a live countdown in the header
-- A menu bar / system tray mini-player — closing the main window keeps CDPlayer running with playback controllable from the tray, instead of quitting
+- A 10-band graphic equalizer with built-in and savable custom presets, and a beat-synced visualizer
 - True fullscreen, and a dedicated Settings dialog for theme/crossfade/mono
 - Automatic metadata and album art, with an online lookup fallback when a file has none
 - Works on Windows, macOS, and Linux
@@ -42,9 +42,10 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - Adjustable crossfade (0–15s) using an equal-power fade curve so the transition doesn't dip in volume — only kicks in when the queue naturally advances to the next track, never when you manually pick a different one
 - Volume slider with near-instant gain control, correctly blended into an in-progress crossfade instead of fighting it
 - Mono audio toggle — sums left/right channels together, useful for a single speaker or one earbud
+- A 10-band graphic **Equalizer** (31Hz–16kHz), tucked into Settings, with 8 built-in presets (Bass Boost, Treble Boost, Vocal, Rock, Pop, Classical, Electronic, Flat) plus your own — adjust any band, save or delete named presets, right from the panel (the presets list scrolls once you've saved a few)
+- The seek bar can show the track's real amplitude shape instead of a plain line, so quiet and loud passages are visible at a glance — toggle it on/off in Settings
 - True fullscreen (`F` to enter, `Esc` to exit) that hides the OS menu bar/dock, not just a resized window
 - Keyboard shortcuts: `Space` / `K` play-pause, `J` / `L` previous/next track, `←` / `→` skip 15 seconds
-- A menu bar (system tray) icon shows the current track as its tooltip and offers Play/Pause, Previous/Next, and Show/Quit from a right-click menu — closing the main window hides it instead of quitting, so playback keeps going; Quit (from the tray, or the OS's own Cmd+Q/dock menu) is what actually exits
 
 **Queue**
 - Full queue list with per-track duration, click-to-play, and a hover-to-reveal remove (×) button
@@ -52,20 +53,22 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - One-click **Clear Queue** button, disabled automatically when there's nothing to clear
 - "Up next" preview and live queue position (e.g. `QUEUE 3 / 10`)
 - The queue, current track, and exact playback position are all saved when you close the app and restored next launch — resumes right where you left off, ready to play but not auto-started
-- Save the current queue as a standard `.m3u` playlist file, or load one back in — from Settings, order preserved exactly as saved
+- Save the current queue as a standard `.m3u` playlist file, or load one back in — next to **Load a Track**, order preserved exactly as saved
+- A **Search** button (also next to Load a Track) recursively scans your whole last-used music folder by filename, filtering live as you type, so you can find and add a track without digging through folders
 
 **Now playing**
 - Spinning disc animation inside a jewel-case backdrop, with your album art on the disc label and case thumbnail
-- Live audio visualizer that reacts to the actual decoded waveform, not a fake animation — its shape changes with the active theme (see below)
+- Live audio visualizer that reacts to the actual decoded waveform, not a fake animation — its shape changes with the active theme (see below), and pulses on detected beats (broadband energy vs. its own rolling average) for a genuinely beat-synced feel
 - Metadata display (artist, title, album) read from the file's tags, with the filename as a fallback
 - Embedded album art extraction, with automatic iTunes/Deezer cover lookup when a file has none
 - A **Lyrics** button appears whenever the current track has embedded lyrics, opening a panel that follows the track — for LRC-timed lyrics, the current line highlights and auto-scrolls in sync with playback, karaoke-style; otherwise it's a plain scrollable read
+- A **History** button in the header opens Recently Played — your last 50 tracks, most recent first, each one click away from playing again or adding back to the queue
 
 **Settings**
-- A dedicated Settings dialog (opened from the header) holds the Theme picker, Crossfade slider, Sleep Timer, Mono Audio toggle, and an Animations toggle, keeping the main screen focused on playback
+- A dedicated Settings dialog (opened from the header) holds the Theme picker, Equalizer, Crossfade slider, Sleep Timer, Mono Audio toggle, Waveform toggle, and an Animations toggle, keeping the main screen focused on playback
 - Sleep Timer pauses playback after a set number of minutes (up to 120); once armed it shows a live countdown in the header, which you can click at any time to cancel it
 - Fully live: switching themes updates the dialog's own colors immediately, even while it's open
-- Volume, crossfade, mono audio, the animations preference, and your last-used theme all persist across launches instead of resetting to defaults
+- Volume, crossfade, mono audio, the waveform and animations preferences, your equalizer settings, and your last-used theme all persist across launches instead of resetting to defaults
 - A GitHub link at the bottom (icon + username) opens the project author's profile in your browser
 
 **Motion**
