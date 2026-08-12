@@ -253,8 +253,13 @@ public final class CDPlayer extends JFrame {
       catch (Exception ignored) { }
       CDPlayer player = new CDPlayer();
       player.setVisible(true);
+      // Captured before showOnboardingIfNeeded() runs, since that call itself creates ONBOARDING_FLAG_FILE the
+      // moment a fresh-install user dismisses the welcome dialog — checking it afterward would see it as
+      // "existing" even on a brand new install. showChangelogIfNeeded() needs the true before-state to tell a
+      // real returning user apart from someone who just installed for the first time.
+      boolean existingInstall = ONBOARDING_FLAG_FILE.isFile();
       player.showOnboardingIfNeeded();
-      player.showChangelogIfNeeded();
+      player.showChangelogIfNeeded(existingInstall);
     });
   }
 
@@ -561,17 +566,20 @@ public final class CDPlayer extends JFrame {
   };
   /**
    * Shows a "what's new" dialog the first time this version is launched, by comparing APP_VERSION against
-   * whatever version was last recorded in LAST_VERSION_FILE. Says nothing on a first-ever install (or on an
-   * existing install's first launch after this feature itself shipped, since there's no prior recorded version
-   * to diff against either way) — it just silently records the current version so the NEXT update has something
-   * to compare against. The version is only recorded once the dialog is actually dismissed (mirroring
-   * markOnboarded()'s timing), so a crash before that leaves it showing again next launch instead of silently
-   * marking a changelog the user never actually saw.
+   * whatever version was last recorded in LAST_VERSION_FILE. Says nothing on a genuinely fresh install — the
+   * welcome dialog already covers that moment, and there's nothing to call "new" yet. But a returning user
+   * updating from a build that predates this feature entirely (LAST_VERSION_FILE was never written by any
+   * version they've run, since it didn't exist yet) still needs to see it — that's what existingInstall is for:
+   * without it, that very first upgrade past this feature's introduction would be silently swallowed exactly
+   * like a fresh install, which is the bug a Windows user actually hit (installed the new build over an old one,
+   * no changelog appeared, because their machine had never had LAST_VERSION_FILE at all). The version is only
+   * recorded once the dialog is actually dismissed (mirroring markOnboarded()'s timing), so a crash before that
+   * leaves it showing again next launch instead of silently marking a changelog the user never actually saw.
    */
-  private void showChangelogIfNeeded() {
+  private void showChangelogIfNeeded(boolean existingInstall) {
     String lastVersion = readLastVersion();
-    if (lastVersion == null) { writeLastVersion(APP_VERSION); return; }
     if (APP_VERSION.equals(lastVersion)) return;
+    if (lastVersion == null && !existingInstall) { writeLastVersion(APP_VERSION); return; } // truly fresh install — nothing to show as "new"
     ChangelogEntry entry = null;
     for (ChangelogEntry candidate : CHANGELOG) if (candidate.version.equals(APP_VERSION)) { entry = candidate; break; }
     if (entry == null) { writeLastVersion(APP_VERSION); return; } // no entry written for this version yet — don't show an empty dialog, just stop asking
