@@ -3,8 +3,8 @@
 CDPlayer is a Java desktop app that recreates the tactile feel of a physical CD player for local audio playback. Load a track, press play, and enjoy a simple, distraction-free music experience without relying on a browser or web app — no accounts, no streaming, no internet required to play a song.
 
 <p align="center">
-  <img src="assets/screenshots/main-red-theme-3.png" width="49%" alt="CDPlayer main window, RED theme, playing a track">
-  <img src="assets/screenshots/main-snow-theme-3.png" width="49%" alt="CDPlayer main window, SNOW theme with falling snow overlay">
+  <img src="assets/screenshots/main-red-theme-4.png" width="49%" alt="CDPlayer main window, RED theme, playing a track">
+  <img src="assets/screenshots/main-snow-theme-4.png" width="49%" alt="CDPlayer main window, SNOW theme with falling snow overlay">
 </p>
 
 ## About
@@ -63,7 +63,11 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - Embedded album art extraction, with automatic iTunes/Deezer cover lookup when a file has none
 - A **Lyrics** button appears whenever the current track has embedded lyrics, opening a panel that follows the track — for LRC-timed lyrics, the current line highlights and auto-scrolls in sync with playback, karaoke-style; otherwise it's a plain scrollable read
 - A **History** button in the header opens Recently Played — your last 50 tracks, most recent first, each one click away from playing again or adding back to the queue
-- **CD view** (`C`, or the header button) hides everything but the spinning disc — enlarged — and the header divider for a distraction-free "now playing" look; press `C` or `Esc` again to bring the rest of the UI back
+- **CD view** (`C`, or the header button) hides everything but the spinning disc — enlarged — and the header divider for a distraction-free "now playing" look, with the title and artist centered underneath and a crossfade transition in and out; press `C` or `Esc` again to bring the rest of the UI back
+
+<p align="center">
+  <img src="assets/screenshots/cd-view-1.png" width="70%" alt="CDPlayer CD view, showing just the enlarged spinning disc with the track title and artist below it">
+</p>
 
 **Settings**
 - A dedicated Settings dialog (opened from the header) holds the Theme picker, Equalizer, Crossfade slider, Sleep Timer, Mono Audio toggle, Waveform toggle, and an Animations toggle, keeping the main screen focused on playback
@@ -77,7 +81,7 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - An **Animations** toggle in Settings turns all of it off at once for anyone who prefers a completely static UI
 
 <p align="center">
-  <img src="assets/screenshots/settings-dialog-4.png" width="70%" alt="CDPlayer Settings dialog showing Theme, Crossfade, Mono Audio, and Animations controls">
+  <img src="assets/screenshots/settings-dialog-5.png" width="70%" alt="CDPlayer Settings dialog showing Theme, Equalizer, Crossfade, Sleep Timer, Mono Audio, Waveform, and Animations controls">
 </p>
 
 **Themes**
