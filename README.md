@@ -96,6 +96,7 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 
 **First launch**
 - A one-time welcome dialog covers drag-and-drop, keyboard shortcuts, themes, the FFmpeg requirement, and queue persistence — shown once, then never again
+- After an update, the first launch of the new version shows a "What's New" dialog with that release's changes — shown once per version, not on a fresh install
 
 ## Quick Start
 

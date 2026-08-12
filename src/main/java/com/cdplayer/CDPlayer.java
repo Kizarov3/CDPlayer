@@ -203,6 +203,10 @@ public final class CDPlayer extends JFrame {
   private static final Pattern DEEZER_COVER = Pattern.compile("\\\"cover_xl\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
   private static final File QUEUE_STATE_FILE = new File(System.getProperty("user.home"), ".cdplayer/queue.txt");
   private static final File ONBOARDING_FLAG_FILE = new File(System.getProperty("user.home"), ".cdplayer/onboarded");
+  // Bumped by hand alongside CHANGELOG below whenever a build ships — also what's passed to jpackage's
+  // --app-version at build time, so the two stay in sync.
+  private static final String APP_VERSION = "1.9.0";
+  private static final File LAST_VERSION_FILE = new File(System.getProperty("user.home"), ".cdplayer/lastversion.txt");
   private static final File LAST_PATH_FILE = new File(System.getProperty("user.home"), ".cdplayer/lastpath.txt");
   private static final File SETTINGS_FILE = new File(System.getProperty("user.home"), ".cdplayer/settings.txt");
   private static final File EQ_PRESETS_FILE = new File(System.getProperty("user.home"), ".cdplayer/eq-presets.txt");
@@ -250,6 +254,7 @@ public final class CDPlayer extends JFrame {
       CDPlayer player = new CDPlayer();
       player.setVisible(true);
       player.showOnboardingIfNeeded();
+      player.showChangelogIfNeeded();
     });
   }
 
@@ -513,6 +518,115 @@ public final class CDPlayer extends JFrame {
       row.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
       JLabel dot = new JLabel("●"); dot.setForeground(ACCENT2); dot.setFont(new Font("SansSerif", Font.PLAIN, 9)); dot.setVerticalAlignment(SwingConstants.TOP); dot.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
       JLabel text = new JLabel("<html><body style='width:340px'>" + tip + "</body></html>");
+      text.setForeground(TEXT); text.setFont(new Font("SansSerif", Font.PLAIN, 12));
+      row.add(dot, BorderLayout.WEST); row.add(text, BorderLayout.CENTER);
+      card.add(row);
+      card.add(javax.swing.Box.createVerticalStrut(10));
+    }
+    card.add(javax.swing.Box.createVerticalStrut(8));
+
+    JButton gotIt = textButton("GOT IT");
+    gotIt.addActionListener(e -> dialog.dispose());
+    JPanel buttonRow = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0));
+    buttonRow.setOpaque(false);
+    buttonRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+    buttonRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+    buttonRow.add(gotIt);
+    card.add(buttonRow);
+    return card;
+  }
+
+  /** One release's worth of changelog bullets, keyed by version so showChangelogIfNeeded() can look up exactly the entry matching APP_VERSION regardless of array order. */
+  private static final class ChangelogEntry {
+    final String version; final String[] changes;
+    ChangelogEntry(String version, String... changes) { this.version = version; this.changes = changes; }
+  }
+  // Newest first. Add one entry here whenever APP_VERSION bumps — showChangelogDialog() only ever displays the
+  // entry matching the CURRENT version, not the whole history, so older entries are kept only as a record (and
+  // in case a future "full changelog" view wants them), not because they're ever shown together.
+  private static final ChangelogEntry[] CHANGELOG = {
+    new ChangelogEntry("1.9.0",
+      "<b>CD view</b> (press C, or the header button) hides everything but an enlarged, spinning disc for a distraction-free look, with a crossfade transition and the track's title and author centered underneath",
+      "The artist's name now shows under the track title in the main view too, not just in the queue",
+      "AUTO theme colors (and the disc's own gradient) are noticeably more accurate now for covers where the real color is a small detail on an otherwise gray or white image, like a logo on a black-and-white photo",
+      "Fixed the queue not advancing to the next track when Repeat All was on and playback reached the end",
+      "Various memory and layout fixes under the hood"
+    ),
+    new ChangelogEntry("1.8.0",
+      "A <b>History</b> button and a recursive library <b>Search</b>, both new in the header",
+      "The seek bar can now show the track's real waveform shape instead of a plain line (toggle in Settings)",
+      "Playlist controls (Save / Load / Search) moved next to Load a Track for a cleaner layout",
+      "Settings and other panels are now properly modal — clicks no longer leak through to the player behind them"
+    ),
+  };
+  /**
+   * Shows a "what's new" dialog the first time this version is launched, by comparing APP_VERSION against
+   * whatever version was last recorded in LAST_VERSION_FILE. Says nothing on a first-ever install (or on an
+   * existing install's first launch after this feature itself shipped, since there's no prior recorded version
+   * to diff against either way) — it just silently records the current version so the NEXT update has something
+   * to compare against. The version is only recorded once the dialog is actually dismissed (mirroring
+   * markOnboarded()'s timing), so a crash before that leaves it showing again next launch instead of silently
+   * marking a changelog the user never actually saw.
+   */
+  private void showChangelogIfNeeded() {
+    String lastVersion = readLastVersion();
+    if (lastVersion == null) { writeLastVersion(APP_VERSION); return; }
+    if (APP_VERSION.equals(lastVersion)) return;
+    ChangelogEntry entry = null;
+    for (ChangelogEntry candidate : CHANGELOG) if (candidate.version.equals(APP_VERSION)) { entry = candidate; break; }
+    if (entry == null) { writeLastVersion(APP_VERSION); return; } // no entry written for this version yet — don't show an empty dialog, just stop asking
+    showChangelogDialog(entry);
+  }
+  private static String readLastVersion() {
+    try {
+      if (!LAST_VERSION_FILE.isFile()) return null;
+      String content = new String(java.nio.file.Files.readAllBytes(LAST_VERSION_FILE.toPath()), StandardCharsets.UTF_8).trim();
+      return content.isEmpty() ? null : content;
+    } catch (Exception ignored) { return null; }
+  }
+  private static void writeLastVersion(String version) {
+    try {
+      File parent = LAST_VERSION_FILE.getParentFile();
+      if (parent != null) parent.mkdirs();
+      java.nio.file.Files.write(LAST_VERSION_FILE.toPath(), version.getBytes(StandardCharsets.UTF_8));
+    } catch (Exception ignored) { /* best-effort; worst case the changelog just shows again next launch */ }
+  }
+  private void showChangelogDialog(ChangelogEntry entry) {
+    javax.swing.JDialog dialog = new javax.swing.JDialog(this, true);
+    dialog.setUndecorated(true);
+    dialog.setContentPane(buildChangelogCard(dialog, entry));
+    dialog.getRootPane().setBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 40), 1));
+    dialog.pack();
+    dialog.setLocationRelativeTo(this);
+    javax.swing.JRootPane root = dialog.getRootPane();
+    root.getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW).put(javax.swing.KeyStroke.getKeyStroke("ESCAPE"), "closeChangelog");
+    root.getActionMap().put("closeChangelog", new javax.swing.AbstractAction() { public void actionPerformed(ActionEvent e) { dialog.dispose(); } });
+    dialog.addWindowListener(new java.awt.event.WindowAdapter() { public void windowClosed(java.awt.event.WindowEvent e) { writeLastVersion(APP_VERSION); } });
+    dialog.setVisible(true); // blocks (modal) until the dialog is dismissed via the button or Escape
+  }
+  private JPanel buildChangelogCard(javax.swing.JDialog dialog, ChangelogEntry entry) {
+    JPanel card = new JPanel();
+    card.setLayout(new javax.swing.BoxLayout(card, javax.swing.BoxLayout.Y_AXIS));
+    card.setBackground(CARD);
+    card.setOpaque(true);
+    card.setBorder(BorderFactory.createEmptyBorder(30, 34, 26, 34));
+
+    JLabel title = label("WHAT'S NEW", 18, ACCENT);
+    title.setAlignmentX(Component.LEFT_ALIGNMENT);
+    card.add(title);
+    card.add(javax.swing.Box.createVerticalStrut(6));
+    JLabel subtitle = label("CDPlayer " + entry.version, 11, MUTED);
+    subtitle.setAlignmentX(Component.LEFT_ALIGNMENT);
+    card.add(subtitle);
+    card.add(javax.swing.Box.createVerticalStrut(20));
+
+    for (String change : entry.changes) {
+      JPanel row = new JPanel(new BorderLayout(10, 0));
+      row.setOpaque(false);
+      row.setAlignmentX(Component.LEFT_ALIGNMENT);
+      row.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+      JLabel dot = new JLabel("●"); dot.setForeground(ACCENT2); dot.setFont(new Font("SansSerif", Font.PLAIN, 9)); dot.setVerticalAlignment(SwingConstants.TOP); dot.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
+      JLabel text = new JLabel("<html><body style='width:340px'>" + change + "</body></html>");
       text.setForeground(TEXT); text.setFont(new Font("SansSerif", Font.PLAIN, 12));
       row.add(dot, BorderLayout.WEST); row.add(text, BorderLayout.CENTER);
       card.add(row);
