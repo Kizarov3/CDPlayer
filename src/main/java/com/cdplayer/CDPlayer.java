@@ -1596,11 +1596,22 @@ public final class CDPlayer extends JFrame {
       lines.setOpaque(false);
       lines.setLayout(new javax.swing.BoxLayout(lines, javax.swing.BoxLayout.Y_AXIS));
       lyricsLineLabels = new ArrayList<JLabel>();
-      for (LyricLine ll : currentLyricLines) {
+      for (int i = 0; i < currentLyricLines.size(); i++) {
+        LyricLine ll = currentLyricLines.get(i);
+        final int lineIndex = i;
         JLabel lbl = new JLabel(ll.text.isEmpty() ? " " : ll.text);
         lbl.setForeground(MUTED); lbl.setFont(new Font("SansSerif", Font.PLAIN, 13));
         lbl.setAlignmentX(Component.LEFT_ALIGNMENT);
         lbl.setBorder(BorderFactory.createEmptyBorder(3, 0, 3, 0));
+        lbl.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        // Click-to-seek: jump playback straight to this line's own timestamp. The hover tint is guarded by
+        // "not the currently-playing line" so it can't fight with updateLyricsSync()'s own ACCENT/BOLD styling
+        // for whichever line that ticks to next — this only ever touches lines it isn't already highlighting.
+        lbl.addMouseListener(new java.awt.event.MouseAdapter() {
+          public void mouseClicked(java.awt.event.MouseEvent e) { seekTo(ll.micros); }
+          public void mouseEntered(java.awt.event.MouseEvent e) { if (lineIndex != lyricsHighlightIndex) lbl.setForeground(TEXT); }
+          public void mouseExited(java.awt.event.MouseEvent e) { if (lineIndex != lyricsHighlightIndex) lbl.setForeground(MUTED); }
+        });
         lyricsLineLabels.add(lbl);
         lines.add(lbl);
       }
@@ -2864,7 +2875,17 @@ public final class CDPlayer extends JFrame {
       if (customEqPresets.get(i).name.equals(name)) { customEqPresets.remove(i); saveCustomEqPresets(); return; }
     }
   }
-  private void seek(int seconds) { if (player == null) return; long target = Math.max(0, Math.min(player.getMicrosecondLength(), player.getMicrosecondPosition() + seconds * 1_000_000L)); player.setMicrosecondPosition(target); long duration = player.getMicrosecondLength(); progress.setValue(duration == 0 ? 0 : (int) (target * 1000 / duration)); elapsed.setText(format(target)); if (lyricsOverlay != null && lyricsOverlay.isVisible()) updateLyricsSync(); }
+  private void seek(int seconds) { if (player == null) return; seekTo(player.getMicrosecondPosition() + seconds * 1_000_000L); }
+  /** Absolute-position counterpart to seek()'s relative offset — shared tail logic (clamp, apply, sync the progress bar/elapsed label/lyrics highlight) factored out so click-to-seek on a lyric line can jump straight to that line's timestamp instead of stepping by a fixed number of seconds. */
+  private void seekTo(long micros) {
+    if (player == null) return;
+    long duration = player.getMicrosecondLength();
+    long target = Math.max(0, Math.min(duration, micros));
+    player.setMicrosecondPosition(target);
+    progress.setValue(duration == 0 ? 0 : (int) (target * 1000 / duration));
+    elapsed.setText(format(target));
+    if (lyricsOverlay != null && lyricsOverlay.isVisible()) updateLyricsSync();
+  }
   private void tick(ActionEvent event) {
     if (player == null || adjusting) return;
     long duration = player.getMicrosecondLength(); long position = player.getMicrosecondPosition();
@@ -4219,10 +4240,31 @@ public final class CDPlayer extends JFrame {
     void setEqCardReference(Component card) { this.eqCardRef = card; }
     void setHistoryCardReference(Component card) { this.historyCardRef = card; }
     void setSearchCardReference(Component card) { this.searchCardRef = card; }
-    private void excludeIfShowing(java.awt.geom.Area clip, Component c) {
-      if (c == null || !c.isShowing()) return;
-      java.awt.Rectangle bounds = SwingUtilities.convertRectangle(c.getParent(), c.getBounds(), this);
-      clip.subtract(new java.awt.geom.Area(bounds));
+    private java.awt.Rectangle boundsIfShowing(Component c) {
+      if (c == null || !c.isShowing()) return null;
+      return SwingUtilities.convertRectangle(c.getParent(), c.getBounds(), this);
+    }
+    // Area boolean subtraction (used to punch the disc/open-card rectangles out of the particle paint clip below)
+    // runs general polygon algebra internally and measured as meaningfully more expensive than the actual particle
+    // drawing itself, especially on non-Mac Java2D backends — rebuilding it from scratch on every single paint
+    // (up to ~30x/second while a theme's particles are animating) was pure waste on every frame where nothing
+    // being excluded had actually moved, which is the overwhelming majority of frames during normal playback.
+    // Cached here and only rebuilt when the window size or any tracked component's bounds has actually changed.
+    private java.awt.geom.Area cachedClip;
+    private int cachedClipW = -1, cachedClipH = -1;
+    private final java.awt.Rectangle[] cachedExcluded = new java.awt.Rectangle[7];
+    private java.awt.geom.Area buildClip() {
+      int w = getWidth(), h = getHeight();
+      java.awt.Rectangle[] current = {
+        boundsIfShowing(discRef), boundsIfShowing(settingsCardRef), boundsIfShowing(themeMenuRef),
+        boundsIfShowing(lyricsCardRef), boundsIfShowing(eqCardRef), boundsIfShowing(historyCardRef), boundsIfShowing(searchCardRef)
+      };
+      if (cachedClip != null && cachedClipW == w && cachedClipH == h && java.util.Arrays.equals(current, cachedExcluded)) return cachedClip;
+      java.awt.geom.Area clip = new java.awt.geom.Area(new java.awt.Rectangle(0, 0, w, h));
+      for (java.awt.Rectangle r : current) if (r != null) clip.subtract(new java.awt.geom.Area(r));
+      cachedClip = clip; cachedClipW = w; cachedClipH = h;
+      System.arraycopy(current, 0, cachedExcluded, 0, current.length);
+      return clip;
     }
     void setMode(Mode value) {
       if (mode == value) return;
@@ -4302,21 +4344,20 @@ public final class CDPlayer extends JFrame {
     }
     protected void paintComponent(Graphics raw) {
       if (mode == Mode.NONE) return;
-      Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-      // Subtracts the disc's (and, if open, the Settings card's) current on-screen rectangle from this layer's
-      // paint clip, so particles/the OCEAN band never render over them — without needing either to actually sit
-      // in a higher paint layer than this glass pane (which nothing can, short of another glass-pane-like
-      // mechanism). Recomputed fresh each paint rather than cached: it's cheap arithmetic, and correctly tracks
-      // both across window resizes for free.
-      java.awt.geom.Area clip = new java.awt.geom.Area(new java.awt.Rectangle(0, 0, getWidth(), getHeight()));
-      excludeIfShowing(clip, discRef);
-      excludeIfShowing(clip, settingsCardRef);
-      excludeIfShowing(clip, themeMenuRef);
-      excludeIfShowing(clip, lyricsCardRef);
-      excludeIfShowing(clip, eqCardRef);
-      excludeIfShowing(clip, historyCardRef);
-      excludeIfShowing(clip, searchCardRef);
-      g.setClip(clip);
+      Graphics2D g = (Graphics2D) raw.create();
+      // AA on for every mode except MATRIX: the other four modes draw filled ovals/lines, where antialiasing is
+      // both cheap and visibly worth it, but MATRIX draws up to ~800 individual glyphs a frame (140 columns x a
+      // 10-glyph trail), and antialiased text rasterization is a comparatively expensive Java2D path — measured
+      // as the single largest cost in this whole overlay on a Windows box (non-Mac Java2D text rendering doesn't
+      // get the same hardware-accelerated glyph path Quartz gives it on macOS). Skipping AA here isn't just
+      // faster, it's arguably more authentic too — the blocky, unsmoothed digits read closer to the actual
+      // "Matrix" credits effect than a softened one would.
+      g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, mode == Mode.MATRIX ? RenderingHints.VALUE_ANTIALIAS_OFF : RenderingHints.VALUE_ANTIALIAS_ON);
+      // Punches the disc's (and any open card's) current on-screen rectangle out of this layer's paint clip, so
+      // particles/the OCEAN band never render over them — without needing either to actually sit in a higher
+      // paint layer than this glass pane (which nothing can, short of another glass-pane-like mechanism). See
+      // buildClip() for why this is cached rather than rebuilt from scratch on every single paint.
+      g.setClip(buildClip());
       switch (mode) {
         case SNOW: paintSnow(g); break;
         case OCEAN: paintOcean(g); break;
@@ -4452,6 +4493,25 @@ public final class CDPlayer extends JFrame {
     void setOnCoverChanged(Runnable callback) { this.onCoverChanged = callback; }
     void setLookingUp(boolean value) { lookingUp = value; repaint(); }
 
+    // Raw cover art (embedded tags, or an iTunes/Deezer lookup result) can be a few thousand pixels across, and
+    // scaling that down to a ~100px label/thumbnail via drawImage's own interpolation is a genuinely expensive
+    // Java2D path — the disc repaints on a 16ms timer while playing, so redoing that scale unconditionally on
+    // every single frame (up to 120 scale operations/sec across the two spots below) was pure waste on every
+    // frame where the cover and target size hadn't actually changed since the last one, which is the
+    // overwhelming majority of frames. Each spot caches its own pre-scaled bitmap, keyed by (source image,
+    // target size), and just blits it 1:1 (a plain, cheap texture copy) the rest of the time.
+    private BufferedImage labelCoverCache; private int labelCoverCacheSize = -1; private BufferedImage labelCoverCacheSource;
+    private BufferedImage thumbCoverCache; private int thumbCoverCacheSize = -1; private BufferedImage thumbCoverCacheSource;
+    private static BufferedImage rescaleCover(BufferedImage source, int size) {
+      BufferedImage scaled = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+      Graphics2D sg = scaled.createGraphics();
+      sg.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+      sg.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+      sg.drawImage(source, 0, 0, size, size, null);
+      sg.dispose();
+      return scaled;
+    }
+
     // Easter egg: double-click the disc and it lifts partway out of the case, tilts, holds briefly, then settles
     // back — like swapping it for a different CD. onEjectPeak (if set) fires once per cycle, right as it reaches
     // full lift (the start of the hold phase, before it starts coming back down), so the caller can swap the
@@ -4495,7 +4555,14 @@ public final class CDPlayer extends JFrame {
       if (cover != null) {
         int thumb = Math.round(side * 0.193f); // proportional to the disc, not a flat 58px — otherwise the thumbnail stayed tiny next to the much bigger disc in CD view (see setEnlarged)
         g.setColor(new Color(0, 0, 0, 120)); g.fillRoundRect(caseX + 14, caseY + 14, thumb, thumb, 6, 6);
-        g.drawImage(cover, caseX + 17, caseY + 17, thumb - 6, thumb - 6, null);
+        int thumbImgSize = thumb - 6;
+        if (thumbImgSize > 0) {
+          if (thumbCoverCache == null || thumbCoverCacheSize != thumbImgSize || thumbCoverCacheSource != cover) {
+            if (thumbCoverCache != null) thumbCoverCache.flush();
+            thumbCoverCache = rescaleCover(cover, thumbImgSize); thumbCoverCacheSize = thumbImgSize; thumbCoverCacheSource = cover;
+          }
+          g.drawImage(thumbCoverCache, caseX + 17, caseY + 17, null);
+        }
         g.setColor(ACCENT2); g.setStroke(new BasicStroke(1.2f)); g.drawRoundRect(caseX + 16, caseY + 16, thumb - 4, thumb - 4, 5, 5);
       }
 
@@ -4543,10 +4610,14 @@ public final class CDPlayer extends JFrame {
       int labelSize = side / 3, labelX = centerX - labelSize / 2, labelY = centerY - labelSize / 2;
       g.setColor(new Color(20, 21, 28));
       g.fillOval(labelX, labelY, labelSize, labelSize);
-      if (cover != null) {
+      if (cover != null && labelSize > 0) {
         java.awt.Shape oldClip = g.getClip();
         g.setClip(new Ellipse2D.Double(labelX, labelY, labelSize, labelSize));
-        g.drawImage(cover, labelX, labelY, labelSize, labelSize, null);
+        if (labelCoverCache == null || labelCoverCacheSize != labelSize || labelCoverCacheSource != cover) {
+          if (labelCoverCache != null) labelCoverCache.flush();
+          labelCoverCache = rescaleCover(cover, labelSize); labelCoverCacheSize = labelSize; labelCoverCacheSource = cover;
+        }
+        g.drawImage(labelCoverCache, labelX, labelY, null);
         g.setClip(oldClip);
       } else if (lookingUp) {
         g.setColor(new Color(255, 255, 255, 130)); g.setFont(new Font("SansSerif", Font.BOLD, Math.max(8, side / 32)));
