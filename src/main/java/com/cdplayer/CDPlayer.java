@@ -205,7 +205,7 @@ public final class CDPlayer extends JFrame {
   private static final File ONBOARDING_FLAG_FILE = new File(System.getProperty("user.home"), ".cdplayer/onboarded");
   // Bumped by hand alongside CHANGELOG below whenever a build ships — also what's passed to jpackage's
   // --app-version at build time, so the two stay in sync.
-  private static final String APP_VERSION = "1.9.0";
+  private static final String APP_VERSION = "1.9.1";
   private static final File LAST_VERSION_FILE = new File(System.getProperty("user.home"), ".cdplayer/lastversion.txt");
   private static final File LAST_PATH_FILE = new File(System.getProperty("user.home"), ".cdplayer/lastpath.txt");
   private static final File SETTINGS_FILE = new File(System.getProperty("user.home"), ".cdplayer/settings.txt");
@@ -332,18 +332,36 @@ public final class CDPlayer extends JFrame {
     restoreQueueState();
   }
 
+  /**
+   * True while any of the modal-ish overlays (Settings/Lyrics/EQ/History/Search, or the theme picker menu) is
+   * open — every player-control key binding below (LEFT/RIGHT/SPACE/K/J/L/F/C) checks this first and no-ops if
+   * it's true. These overlays already block mouse clicks to the player behind them (see CenteredOverlay's full-
+   * window backdrop), but that never touched keyboard shortcuts: WHEN_IN_FOCUSED_WINDOW bindings fire purely
+   * because the window has focus, with no awareness of what's currently drawn on top of it — so pressing Space
+   * (or J/L, F, C, the arrows...) while Settings was open would still play/pause, skip tracks, or toggle
+   * fullscreen/CD view underneath it. ESCAPE is deliberately NOT gated by this — it's what closes these overlays
+   * in the first place, via its own priority chain below.
+   */
+  private boolean anyOverlayOpen() {
+    return (themeMenuOverlay != null && themeMenuOverlay.isVisible())
+        || (lyricsOverlay != null && lyricsOverlay.isVisible())
+        || (eqOverlay != null && eqOverlay.isVisible())
+        || (historyOverlay != null && historyOverlay.isVisible())
+        || (searchOverlay != null && searchOverlay.isVisible())
+        || (settingsOverlay != null && settingsOverlay.isVisible());
+  }
   private void bindKeys() {
     javax.swing.JRootPane root = getRootPane();
     javax.swing.InputMap inputMap = root.getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW);
     javax.swing.ActionMap actionMap = root.getActionMap();
-    bindKey(inputMap, actionMap, "LEFT", "skipBack15", e -> seek(-15));
-    bindKey(inputMap, actionMap, "RIGHT", "skipForward15", e -> seek(15));
-    bindKey(inputMap, actionMap, "SPACE", "togglePlaySpace", e -> toggle());
-    bindKey(inputMap, actionMap, "K", "togglePlayK", e -> toggle());
-    bindKey(inputMap, actionMap, "J", "previousTrackJ", e -> previousTrack());
-    bindKey(inputMap, actionMap, "L", "nextTrackL", e -> nextTrack());
-    bindKey(inputMap, actionMap, "F", "toggleFullscreen", e -> toggleFullscreen());
-    bindKey(inputMap, actionMap, "C", "toggleCdView", e -> toggleCdView());
+    bindKey(inputMap, actionMap, "LEFT", "skipBack15", e -> { if (!anyOverlayOpen()) seek(-15); });
+    bindKey(inputMap, actionMap, "RIGHT", "skipForward15", e -> { if (!anyOverlayOpen()) seek(15); });
+    bindKey(inputMap, actionMap, "SPACE", "togglePlaySpace", e -> { if (!anyOverlayOpen()) toggle(); });
+    bindKey(inputMap, actionMap, "K", "togglePlayK", e -> { if (!anyOverlayOpen()) toggle(); });
+    bindKey(inputMap, actionMap, "J", "previousTrackJ", e -> { if (!anyOverlayOpen()) previousTrack(); });
+    bindKey(inputMap, actionMap, "L", "nextTrackL", e -> { if (!anyOverlayOpen()) nextTrack(); });
+    bindKey(inputMap, actionMap, "F", "toggleFullscreen", e -> { if (!anyOverlayOpen()) toggleFullscreen(); });
+    bindKey(inputMap, actionMap, "C", "toggleCdView", e -> { if (!anyOverlayOpen()) toggleCdView(); });
     // Closest-thing-open takes priority: the theme menu, then Settings, then CD view, then fullscreen. Both
     // overlays are plain in-window components (not separate JDialog/JPopupMenu windows — see
     // showSettingsDialog/showThemeMenu), so this single WHEN_IN_FOCUSED_WINDOW binding on the main frame handles
@@ -563,6 +581,10 @@ public final class CDPlayer extends JFrame {
   // entry matching the CURRENT version, not the whole history, so older entries are kept only as a record (and
   // in case a future "full changelog" view wants them), not because they're ever shown together.
   private static final ChangelogEntry[] CHANGELOG = {
+    new ChangelogEntry("1.9.1",
+      "Fixed keyboard shortcuts (Space, J/L, the arrows, F, C) still controlling playback, skipping tracks, or toggling fullscreen/CD view while Settings or another panel was open on top",
+      "Fixed this What's New dialog not appearing on some upgrades"
+    ),
     new ChangelogEntry("1.9.0",
       "<b>CD view</b> (press C, or the header button) hides everything but an enlarged, spinning disc for a distraction-free look, with a crossfade transition and the track's title and author centered underneath",
       "The artist's name now shows under the track title in the main view too, not just in the queue",
