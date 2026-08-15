@@ -1086,8 +1086,16 @@ public final class CDPlayer extends JFrame {
       int totalPop = 0; for (int[] c : box) totalPop += c[3];
       int cumulative = 0, cut = box.size() - 1;
       for (int i = 0; i < box.size(); i++) { cumulative += box.get(i)[3]; if (cumulative >= totalPop / 2) { cut = i; break; } }
+      // The population-weighted median can legitimately land on the very last sorted color — common for real
+      // photos, where one shade can dominate a box's pixel count heavily enough that cumulative population
+      // doesn't cross the halfway point until the last entry. That used to leave `right` empty and abort
+      // quantization ENTIRELY right there (not just skip this one box), starving the scorer down to whatever
+      // handful of swatches existed at that point — the actual bug behind a real cover producing an
+      // unexpectedly poor/wrong AUTO color. Since box.size() >= 2 here (checked above), pulling the cut back by
+      // one always leaves at least one color on each side, so this box can always be split successfully instead
+      // of derailing every other box still waiting its turn.
+      if (cut >= box.size() - 1) cut = box.size() - 2;
       List<int[]> right = new ArrayList<int[]>(box.subList(cut + 1, box.size()));
-      if (right.isEmpty()) break; // degenerate split (every color in the box is identical on this channel) — stop rather than loop forever
       boxes.set(splitIndex, new ArrayList<int[]>(box.subList(0, cut + 1)));
       boxes.add(right);
     }
@@ -1152,34 +1160,49 @@ public final class CDPlayer extends JFrame {
       int stepX = Math.max(1, w / gridSize), stepY = Math.max(1, h / gridSize);
       Map<Integer, Integer> colorCounts = new HashMap<Integer, Integer>();
       float[] hsb = new float[3];
+      int totalSamples = 0, qualifyingSamples = 0;
       for (int y = 0; y < h; y += stepY) {
         for (int x = 0; x < w; x += stepX) {
+          totalSamples++;
           int rgb = cover.getRGB(x, y) & 0xFFFFFF;
           Color.RGBtoHSB((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, hsb);
-          // 0.30: disqualifies low-chroma pixels from the candidate pool outright, the same way
-          // material-color-utilities' own scoring step "filters out non-pleasant colors" — a merely-abundant
-          // muddy/dull region (a dim photo backdrop, say) should never be able to out-total a real accent color
-          // regardless of how much of the frame it covers, which just down-weighting it can't fully guarantee.
-          if (hsb[1] < 0.30f || hsb[2] < 0.12f || hsb[2] > 0.95f) continue;
+          // 0.20: disqualifies only genuinely low-chroma (gray/washed-out) pixels from the candidate pool, the
+          // same way material-color-utilities' own scoring step "filters out non-pleasant colors" — a merely
+          // abundant muddy/gray region (a dim photo backdrop, say) shouldn't be able to out-total a real accent
+          // color. Kept lower than an earlier 0.30 cut: plenty of legitimate, human-recognizable dominant colors
+          // (a natural forest/olive green background, for instance) sit around sat 0.2-0.35, and excluding that
+          // whole band crippled the actual dominant color's counted population, letting an unrelated smaller but
+          // more-saturated detail (a logo, a warm highlight) win by default — the scoring step below, not this
+          // floor, is what should be doing the "prefer vivid" work. On its own, though, this per-pixel floor
+          // isn't enough to catch a genuinely black-and-white photo: a handful of borderline off-white/sepia
+          // pixels (scan noise, JPEG compression artifacts near edges) can still clear 0.20 even though the
+          // photo as a whole has no real color in it — see the qualifyingSamples share check below.
+          if (hsb[1] < 0.20f || hsb[2] < 0.12f || hsb[2] > 0.95f) continue;
+          qualifyingSamples++;
           colorCounts.merge(rgb, 1, Integer::sum);
         }
       }
-      if (!colorCounts.isEmpty()) {
+      // A real colored cover has color across a meaningful chunk of its sampled pixels, not just a stray few
+      // percent of them — a black-and-white photo that happens to have a handful of warm-tinted pixels clear
+      // the per-pixel floor above should still read as monochrome overall rather than let those few pixels pick
+      // an accent color for the whole thing.
+      if (!colorCounts.isEmpty() && qualifyingSamples >= totalSamples * 0.05) {
         List<Swatch> swatches = quantizeMedianCut(colorCounts, 16);
-        // Score each quantized swatch by population * saturation^2, not linear saturation: squaring makes a
-        // smaller genuinely-vivid swatch able to outscore a larger but comparatively duller one instead of just
-        // narrowing the gap between them, the same "let the vivid stuff win" bias applied consistently
-        // throughout this method (e.g. a swatch covering 20% of the image at sat 0.85 scores 0.2*0.85^2=0.144,
-        // beating one covering 80% at sat 0.35 scoring 0.8*0.35^2=0.098, where linear weighting would have the
-        // muddier, merely-more-abundant swatch win instead: 0.2*0.85=0.17 vs 0.8*0.35=0.28).
+        // Score each quantized swatch by population * saturation^1.5 — enough of a boost that a smaller
+        // genuinely-vivid swatch can still outscore a larger but comparatively duller one (a 20%-population
+        // sat-0.85 accent still beats an 80%-population sat-0.35 muddy backdrop: 0.2*0.85^1.5=0.157 vs
+        // 0.8*0.35^1.5=0.166 — close, tunable, but the point is population isn't steamrolled), while not being
+        // so aggressive (as a straight square was) that an ordinary, moderately-saturated but legitimately
+        // dominant color — a real album cover's actual background, say — loses to a small, incidentally
+        // more-saturated detail like a logo or a warm highlight that a person wouldn't pick as "the" color.
         List<double[]> scored = new ArrayList<double[]>(); // each entry: {score, hue, sat, population}
         double totalPopulation = 0;
         for (Swatch sw : swatches) {
           float[] swHsb = new float[3];
           Color.RGBtoHSB((sw.rgb >> 16) & 0xFF, (sw.rgb >> 8) & 0xFF, sw.rgb & 0xFF, swHsb);
           totalPopulation += sw.population;
-          if (swHsb[1] < 0.30f) continue; // a box's population-weighted average color can land back below the floor even though every pixel that fed it individually passed it
-          double score = sw.population * (double) swHsb[1] * swHsb[1];
+          if (swHsb[1] < 0.20f) continue; // a box's population-weighted average color can land back below the floor even though every pixel that fed it individually passed it
+          double score = sw.population * Math.pow(swHsb[1], 1.5);
           scored.add(new double[] { score, swHsb[0], swHsb[1], sw.population });
         }
         if (!scored.isEmpty()) {
@@ -1208,12 +1231,14 @@ public final class CDPlayer extends JFrame {
           sat = 0.05f;
         }
       } else {
-        // Cover exists but scanning found essentially no real color in it — true black-and-white/grayscale art,
-        // not the "no cover loaded yet" case the hue/sat defaults above are actually for. Left as those
-        // defaults, this rendered a hardcoded blue-purple gradient on genuinely monochrome covers (a Linkin
-        // Park cover that's just black silhouettes on white came out looking tinted blue, with nothing in the
-        // art to justify it). Near-zero saturation renders as light gray/silver regardless of hue, matching
-        // what's actually there instead of inventing a color that isn't.
+        // Cover exists but scanning found essentially no real color in it — either no pixel cleared the
+        // saturation floor at all, or (qualifyingSamples check above) only a stray handful did, not enough to
+        // call the cover "colored" as a whole. True black-and-white/grayscale art, not the "no cover loaded
+        // yet" case the hue/sat defaults above are actually for. Left as those defaults, this rendered a
+        // hardcoded blue-purple gradient on genuinely monochrome covers (a Linkin Park cover that's just black
+        // silhouettes on white came out looking tinted blue/orange, with nothing in the art to justify it).
+        // Near-zero saturation renders as light gray/silver regardless of hue, matching what's actually there
+        // instead of inventing a color that isn't.
         monochrome = true;
         sat = 0.05f;
       }
