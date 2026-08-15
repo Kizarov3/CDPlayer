@@ -301,6 +301,12 @@ public final class CDPlayer extends JFrame {
     disc.setOnCoverChanged(this::onCoverChanged);
     setDropTarget(new DropTarget(this, new DropTargetAdapter() {
       @SuppressWarnings("unchecked") public void drop(DropTargetDropEvent event) {
+        // DropTarget is registered on the frame itself, not on any particular component — unlike a mouse click
+        // (which the modal overlays' full-window backdrop already blocks via ordinary Swing z-order hit-
+        // testing), a file drop bypasses that entirely and would still reach here and queue/play a track even
+        // with Settings or another panel open on top of it. Rejecting it here is the drag-and-drop equivalent
+        // of the click-blocking backdrop those overlays already have.
+        if (anyOverlayOpen()) { event.rejectDrop(); return; }
         try {
           event.acceptDrop(event.getDropAction());
           List<File> files = (List<File>) event.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
@@ -1039,88 +1045,186 @@ public final class CDPlayer extends JFrame {
     Theme fresh = refreshAutoTheme();
     animateThemeColors(new Color[] { fresh.bg, fresh.card, fresh.accent, fresh.accent2, fresh.text, fresh.muted });
   }
+  /** A representative color from quantizing a piece of art, and how much of the sampled image it covers. */
+  private static final class Swatch {
+    final int rgb; final int population;
+    Swatch(int rgb, int population) { this.rgb = rgb; this.population = population; }
+  }
   /**
-   * Derives a full theme palette from a piece of album art: buckets sampled pixels into hue bins — skipping
-   * near-gray/near-black/near-white ones so a mostly-white or mostly-black cover doesn't wash things out — and
-   * picks the bin that carries the most actual *color*, not just the most pixels. Every pixel's contribution to
-   * its bin (both the bin's weight and its hue-averaging vector) is scaled by that pixel's own saturation, so a
-   * small but vivid detail — a logo, a splash of color on an otherwise grayscale band photo — can out-weigh a
-   * much larger area of weakly-tinted pixels instead of being outvoted by sheer pixel count. The result is built
-   * with the same recipe as the hand-picked themes above — near-black BG, a slightly lighter CARD, a vivid
-   * ACCENT, a lighter/desaturated ACCENT2, near-white TEXT, mid-gray MUTED — just parameterized by the extracted
-   * hue/saturation instead of fixed per theme. Falls back to a neutral blue when there's no cover yet, or it
-   * turns out to be essentially colorless (e.g. black-and-white art) — deriveAutoTheme always returns a usable
-   * Theme, never null.
+   * Median-cut color quantization: repeatedly splits whichever color box currently holds the most pixels along
+   * its widest-ranging RGB channel, at the population-weighted median, until maxSwatches boxes remain — each
+   * then collapsed to its population-weighted average color. This groups pixels by genuine color similarity
+   * (RGB proximity), which a hue-only histogram (this method's previous approach) can't: two colors sharing a
+   * hue but differing sharply in saturation or brightness — a dark maroon and a bright pink, say — get kept
+   * apart here, where pure hue-bucketing would lump them into the same bin regardless, and a real color
+   * cluster straddling a fixed hue-bucket boundary doesn't get its weight arbitrarily split across two
+   * neighbors the way it would there either. Modeled on the same idea as the Wu quantizer
+   * material-color-utilities uses (see its dev_guide/extracting_colors.md) — median-cut instead of Wu's exact
+   * variance-minimizing splits, since it's a well-established, considerably simpler algorithm to implement and
+   * verify correctly in a single dependency-free file, while solving the same "genuinely representative
+   * colors, not raw per-pixel tallying" problem.
+   */
+  private static List<Swatch> quantizeMedianCut(Map<Integer, Integer> colorCounts, int maxSwatches) {
+    List<List<int[]>> boxes = new ArrayList<List<int[]>>(); // each box: a list of {r, g, b, count} entries
+    List<int[]> initial = new ArrayList<int[]>();
+    for (Map.Entry<Integer, Integer> e : colorCounts.entrySet()) {
+      int rgb = e.getKey();
+      initial.add(new int[] { (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, e.getValue() });
+    }
+    boxes.add(initial);
+    while (boxes.size() < maxSwatches) {
+      int splitIndex = -1, splitPopulation = -1;
+      for (int i = 0; i < boxes.size(); i++) {
+        if (boxes.get(i).size() < 2) continue; // can't split a box down to just one distinct color any further
+        int pop = 0; for (int[] c : boxes.get(i)) pop += c[3];
+        if (pop > splitPopulation) { splitPopulation = pop; splitIndex = i; }
+      }
+      if (splitIndex < 0) break; // every remaining box is already a single color — nothing left worth splitting
+      List<int[]> box = boxes.get(splitIndex);
+      final int ch = widestChannel(box); // 0=R, 1=G, 2=B — whichever has the widest range of values in this box
+      box.sort((a, b) -> Integer.compare(a[ch], b[ch]));
+      int totalPop = 0; for (int[] c : box) totalPop += c[3];
+      int cumulative = 0, cut = box.size() - 1;
+      for (int i = 0; i < box.size(); i++) { cumulative += box.get(i)[3]; if (cumulative >= totalPop / 2) { cut = i; break; } }
+      List<int[]> right = new ArrayList<int[]>(box.subList(cut + 1, box.size()));
+      if (right.isEmpty()) break; // degenerate split (every color in the box is identical on this channel) — stop rather than loop forever
+      boxes.set(splitIndex, new ArrayList<int[]>(box.subList(0, cut + 1)));
+      boxes.add(right);
+    }
+    List<Swatch> result = new ArrayList<Swatch>();
+    for (List<int[]> box : boxes) {
+      long r = 0, g = 0, b = 0, pop = 0;
+      for (int[] c : box) { r += (long) c[0] * c[3]; g += (long) c[1] * c[3]; b += (long) c[2] * c[3]; pop += c[3]; }
+      if (pop == 0) continue;
+      int avgRgb = ((int) (r / pop) << 16) | ((int) (g / pop) << 8) | (int) (b / pop);
+      result.add(new Swatch(avgRgb, (int) pop));
+    }
+    return result;
+  }
+  private static int widestChannel(List<int[]> box) {
+    int minR = 255, maxR = 0, minG = 255, maxG = 0, minB = 255, maxB = 0;
+    for (int[] c : box) {
+      minR = Math.min(minR, c[0]); maxR = Math.max(maxR, c[0]);
+      minG = Math.min(minG, c[1]); maxG = Math.max(maxG, c[1]);
+      minB = Math.min(minB, c[2]); maxB = Math.max(maxB, c[2]);
+    }
+    int rangeR = maxR - minR, rangeG = maxG - minG, rangeB = maxB - minB;
+    if (rangeR >= rangeG && rangeR >= rangeB) return 0;
+    return rangeG >= rangeB ? 1 : 2;
+  }
+  /**
+   * Derives a full theme palette from a piece of album art, aiming for the same "vibrant accent, not the dull
+   * dominant color" pick Spotify's own now-playing background famously makes (e.g. pulling the deep red from a
+   * jacket instead of a photo's muddy greenish-brown backdrop, even though the backdrop covers far more of the
+   * frame) rather than just tallying whichever color happens to cover the most pixels. Structured the same way
+   * material-color-utilities documents doing this (see its dev_guide/extracting_colors.md): quantize the
+   * sampled pixels down to a small set of genuinely representative colors first (quantizeMedianCut, above),
+   * *then* score those candidates and explicitly disqualify low-chroma ones — instead of just tallying whichever
+   * raw color happens to cover the most pixels, or (this method's previous approach) bucketing purely by hue
+   * angle. Scores in HSB, not that project's actual HCT/CAM16 perceptual color space — full CAM16 conversion is
+   * real color science (view-condition-adapted matrices, not just a formula), and HSB saturation is a
+   * serviceable-enough stand-in for "how vivid does this look" for a single dependency-free file. The result is
+   * built with the same recipe as the hand-picked themes above — near-black BG, a slightly lighter CARD, a
+   * vivid ACCENT, a lighter/desaturated ACCENT2, near-white TEXT, mid-gray MUTED — just parameterized by the
+   * extracted hue/saturation instead of fixed per theme. Falls back to a neutral blue when there's no cover
+   * yet, or to a genuinely neutral gray/silver (not that same blue — see the monochrome branch below) when the
+   * cover turns out to have no real color in it at all (true black-and-white art) — deriveAutoTheme always
+   * returns a usable Theme, never null.
    */
   private static Theme deriveAutoTheme(BufferedImage cover) {
     float hue = 0.58f, sat = 0.55f;
-    // Set only when the art has a second dominant hue cluster clearly distinct from the first — lets the
+    // Set only when the art has a second dominant color cluster clearly distinct from the first — lets the
     // accent -> accent2 gradient (used throughout: buttons, the disc, the visualizer) reflect two real colors
     // actually present in the cover, instead of always being accent nudged by an arbitrary fixed hue offset
     // regardless of what the art looks like.
     Float hue2 = null;
+    // True once we know the cover is genuinely colorless (true black-and-white art, not just "no cover loaded
+    // yet") — see the two "no qualifying pixels/swatches" branches below for why that needs different handling
+    // than the placeholder hue/sat defaults above.
+    boolean monochrome = false;
     if (cover != null) {
-      final int bins = 24; // 15 degrees per bin — coarse enough to survive per-pixel noise, fine enough to separate genuinely different colors
-      double[] binWeight = new double[bins]; // sum of saturation, not a raw pixel count — see method doc
-      int[] binCount = new int[bins];
-      double[] binSin = new double[bins], binCos = new double[bins];
-      double[] binSatSum = new double[bins];
       int w = cover.getWidth(), h = cover.getHeight();
-      // 48, not 24: embedded/looked-up cover art is often a fairly small thumbnail, and a small colorful detail
-      // (a logo, a title in a colored font) sitting on an otherwise grayscale photo can fall entirely between
-      // grid points at 24 samples/axis and never get counted at all. Still cheap — 48x48 is at most ~2300
-      // samples, done once per track load/cover change, not per frame.
+      // 48, not fewer: embedded/looked-up cover art is often a fairly small thumbnail, and a small colorful
+      // detail (a logo, a jacket) sitting on an otherwise dull photo can fall entirely between grid points at a
+      // coarser sampling and never get counted at all. Still cheap — 48x48 is at most ~2300 samples, done once
+      // per track load/cover change, not per frame.
       int gridSize = 48;
       int stepX = Math.max(1, w / gridSize), stepY = Math.max(1, h / gridSize);
-      double totalWeight = 0;
+      Map<Integer, Integer> colorCounts = new HashMap<Integer, Integer>();
       float[] hsb = new float[3];
       for (int y = 0; y < h; y += stepY) {
         for (int x = 0; x < w; x += stepX) {
-          int rgb = cover.getRGB(x, y);
+          int rgb = cover.getRGB(x, y) & 0xFFFFFF;
           Color.RGBtoHSB((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, hsb);
-          if (hsb[1] < 0.15f || hsb[2] < 0.12f || hsb[2] > 0.95f) continue;
-          double weight = hsb[1]; // more saturated pixels count for more, both in bin weight and hue direction
-          double angle = hsb[0] * Math.PI * 2;
-          int bin = Math.min(bins - 1, (int) (hsb[0] * bins));
-          binWeight[bin] += weight; binCount[bin]++; binSatSum[bin] += hsb[1];
-          binSin[bin] += Math.sin(angle) * weight; binCos[bin] += Math.cos(angle) * weight;
-          totalWeight += weight;
+          // 0.30: disqualifies low-chroma pixels from the candidate pool outright, the same way
+          // material-color-utilities' own scoring step "filters out non-pleasant colors" — a merely-abundant
+          // muddy/dull region (a dim photo backdrop, say) should never be able to out-total a real accent color
+          // regardless of how much of the frame it covers, which just down-weighting it can't fully guarantee.
+          if (hsb[1] < 0.30f || hsb[2] < 0.12f || hsb[2] > 0.95f) continue;
+          colorCounts.merge(rgb, 1, Integer::sum);
         }
       }
-      if (totalWeight > 0) {
-        // The dominant hue is the most-saturation-weighted bin's own (weighted) hue, not a circular mean across
-        // every qualifying pixel — a whole-image mean washes out multi-color art into a blended, arbitrary hue
-        // that matches neither of its real colors (e.g. a 50/50 red-and-blue cover averaging out to magenta),
-        // while the bin approach picks up whichever color is actually dominant, and — see hue2 below — a second
-        // real color when the art has one.
-        int topBin = -1; double topWeight = 0;
-        for (int b = 0; b < bins; b++) if (binWeight[b] > topWeight) { topWeight = binWeight[b]; topBin = b; }
-        hue = (float) ((Math.atan2(binSin[topBin], binCos[topBin]) / (Math.PI * 2) + 1) % 1);
-        // The winning bin's OWN average saturation, not an average across every colorful pixel in the whole
-        // image: a vivid-but-small detail (this bin) shouldn't have its saturation diluted by unrelated, more
-        // weakly-tinted pixels elsewhere in the cover that didn't even vote for this hue.
-        sat = Math.max(0.45f, Math.min(0.92f, (float) (binSatSum[topBin] / binCount[topBin])));
-        // The runner-up bin, but only if it's both far enough from the dominant hue to read as a genuinely
-        // different color (not just noise scattered around the same one) and common enough to not be a
-        // handful of stray outlier pixels.
-        int bestBin = -1; double bestWeight = 0;
-        for (int b = 0; b < bins; b++) {
-          if (b == topBin || binCount[b] == 0) continue;
-          float binHue = (float) ((Math.atan2(binSin[b], binCos[b]) / (Math.PI * 2) + 1) % 1);
-          float diff = Math.abs(binHue - hue); if (diff > 0.5f) diff = 1f - diff; // circular distance
-          if (diff < 0.12f) continue;
-          if (binWeight[b] > bestWeight) { bestWeight = binWeight[b]; bestBin = b; }
+      if (!colorCounts.isEmpty()) {
+        List<Swatch> swatches = quantizeMedianCut(colorCounts, 16);
+        // Score each quantized swatch by population * saturation^2, not linear saturation: squaring makes a
+        // smaller genuinely-vivid swatch able to outscore a larger but comparatively duller one instead of just
+        // narrowing the gap between them, the same "let the vivid stuff win" bias applied consistently
+        // throughout this method (e.g. a swatch covering 20% of the image at sat 0.85 scores 0.2*0.85^2=0.144,
+        // beating one covering 80% at sat 0.35 scoring 0.8*0.35^2=0.098, where linear weighting would have the
+        // muddier, merely-more-abundant swatch win instead: 0.2*0.85=0.17 vs 0.8*0.35=0.28).
+        List<double[]> scored = new ArrayList<double[]>(); // each entry: {score, hue, sat, population}
+        double totalPopulation = 0;
+        for (Swatch sw : swatches) {
+          float[] swHsb = new float[3];
+          Color.RGBtoHSB((sw.rgb >> 16) & 0xFF, (sw.rgb >> 8) & 0xFF, sw.rgb & 0xFF, swHsb);
+          totalPopulation += sw.population;
+          if (swHsb[1] < 0.30f) continue; // a box's population-weighted average color can land back below the floor even though every pixel that fed it individually passed it
+          double score = sw.population * (double) swHsb[1] * swHsb[1];
+          scored.add(new double[] { score, swHsb[0], swHsb[1], sw.population });
         }
-        if (bestBin >= 0 && bestWeight >= totalWeight * 0.08) {
-          hue2 = (float) ((Math.atan2(binSin[bestBin], binCos[bestBin]) / (Math.PI * 2) + 1) % 1);
+        if (!scored.isEmpty()) {
+          scored.sort((a, b) -> Double.compare(b[0], a[0])); // highest score first
+          double[] best = scored.get(0);
+          hue = (float) best[1];
+          // The winning swatch's own saturation — already a genuinely representative color (quantizeMedianCut's
+          // population-weighted average of a cluster of similar pixels), not a raw per-pixel value, so unlike
+          // the old hue-bin approach this doesn't need a second saturation-weighting pass to avoid getting
+          // dragged down by weakly-tinted outliers. Floor kept at 0.6 for the same reason as before — an accent
+          // is supposed to read as "that color", not a hint of it.
+          sat = Math.max(0.6f, Math.min(0.95f, (float) best[2]));
+          // The runner-up swatch, but only if it's both far enough from the winner's hue to read as a genuinely
+          // different color (not just a slightly different shade of the same one) and common enough not to be a
+          // handful of stray outlier pixels.
+          for (int i = 1; i < scored.size(); i++) {
+            double[] cand = scored.get(i);
+            float diff = Math.abs((float) cand[1] - hue); if (diff > 0.5f) diff = 1f - diff; // circular distance
+            if (diff < 0.12f) continue;
+            if (cand[3] < totalPopulation * 0.08) continue;
+            hue2 = (float) cand[1];
+            break;
+          }
+        } else {
+          monochrome = true;
+          sat = 0.05f;
         }
+      } else {
+        // Cover exists but scanning found essentially no real color in it — true black-and-white/grayscale art,
+        // not the "no cover loaded yet" case the hue/sat defaults above are actually for. Left as those
+        // defaults, this rendered a hardcoded blue-purple gradient on genuinely monochrome covers (a Linkin
+        // Park cover that's just black silhouettes on white came out looking tinted blue, with nothing in the
+        // art to justify it). Near-zero saturation renders as light gray/silver regardless of hue, matching
+        // what's actually there instead of inventing a color that isn't.
+        monochrome = true;
+        sat = 0.05f;
       }
     }
     Color accent = Color.getHSBColor(hue, sat, 0.72f);
     // A genuinely second dominant color from the art when one clearly exists, otherwise the same small fixed hue
-    // nudge as before — still a tasteful two-tone gradient for largely monochrome covers.
+    // nudge as before — still a tasteful two-tone gradient for largely monochrome covers. Skipped for a
+    // genuinely monochrome cover (monochrome==true): the 0.25 floor below exists to keep accent2 from reading
+    // as flat gray on a *colorful* cover with low-but-real saturation, which would defeat the whole point here.
     float accent2Hue = hue2 != null ? hue2 : (hue + 0.06f) % 1f;
-    Color accent2 = Color.getHSBColor(accent2Hue, Math.max(0.25f, sat * 0.55f), 0.85f);
+    Color accent2 = Color.getHSBColor(accent2Hue, monochrome ? sat : Math.max(0.25f, sat * 0.55f), 0.85f);
     Color bg = Color.getHSBColor(hue, Math.min(0.55f, sat * 0.6f), 0.06f);
     Color card = Color.getHSBColor(hue, Math.min(0.5f, sat * 0.55f), 0.12f);
     Color text = Color.getHSBColor(hue, 0.04f, 0.93f);
@@ -2494,6 +2598,10 @@ public final class CDPlayer extends JFrame {
       SongDetails details = getSongDetails(file);
       String name = details.title;
       setTrackTitle(name, details.artist); source.setText("LOCAL AUDIO FILE · " + file.getName().substring(file.getName().lastIndexOf('.') + 1).toUpperCase());
+      // Mirrors what's playing in the window title, same idea as Spotify/most media apps — visible in the
+      // taskbar/dock even when the window itself isn't focused or is minimized, without needing any OS-level
+      // "now playing" API (see the earlier discussion on why that's out of scope: no native interop here).
+      setTitle((details.artist != null && !details.artist.trim().isEmpty() ? details.artist + " – " : "") + name);
       fadeInNowPlaying();
       length.setText(format(opened.getMicrosecondLength())); elapsed.setText("0:00"); progress.setValue(0); status.setText("●  TRACK LOADED");
       boolean canLookUp = details.embeddedCover == null && details.title != null && !details.title.trim().isEmpty();
@@ -2733,6 +2841,7 @@ public final class CDPlayer extends JFrame {
     if (player != null) { StreamPlayer closing = player; player = null; closing.close(); }
     deleteTemporaryAudio();
     setTrackTitle("Pick a track to get started.", null); source.setText("YOUR MUSIC LIBRARY");
+    setTitle("CDPlayer");
     elapsed.setText("0:00"); length.setText("0:00"); progress.setValue(0);
     disc.setCover(null); disc.setLookingUp(false); loadedFile = null; setPlaying(false);
     currentLyrics = null; lyricsButton.setVisible(false); refreshLyricsIfOpen();
@@ -3631,7 +3740,7 @@ public final class CDPlayer extends JFrame {
       int rowWidth = 0, rowHeight = 0, totalHeight = vgap;
       boolean firstInRow = true;
       for (Component c : getComponents()) {
-        if (!c.isVisible()) continue;
+        if (!c.isVisible()) continue; 
         Dimension d = c.getPreferredSize();
         if (!firstInRow && rowWidth + hgap + d.width > maxRowWidth) {
           totalHeight += rowHeight + vgap;
@@ -4577,15 +4686,6 @@ public final class CDPlayer extends JFrame {
       g.translate(centerX + ejectOffsetX, centerY + ejectOffsetY);
       g.scale(1.0, ejectSquish);
       g.translate(-centerX, -centerY);
-
-      // ambient glow ring, pulses while playing
-      if (spinning) {
-        double pulse = (Math.sin(angle * 3) + 1) / 2;
-        int glow = (int) (8 + pulse * 10);
-        g.setStroke(new BasicStroke(2f));
-        g.setColor(new Color(ACCENT2.getRed(), ACCENT2.getGreen(), ACCENT2.getBlue(), (int) (30 + pulse * 55)));
-        g.drawOval(x - glow, y - glow, side + glow * 2, side + glow * 2);
-      }
 
       // soft drop shadow beneath the disc
       g.setColor(new Color(0, 0, 0, 110));
