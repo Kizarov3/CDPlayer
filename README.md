@@ -55,13 +55,14 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - The queue, current track, and exact playback position are all saved when you close the app and restored next launch — resumes right where you left off, ready to play but not auto-started
 - Save the current queue as a standard `.m3u` playlist file, or load one back in — next to **Load a Track**, order preserved exactly as saved
 - A **Search** button (also next to Load a Track) recursively scans your whole last-used music folder by filename, filtering live as you type, so you can find and add a track without digging through folders
+- Paste a Spotify track or playlist link into Search to queue every matching song you already have locally — nothing is streamed from Spotify itself, it's just used to resolve the link to track names (playlist links need a one-time Spotify sign-in)
 
 **Now playing**
 - Spinning disc animation inside a jewel-case backdrop, with your album art on the disc label and case thumbnail
 - Live audio visualizer that reacts to the actual decoded waveform, not a fake animation — its shape changes with the active theme (see below), and pulses on detected beats (broadband energy vs. its own rolling average) for a genuinely beat-synced feel
 - Metadata display (artist, title, album) read from the file's tags, with the filename as a fallback
-- Embedded album art extraction, with automatic iTunes/Deezer cover lookup when a file has none
-- A **Lyrics** button appears whenever the current track has embedded lyrics, opening a panel that follows the track — for LRC-timed lyrics, the current line highlights and auto-scrolls in sync with playback, karaoke-style; otherwise it's a plain scrollable read
+- Embedded album art extraction, with automatic iTunes/Deezer/Spotify cover lookup when a file has none
+- A **Lyrics** button appears whenever the current track has embedded lyrics, or — automatically, no setup needed — a matching lyrics lookup on [lrclib.net](https://lrclib.net) succeeds for a track that doesn't. Opens a panel that follows the track: for LRC-timed lyrics (embedded or looked up), the current line highlights and auto-scrolls in sync with playback, karaoke-style, and clicking any line seeks playback straight to it; otherwise it's a plain scrollable read
 - A **History** button in the header opens Recently Played — your last 50 tracks, most recent first, each one click away from playing again or adding back to the queue
 - **CD view** (`C`, or the header button) hides everything but the spinning disc — enlarged — and the header divider for a distraction-free "now playing" look, with the title and artist centered underneath and a crossfade transition in and out; press `C` or `Esc` again to bring the rest of the UI back
 
@@ -157,8 +158,11 @@ If you downloaded a release archive, extract it and run the executable file insi
 
 ```bash
 javac -d out $(find src -name '*.java')
+cp src/main/java/com/cdplayer/icon.png out/com/cdplayer/icon.png
 java -cp out com.cdplayer.CDPlayer
 ```
+
+Or just run `./run.sh`, which does the same thing.
 
 ## Keyboard Shortcuts
 
