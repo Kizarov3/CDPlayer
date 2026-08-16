@@ -193,13 +193,21 @@ public final class CDPlayer extends JFrame {
   // FFT/frequency analysis, just broadband RMS energy (levels[] from computeLevels() is already that) compared
   // against its recent history. Transients (drum/bass hits) spike broadband energy anyway, so this reads as
   // genuinely beat-synced for most music without needing real spectral analysis.
-  private final double[] beatEnergyHistory = new double[24]; // ~1.7s of history at the 70ms tick rate
+  private final double[] beatEnergyHistory = new double[106]; // ~1.7s of history at the 16ms tick rate
   private int beatEnergyHistoryIndex;
   private double beatPulse; // 0..1, spikes to 1 on a detected beat and decays each tick; visualizer levels are boosted by this
+  // 0.15 per tick, rescaled from the original 70ms tick to this clock's current 16ms one (0.15 * 16/70) so the
+  // snap-and-fade pulse still fades over the same ~0.5s of real time instead of 4.4x faster.
+  private static final double BEAT_DECAY_PER_TICK = 0.15 * 16.0 / 70.0;
   private byte[] rawAudio;
   private AudioFormat audioFormat;
   private WaveformSliderUI waveformSliderUI;
-  private final Timer clock = new Timer(70, this::tick);
+  // 16ms (~60fps), not the original 70ms (~14fps): this timer drives the seek slider, elapsed-time label, and
+  // visualizer during ordinary playback — i.e. the bulk of actual time spent using the app — so 70ms visibly
+  // made the seek bar creep in discrete jumps and the visualizer/beat pulse look stepped rather than fluid.
+  // computeLevels() only samples a small ~90ms audio window each tick (a few thousand cheap RMS multiplies), so
+  // the extra calls at 4x the old rate cost microseconds, not milliseconds — nowhere near the 16ms budget.
+  private final Timer clock = new Timer(16, this::tick);
   private static final Pattern ITUNES_COVER = Pattern.compile("\\\"artworkUrl100\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
   private static final Pattern DEEZER_COVER = Pattern.compile("\\\"cover_xl\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
   private static final Pattern SPOTIFY_ACCESS_TOKEN = Pattern.compile("\\\"access_token\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
@@ -217,8 +225,8 @@ public final class CDPlayer extends JFrame {
   // (?:[^"\\]|\\.)* rather than [^"]* : lyrics text routinely contains escaped quotes and, far more importantly,
   // escaped newlines (\n) throughout — a naive "everything up to the next quote" match would stop at the first
   // escaped quote inside the lyrics themselves instead of the string's real closing quote.
-  private static final Pattern LRCLIB_SYNCED = Pattern.compile("\\\"syncedLyrics\\\"\\s*:\\s*\\\"((?:[^\\\"\\\\]|\\\\.)*)\\\"");
-  private static final Pattern LRCLIB_PLAIN = Pattern.compile("\\\"plainLyrics\\\"\\s*:\\s*\\\"((?:[^\\\"\\\\]|\\\\.)*)\\\"");
+  private static final Pattern LRCLIB_SYNCED_KEY = Pattern.compile("\\\"syncedLyrics\\\"\\s*:\\s*\\\"");
+  private static final Pattern LRCLIB_PLAIN_KEY = Pattern.compile("\\\"plainLyrics\\\"\\s*:\\s*\\\"");
   private static final File QUEUE_STATE_FILE = new File(System.getProperty("user.home"), ".cdplayer/queue.txt");
   private static final File ONBOARDING_FLAG_FILE = new File(System.getProperty("user.home"), ".cdplayer/onboarded");
   // Bumped by hand alongside CHANGELOG below whenever a build ships — also what's passed to jpackage's
@@ -422,6 +430,12 @@ public final class CDPlayer extends JFrame {
    * frozen "before" snapshot fading away to reveal the already-applied "after" state underneath gets a smooth
    * transition without any of that, the same trick FadeableCard already uses for the overlays.
    */
+  // Cap on the "before" snapshot's internal render resolution for the CD-view crossfade — see ThemeOverlay's own
+  // RENDER_CAP note for the underlying reasoning (painting, then repeatedly alpha-blending, a full-resolution
+  // image costs roughly proportional to its pixel count, which at a large/fullscreen window dwarfs a windowed
+  // one). Below the cap this is a no-op: scale ends up 1.0 and the snapshot is captured at native resolution,
+  // exactly as before.
+  private static final int CD_VIEW_SNAPSHOT_CAP = 1600;
   private void toggleCdView() {
     cdViewEnabled = !cdViewEnabled;
     if (!animationsEnabled) { applyCdViewState(); return; }
@@ -430,9 +444,12 @@ public final class CDPlayer extends JFrame {
     if (cdViewTransitionOverlay != null) { contentStack.remove(cdViewTransitionOverlay); cdViewTransitionOverlay.releaseSnapshot(); cdViewTransitionOverlay = null; } // clean up an interrupted previous transition, if "C" was pressed again mid-fade
 
     int w = Math.max(1, contentStack.getWidth()), h = Math.max(1, contentStack.getHeight());
-    BufferedImage before = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+    double snapshotScale = Math.min(1.0, CD_VIEW_SNAPSHOT_CAP / (double) Math.max(w, h));
+    int bw = Math.max(1, (int) Math.round(w * snapshotScale)), bh = Math.max(1, (int) Math.round(h * snapshotScale));
+    BufferedImage before = new BufferedImage(bw, bh, BufferedImage.TYPE_INT_ARGB);
     Graphics2D bg = before.createGraphics();
     bg.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+    bg.scale(snapshotScale, snapshotScale); // contentStack.paint() below still draws at its normal logical coordinates; this maps that down onto the (possibly capped, smaller) buffer
     contentStack.paint(bg);
     bg.dispose();
 
@@ -444,9 +461,9 @@ public final class CDPlayer extends JFrame {
     contentStack.add(overlay, 0);
     contentStack.validate();
 
-    final int steps = 14;
+    final int steps = 6;
     final int[] step = { 0 };
-    cdViewTransitionTimer = new Timer(14, null);
+    cdViewTransitionTimer = new Timer(8, null);
     cdViewTransitionTimer.addActionListener(e -> {
       step[0]++;
       float t = Math.min(1f, step[0] / (float) steps);
@@ -497,16 +514,34 @@ public final class CDPlayer extends JFrame {
    * native peer — the Java component tree (and all its listeners) survives that untouched, only the OS window
    * itself is torn down and rebuilt.
    */
+  // True exclusive GraphicsDevice fullscreen hands the whole display over to this app and bypasses the OS's own
+  // window compositor entirely (DWM on Windows) — measured directly (see the [perf] logging added while chasing a
+  // "feels slow in fullscreen" report) as costing far more per frame than the exact same content painted in a
+  // plain window: individual paintComponent costs stayed a few ms even at a 2560x1440 fullscreen size, yet a
+  // 150ms-budgeted animation was still taking 250-300ms wall-clock, wait time that never showed up inside any
+  // paintComponent timing — consistent with the swap/flip step itself, which exclusive mode owns directly instead
+  // of handing to DWM. Windows' own compositor already does the "borderless window covering the whole display,
+  // hiding the taskbar" job efficiently without an app needing to take over the display, so this only reaches for
+  // real exclusive mode on macOS, where it's still needed: macOS's menu bar is a system-level overlay that a
+  // regular window can't cover no matter its bounds. setAlwaysOnTop keeps the taskbar (itself kept topmost by the
+  // shell) from ending up above this window despite bounds matching it exactly.
+  private static final boolean IS_MAC = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("mac");
   private void toggleFullscreen() {
     java.awt.GraphicsDevice device = getGraphicsConfiguration().getDevice();
     if (!fullscreen) {
       preFullscreenBounds = getBounds();
       dispose();
       setUndecorated(true);
-      device.setFullScreenWindow(this);
+      if (IS_MAC) {
+        device.setFullScreenWindow(this);
+      } else {
+        setAlwaysOnTop(true);
+        setBounds(device.getDefaultConfiguration().getBounds());
+        setVisible(true);
+      }
       fullscreen = true;
     } else {
-      device.setFullScreenWindow(null);
+      if (IS_MAC) device.setFullScreenWindow(null); else setAlwaysOnTop(false);
       dispose();
       setUndecorated(false);
       if (preFullscreenBounds != null) setBounds(preFullscreenBounds);
@@ -514,6 +549,15 @@ public final class CDPlayer extends JFrame {
       fullscreen = false;
     }
     getRootPane().requestFocusInWindow(); // keyboard shortcuts live on the root pane's WHEN_IN_FOCUSED_WINDOW map
+    // themeOverlay (the glass pane) tracks the root pane's bounds automatically, but its particles' x/y positions
+    // were seeded (see ThemeOverlay.seed()) against whatever size was current back when the theme was switched on
+    // — usually the small windowed size, long before this. They do drift into any newly-exposed area on their own
+    // eventually (advance() reseeds a particle's x/y using the CURRENT width/height every time it wraps around),
+    // but that's a per-particle, one-at-a-time process spread over several fall cycles, so right after entering
+    // fullscreen the snow/etc. visibly stayed confined to the old window's rectangle instead of covering the
+    // screen. invokeLater, not immediate: setFullScreenWindow()'s bounds change isn't guaranteed to have already
+    // propagated through to getWidth()/getHeight() by the time this line runs.
+    SwingUtilities.invokeLater(() -> { getRootPane().revalidate(); themeOverlay.reseedForCurrentSize(); getRootPane().repaint(); });
   }
 
   private static void bindKey(javax.swing.InputMap inputMap, javax.swing.ActionMap actionMap, String key, String name, java.util.function.Consumer<ActionEvent> action) {
@@ -808,9 +852,9 @@ public final class CDPlayer extends JFrame {
     if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; card.repaint(); return; }
     card.beginTransformAnimation();
     card.opacity = 0f; card.scale = 0.9f;
-    final int steps = 10;
+    final int steps = 6;
     final int[] step = { 0 };
-    settingsAnimTimer = new Timer(12, null);
+    settingsAnimTimer = new Timer(8, null);
     settingsAnimTimer.addActionListener(e -> {
       step[0]++;
       float t = Math.min(1f, step[0] / (float) steps);
@@ -833,9 +877,9 @@ public final class CDPlayer extends JFrame {
     FadeableCard card = settingsOverlay.card;
     if (!animationsEnabled) { settingsOverlay.setVisible(false); card.opacity = 1f; card.scale = 1f; return; }
     card.beginTransformAnimation();
-    final int steps = 8;
+    final int steps = 5;
     final int[] step = { 0 };
-    settingsAnimTimer = new Timer(12, null);
+    settingsAnimTimer = new Timer(8, null);
     settingsAnimTimer.addActionListener(e -> {
       step[0]++;
       float t = Math.min(1f, step[0] / (float) steps);
@@ -1090,11 +1134,19 @@ public final class CDPlayer extends JFrame {
       applyThemeColors(); getContentPane().repaint(); refreshSettingsIfOpen(); updateQueueUI();
       return;
     }
-    int steps = 18;
-    int[] step = { 0 };
-    themeAnim = new Timer(16, e -> {
-      step[0]++;
-      float t = Math.min(1f, step[0] / (float) steps);
+    // Elapsed-time-based progress, not a fixed step count: this is the one theme animation that repaints the
+    // WHOLE content pane every tick (every other overlay animation deliberately scopes to just its own card — see
+    // animateSettingsIn()'s note — specifically to avoid this), and that repaint also drags in the particle
+    // overlay glass pane sitting on top of it, which measured tens of times more expensive at a large/fullscreen
+    // resolution than windowed (see ThemeOverlay's buildClip() note). A step-counted timer just runs slower,
+    // wall-clock, when each callback's repaint takes longer than the tick interval — at fullscreen that stretched
+    // a theme switch out into a visible multi-hundred-ms stall. Time-based progress instead bounds the total
+    // transition to durationMillis regardless of how slow individual frames render: a struggling frame just skips
+    // ahead in the interpolation rather than extending how long the whole thing takes.
+    final long durationMillis = 150;
+    final long startTime = System.currentTimeMillis();
+    themeAnim = new Timer(8, e -> {
+      float t = Math.min(1f, (System.currentTimeMillis() - startTime) / (float) durationMillis);
       BG = lerp(fromColors[0], toColors[0], t); CARD = lerp(fromColors[1], toColors[1], t); ACCENT = lerp(fromColors[2], toColors[2], t);
       ACCENT2 = lerp(fromColors[3], toColors[3], t); TEXT = lerp(fromColors[4], toColors[4], t); MUTED = lerp(fromColors[5], toColors[5], t);
       applyThemeColors();
@@ -1378,9 +1430,9 @@ public final class CDPlayer extends JFrame {
     if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; card.repaint(); return; }
     card.beginTransformAnimation();
     card.opacity = 0f; card.scale = 0.9f;
-    final int steps = 10;
+    final int steps = 6;
     final int[] step = { 0 };
-    lyricsAnimTimer = new Timer(12, null);
+    lyricsAnimTimer = new Timer(8, null);
     lyricsAnimTimer.addActionListener(e -> {
       step[0]++;
       float t = Math.min(1f, step[0] / (float) steps);
@@ -1400,9 +1452,9 @@ public final class CDPlayer extends JFrame {
     FadeableCard card = lyricsOverlay.card;
     if (!animationsEnabled) { lyricsOverlay.setVisible(false); card.opacity = 1f; card.scale = 1f; return; }
     card.beginTransformAnimation();
-    final int steps = 8;
+    final int steps = 5;
     final int[] step = { 0 };
-    lyricsAnimTimer = new Timer(12, null);
+    lyricsAnimTimer = new Timer(8, null);
     lyricsAnimTimer.addActionListener(e -> {
       step[0]++;
       float t = Math.min(1f, step[0] / (float) steps);
@@ -1447,9 +1499,9 @@ public final class CDPlayer extends JFrame {
     if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; card.repaint(); return; }
     card.beginTransformAnimation();
     card.opacity = 0f; card.scale = 0.9f;
-    final int steps = 10;
+    final int steps = 6;
     final int[] step = { 0 };
-    historyAnimTimer = new Timer(12, null);
+    historyAnimTimer = new Timer(8, null);
     historyAnimTimer.addActionListener(e -> {
       step[0]++;
       float t = Math.min(1f, step[0] / (float) steps);
@@ -1469,9 +1521,9 @@ public final class CDPlayer extends JFrame {
     FadeableCard card = historyOverlay.card;
     if (!animationsEnabled) { historyOverlay.setVisible(false); card.opacity = 1f; card.scale = 1f; return; }
     card.beginTransformAnimation();
-    final int steps = 8;
+    final int steps = 5;
     final int[] step = { 0 };
-    historyAnimTimer = new Timer(12, null);
+    historyAnimTimer = new Timer(8, null);
     historyAnimTimer.addActionListener(e -> {
       step[0]++;
       float t = Math.min(1f, step[0] / (float) steps);
@@ -1509,9 +1561,9 @@ public final class CDPlayer extends JFrame {
     if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; card.repaint(); return; }
     card.beginTransformAnimation();
     card.opacity = 0f; card.scale = 0.9f;
-    final int steps = 10;
+    final int steps = 6;
     final int[] step = { 0 };
-    searchAnimTimer = new Timer(12, null);
+    searchAnimTimer = new Timer(8, null);
     searchAnimTimer.addActionListener(e -> {
       step[0]++;
       float t = Math.min(1f, step[0] / (float) steps);
@@ -1531,9 +1583,9 @@ public final class CDPlayer extends JFrame {
     FadeableCard card = searchOverlay.card;
     if (!animationsEnabled) { searchOverlay.setVisible(false); card.opacity = 1f; card.scale = 1f; return; }
     card.beginTransformAnimation();
-    final int steps = 8;
+    final int steps = 5;
     final int[] step = { 0 };
-    searchAnimTimer = new Timer(12, null);
+    searchAnimTimer = new Timer(8, null);
     searchAnimTimer.addActionListener(e -> {
       step[0]++;
       float t = Math.min(1f, step[0] / (float) steps);
@@ -1578,9 +1630,9 @@ public final class CDPlayer extends JFrame {
     if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; card.repaint(); return; }
     card.beginTransformAnimation();
     card.opacity = 0f; card.scale = 0.9f;
-    final int steps = 10;
+    final int steps = 6;
     final int[] step = { 0 };
-    eqAnimTimer = new Timer(12, null);
+    eqAnimTimer = new Timer(8, null);
     eqAnimTimer.addActionListener(e -> {
       step[0]++;
       float t = Math.min(1f, step[0] / (float) steps);
@@ -1600,9 +1652,9 @@ public final class CDPlayer extends JFrame {
     FadeableCard card = eqOverlay.card;
     if (!animationsEnabled) { eqOverlay.setVisible(false); card.opacity = 1f; card.scale = 1f; return; }
     card.beginTransformAnimation();
-    final int steps = 8;
+    final int steps = 5;
     final int[] step = { 0 };
-    eqAnimTimer = new Timer(12, null);
+    eqAnimTimer = new Timer(8, null);
     eqAnimTimer.addActionListener(e -> {
       step[0]++;
       float t = Math.min(1f, step[0] / (float) steps);
@@ -3040,11 +3092,35 @@ public final class CDPlayer extends JFrame {
   }
   /** Pulls the first syncedLyrics (preferred) or plainLyrics field out of an lrclib.net response — works unchanged for both /api/get's single object and /api/search's array of results, since it just takes the first match regardless of which result object it came from (the first search result, same as how searchITunesCover/searchDeezerCover already just take limit=1's one answer). */
   private static String extractLrcLibLyrics(String json) {
-    Matcher synced = LRCLIB_SYNCED.matcher(json);
-    if (synced.find() && !synced.group(1).isEmpty()) return unescapeJsonString(synced.group(1));
-    Matcher plain = LRCLIB_PLAIN.matcher(json);
-    if (plain.find() && !plain.group(1).isEmpty()) return unescapeJsonString(plain.group(1));
+    String synced = extractJsonStringField(json, LRCLIB_SYNCED_KEY);
+    if (synced != null && !synced.isEmpty()) return unescapeJsonString(synced);
+    String plain = extractJsonStringField(json, LRCLIB_PLAIN_KEY);
+    if (plain != null && !plain.isEmpty()) return unescapeJsonString(plain);
     return null;
+  }
+  /**
+   * Pulls a JSON string field's raw (still-escaped) contents out by scanning for the closing quote by hand,
+   * rather than matching it with a regex like {@code (?:[^"\\]|\\.)*"} — Java's regex engine recurses once per
+   * loop iteration for a quantified alternation with no tail-call optimization, so that pattern StackOverflowErrors
+   * on real lyrics (many KB of text, one escaped \n per line). A hand-rolled scan is O(n) with no recursion.
+   */
+  private static String extractJsonStringField(String json, Pattern keyPattern) {
+    Matcher key = keyPattern.matcher(json);
+    if (!key.find()) return null;
+    int start = key.end();
+    StringBuilder value = new StringBuilder();
+    for (int i = start; i < json.length(); i++) {
+      char c = json.charAt(i);
+      if (c == '\\' && i + 1 < json.length()) {
+        value.append(c).append(json.charAt(i + 1));
+        i++;
+      } else if (c == '"') {
+        return value.toString();
+      } else {
+        value.append(c);
+      }
+    }
+    return null; // unterminated string — malformed JSON
   }
   /** Un-escapes a JSON string literal's contents (newlines, quotes, backslashes, unicode escapes, etc.) — lyrics text is almost entirely escaped newlines, so this can't just be skipped. */
   private static String unescapeJsonString(String raw) {
@@ -3701,7 +3777,7 @@ public final class CDPlayer extends JFrame {
     boolean isBeat = instantEnergy > 0.015 && instantEnergy > average * 1.4;
     beatEnergyHistory[beatEnergyHistoryIndex] = instantEnergy;
     beatEnergyHistoryIndex = (beatEnergyHistoryIndex + 1) % beatEnergyHistory.length;
-    beatPulse = isBeat ? 1.0 : Math.max(0, beatPulse - 0.15);
+    beatPulse = isBeat ? 1.0 : Math.max(0, beatPulse - BEAT_DECAY_PER_TICK);
   }
   private void setPlaying(boolean playing) {
     disc.setSpinning(playing); play.setGlyph(playing ? Glyph.PAUSE : Glyph.PLAY); play.pulse();
@@ -3866,29 +3942,34 @@ public final class CDPlayer extends JFrame {
     label.setFont(font);
     label.setText("<html>" + escape(ellipsize(label, text, maxWidth)) + "</html>");
   }
-  /** Fades the track title, artist, and source labels in from transparent to their current (already-themed) color, so a new track's info eases into view instead of just snapping into place. Captures each label's own foreground as the fade target, so it stays correct under whatever theme is active. */
+  /**
+   * Fades the track title, artist, and source labels in from transparent to their current theme color, so a new
+   * track's info eases into view instead of just snapping into place. Reads TEXT/ACCENT2/MUTED live on every tick
+   * rather than capturing a fixed target color once at the start: this is called from load() BEFORE disc.setCover()
+   * — which is what actually triggers an AUTO theme re-derivation for the new track's (possibly missing) cover art
+   * — so a frozen snapshot taken here would still be the PREVIOUS track's colors. That previously left these three
+   * labels visibly mismatched against the rest of the UI (an artist name in an old track's accent color, while
+   * everything else — the disc, buttons — had already moved on to the new one) any time AUTO's derived palette
+   * actually changed between tracks, which a missing cover falling back to the placeholder palette makes obvious.
+   * Reading the live fields sidesteps the ordering issue entirely and self-corrects even if the AUTO re-derivation
+   * is itself still mid-transition when this fade finishes.
+   */
   private void fadeInNowPlaying() {
     if (nowPlayingFadeTimer != null && nowPlayingFadeTimer.isRunning()) nowPlayingFadeTimer.stop();
-    final Color trackColor = track.getForeground(), artistColor = artistLabel.getForeground(), sourceColor = source.getForeground();
-    // Force full opacity rather than reusing trackColor/sourceColor as-is: if a previous fade was still mid-flight
-    // when animations got disabled, the label's current color could itself be partially transparent, and simply
-    // reapplying it would "snap" to that same partial state instead of actually becoming fully visible.
     if (!animationsEnabled) {
-      track.setForeground(new Color(trackColor.getRed(), trackColor.getGreen(), trackColor.getBlue(), 255));
-      artistLabel.setForeground(new Color(artistColor.getRed(), artistColor.getGreen(), artistColor.getBlue(), 255));
-      source.setForeground(new Color(sourceColor.getRed(), sourceColor.getGreen(), sourceColor.getBlue(), 255));
+      track.setForeground(TEXT); artistLabel.setForeground(ACCENT2); source.setForeground(MUTED);
       return;
     }
-    final int steps = 10;
+    final int steps = 6;
     final int[] step = { 0 };
-    nowPlayingFadeTimer = new Timer(16, null);
+    nowPlayingFadeTimer = new Timer(8, null);
     nowPlayingFadeTimer.addActionListener(e -> {
       step[0]++;
       float t = Math.min(1f, step[0] / (float) steps);
       int alpha = (int) (255 * t);
-      track.setForeground(new Color(trackColor.getRed(), trackColor.getGreen(), trackColor.getBlue(), alpha));
-      artistLabel.setForeground(new Color(artistColor.getRed(), artistColor.getGreen(), artistColor.getBlue(), alpha));
-      source.setForeground(new Color(sourceColor.getRed(), sourceColor.getGreen(), sourceColor.getBlue(), alpha));
+      track.setForeground(new Color(TEXT.getRed(), TEXT.getGreen(), TEXT.getBlue(), alpha));
+      artistLabel.setForeground(new Color(ACCENT2.getRed(), ACCENT2.getGreen(), ACCENT2.getBlue(), alpha));
+      source.setForeground(new Color(MUTED.getRed(), MUTED.getGreen(), MUTED.getBlue(), alpha));
       if (t >= 1f) ((Timer) e.getSource()).stop();
     });
     nowPlayingFadeTimer.start();
@@ -3937,9 +4018,9 @@ public final class CDPlayer extends JFrame {
       if (timer != null && timer.isRunning()) timer.stop();
       final float start = value, target = hovered ? 1f : 0f;
       if (!animationsEnabled) { value = target; onRepaint.run(); return; }
-      final int steps = 6; // hover fades are subtle and frequent, so keep them quick and cheap
+      final int steps = 4; // hover fades are subtle and frequent, so keep them quick and cheap
       final int[] step = { 0 };
-      timer = new Timer(14, null);
+      timer = new Timer(8, null);
       timer.addActionListener(e -> {
         step[0]++;
         float t = Math.min(1f, step[0] / (float) steps);
@@ -3979,9 +4060,9 @@ public final class CDPlayer extends JFrame {
       if (transitionTimer != null && transitionTimer.isRunning()) transitionTimer.stop();
       final float start = onProgress, target = on ? 1f : 0f;
       if (!animationsEnabled) { onProgress = target; repaint(); return; }
-      final int steps = 10;
+      final int steps = 6;
       final int[] step = { 0 };
-      transitionTimer = new Timer(12, null);
+      transitionTimer = new Timer(8, null);
       transitionTimer.addActionListener(e -> {
         step[0]++;
         float t = Math.min(1f, step[0] / (float) steps);
@@ -3994,9 +4075,9 @@ public final class CDPlayer extends JFrame {
     private void pulse() {
       if (!animationsEnabled) return;
       if (pulseTimer != null && pulseTimer.isRunning()) pulseTimer.stop();
-      final int steps = 8;
+      final int steps = 5;
       final int[] step = { 0 };
-      pulseTimer = new Timer(12, null);
+      pulseTimer = new Timer(8, null);
       pulseTimer.addActionListener(e -> {
         step[0]++;
         float t = Math.min(1f, step[0] / (float) steps);
@@ -4049,9 +4130,9 @@ public final class CDPlayer extends JFrame {
     void pulse() {
       if (!animationsEnabled) return;
       if (pulseTimer != null && pulseTimer.isRunning()) pulseTimer.stop();
-      final int steps = 8;
+      final int steps = 5;
       final int[] step = { 0 };
-      pulseTimer = new Timer(12, null);
+      pulseTimer = new Timer(8, null);
       pulseTimer.addActionListener(e -> {
         step[0]++;
         float t = Math.min(1f, step[0] / (float) steps);
@@ -4205,9 +4286,9 @@ public final class CDPlayer extends JFrame {
       if (transitionTimer != null && transitionTimer.isRunning()) transitionTimer.stop();
       final float start = onProgress, target = on ? 1f : 0f;
       if (!animationsEnabled) { onProgress = target; repaint(); return; }
-      final int steps = 10;
+      final int steps = 6;
       final int[] step = { 0 };
-      transitionTimer = new Timer(12, null);
+      transitionTimer = new Timer(8, null);
       transitionTimer.addActionListener(e -> {
         step[0]++;
         float t = Math.min(1f, step[0] / (float) steps);
@@ -4221,9 +4302,9 @@ public final class CDPlayer extends JFrame {
     private void pulse() {
       if (!animationsEnabled) return;
       if (pulseTimer != null && pulseTimer.isRunning()) pulseTimer.stop();
-      final int steps = 8;
+      final int steps = 5;
       final int[] step = { 0 };
-      pulseTimer = new Timer(12, null);
+      pulseTimer = new Timer(8, null);
       pulseTimer.addActionListener(e -> {
         step[0]++;
         float t = Math.min(1f, step[0] / (float) steps);
@@ -4517,7 +4598,11 @@ public final class CDPlayer extends JFrame {
       if (alpha <= 0f) return;
       Graphics2D g = (Graphics2D) raw.create();
       g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.max(0f, Math.min(1f, alpha))));
-      g.drawImage(snapshot, 0, 0, null);
+      // Scaled draw, not a 1:1 blit: the snapshot may have been captured at a capped, smaller-than-actual
+      // resolution (see toggleCdView()'s CD_VIEW_SNAPSHOT_CAP) — this is a no-op scale (1.0) and identical to the
+      // old 1:1 draw whenever it wasn't.
+      g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+      g.drawImage(snapshot, 0, 0, getWidth(), getHeight(), null);
       g.dispose();
     }
   }
@@ -5025,7 +5110,19 @@ public final class CDPlayer extends JFrame {
     private Component eqCardRef; // set once the EQ panel is first opened; same reasoning as settingsCardRef
     private Component historyCardRef; // set once the History panel is first opened; same reasoning as settingsCardRef
     private Component searchCardRef; // set once the Search panel is first opened; same reasoning as settingsCardRef
-    ThemeOverlay() { setOpaque(false); timer.addActionListener(e -> { advance(); repaint(); }); }
+    ThemeOverlay() {
+      setOpaque(false);
+      timer.addActionListener(e -> { advance(); repaint(); });
+      // Particles otherwise only redistribute into newly-exposed space one at a time, as each happens to wrap
+      // around during its own fall cycle (see advance()/fall(), which reseed a particle's x/y using the CURRENT
+      // width/height only at that moment) — so any resize that grows the window, not just this app's own F
+      // exclusive-fullscreen toggle (see toggleFullscreen()) but a plain OS-level maximize/native-fullscreen too,
+      // visibly left the newly-exposed area bare for several seconds instead of the effect immediately covering
+      // it. Reseeding synchronously on every actual size change fixes this at the source for either path.
+      addComponentListener(new java.awt.event.ComponentAdapter() {
+        public void componentResized(java.awt.event.ComponentEvent e) { reseedForCurrentSize(); }
+      });
+    }
     void setDiscReference(Component disc) { this.discRef = disc; }
     void setSettingsCardReference(Component card) { this.settingsCardRef = card; }
     void setThemeMenuReference(Component menu) { this.themeMenuRef = menu; }
@@ -5066,6 +5163,8 @@ public final class CDPlayer extends JFrame {
       setVisible(active);
       if (active) { seed(); timer.start(); } else timer.stop();
     }
+    /** Re-seeds every particle across the panel's current bounds — same reseed setMode() does on activation, just without requiring the mode to have actually changed. Used after toggleFullscreen() so particles fill the new screen size immediately instead of only the ones that happen to wrap around doing so, one at a time, over the next several fall cycles. */
+    void reseedForCurrentSize() { if (mode != Mode.NONE) seed(); }
     private void seed() {
       int w = Math.max(1, getWidth()), h = Math.max(1, getHeight());
       ThreadLocalRandom r = ThreadLocalRandom.current();
@@ -5135,9 +5234,23 @@ public final class CDPlayer extends JFrame {
       for (double[] s : shootingStars) { s[0] += s[2]; s[1] += s[3]; s[4] -= 0.02; }
       shootingStars.removeIf(s -> s[4] <= 0 || s[0] > w + 40 || s[1] > h + 40);
     }
+    // Above this internal render resolution, particles are drawn into a capped-size offscreen buffer and the
+    // buffer is scale-blitted up to the real window size, instead of drawing every fillOval/glyph directly at
+    // native resolution. A transparent (non-opaque) layer this size has to be alpha-composited onto the window
+    // behind it on every repaint — cost that scales with total pixel count, not with how many particles are
+    // actually drawn — so at a large/fullscreen resolution (5K measured elsewhere in this class at up to 36x a
+    // windowed size's pixel count) that compositing itself became the bottleneck, independent of how cheap each
+    // individual particle draw call already was. Below the cap (ordinary windowed sizes) this path is skipped
+    // entirely — scale ends up 1.0 and bufW/bufH match getWidth()/getHeight() exactly — so normal windowed use
+    // pays zero extra cost for this.
+    private static final int RENDER_CAP = 1600;
+    private BufferedImage particleBuffer;
+    private int particleBufferW = -1, particleBufferH = -1;
     protected void paintComponent(Graphics raw) {
       if (mode == Mode.NONE) return;
-      Graphics2D g = (Graphics2D) raw.create();
+      int w = getWidth(), h = getHeight();
+      if (w <= 0 || h <= 0) return;
+      double scale = Math.min(1.0, RENDER_CAP / (double) Math.max(w, h));
       // AA on for every mode except MATRIX: the other four modes draw filled ovals/lines, where antialiasing is
       // both cheap and visibly worth it, but MATRIX draws up to ~800 individual glyphs a frame (140 columns x a
       // 10-glyph trail), and antialiased text rasterization is a comparatively expensive Java2D path — measured
@@ -5145,12 +5258,38 @@ public final class CDPlayer extends JFrame {
       // get the same hardware-accelerated glyph path Quartz gives it on macOS). Skipping AA here isn't just
       // faster, it's arguably more authentic too — the blocky, unsmoothed digits read closer to the actual
       // "Matrix" credits effect than a softened one would.
-      g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, mode == Mode.MATRIX ? RenderingHints.VALUE_ANTIALIAS_OFF : RenderingHints.VALUE_ANTIALIAS_ON);
-      // Punches the disc's (and any open card's) current on-screen rectangle out of this layer's paint clip, so
-      // particles/the OCEAN band never render over them — without needing either to actually sit in a higher
-      // paint layer than this glass pane (which nothing can, short of another glass-pane-like mechanism). See
-      // buildClip() for why this is cached rather than rebuilt from scratch on every single paint.
-      g.setClip(buildClip());
+      Object aaHint = mode == Mode.MATRIX ? RenderingHints.VALUE_ANTIALIAS_OFF : RenderingHints.VALUE_ANTIALIAS_ON;
+      if (scale >= 1.0) {
+        Graphics2D g = (Graphics2D) raw.create();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, aaHint);
+        // Punches the disc's (and any open card's) current on-screen rectangle out of this layer's paint clip, so
+        // particles/the OCEAN band never render over them — without needing either to actually sit in a higher
+        // paint layer than this glass pane (which nothing can, short of another glass-pane-like mechanism). See
+        // buildClip() for why this is cached rather than rebuilt from scratch on every single paint.
+        g.setClip(buildClip());
+        paintParticles(g);
+        g.dispose();
+        return;
+      }
+      int bufW = Math.max(1, (int) Math.round(w * scale)), bufH = Math.max(1, (int) Math.round(h * scale));
+      if (particleBuffer == null || particleBufferW != bufW || particleBufferH != bufH) {
+        if (particleBuffer != null) particleBuffer.flush();
+        particleBuffer = new BufferedImage(bufW, bufH, BufferedImage.TYPE_INT_ARGB);
+        particleBufferW = bufW; particleBufferH = bufH;
+      }
+      Graphics2D bg = particleBuffer.createGraphics();
+      bg.setComposite(AlphaComposite.Src); bg.setColor(new Color(0, 0, 0, 0)); bg.fillRect(0, 0, bufW, bufH); bg.setComposite(AlphaComposite.SrcOver);
+      bg.scale(scale, scale); // everything drawn below still uses the particles' real (unscaled) x/y/size — the transform maps it down to the capped buffer
+      bg.setRenderingHint(RenderingHints.KEY_ANTIALIASING, aaHint);
+      bg.setClip(buildClip()); // applied AFTER the scale, so buildClip()'s full-resolution Area maps onto the smaller buffer's actual pixels correctly
+      paintParticles(bg);
+      bg.dispose();
+      Graphics2D g = (Graphics2D) raw.create();
+      g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+      g.drawImage(particleBuffer, 0, 0, w, h, null);
+      g.dispose();
+    }
+    private void paintParticles(Graphics2D g) {
       switch (mode) {
         case SNOW: paintSnow(g); break;
         case OCEAN: paintOcean(g); break;
@@ -5159,7 +5298,6 @@ public final class CDPlayer extends JFrame {
         case MATRIX: paintMatrix(g); break;
         default: break;
       }
-      g.dispose();
     }
     private void paintSnow(Graphics2D g) {
       g.setColor(new Color(255, 255, 255, 220));
@@ -5318,6 +5456,82 @@ public final class CDPlayer extends JFrame {
       return scaled;
     }
 
+    // The disc's own rotating face (gradient body, grooves, highlight arc, center label, spindle hole) doesn't
+    // actually change shape from one frame to the next while spinning — only the rotation ANGLE does — so
+    // redrawing all of it from scratch on every 16ms tick (a gradient fill plus several antialiased stroked
+    // ovals plus a clipped image draw) was pure waste on every frame where the disc's size/colors/cover hadn't
+    // actually changed since the last one, which is the overwhelming majority of frames during ordinary playback
+    // (measured as the single largest share of this component's own per-frame cost). Rendered once into this
+    // cache at the disc's own local (0,0)-(side,side) origin — paintComponent just blits-and-rotates it instead
+    // of redrawing — and only rebuilt when size, display scale, the live theme colors it's drawn with, the cover
+    // art, or the "looking up cover art" placeholder state actually changes. Still rebuilds every single frame
+    // during the brief (~150ms) window a theme color transition is actually in flight, same cost as before then,
+    // since ACCENT/ACCENT2/BG genuinely differ tick to tick in that case.
+    private BufferedImage discFaceCache;
+    private int discFaceCacheSide = -1; private double discFaceCacheScale = -1;
+    private Color discFaceCacheAccent, discFaceCacheAccent2, discFaceCacheBg;
+    private BufferedImage discFaceCacheCoverSource; private boolean discFaceCacheLookingUp;
+    // Rendered at 2x the strictly-needed pixel size, then always drawn back down to `side` at draw time (see
+    // paintComponent's KEY_INTERPOLATION hint) — the disc spins, so this bitmap is constantly redrawn through a
+    // rotation transform, and a plain 1:1 cache only has a single pixel's worth of edge data to resample from at
+    // most rotation angles, which read as a jagged/stair-stepped border no matter what interpolation hint the
+    // draw uses. Supersampling gives that resample real antialiased edge data to blend from instead. Cheap here
+    // since this is a cache rebuilt only on an actual size/color/cover change, not per frame.
+    private static final int DISC_FACE_SUPERSAMPLE = 2;
+    private BufferedImage renderDiscFace(int side, double displayScale) {
+      double renderScale = displayScale * DISC_FACE_SUPERSAMPLE;
+      int pixelSide = Math.max(1, (int) Math.round(side * renderScale));
+      BufferedImage face = new BufferedImage(pixelSide, pixelSide, BufferedImage.TYPE_INT_ARGB);
+      Graphics2D g = face.createGraphics();
+      g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      g.scale(renderScale, renderScale);
+      int centerX = side / 2, centerY = side / 2;
+      g.setPaint(new GradientPaint(0, 0, ACCENT, side, side, ACCENT2));
+      g.fillOval(0, 0, side, side);
+
+      // subtle concentric grooves
+      g.setColor(new Color(255, 255, 255, 22));
+      g.setStroke(new BasicStroke(1f));
+      for (int r = side / 2 - 16; r > side / 6; r -= 18) g.drawOval(centerX - r, centerY - r, r * 2, r * 2);
+
+      // reflective highlight arc
+      g.setColor(new Color(255, 255, 255, 55));
+      g.setStroke(new BasicStroke(Math.max(2, side / 110)));
+      g.drawArc(side / 12, side / 12, side * 5 / 6, side * 5 / 6, 200, 80);
+
+      // center label
+      int labelSize = side / 3, labelX = centerX - labelSize / 2, labelY = centerY - labelSize / 2;
+      g.setColor(new Color(20, 21, 28));
+      g.fillOval(labelX, labelY, labelSize, labelSize);
+      if (cover != null && labelSize > 0) {
+        java.awt.Shape oldClip = g.getClip();
+        g.setClip(new Ellipse2D.Double(labelX, labelY, labelSize, labelSize));
+        if (labelCoverCache == null || labelCoverCacheSize != labelSize || labelCoverCacheScale != displayScale || labelCoverCacheSource != cover) {
+          if (labelCoverCache != null) labelCoverCache.flush();
+          labelCoverCache = rescaleCover(cover, labelSize, displayScale); labelCoverCacheSize = labelSize; labelCoverCacheScale = displayScale; labelCoverCacheSource = cover;
+        }
+        g.drawImage(labelCoverCache, labelX, labelY, labelSize, labelSize, null);
+        g.setClip(oldClip);
+      } else if (lookingUp) {
+        g.setColor(new Color(255, 255, 255, 130)); g.setFont(new Font("SansSerif", Font.BOLD, Math.max(8, side / 32)));
+        String loading = "…"; java.awt.FontMetrics fm = g.getFontMetrics();
+        g.drawString(loading, centerX - fm.stringWidth(loading) / 2, centerY + side / 42);
+      } else {
+        g.setColor(new Color(255, 255, 255, 55)); g.setFont(new Font("SansSerif", Font.PLAIN, labelSize / 3));
+        String note = "♪"; java.awt.FontMetrics fm = g.getFontMetrics();
+        g.drawString(note, centerX - fm.stringWidth(note) / 2, centerY + fm.getAscent() / 3);
+      }
+      g.setColor(new Color(255, 255, 255, 45)); g.setStroke(new BasicStroke(1f)); g.drawOval(labelX, labelY, labelSize, labelSize);
+
+      // spindle hole
+      int holeSize = side / 11;
+      g.setColor(BG); g.fillOval(centerX - holeSize / 2, centerY - holeSize / 2, holeSize, holeSize);
+      g.setColor(new Color(255, 255, 255, 60)); g.drawOval(centerX - holeSize / 2, centerY - holeSize / 2, holeSize, holeSize);
+
+      g.dispose();
+      return face;
+    }
+
     // Easter egg: double-click the disc and it lifts partway out of the case, tilts, holds briefly, then settles
     // back — like swapping it for a different CD. onEjectPeak (if set) fires once per cycle, right as it reaches
     // full lift (the start of the hold phase, before it starts coming back down), so the caller can swap the
@@ -5395,47 +5609,20 @@ public final class CDPlayer extends JFrame {
 
       AffineTransform old = g.getTransform();
       g.rotate(angle, centerX, centerY);
-      g.setPaint(new GradientPaint(x, y, ACCENT, x + side, y + side, ACCENT2));
-      g.fillOval(x, y, side, side);
-
-      // subtle concentric grooves
-      g.setColor(new Color(255, 255, 255, 22));
-      g.setStroke(new BasicStroke(1f));
-      for (int r = side / 2 - 16; r > side / 6; r -= 18) g.drawOval(centerX - r, centerY - r, r * 2, r * 2);
-
-      // reflective highlight arc
-      g.setColor(new Color(255, 255, 255, 55));
-      g.setStroke(new BasicStroke(Math.max(2, side / 110)));
-      g.drawArc(x + side / 12, y + side / 12, side * 5 / 6, side * 5 / 6, 200, 80);
-
-      // center label
-      int labelSize = side / 3, labelX = centerX - labelSize / 2, labelY = centerY - labelSize / 2;
-      g.setColor(new Color(20, 21, 28));
-      g.fillOval(labelX, labelY, labelSize, labelSize);
-      if (cover != null && labelSize > 0) {
-        java.awt.Shape oldClip = g.getClip();
-        g.setClip(new Ellipse2D.Double(labelX, labelY, labelSize, labelSize));
-        if (labelCoverCache == null || labelCoverCacheSize != labelSize || labelCoverCacheScale != displayScale || labelCoverCacheSource != cover) {
-          if (labelCoverCache != null) labelCoverCache.flush();
-          labelCoverCache = rescaleCover(cover, labelSize, displayScale); labelCoverCacheSize = labelSize; labelCoverCacheScale = displayScale; labelCoverCacheSource = cover;
-        }
-        g.drawImage(labelCoverCache, labelX, labelY, labelSize, labelSize, null);
-        g.setClip(oldClip);
-      } else if (lookingUp) {
-        g.setColor(new Color(255, 255, 255, 130)); g.setFont(new Font("SansSerif", Font.BOLD, Math.max(8, side / 32)));
-        String loading = "…"; java.awt.FontMetrics fm = g.getFontMetrics();
-        g.drawString(loading, centerX - fm.stringWidth(loading) / 2, centerY + side / 42);
-      } else {
-        g.setColor(new Color(255, 255, 255, 55)); g.setFont(new Font("SansSerif", Font.PLAIN, labelSize / 3));
-        String note = "\u266A"; java.awt.FontMetrics fm = g.getFontMetrics();
-        g.drawString(note, centerX - fm.stringWidth(note) / 2, centerY + fm.getAscent() / 3);
+      if (discFaceCache == null || discFaceCacheSide != side || discFaceCacheScale != displayScale
+          || !java.util.Objects.equals(discFaceCacheAccent, ACCENT) || !java.util.Objects.equals(discFaceCacheAccent2, ACCENT2) || !java.util.Objects.equals(discFaceCacheBg, BG)
+          || discFaceCacheCoverSource != cover || discFaceCacheLookingUp != lookingUp) {
+        if (discFaceCache != null) discFaceCache.flush();
+        discFaceCache = renderDiscFace(side, displayScale);
+        discFaceCacheSide = side; discFaceCacheScale = displayScale;
+        discFaceCacheAccent = ACCENT; discFaceCacheAccent2 = ACCENT2; discFaceCacheBg = BG;
+        discFaceCacheCoverSource = cover; discFaceCacheLookingUp = lookingUp;
       }
-      g.setColor(new Color(255, 255, 255, 45)); g.setStroke(new BasicStroke(1f)); g.drawOval(labelX, labelY, labelSize, labelSize);
-
-      // spindle hole
-      int holeSize = side / 11;
-      g.setColor(BG); g.fillOval(centerX - holeSize / 2, centerY - holeSize / 2, holeSize, holeSize);
-      g.setColor(new Color(255, 255, 255, 60)); g.drawOval(centerX - holeSize / 2, centerY - holeSize / 2, holeSize, holeSize);
+      // Bilinear, not the Java2D default nearest-neighbor: this bitmap is being drawn through a rotation
+      // transform (this whole block runs after g.rotate() above) on every spinning frame, and nearest-neighbor
+      // resampling under rotation is exactly what reads as a jagged/scratched-looking circular edge.
+      g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+      g.drawImage(discFaceCache, x, y, side, side, null);
 
       g.setTransform(old);
       if (!spinning) { g.setColor(new Color(10, 11, 16, 90)); g.fillOval(x, y, side, side); }
