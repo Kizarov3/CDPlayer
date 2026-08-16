@@ -121,8 +121,6 @@ public final class CDPlayer extends JFrame {
   private final JButton themeButton = textButton(THEMES[0].name);
   private final JButton lyricsButton = textButton("LYRICS");
   private String currentLyrics; // the loaded track's embedded lyrics, or null — drives lyricsButton's visibility
-  private String nowPlayingTitle, nowPlayingArtist, nowPlayingAlbum; // set in load(), read by setPlaying() to feed MacNowPlaying.update() — nowhere else already held these as plain strings ready to hand to it
-  private BufferedImage nowPlayingCover; // mirrors disc.getCover() — kept as its own field (rather than calling disc.getCover() at each call site) so onCoverChanged() has one obvious place to update it whenever the cover changes, including asynchronously after an iTunes/Deezer lookup completes
   private final JButton eqButton = textButton("EQ");
   private double[] eqGains = new double[Equalizer.BANDS]; // all 0 = flat; applied to the live player and persisted across launches
   private final java.util.List<EqPreset> customEqPresets = new ArrayList<EqPreset>();
@@ -225,7 +223,7 @@ public final class CDPlayer extends JFrame {
   private static final File ONBOARDING_FLAG_FILE = new File(System.getProperty("user.home"), ".cdplayer/onboarded");
   // Bumped by hand alongside CHANGELOG below whenever a build ships — also what's passed to jpackage's
   // --app-version at build time, so the two stay in sync.
-  private static final String APP_VERSION = "1.9.1";
+  private static final String APP_VERSION = "1.10.0";
   private static final File LAST_VERSION_FILE = new File(System.getProperty("user.home"), ".cdplayer/lastversion.txt");
   private static final File LAST_PATH_FILE = new File(System.getProperty("user.home"), ".cdplayer/lastpath.txt");
   private static final File SETTINGS_FILE = new File(System.getProperty("user.home"), ".cdplayer/settings.txt");
@@ -340,14 +338,6 @@ public final class CDPlayer extends JFrame {
       }
     }));
     bindKeys();
-    // Play/pause commands, not just toggle: MPRemoteCommandCenter exposes distinct play and pause commands
-    // (hardware keys and Control Center send the specific one, not always a generic toggle), so each only
-    // actually calls toggle() when doing so would move playback in that direction — a "play" press while
-    // already playing, or a "pause" press while already paused, is a no-op instead of flipping state backwards.
-    MacNowPlaying.init(
-        () -> { if (player != null && !player.isRunning()) toggle(); },
-        () -> { if (player != null && player.isRunning()) toggle(); },
-        this::toggle, this::nextTrack, this::previousTrack);
     // Wired once here rather than inside buildSettingsPanel(), which is rebuilt fresh every time the Settings
     // dialog opens — attaching it there would stack a duplicate listener on each open.
     themeButton.addActionListener(e -> showThemeMenu());
@@ -620,6 +610,13 @@ public final class CDPlayer extends JFrame {
   // entry matching the CURRENT version, not the whole history, so older entries are kept only as a record (and
   // in case a future "full changelog" view wants them), not because they're ever shown together.
   private static final ChangelogEntry[] CHANGELOG = {
+    new ChangelogEntry("1.10.0",
+      "Tracks with no embedded lyrics now try an <b>online lookup</b> (lrclib.net) automatically, including synced karaoke-style lyrics when available",
+      "<b>Spotify</b>: added as a third cover art source when iTunes/Deezer come up empty, and paste a Spotify track or playlist link into Search to queue any matching songs you already have locally (playlist links need a one-time Spotify sign-in)",
+      "Fixed blurry, low-resolution disc and thumbnail artwork on Retina displays",
+      "Fixed mouse clicks reaching background controls (Play, skip, etc.) through an open Settings/Lyrics/History/Search/EQ panel",
+      "Fixed the left/right arrow seek shortcuts breaking after closing a panel"
+    ),
     new ChangelogEntry("1.9.1",
       "Fixed keyboard shortcuts (Space, J/L, the arrows, F, C) still controlling playback, skipping tracks, or toggling fullscreen/CD view while Settings or another panel was open on top",
       "Fixed this What's New dialog not appearing on some upgrades"
@@ -759,13 +756,21 @@ public final class CDPlayer extends JFrame {
    * pass is settling.)
    */
   private void settleOverlayBounds(CenteredOverlay overlay) {
-    forceLayout(contentStack);
-    contentStack.validate();
-  }
-  /** Unconditionally lays out every container in this subtree, top-down, regardless of Swing's own isValid() bookkeeping — see settleOverlayBounds()'s doc comment. */
-  private static void forceLayout(java.awt.Container c) {
-    c.doLayout();
-    for (Component child : c.getComponents()) if (child instanceof java.awt.Container) forceLayout((java.awt.Container) child);
+    // Give the overlay its correct outer bounds directly, sidestepping OverlayLayout's own preferred/min-size
+    // computation for it entirely (that computation is exactly what was producing 0x0 — see the class doc above).
+    // getMaximumSize() already documents the intent as "always fill contentStack fully", so there's no need to
+    // ask OverlayLayout to derive that; just set it.
+    overlay.setBounds(0, 0, contentStack.getWidth(), contentStack.getHeight());
+    // Lay out the overlay's OWN subtree (GridBagLayout centering the card) using those now-correct bounds —
+    // confined to the overlay itself, not contentStack, so root/the background UI is never touched by this at
+    // all. An earlier version called contentStack.validate() (with or without an extra forced doLayout() pass
+    // first) instead: that does settle the overlay's own bounds correctly, but doLayout() forced unconditionally
+    // over the WHOLE contentStack subtree also re-lays-out root's background UI using whatever intermediate
+    // sizes existed mid-pass, silently shifting real background controls out of their painted positions — a real
+    // click at a background control's visually-correct on-screen spot could land on empty space (or something
+    // else) instead, confirmed directly with a genuine OS-level click via Robot (not just Swing's own hit-test
+    // query, which didn't reveal the shift). Scoping the fix to just the overlay avoids that risk entirely.
+    overlay.validate();
   }
   private void showSettingsDialog() {
     if (settingsOverlay == null) {
@@ -1113,10 +1118,8 @@ public final class CDPlayer extends JFrame {
     THEMES[autoIndex] = derived;
     return derived;
   }
-  /** Called whenever the disc's cover art changes (see DiscView.setOnCoverChanged) — including asynchronously, once an iTunes/Deezer lookup completes after playback has already started. Refreshes MacNowPlaying's artwork unconditionally (cheap: it's just updating one field of an already-open native dictionary), and additionally re-derives the AUTO theme's palette, but only while AUTO is actually the active theme — everywhere else that part is a cheap no-op check. */
+  /** Called whenever the disc's cover art changes (see DiscView.setOnCoverChanged) — including asynchronously, once an iTunes/Deezer lookup completes after playback has already started. Re-derives the AUTO theme's palette, but only while AUTO is actually the active theme — everywhere else this is a cheap no-op check. */
   private void onCoverChanged() {
-    nowPlayingCover = disc.getCover();
-    if (loadedFile != null && player != null) MacNowPlaying.update(nowPlayingTitle, nowPlayingArtist, nowPlayingAlbum, nowPlayingCover, player.getMicrosecondLength() / 1_000_000.0, player.getMicrosecondPosition() / 1_000_000.0, player.isRunning());
     if (currentThemeIndex < 0 || currentThemeIndex >= THEMES.length || !"AUTO".equals(THEMES[currentThemeIndex].name)) return;
     Theme fresh = refreshAutoTheme();
     animateThemeColors(new Color[] { fresh.bg, fresh.card, fresh.accent, fresh.accent2, fresh.text, fresh.muted });
@@ -2382,7 +2385,7 @@ public final class CDPlayer extends JFrame {
     panel.add(javax.swing.Box.createVerticalStrut(6)); source.setAlignmentX(Component.LEFT_ALIGNMENT); source.setFont(new Font("SansSerif", Font.PLAIN, 12)); source.setPreferredSize(new Dimension(460, 16)); source.setMaximumSize(new Dimension(460, 16)); source.setMinimumSize(new Dimension(460, 16)); panel.add(source);
     panel.add(javax.swing.Box.createVerticalStrut(38));
     progress.setOpaque(false); waveformSliderUI = new WaveformSliderUI(progress); progress.setUI(waveformSliderUI); progress.setAlignmentX(Component.LEFT_ALIGNMENT); progress.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20)); progress.setFocusable(false);
-    progress.addChangeListener(e -> { if (player != null && progress.getValueIsAdjusting()) adjusting = true; else if (player != null && adjusting) { player.setMicrosecondPosition((long) (player.getMicrosecondLength() * progress.getValue() / 1000.0)); adjusting = false; if (lyricsOverlay != null && lyricsOverlay.isVisible()) updateLyricsSync(); if (loadedFile != null) MacNowPlaying.update(nowPlayingTitle, nowPlayingArtist, nowPlayingAlbum, nowPlayingCover, player.getMicrosecondLength() / 1_000_000.0, player.getMicrosecondPosition() / 1_000_000.0, player.isRunning()); } });
+    progress.addChangeListener(e -> { if (player != null && progress.getValueIsAdjusting()) adjusting = true; else if (player != null && adjusting) { player.setMicrosecondPosition((long) (player.getMicrosecondLength() * progress.getValue() / 1000.0)); adjusting = false; if (lyricsOverlay != null && lyricsOverlay.isVisible()) updateLyricsSync(); } });
     panel.add(progress);
     JPanel times = new JPanel(new BorderLayout()); times.setOpaque(false); times.setMaximumSize(new Dimension(Integer.MAX_VALUE, 16)); elapsed.setFont(new Font("SansSerif", Font.PLAIN, 11)); length.setFont(new Font("SansSerif", Font.PLAIN, 11)); times.add(elapsed, BorderLayout.WEST); times.add(length, BorderLayout.EAST); panel.add(times);
     panel.add(javax.swing.Box.createVerticalStrut(28));
@@ -2814,10 +2817,8 @@ public final class CDPlayer extends JFrame {
       SongDetails details = getSongDetails(file);
       String name = details.title;
       setTrackTitle(name, details.artist); source.setText("LOCAL AUDIO FILE · " + file.getName().substring(file.getName().lastIndexOf('.') + 1).toUpperCase());
-      nowPlayingTitle = name; nowPlayingArtist = details.artist; nowPlayingAlbum = details.album;
       // Mirrors what's playing in the window title, same idea as Spotify/most media apps — visible in the
-      // taskbar/dock even when the window itself isn't focused or is minimized. See MacNowPlaying for the
-      // separate, macOS-only OS-level "now playing" integration (Control Center/lock screen/media keys).
+      // taskbar/dock even when the window itself isn't focused or is minimized.
       setTitle((details.artist != null && !details.artist.trim().isEmpty() ? details.artist + " – " : "") + name);
       fadeInNowPlaying();
       length.setText(format(opened.getMicrosecondLength())); elapsed.setText("0:00"); progress.setValue(0); status.setText("●  TRACK LOADED");
@@ -3069,208 +3070,6 @@ public final class CDPlayer extends JFrame {
       } else out.append(c);
     }
     return out.toString();
-  }
-  /**
-   * Bridges to macOS's native "Now Playing" system: MPNowPlayingInfoCenter (the Control Center widget, lock
-   * screen, Touch Bar, AirPods now-playing display) and MPRemoteCommandCenter (routes hardware/keyboard media
-   * keys, and Control Center's own transport buttons, back into this app). Built entirely on java.lang.foreign
-   * (the JDK's Foreign Function & Memory API, stable since JDK 22) calling straight into the Objective-C
-   * runtime and frameworks every Mac already has — no external dependency, no bundled binary, nothing for
-   * anyone to separately download. macOS only: init() no-ops immediately everywhere else.
-   *
-   * This is genuinely hand-written native interop with no test harness beyond direct probing on a real Mac
-   * (confirmed working there: class creation, method registration, the actual native-to-Java callback path, and
-   * that the framework's exported metadata-key constants resolve to real values) — there was no way to verify
-   * the parts that only show up in the live UI (whether Control Center's widget and its own buttons actually
-   * respond) without a user watching a real machine. Every call is wrapped so a failure disables the feature
-   * silently (available flips false, every other method becomes a no-op) instead of ever taking the rest of the
-   * app down with it; genuine native crashes are the one category try/catch can't stop, which is exactly why
-   * this stays isolated in its own class and every call site treats it as inherently best-effort.
-   */
-  private static final class MacNowPlaying {
-    private static boolean available;
-    private static java.lang.foreign.Linker linker;
-    private static java.lang.foreign.Arena arena; // shared, never closed — the app's whole lifetime, same as the native objects it backs
-    private static java.lang.invoke.MethodHandle objc_getClass, sel_registerName, objc_msgSend_0, objc_msgSend_1, objc_msgSend_2, objc_msgSend_setBool, objc_msgSend_setDouble, objc_msgSend_dataWithBytesLength;
-    private static java.lang.foreign.MemorySegment nsStringClass, nsNumberClass, nsMutableDictionaryClass, nsDataClass, nsImageClass, mpMediaItemArtworkClass;
-    private static java.lang.foreign.MemorySegment nowPlayingCenter; // MPNowPlayingInfoCenter defaultCenter
-    private static java.lang.foreign.MemorySegment keyTitle, keyArtist, keyAlbum, keyDuration, keyElapsed, keyRate, keyArtwork;
-    private static Runnable onPlay, onPause, onTogglePlayPause, onNextTrack, onPreviousTrack;
-
-    /** Wires the five transport commands to the given callbacks (invoked on the EDT) and starts advertising Now Playing info. Safe to call on any OS — no-ops instantly if this isn't macOS, or if anything at all goes wrong setting up. */
-    static void init(Runnable onPlay, Runnable onPause, Runnable onTogglePlayPause, Runnable onNextTrack, Runnable onPreviousTrack) {
-      if (!System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("mac")) return;
-      MacNowPlaying.onPlay = onPlay; MacNowPlaying.onPause = onPause; MacNowPlaying.onTogglePlayPause = onTogglePlayPause;
-      MacNowPlaying.onNextTrack = onNextTrack; MacNowPlaying.onPreviousTrack = onPreviousTrack;
-      try {
-        linker = java.lang.foreign.Linker.nativeLinker();
-        arena = java.lang.foreign.Arena.ofShared();
-        java.lang.foreign.SymbolLookup objc = java.lang.foreign.SymbolLookup.libraryLookup("/usr/lib/libobjc.A.dylib", arena);
-        java.lang.foreign.SymbolLookup mediaPlayer = java.lang.foreign.SymbolLookup.libraryLookup("/System/Library/Frameworks/MediaPlayer.framework/MediaPlayer", arena);
-        java.lang.foreign.ValueLayout.OfLong L = java.lang.foreign.ValueLayout.JAVA_LONG;
-        java.lang.foreign.AddressLayout A = java.lang.foreign.ValueLayout.ADDRESS;
-        objc_getClass = linker.downcallHandle(objc.find("objc_getClass").orElseThrow(), java.lang.foreign.FunctionDescriptor.of(A, A));
-        sel_registerName = linker.downcallHandle(objc.find("sel_registerName").orElseThrow(), java.lang.foreign.FunctionDescriptor.of(A, A));
-        objc_msgSend_0 = linker.downcallHandle(objc.find("objc_msgSend").orElseThrow(), java.lang.foreign.FunctionDescriptor.of(A, A, A));
-        objc_msgSend_1 = linker.downcallHandle(objc.find("objc_msgSend").orElseThrow(), java.lang.foreign.FunctionDescriptor.of(A, A, A, A));
-        objc_msgSend_2 = linker.downcallHandle(objc.find("objc_msgSend").orElseThrow(), java.lang.foreign.FunctionDescriptor.of(A, A, A, A, A));
-        objc_msgSend_setBool = linker.downcallHandle(objc.find("objc_msgSend").orElseThrow(), java.lang.foreign.FunctionDescriptor.ofVoid(A, A, java.lang.foreign.ValueLayout.JAVA_BOOLEAN));
-        objc_msgSend_setDouble = linker.downcallHandle(objc.find("objc_msgSend").orElseThrow(), java.lang.foreign.FunctionDescriptor.ofVoid(A, A, java.lang.foreign.ValueLayout.JAVA_DOUBLE));
-        objc_msgSend_dataWithBytesLength = linker.downcallHandle(objc.find("objc_msgSend").orElseThrow(), java.lang.foreign.FunctionDescriptor.of(A, A, A, A, L));
-
-        java.lang.foreign.SymbolLookup.libraryLookup("/System/Library/Frameworks/AppKit.framework/AppKit", arena); // just needs to be loaded — NSImage lives here, not in Foundation/MediaPlayer
-        nsStringClass = objcClass("NSString");
-        nsNumberClass = objcClass("NSNumber");
-        nsMutableDictionaryClass = objcClass("NSMutableDictionary");
-        nsDataClass = objcClass("NSData");
-        nsImageClass = objcClass("NSImage");
-        mpMediaItemArtworkClass = objcClass("MPMediaItemArtwork");
-
-        keyTitle = frameworkConstant(mediaPlayer, "MPMediaItemPropertyTitle");
-        keyArtist = frameworkConstant(mediaPlayer, "MPMediaItemPropertyArtist");
-        keyAlbum = frameworkConstant(mediaPlayer, "MPMediaItemPropertyAlbumTitle");
-        keyDuration = frameworkConstant(mediaPlayer, "MPMediaItemPropertyPlaybackDuration");
-        keyElapsed = frameworkConstant(mediaPlayer, "MPNowPlayingInfoPropertyElapsedPlaybackTime");
-        keyRate = frameworkConstant(mediaPlayer, "MPNowPlayingInfoPropertyPlaybackRate");
-        keyArtwork = frameworkConstant(mediaPlayer, "MPMediaItemPropertyArtwork");
-
-        java.lang.foreign.MemorySegment infoCenterClass = objcClass("MPNowPlayingInfoCenter");
-        nowPlayingCenter = msgSend0(infoCenterClass, sel("defaultCenter"));
-
-        setUpRemoteCommands();
-        available = true;
-      } catch (Throwable ignored) {
-        // Anything at all — wrong macOS version, a renamed symbol, no MediaPlayer framework in this context —
-        // and the feature just isn't there. The app must never depend on this succeeding.
-        available = false;
-      }
-    }
-
-    /** Registers a small dynamically-created NSObject subclass as the target for each MPRemoteCommand, so hardware media keys and Control Center's own play/pause/next/previous buttons call back into this method (and from there, onto the EDT via the Runnables passed to init()). Target-action (addTarget:action:), not the block-based addTargetWithHandler: — a plain SEL-dispatched method is far simpler to bridge correctly from Java than reproducing Objective-C's block ABI by hand. */
-    private static void setUpRemoteCommands() throws Throwable {
-      java.lang.foreign.MemorySegment nsObjectClass = objcClass("NSObject");
-      java.lang.foreign.MemorySegment targetClass = (java.lang.foreign.MemorySegment) java.lang.foreign.Linker.nativeLinker()
-          .downcallHandle(java.lang.foreign.SymbolLookup.libraryLookup("/usr/lib/libobjc.A.dylib", arena).find("objc_allocateClassPair").orElseThrow(),
-              java.lang.foreign.FunctionDescriptor.of(java.lang.foreign.ValueLayout.ADDRESS, java.lang.foreign.ValueLayout.ADDRESS, java.lang.foreign.ValueLayout.ADDRESS, java.lang.foreign.ValueLayout.JAVA_LONG))
-          .invoke(nsObjectClass, arena.allocateFrom("CDPlayerRemoteCommandTarget"), 0L);
-
-      addHandlerMethod(targetClass, "handlePlay:", "handlePlay");
-      addHandlerMethod(targetClass, "handlePause:", "handlePause");
-      addHandlerMethod(targetClass, "handleToggle:", "handleToggle");
-      addHandlerMethod(targetClass, "handleNext:", "handleNext");
-      addHandlerMethod(targetClass, "handlePrevious:", "handlePrevious");
-
-      java.lang.foreign.SymbolLookup objc = java.lang.foreign.SymbolLookup.libraryLookup("/usr/lib/libobjc.A.dylib", arena);
-      java.lang.invoke.MethodHandle objc_registerClassPair = linker.downcallHandle(objc.find("objc_registerClassPair").orElseThrow(), java.lang.foreign.FunctionDescriptor.ofVoid(java.lang.foreign.ValueLayout.ADDRESS));
-      objc_registerClassPair.invoke(targetClass);
-
-      java.lang.foreign.MemorySegment instance = msgSend0(msgSend0(targetClass, sel("alloc")), sel("init"));
-
-      java.lang.foreign.MemorySegment commandCenterClass = objcClass("MPRemoteCommandCenter");
-      java.lang.foreign.MemorySegment commandCenter = msgSend0(commandCenterClass, sel("sharedCommandCenter"));
-
-      wireCommand(commandCenter, "playCommand", instance, "handlePlay:");
-      wireCommand(commandCenter, "pauseCommand", instance, "handlePause:");
-      wireCommand(commandCenter, "togglePlayPauseCommand", instance, "handleToggle:");
-      wireCommand(commandCenter, "nextTrackCommand", instance, "handleNext:");
-      wireCommand(commandCenter, "previousTrackCommand", instance, "handlePrevious:");
-    }
-
-    private static void wireCommand(java.lang.foreign.MemorySegment commandCenter, String commandSelector, java.lang.foreign.MemorySegment target, String actionSelector) throws Throwable {
-      java.lang.foreign.MemorySegment command = msgSend0(commandCenter, sel(commandSelector));
-      objc_msgSend_setBool.invoke(command, sel("setEnabled:"), true);
-      objc_msgSend_2.invoke(command, sel("addTarget:action:"), target, sel(actionSelector));
-    }
-
-    /**
-     * Adds one Objective-C method (selSpec, e.g. "handlePlay:") to targetClass, backed by the Java static method
-     * named javaMethodName in this class — the actual native-to-Java bridge, via Linker.upcallStub exposing that
-     * Java method as a real C function pointer usable as an IMP.
-     *
-     * Return type is long (an MPRemoteCommandHandlerStatus, 0 = Success), NOT void — confirmed the hard way: a
-     * void-returning target-action method crashes the whole process instantly with
-     * "Unsupported action method signature. Must return MPRemoteCommandHandlerStatus or take a completion
-     * handler as the second argument," thrown from inside -[MPRemoteCommand addTarget:action:] itself, before
-     * any command is even sent — MPRemoteCommand apparently validates the signature this addTarget:action: was
-     * given eagerly, and rejects the (contrary to what "target-action, not block-based" suggested) still-block-
-     * style-required return value. Type encoding "q@:@" = long long return, (id self, SEL _cmd, id arg).
-     */
-    private static void addHandlerMethod(java.lang.foreign.MemorySegment targetClass, String selSpec, String javaMethodName) throws Throwable {
-      java.lang.invoke.MethodHandles.Lookup lookup = java.lang.invoke.MethodHandles.lookup();
-      java.lang.invoke.MethodHandle handler = lookup.findStatic(MacNowPlaying.class, javaMethodName,
-          java.lang.invoke.MethodType.methodType(long.class, java.lang.foreign.MemorySegment.class, java.lang.foreign.MemorySegment.class, java.lang.foreign.MemorySegment.class));
-      java.lang.foreign.FunctionDescriptor impDescriptor = java.lang.foreign.FunctionDescriptor.of(java.lang.foreign.ValueLayout.JAVA_LONG, java.lang.foreign.ValueLayout.ADDRESS, java.lang.foreign.ValueLayout.ADDRESS, java.lang.foreign.ValueLayout.ADDRESS);
-      java.lang.foreign.MemorySegment impStub = linker.upcallStub(handler, impDescriptor, arena);
-      java.lang.foreign.SymbolLookup objc = java.lang.foreign.SymbolLookup.libraryLookup("/usr/lib/libobjc.A.dylib", arena);
-      java.lang.invoke.MethodHandle class_addMethod = linker.downcallHandle(objc.find("class_addMethod").orElseThrow(),
-          java.lang.foreign.FunctionDescriptor.of(java.lang.foreign.ValueLayout.JAVA_BOOLEAN, java.lang.foreign.ValueLayout.ADDRESS, java.lang.foreign.ValueLayout.ADDRESS, java.lang.foreign.ValueLayout.ADDRESS, java.lang.foreign.ValueLayout.ADDRESS));
-      class_addMethod.invoke(targetClass, sel(selSpec), impStub, arena.allocateFrom("q@:@"));
-    }
-
-    // self, _cmd, event — every remote command handler has this exact shape; only what each does with it
-    // differs. Each returns 0 (MPRemoteCommandHandlerStatusSuccess) unconditionally — there's no meaningful
-    // failure mode to report back for any of these (toggle()/nextTrack()/previousTrack() already no-op
-    // gracefully with an empty queue or no loaded track).
-    private static long handlePlay(java.lang.foreign.MemorySegment self, java.lang.foreign.MemorySegment cmd, java.lang.foreign.MemorySegment event) { runOnEdt(onPlay); return 0; }
-    private static long handlePause(java.lang.foreign.MemorySegment self, java.lang.foreign.MemorySegment cmd, java.lang.foreign.MemorySegment event) { runOnEdt(onPause); return 0; }
-    private static long handleToggle(java.lang.foreign.MemorySegment self, java.lang.foreign.MemorySegment cmd, java.lang.foreign.MemorySegment event) { runOnEdt(onTogglePlayPause); return 0; }
-    private static long handleNext(java.lang.foreign.MemorySegment self, java.lang.foreign.MemorySegment cmd, java.lang.foreign.MemorySegment event) { runOnEdt(onNextTrack); return 0; }
-    private static long handlePrevious(java.lang.foreign.MemorySegment self, java.lang.foreign.MemorySegment cmd, java.lang.foreign.MemorySegment event) { runOnEdt(onPreviousTrack); return 0; }
-    // The upcall arrives on whatever thread macOS's media-key/Control Center dispatch uses, never the EDT —
-    // every Swing call this eventually triggers (toggle(), nextTrack(), ...) must only ever run on the EDT.
-    private static void runOnEdt(Runnable action) { if (action != null) SwingUtilities.invokeLater(action); }
-
-    /** Updates (or, with title==null, clears) what Control Center/the lock screen/Touch Bar show for this app. Cheap to call on every track load or play/pause toggle; deliberately NOT called on every playback tick — MPNowPlayingInfoCenter is designed to have elapsed time set once per rate/position change and interpolates the displayed time smoothly using the wall clock in between, exactly like every native macOS media app does. cover may be null (no embedded art and no lookup result yet/at all) — Control Center just shows no artwork in that case, same as any other app playing an untagged file. */
-    static void update(String title, String artist, String album, BufferedImage cover, double durationSeconds, double positionSeconds, boolean playing) {
-      if (!available) return;
-      try {
-        if (title == null) { objc_msgSend_1.invoke(nowPlayingCenter, sel("setNowPlayingInfo:"), java.lang.foreign.MemorySegment.NULL); return; }
-        java.lang.foreign.MemorySegment dict = msgSend0(msgSend0(nsMutableDictionaryClass, sel("alloc")), sel("init"));
-        java.lang.foreign.MemorySegment setObjectForKey = sel("setObject:forKey:");
-        objc_msgSend_2.invoke(dict, setObjectForKey, nsString(title), keyTitle);
-        if (artist != null && !artist.trim().isEmpty()) objc_msgSend_2.invoke(dict, setObjectForKey, nsString(artist), keyArtist);
-        if (album != null && !album.trim().isEmpty()) objc_msgSend_2.invoke(dict, setObjectForKey, nsString(album), keyAlbum);
-        objc_msgSend_2.invoke(dict, setObjectForKey, nsNumber(durationSeconds), keyDuration);
-        objc_msgSend_2.invoke(dict, setObjectForKey, nsNumber(positionSeconds), keyElapsed);
-        objc_msgSend_2.invoke(dict, setObjectForKey, nsNumber(playing ? 1.0 : 0.0), keyRate);
-        if (cover != null) {
-          java.lang.foreign.MemorySegment artwork = artwork(cover);
-          if (artwork != null) objc_msgSend_2.invoke(dict, setObjectForKey, artwork, keyArtwork);
-        }
-        objc_msgSend_1.invoke(nowPlayingCenter, sel("setNowPlayingInfo:"), dict);
-      } catch (Throwable ignored) { available = false; } // one bad call and this stops trying, rather than risking a crash on every future track change
-    }
-    static void clear() { update(null, null, null, null, 0, 0, false); }
-
-    /** cover (Java BufferedImage) -> PNG bytes -> NSData -> NSImage -> MPMediaItemArtwork, confirmed working end to end via a standalone probe on a real Mac before this was wired into the app. Returns null (never throws out of here) on any encoding hiccup — missing/broken artwork for one track shouldn't be able to disable the whole Now Playing feature the way a genuine setup failure should. */
-    private static java.lang.foreign.MemorySegment artwork(BufferedImage cover) {
-      try {
-        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-        ImageIO.write(cover, "png", baos);
-        byte[] pngBytes = baos.toByteArray();
-        java.lang.foreign.MemorySegment pngSegment = arena.allocate(pngBytes.length);
-        java.lang.foreign.MemorySegment.copy(pngBytes, 0, pngSegment, java.lang.foreign.ValueLayout.JAVA_BYTE, 0, pngBytes.length);
-        java.lang.foreign.MemorySegment nsData = (java.lang.foreign.MemorySegment) objc_msgSend_dataWithBytesLength.invoke(nsDataClass, sel("dataWithBytes:length:"), pngSegment, (long) pngBytes.length);
-        java.lang.foreign.MemorySegment nsImage = (java.lang.foreign.MemorySegment) objc_msgSend_1.invoke(msgSend0(nsImageClass, sel("alloc")), sel("initWithData:"), nsData);
-        if (nsImage.address() == 0) return null;
-        return (java.lang.foreign.MemorySegment) objc_msgSend_1.invoke(msgSend0(mpMediaItemArtworkClass, sel("alloc")), sel("initWithImage:"), nsImage);
-      } catch (Throwable e) { return null; }
-    }
-
-    private static java.lang.foreign.MemorySegment objcClass(String name) throws Throwable { return (java.lang.foreign.MemorySegment) objc_getClass.invoke(arena.allocateFrom(name)); }
-    private static java.lang.foreign.MemorySegment sel(String name) throws Throwable { return (java.lang.foreign.MemorySegment) sel_registerName.invoke(arena.allocateFrom(name)); }
-    private static java.lang.foreign.MemorySegment msgSend0(java.lang.foreign.MemorySegment receiver, java.lang.foreign.MemorySegment selector) throws Throwable { return (java.lang.foreign.MemorySegment) objc_msgSend_0.invoke(receiver, selector); }
-    private static java.lang.foreign.MemorySegment nsString(String s) throws Throwable { return (java.lang.foreign.MemorySegment) objc_msgSend_1.invoke(nsStringClass, sel("stringWithUTF8String:"), arena.allocateFrom(s)); }
-    private static java.lang.foreign.MemorySegment nsNumber(double d) throws Throwable {
-      java.lang.invoke.MethodHandle numberWithDouble = linker.downcallHandle(java.lang.foreign.SymbolLookup.libraryLookup("/usr/lib/libobjc.A.dylib", arena).find("objc_msgSend").orElseThrow(),
-          java.lang.foreign.FunctionDescriptor.of(java.lang.foreign.ValueLayout.ADDRESS, java.lang.foreign.ValueLayout.ADDRESS, java.lang.foreign.ValueLayout.ADDRESS, java.lang.foreign.ValueLayout.JAVA_DOUBLE));
-      return (java.lang.foreign.MemorySegment) numberWithDouble.invoke(nsNumberClass, sel("numberWithDouble:"), d);
-    }
-    /** Framework-exported metadata key constants (MPMediaItemPropertyTitle etc.) are data symbols holding an NSString*, not functions — one pointer-sized dereference away from the actual object to hand to setObject:forKey:. */
-    private static java.lang.foreign.MemorySegment frameworkConstant(java.lang.foreign.SymbolLookup lib, String name) {
-      java.lang.foreign.MemorySegment slot = lib.find(name).orElseThrow().reinterpret(8);
-      return slot.get(java.lang.foreign.ValueLayout.ADDRESS, 0);
-    }
   }
   private static BufferedImage searchITunesCover(String query) throws IOException {
     String encoded = URLEncoder.encode(query, "UTF-8");
@@ -3716,7 +3515,6 @@ public final class CDPlayer extends JFrame {
     disc.setCover(null); disc.setLookingUp(false); loadedFile = null; setPlaying(false);
     currentLyrics = null; lyricsButton.setVisible(false); refreshLyricsIfOpen();
     waveformSliderUI.setWaveform(null);
-    nowPlayingTitle = nowPlayingArtist = nowPlayingAlbum = null; nowPlayingCover = null; MacNowPlaying.clear();
     status.setText(statusMessage);
   }
   /**
@@ -3865,7 +3663,6 @@ public final class CDPlayer extends JFrame {
     progress.setValue(duration == 0 ? 0 : (int) (target * 1000 / duration));
     elapsed.setText(format(target));
     if (lyricsOverlay != null && lyricsOverlay.isVisible()) updateLyricsSync();
-    if (loadedFile != null) MacNowPlaying.update(nowPlayingTitle, nowPlayingArtist, nowPlayingAlbum, nowPlayingCover, duration / 1_000_000.0, target / 1_000_000.0, player.isRunning());
   }
   private void tick(ActionEvent event) {
     if (player == null || adjusting) return;
@@ -3911,10 +3708,6 @@ public final class CDPlayer extends JFrame {
     status.setText(playing ? "●  NOW SPINNING" : (loadedFile == null ? "●  READY TO PLAY" : "●  PAUSED"));
     visualizer.setActive(playing);
     if (playing) clock.start(); else clock.stop();
-    // Rate + elapsed time set once per play/pause/track-change, not every tick — MPNowPlayingInfoCenter
-    // interpolates the displayed elapsed time from these using the wall clock, the same way every native macOS
-    // media app does, so there's no need (or benefit) to call this 60 times a second.
-    if (loadedFile != null && player != null) MacNowPlaying.update(nowPlayingTitle, nowPlayingArtist, nowPlayingAlbum, nowPlayingCover, player.getMicrosecondLength() / 1_000_000.0, player.getMicrosecondPosition() / 1_000_000.0, playing);
   }
   private double[] computeLevels(int bars, int windowMillis) {
     try {
@@ -4757,6 +4550,16 @@ public final class CDPlayer extends JFrame {
       // there to prevent for ITS overlapping children, but that override doesn't reach this deep; the visible
       // effect was the dimmed backdrop coming out fully opaque black instead of translucent over the app.
       setOpaque(false); setLayout(new GridBagLayout()); add(card);
+      // A no-op listener, but a load-bearing one: a lightweight component with no registered mouse interest of
+      // its own is transparent to AWT's real event dispatch regardless of its bounds or Z-order — confirmed
+      // directly with a genuine OS-level click via Robot (SwingUtilities.getDeepestComponentAt, a purely
+      // geometric query, said the click resolved harmlessly inside this overlay; the real click still landed on
+      // the Play button two layers behind it). Without this, any point on the dimmed backdrop that isn't itself
+      // a real interactive child (blank space around the card, gaps between rows inside it) falls straight
+      // through to whatever's really underneath, exactly the "control buttons still work behind Settings" bug.
+      // addMouseListener alone is enough to register interest for both press/release/click; MouseMotionListener
+      // isn't needed since nothing here cares about drag/move, only about being a legitimate click target.
+      addMouseListener(new java.awt.event.MouseAdapter() { });
     }
     // Forces OverlayLayout to stretch this to the full contentStack size (its natural preferred size, from
     // GridBagLayout wrapping just the card, would otherwise only be as big as the card) — that's what makes the
