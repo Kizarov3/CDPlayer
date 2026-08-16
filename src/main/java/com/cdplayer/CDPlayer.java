@@ -218,10 +218,6 @@ public final class CDPlayer extends JFrame {
   // 127.0.0.1, not localhost — matches the loopback-IP exception Spotify's own app-registration form requires
   // for a plain (non-HTTPS) redirect URI; must exactly match whatever's registered in the user's Spotify app.
   private static final String SPOTIFY_REDIRECT_URI = "http://127.0.0.1:8080/callback";
-  // Matches the first image object inside the first "images" array specifically (the non-greedy [^}]*? stops at
-  // that object's own closing brace) — not just any "url" anywhere in the response, which could otherwise match
-  // an artist image or a later track's art instead of the first (and, per Spotify's own ordering, largest) one.
-  private static final Pattern SPOTIFY_IMAGE_URL = Pattern.compile("\\\"images\\\"\\s*:\\s*\\[\\s*\\{[^}]*?\\\"url\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
   // (?:[^"\\]|\\.)* rather than [^"]* : lyrics text routinely contains escaped quotes and, far more importantly,
   // escaped newlines (\n) throughout — a naive "everything up to the next quote" match would stop at the first
   // escaped quote inside the lyrics themselves instead of the string's real closing quote.
@@ -3351,9 +3347,35 @@ public final class CDPlayer extends JFrame {
     if (!spotifyResultLooksRelevant(query, json)) return null;
     // The first "images" array in the response is the first (only, given limit=1) track's album artwork, and
     // Spotify always orders that array largest-first, so the first "url" within it is the largest size on offer.
-    Matcher match = SPOTIFY_IMAGE_URL.matcher(json);
-    if (!match.find()) return null;
-    return fetchImage(match.group(1).replace("\\/", "/"));
+    String imageUrl = firstSpotifyImageUrl(json);
+    if (imageUrl == null) return null;
+    return fetchImage(imageUrl.replace("\\/", "/"));
+  }
+  /**
+   * Finds the "url" inside the first "images" array's first object, by plain indexOf scanning rather than a
+   * regex — a chained \s*-separated regex over this same shape was flagged by CodeQL as a polynomial-ReDoS risk
+   * on untrusted network input (a crafted response with long runs of near-matching whitespace/braces could make
+   * backtracking cost grow with the square of the input length). Linear indexOf scanning can't backtrack at all,
+   * so the same risk doesn't exist here. requiring the "url" key to appear before the first "}" preserves the
+   * original regex's guarantee of matching within the first images[] element specifically — not just any "url"
+   * anywhere in the response, which could otherwise match an artist image or a later track's art instead of the
+   * first (and, per Spotify's own ordering, largest) one.
+   */
+  private static String firstSpotifyImageUrl(String json) {
+    int imagesIdx = json.indexOf("\"images\"");
+    if (imagesIdx < 0) return null;
+    int openBrace = json.indexOf('{', imagesIdx);
+    if (openBrace < 0) return null;
+    int closeBrace = json.indexOf('}', openBrace);
+    int urlKeyIdx = json.indexOf("\"url\"", openBrace);
+    if (urlKeyIdx < 0 || (closeBrace >= 0 && urlKeyIdx > closeBrace)) return null;
+    int colonIdx = json.indexOf(':', urlKeyIdx + 5);
+    if (colonIdx < 0) return null;
+    int firstQuote = json.indexOf('"', colonIdx + 1);
+    if (firstQuote < 0) return null;
+    int secondQuote = json.indexOf('"', firstQuote + 1);
+    if (secondQuote < 0) return null;
+    return json.substring(firstQuote + 1, secondQuote);
   }
   /**
    * True if enough of the query's own words turn up somewhere in the raw response to trust the match — checked
