@@ -703,6 +703,37 @@ public final class CDPlayer extends JFrame {
    * always positioned and painted correctly relative to whatever the main window's current bounds actually are.
    * Rebuilds its content each time rather than caching the panel, so labels/colors stay current across theme changes.
    */
+  /**
+   * A single contentStack.validate() pass right after (re)populating one of the CenteredOverlay-based panels
+   * (Settings/Lyrics/History/Search/EQ) can leave that overlay's own bounds at zero size (confirmed directly by
+   * inspecting getBounds() right after the call: Rectangle[x=0,y=0,width=0,height=0] on an 1120x820 window).
+   * OverlayLayout stretches the overlay to fill contentStack based on the overlay's own preferred/minimum size,
+   * which is itself derived from its just-populated card's not-yet-laid-out content — a chicken-and-egg gap that
+   * only resolves once that inner content's real size is actually known, which just calling contentStack's own
+   * validate() again does NOT resolve (confirmed directly — two back-to-back contentStack.validate() calls both
+   * still leave it at 0x0; a Swing container's validate() is a no-op once it considers itself already valid,
+   * regardless of whether the size it settled on was actually right). Swing's own automatic revalidation (queued
+   * via invokeLater whenever a component reports itself invalid) eventually catches up before the next repaint,
+   * which is why the dialog still visibly renders at the correct size and dimming — but in the narrow window
+   * before that happens, the overlay's real clickable bounds are still 0x0, so any click lands on whatever's
+   * really underneath at that pixel instead: reported directly as the transport controls (Play, skip, etc.)
+   * staying clickable behind a just-opened Settings dialog. Forcing an unconditional (isValid()-ignoring)
+   * doLayout() pass over just the overlay's OWN subtree first was tried and does NOT work (confirmed directly:
+   * still 0x0, or shrinks the overlay to the card's tiny natural size instead) — the overlay's OWN stretched size
+   * comes from OverlayLayout on contentStack, which needs contentStack's whole child list settled, not just the
+   * one overlay in isolation. Forcing the pass over the whole contentStack subtree does converge correctly.
+   * (overlay parameter unused directly but kept so call sites stay self-documenting about which overlay this
+   * pass is settling.)
+   */
+  private void settleOverlayBounds(CenteredOverlay overlay) {
+    forceLayout(contentStack);
+    contentStack.validate();
+  }
+  /** Unconditionally lays out every container in this subtree, top-down, regardless of Swing's own isValid() bookkeeping — see settleOverlayBounds()'s doc comment. */
+  private static void forceLayout(java.awt.Container c) {
+    c.doLayout();
+    for (Component child : c.getComponents()) if (child instanceof java.awt.Container) forceLayout((java.awt.Container) child);
+  }
   private void showSettingsDialog() {
     if (settingsOverlay == null) {
       settingsOverlay = new CenteredOverlay();
@@ -715,12 +746,22 @@ public final class CDPlayer extends JFrame {
     // validate() (immediate, synchronous), not revalidate() (deferred to the next natural repaint cycle) — and
     // done here, after the card's content is populated, not right after contentStack.add() above: the card's own
     // size comes from its content, so validating before that content exists would (and did) lock its bounds at
-    // zero permanently, since this whole block only runs once per settingsOverlay lifetime.
-    contentStack.validate();
+    // zero permanently, since this whole block only runs once per settingsOverlay lifetime. See
+    // settleOverlayBounds()'s doc comment for why a plain validate() alone isn't enough.
+    settleOverlayBounds(settingsOverlay);
     settingsOverlay.setVisible(true);
     animateSettingsIn();
   }
-  private void closeSettingsDialog() { hideThemeMenu(); if (settingsOverlay != null) animateSettingsOut(); }
+  // Interactive controls inside an overlay (the Crossfade/Sleep Timer sliders, in particular — JSlider is
+  // focusable by default and binds its own LEFT/RIGHT arrow keys to nudge its value) can end up holding keyboard
+  // focus when that overlay closes; Swing doesn't automatically hand focus back to anything just because the
+  // component holding it became invisible. Left alone, that stranded-but-still-focused slider intercepts
+  // LEFT/RIGHT via its own WHEN_FOCUSED binding before the seek shortcut's WHEN_IN_FOCUSED_WINDOW one ever sees
+  // it — reported directly as "now the arrow keys don't work" after closing Settings. Explicitly returning focus
+  // to the root pane on every overlay close (same fix already used after toggleFullscreen()'s peer recreation)
+  // guarantees WHEN_IN_FOCUSED_WINDOW bindings are what handles the next keystroke, regardless of which control
+  // was last interacted with inside the overlay.
+  private void closeSettingsDialog() { hideThemeMenu(); if (settingsOverlay != null) animateSettingsOut(); getRootPane().requestFocusInWindow(); }
   private Timer settingsAnimTimer;
   /** Grows the settings card from 90% to 100% size (eased) with a fade-in, instead of it just popping into existence. Implemented as a component-level scale/alpha transform in FadeableCard.paint() rather than Window.setOpacity(), since this is no longer a separate Window. */
   private void animateSettingsIn() {
@@ -974,7 +1015,7 @@ public final class CDPlayer extends JFrame {
     menu.validate(); // immediate, not deferred — see showSettingsDialog()'s note on why validate() over revalidate() here; needed every open, not just the first, since the items are rebuilt fresh each time
     themeMenuOverlay.setVisible(true);
   }
-  private void hideThemeMenu() { if (themeMenuOverlay != null) themeMenuOverlay.setVisible(false); }
+  private void hideThemeMenu() { if (themeMenuOverlay != null) themeMenuOverlay.setVisible(false); getRootPane().requestFocusInWindow(); } // see closeSettingsDialog()'s note on why every overlay close does this
 
   /** Applies a theme immediately, without switchToTheme()'s color-lerp animation — used only by restoreSettingsState() at startup, before the window is first shown, where an instant application is correct (no from-color transition makes sense yet, and an animated one risks a brief flash from the default theme to the restored one right as the app opens). */
   private void applyThemeInstant(int index) {
@@ -1276,12 +1317,12 @@ public final class CDPlayer extends JFrame {
     }
     lyricsOverlay.card.removeAll();
     lyricsOverlay.card.add(buildLyricsPanel(), BorderLayout.CENTER);
-    contentStack.validate(); // see showSettingsDialog()'s note on why this must be immediate, and run after the card's content is populated
+    settleOverlayBounds(lyricsOverlay); // see settleOverlayBounds()'s note on why a plain validate() alone isn't enough
     updateLyricsSync(); // now that validate() has given every line label real bounds, this can scroll to the right one immediately instead of waiting for the next tick
     lyricsOverlay.setVisible(true);
     animateLyricsIn();
   }
-  private void closeLyrics() { if (lyricsOverlay != null) animateLyricsOut(); }
+  private void closeLyrics() { if (lyricsOverlay != null) animateLyricsOut(); getRootPane().requestFocusInWindow(); } // see closeSettingsDialog()'s note on why every overlay close does this
   /** Rebuilds the lyrics card in place if it's open and a new track just loaded, so it tracks whatever's actually playing instead of showing a stale track's words — closes itself if the new track has none. */
   private void refreshLyricsIfOpen() {
     if (lyricsOverlay == null || !lyricsOverlay.isVisible()) return;
@@ -1348,11 +1389,11 @@ public final class CDPlayer extends JFrame {
     }
     historyOverlay.card.removeAll();
     historyOverlay.card.add(buildHistoryPanel(), BorderLayout.CENTER);
-    contentStack.validate(); // see showSettingsDialog()'s note on why this must be immediate
+    settleOverlayBounds(historyOverlay); // see settleOverlayBounds()'s note on why a plain validate() alone isn't enough
     historyOverlay.setVisible(true);
     animateHistoryIn();
   }
-  private void closeHistory() { if (historyOverlay != null) animateHistoryOut(); }
+  private void closeHistory() { if (historyOverlay != null) animateHistoryOut(); getRootPane().requestFocusInWindow(); } // see closeSettingsDialog()'s note on why every overlay close does this
   /** Rebuilds the history card in place if it's open and a track just finished loading, so a newly-recorded play shows up live instead of only after reopening. */
   private void refreshHistoryIfOpen() {
     if (historyOverlay == null || !historyOverlay.isVisible()) return;
@@ -1418,11 +1459,11 @@ public final class CDPlayer extends JFrame {
     startLibraryScan(); // before building the panel, so its initial render already reflects "scanning" state instead of a blank flash
     searchOverlay.card.removeAll();
     searchOverlay.card.add(buildSearchPanel(), BorderLayout.CENTER);
-    contentStack.validate(); // see showSettingsDialog()'s note on why this must be immediate
+    settleOverlayBounds(searchOverlay); // see settleOverlayBounds()'s note on why a plain validate() alone isn't enough
     searchOverlay.setVisible(true);
     animateSearchIn();
   }
-  private void closeSearch() { if (searchOverlay != null) animateSearchOut(); }
+  private void closeSearch() { if (searchOverlay != null) animateSearchOut(); getRootPane().requestFocusInWindow(); } // see closeSettingsDialog()'s note on why every overlay close does this
   private Timer searchAnimTimer;
   private void animateSearchIn() {
     if (searchAnimTimer != null && searchAnimTimer.isRunning()) searchAnimTimer.stop();
@@ -1479,11 +1520,11 @@ public final class CDPlayer extends JFrame {
     }
     eqOverlay.card.removeAll();
     eqOverlay.card.add(buildEqPanel(), BorderLayout.CENTER);
-    contentStack.validate();
+    settleOverlayBounds(eqOverlay); // see settleOverlayBounds()'s note on why a plain validate() alone isn't enough
     eqOverlay.setVisible(true);
     animateEqIn();
   }
-  private void closeEq() { if (eqOverlay != null) animateEqOut(); }
+  private void closeEq() { if (eqOverlay != null) animateEqOut(); getRootPane().requestFocusInWindow(); } // see closeSettingsDialog()'s note on why every overlay close does this
   /** Rebuilds the EQ card in place if it's open — used right after saving a new custom preset, so the new preset button appears immediately without closing/reopening the panel. */
   private void refreshEqIfOpen() {
     if (eqOverlay == null || !eqOverlay.isVisible()) return;
