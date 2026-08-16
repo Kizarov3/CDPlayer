@@ -136,6 +136,7 @@ public final class CDPlayer extends JFrame {
   private JTextField searchField; // live query box; a field so the background scan's completion callback can re-filter against whatever's currently typed
   private JPanel searchResultsList; // rebuilt in place on every keystroke, without rebuilding the whole card
   private JLabel searchStatusLabel;
+  private String lastImportedSpotifyUrl; // guards against re-triggering an import repeatedly while the field still shows the same pasted link (every keystroke fires the DocumentListener, not just the paste itself)
   private final JLabel nowPlayingLabel = new JLabel("NOW PLAYING");
   private final JLabel queueInfo = label("QUEUE EMPTY", 10, MUTED);
   private final JLabel queueNext = label("DROP SONGS OR A FOLDER TO BUILD A QUEUE", 9, MUTED);
@@ -204,7 +205,13 @@ public final class CDPlayer extends JFrame {
   private static final Pattern ITUNES_COVER = Pattern.compile("\\\"artworkUrl100\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
   private static final Pattern DEEZER_COVER = Pattern.compile("\\\"cover_xl\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
   private static final Pattern SPOTIFY_ACCESS_TOKEN = Pattern.compile("\\\"access_token\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
+  private static final Pattern SPOTIFY_REFRESH_TOKEN = Pattern.compile("\\\"refresh_token\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
   private static final Pattern SPOTIFY_EXPIRES_IN = Pattern.compile("\\\"expires_in\\\"\\s*:\\s*(\\d+)");
+  private static final Pattern SPOTIFY_TRACK_URL = Pattern.compile("open\\.spotify\\.com/track/([a-zA-Z0-9]+)|spotify:track:([a-zA-Z0-9]+)");
+  private static final Pattern SPOTIFY_PLAYLIST_URL = Pattern.compile("open\\.spotify\\.com/playlist/([a-zA-Z0-9]+)|spotify:playlist:([a-zA-Z0-9]+)");
+  // 127.0.0.1, not localhost — matches the loopback-IP exception Spotify's own app-registration form requires
+  // for a plain (non-HTTPS) redirect URI; must exactly match whatever's registered in the user's Spotify app.
+  private static final String SPOTIFY_REDIRECT_URI = "http://127.0.0.1:8080/callback";
   // Matches the first image object inside the first "images" array specifically (the non-greedy [^}]*? stops at
   // that object's own closing brace) — not just any "url" anywhere in the response, which could otherwise match
   // an artist image or a later track's art instead of the first (and, per Spotify's own ordering, largest) one.
@@ -1938,18 +1945,26 @@ public final class CDPlayer extends JFrame {
     JPanel center = new JPanel();
     center.setOpaque(false); center.setLayout(new javax.swing.BoxLayout(center, javax.swing.BoxLayout.Y_AXIS));
 
+    // Above the field, not a small muted note below it — reported directly as genuinely hard to find otherwise
+    // ("SEARCH" alone doesn't suggest "this is also where Spotify links go"), so this is deliberately the first
+    // thing read after the title, in the same readable TEXT color as ordinary body copy rather than MUTED.
+    JLabel instructions = label("Type to search your library, or paste a Spotify track/playlist link to queue matching songs you already have", 11, TEXT);
+    instructions.setAlignmentX(Component.LEFT_ALIGNMENT);
+    center.add(instructions);
+    center.add(javax.swing.Box.createVerticalStrut(10));
+
     searchStatusLabel = label("", 10, MUTED);
     searchStatusLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
     center.add(searchStatusLabel);
-    center.add(javax.swing.Box.createVerticalStrut(10));
+    center.add(javax.swing.Box.createVerticalStrut(6));
 
     searchField = new JTextField();
     searchField.setAlignmentX(Component.LEFT_ALIGNMENT);
     searchField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
     searchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
-      public void insertUpdate(javax.swing.event.DocumentEvent e) { refreshSearchResults(); }
-      public void removeUpdate(javax.swing.event.DocumentEvent e) { refreshSearchResults(); }
-      public void changedUpdate(javax.swing.event.DocumentEvent e) { refreshSearchResults(); }
+      public void insertUpdate(javax.swing.event.DocumentEvent e) { onSearchFieldChanged(); }
+      public void removeUpdate(javax.swing.event.DocumentEvent e) { onSearchFieldChanged(); }
+      public void changedUpdate(javax.swing.event.DocumentEvent e) { onSearchFieldChanged(); }
     });
     center.add(searchField);
     center.add(javax.swing.Box.createVerticalStrut(10));
@@ -2047,6 +2062,113 @@ public final class CDPlayer extends JFrame {
     }
     searchResultsList.revalidate();
     searchResultsList.repaint();
+  }
+  /** searchField's real DocumentListener target — branches to Spotify import for a recognized link, otherwise falls through to the plain filename filter exactly as before. */
+  private void onSearchFieldChanged() {
+    String text = searchField == null ? "" : searchField.getText().trim();
+    if (SPOTIFY_TRACK_URL.matcher(text).find()) { importSpotifyLink(text, false); return; }
+    if (SPOTIFY_PLAYLIST_URL.matcher(text).find()) { importSpotifyLink(text, true); return; }
+    lastImportedSpotifyUrl = null; // back to plain text — a later re-paste of the same link should be able to trigger again
+    refreshSearchResults();
+  }
+  /**
+   * Resolves a pasted Spotify track/playlist link and adds every track CDPlayer can actually find in your own
+   * scanned library to the queue — never streams anything from Spotify itself (impossible anyway: the Web API
+   * doesn't expose playable audio, by design). Runs the network resolution on a background thread; the actual
+   * local-library matching happens back on the EDT in finishSpotifyImport(), since searchIndex is only ever
+   * safely read/written there.
+   */
+  private void importSpotifyLink(String url, boolean isPlaylist) {
+    if (url.equals(lastImportedSpotifyUrl)) return; // already handled this exact paste — every keystroke re-fires this while the link sits in the field
+    lastImportedSpotifyUrl = url;
+    searchResultsList.removeAll(); searchResultsList.revalidate(); searchResultsList.repaint();
+    searchStatusLabel.setText(isPlaylist ? "RESOLVING SPOTIFY PLAYLIST…" : "RESOLVING SPOTIFY TRACK…");
+    Thread worker = new Thread(() -> {
+      try {
+        List<String[]> tracks;
+        if (isPlaylist) {
+          String userToken;
+          try { userToken = getSpotifyUserAccessToken(); } catch (IOException e) { userToken = null; }
+          if (userToken == null) { SwingUtilities.invokeLater(() -> promptSpotifySignIn(url)); return; }
+          String id = extractSpotifyId(SPOTIFY_PLAYLIST_URL, url);
+          tracks = id != null ? fetchSpotifyPlaylistTracks(id) : null;
+        } else {
+          String id = extractSpotifyId(SPOTIFY_TRACK_URL, url);
+          String[] track = id != null ? resolveSpotifyTrack(id) : null;
+          tracks = new ArrayList<String[]>();
+          if (track != null) tracks.add(track);
+        }
+        final List<String[]> resolvedTracks = tracks;
+        SwingUtilities.invokeLater(() -> finishSpotifyImport(resolvedTracks));
+      } catch (Exception e) {
+        final String message = e.getMessage();
+        SwingUtilities.invokeLater(() -> searchStatusLabel.setText("SPOTIFY IMPORT FAILED" + (message != null ? " — " + message.toUpperCase(java.util.Locale.ROOT) : "")));
+      }
+    }, "cdplayer-spotify-import");
+    worker.setDaemon(true);
+    worker.start();
+  }
+  /** Runs on the EDT: matches each resolved (title, artist) pair against the already-scanned local library (see startLibraryScan/searchIndex — the same index the plain filename search already uses) and adds every match to the queue in one batch, then reports how many were found so it's obvious this only ever queues songs already owned, never something streamed from Spotify. */
+  private void finishSpotifyImport(List<String[]> tracks) {
+    if (tracks == null) { searchStatusLabel.setText("SPOTIFY LOOKUP FAILED — CHECK THE LINK"); return; }
+    if (tracks.isEmpty()) { searchStatusLabel.setText("NO TRACKS FOUND AT THAT LINK"); return; }
+    if (searchIndex.isEmpty()) { searchStatusLabel.setText("LOAD A TRACK FIRST TO SET A LIBRARY FOLDER TO MATCH AGAINST"); return; }
+    List<File> matched = new ArrayList<File>();
+    List<String> missing = new ArrayList<String>();
+    for (String[] t : tracks) {
+      File f = findLocalMatch(t[0], t[1]);
+      if (f != null) matched.add(f); else missing.add(t[0] + (t[1] != null && !t[1].isEmpty() ? " – " + t[1] : ""));
+    }
+    if (!matched.isEmpty()) addToQueue(matched);
+    searchStatusLabel.setText(matched.size() + " OF " + tracks.size() + " TRACK" + (tracks.size() == 1 ? "" : "S") + " FOUND IN YOUR LIBRARY AND ADDED");
+    searchResultsList.removeAll();
+    for (String miss : missing) {
+      JLabel row = label("NOT IN YOUR LIBRARY · " + escape(miss), 11, MUTED);
+      row.setAlignmentX(Component.LEFT_ALIGNMENT);
+      searchResultsList.add(row);
+      searchResultsList.add(javax.swing.Box.createVerticalStrut(4));
+    }
+    searchResultsList.revalidate(); searchResultsList.repaint();
+  }
+  /** Best local file match for a resolved (title, artist) pair, filename-based — same word-overlap idea as spotifyResultLooksRelevant(), since a library file is very unlikely to be named with a song's title words by pure coincidence. Requires a real majority overlap (not just a stray shared word) before accepting a match, and returns null rather than guessing when nothing clears that bar. */
+  private File findLocalMatch(String title, String artist) {
+    String query = title + (artist != null && !artist.isEmpty() ? " " + artist : "");
+    File best = null; double bestScore = 0;
+    for (File f : searchIndex) {
+      String name = f.getName();
+      int dot = name.lastIndexOf('.');
+      String withoutExt = dot > 0 ? name.substring(0, dot) : name;
+      double score = wordOverlapRatio(query, withoutExt);
+      if (score > bestScore) { bestScore = score; best = f; }
+    }
+    return bestScore >= 0.5 ? best : null;
+  }
+  /** Shown in place of the results list when a playlist link is pasted but the user has never signed in to Spotify — the ONLY thing this app-level Client ID/Secret can't do on its own (see startSpotifySignIn's note on why). Retries the same import automatically once sign-in succeeds. */
+  private void promptSpotifySignIn(String pendingUrl) {
+    searchStatusLabel.setText("CONNECT SPOTIFY TO IMPORT PLAYLISTS");
+    searchResultsList.removeAll();
+    JLabel explain = label("Reading a playlist's songs needs you signed in to Spotify — a single track link doesn't.", 10, MUTED);
+    explain.setAlignmentX(Component.LEFT_ALIGNMENT);
+    searchResultsList.add(explain);
+    searchResultsList.add(javax.swing.Box.createVerticalStrut(8));
+    JButton connect = textButton("CONNECT SPOTIFY ACCOUNT");
+    connect.setAlignmentX(Component.LEFT_ALIGNMENT);
+    connect.addActionListener(e -> {
+      connect.setEnabled(false);
+      searchStatusLabel.setText("OPENING SPOTIFY LOGIN IN YOUR BROWSER…");
+      startSpotifySignIn(result -> {
+        searchStatusLabel.setText(result);
+        if ("SPOTIFY CONNECTED".equals(result)) { lastImportedSpotifyUrl = null; importSpotifyLink(pendingUrl, true); }
+        else connect.setEnabled(true);
+      });
+    });
+    searchResultsList.add(connect);
+    searchResultsList.revalidate(); searchResultsList.repaint();
+  }
+  private static String extractSpotifyId(Pattern pattern, String url) {
+    Matcher m = pattern.matcher(url);
+    if (!m.find()) return null;
+    return m.group(1) != null ? m.group(1) : m.group(2);
   }
   /** Plays a track picked from search results immediately. Re-checks the file still exists first, since the index can outlive a file that's moved/been deleted mid-session. */
   private void playFromSearch(File file) {
@@ -2277,7 +2399,7 @@ public final class CDPlayer extends JFrame {
     savePlaylistButton.addActionListener(e -> savePlaylist());
     JButton loadPlaylistButton = textButton("LOAD"); loadPlaylistButton.setToolTipText("Add every track from a .m3u playlist file to the queue");
     loadPlaylistButton.addActionListener(e -> loadPlaylist());
-    JButton searchButton = textButton("SEARCH"); searchButton.setToolTipText("Search your music folder");
+    JButton searchButton = textButton("SEARCH"); searchButton.setToolTipText("Search your music folder, or paste a Spotify track/playlist link");
     searchButton.addActionListener(e -> showSearch());
     // Names the SAVE/LOAD pair so it doesn't read as two stray, unexplained buttons.
     JLabel playlistLabel = label("PLAYLIST", 9, MUTED);
@@ -3168,6 +3290,11 @@ public final class CDPlayer extends JFrame {
   private static boolean spotifyCredentialsLoaded;
   private static String spotifyAccessToken;
   private static long spotifyTokenExpiryMillis;
+  // Set once the user completes the one-time browser sign-in (see startSpotifySignIn) — a third, optional line
+  // in the same credentials file, persisted so sign-in only has to happen once per machine, not once per launch.
+  private static String spotifyUserRefreshToken;
+  private static String spotifyUserAccessToken;
+  private static long spotifyUserTokenExpiryMillis;
   /** Loaded once, lazily, on the first cover lookup that actually needs it — not at startup, since most launches never fall through to Spotify at all. */
   private static void loadSpotifyCredentialsIfNeeded() {
     if (spotifyCredentialsLoaded) return;
@@ -3176,7 +3303,17 @@ public final class CDPlayer extends JFrame {
     try {
       List<String> lines = java.nio.file.Files.readAllLines(SPOTIFY_CREDENTIALS_FILE.toPath(), StandardCharsets.UTF_8);
       if (lines.size() >= 2) { spotifyClientId = lines.get(0).trim(); spotifyClientSecret = lines.get(1).trim(); }
+      if (lines.size() >= 3 && !lines.get(2).trim().isEmpty()) spotifyUserRefreshToken = lines.get(2).trim();
     } catch (IOException ignored) { /* Spotify fallback just stays unavailable */ }
+  }
+  /** Rewrites the credentials file with the current app credentials plus (now known) a user refresh token, so a future launch doesn't need to sign in again. */
+  private static void saveSpotifyRefreshToken(String refreshToken) {
+    try {
+      File parent = SPOTIFY_CREDENTIALS_FILE.getParentFile();
+      if (parent != null) parent.mkdirs();
+      String content = (spotifyClientId == null ? "" : spotifyClientId) + "\n" + (spotifyClientSecret == null ? "" : spotifyClientSecret) + "\n" + refreshToken + "\n";
+      java.nio.file.Files.write(SPOTIFY_CREDENTIALS_FILE.toPath(), content.getBytes(StandardCharsets.UTF_8));
+    } catch (IOException ignored) { /* sign-in still works for the rest of this session even if persisting it fails */ }
   }
   /**
    * Spotify's Client Credentials OAuth flow — appropriate here specifically because this app only ever does
@@ -3207,6 +3344,118 @@ public final class CDPlayer extends JFrame {
     long expiresInSeconds = expiresMatch.find() ? Long.parseLong(expiresMatch.group(1)) : 3600;
     spotifyTokenExpiryMillis = System.currentTimeMillis() + Math.max(0, expiresInSeconds - 60) * 1000L;
     return spotifyAccessToken;
+  }
+  /**
+   * Full user sign-in (Authorization Code flow) — needed specifically because Spotify's playlist-tracks
+   * endpoint rejects the plain app-only Client Credentials token above with a 403, confirmed directly against
+   * the real API for both Spotify's own editorial playlists and a plain user-created public one (their late-
+   * 2024 API policy changes restrict reading a playlist's actual song list to a real signed-in user, no matter
+   * whose playlist it is or what scope is requested — reading a single track by ID, by contrast, isn't
+   * affected, which is why track links don't need any of this). Opens the system browser to Spotify's own
+   * consent screen (the user's actual login/password never passes through this app at all) and spins up a
+   * one-shot local HTTP server on the loopback redirect URI to catch the resulting authorization code — the
+   * standard OAuth pattern for a desktop app with no way to host a real HTTPS redirect target. onDone is always
+   * invoked back on the EDT with a short human-readable result string, success or failure.
+   */
+  private static void startSpotifySignIn(java.util.function.Consumer<String> onDone) {
+    Thread worker = new Thread(() -> {
+      String result;
+      try {
+        loadSpotifyCredentialsIfNeeded();
+        if (spotifyClientId == null || spotifyClientId.isEmpty()) { SwingUtilities.invokeLater(() -> onDone.accept("SPOTIFY APP CREDENTIALS NOT CONFIGURED")); return; }
+        if (!java.awt.Desktop.isDesktopSupported() || !java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) { SwingUtilities.invokeLater(() -> onDone.accept("CAN'T OPEN A BROWSER ON THIS SYSTEM")); return; }
+        String state = Long.toHexString(new java.security.SecureRandom().nextLong());
+        String authUrl = "https://accounts.spotify.com/authorize?response_type=code&client_id=" + URLEncoder.encode(spotifyClientId, "UTF-8")
+            + "&redirect_uri=" + URLEncoder.encode(SPOTIFY_REDIRECT_URI, "UTF-8") + "&state=" + state;
+        java.awt.Desktop.getDesktop().browse(new java.net.URI(authUrl));
+        String code = awaitSpotifyAuthorizationCode(state);
+        exchangeSpotifyAuthorizationCode(code);
+        result = "SPOTIFY CONNECTED";
+      } catch (Exception e) {
+        result = "SPOTIFY SIGN-IN FAILED" + (e.getMessage() != null ? " — " + e.getMessage().toUpperCase(java.util.Locale.ROOT) : "");
+      }
+      final String finalResult = result;
+      SwingUtilities.invokeLater(() -> onDone.accept(finalResult));
+    }, "cdplayer-spotify-signin");
+    worker.setDaemon(true);
+    worker.start();
+  }
+  /** Blocks (on the caller's own background thread, never the EDT) until the browser redirect lands on the local server, or 3 minutes pass with nobody completing the login. */
+  private static String awaitSpotifyAuthorizationCode(String expectedState) throws IOException {
+    final String[] resultCode = new String[1];
+    final String[] resultError = new String[1];
+    final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+    com.sun.net.httpserver.HttpServer server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 8080), 0);
+    server.createContext("/callback", exchange -> {
+      try {
+        java.util.Map<String, String> params = parseQueryParams(exchange.getRequestURI().getQuery());
+        String code = params.get("code"), state = params.get("state"), error = params.get("error");
+        String html;
+        if (error != null) { resultError[0] = error; html = "<html><body style='font-family:sans-serif'><h2>Spotify sign-in was cancelled</h2><p>You can close this tab and try again in CDPlayer.</p></body></html>"; }
+        else if (code != null && expectedState.equals(state)) { resultCode[0] = code; html = "<html><body style='font-family:sans-serif'><h2>Connected to Spotify</h2><p>You can close this tab and return to CDPlayer.</p></body></html>"; }
+        else { resultError[0] = "state mismatch"; html = "<html><body style='font-family:sans-serif'><h2>Something went wrong</h2><p>You can close this tab and try again in CDPlayer.</p></body></html>"; }
+        byte[] bytes = html.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
+        exchange.sendResponseHeaders(200, bytes.length);
+        try (java.io.OutputStream os = exchange.getResponseBody()) { os.write(bytes); }
+      } finally { latch.countDown(); }
+    });
+    server.start();
+    try {
+      boolean arrived = latch.await(180, java.util.concurrent.TimeUnit.SECONDS);
+      if (!arrived) throw new IOException("timed out waiting for sign-in");
+      if (resultError[0] != null) throw new IOException(resultError[0]);
+      return resultCode[0];
+    } catch (InterruptedException e) { throw new IOException("interrupted while waiting for sign-in"); }
+    finally { server.stop(0); }
+  }
+  private static java.util.Map<String, String> parseQueryParams(String query) {
+    java.util.Map<String, String> result = new java.util.HashMap<String, String>();
+    if (query == null) return result;
+    for (String pair : query.split("&")) {
+      int eq = pair.indexOf('=');
+      if (eq < 0) continue;
+      try { result.put(java.net.URLDecoder.decode(pair.substring(0, eq), "UTF-8"), java.net.URLDecoder.decode(pair.substring(eq + 1), "UTF-8")); } catch (Exception ignored) { }
+    }
+    return result;
+  }
+  private static void exchangeSpotifyAuthorizationCode(String code) throws IOException {
+    String json = postToSpotifyTokenEndpoint("grant_type=authorization_code&code=" + URLEncoder.encode(code, "UTF-8") + "&redirect_uri=" + URLEncoder.encode(SPOTIFY_REDIRECT_URI, "UTF-8"));
+    Matcher accessMatch = SPOTIFY_ACCESS_TOKEN.matcher(json);
+    Matcher refreshMatch = SPOTIFY_REFRESH_TOKEN.matcher(json);
+    if (!accessMatch.find() || !refreshMatch.find()) throw new IOException("unexpected response");
+    spotifyUserAccessToken = accessMatch.group(1);
+    spotifyUserRefreshToken = refreshMatch.group(1);
+    Matcher expiresMatch = SPOTIFY_EXPIRES_IN.matcher(json);
+    long expiresInSeconds = expiresMatch.find() ? Long.parseLong(expiresMatch.group(1)) : 3600;
+    spotifyUserTokenExpiryMillis = System.currentTimeMillis() + Math.max(0, expiresInSeconds - 60) * 1000L;
+    saveSpotifyRefreshToken(spotifyUserRefreshToken);
+  }
+  /** User-context token for playlist reads — separate from getSpotifyAccessToken()'s app-only one above, refreshed from the stored refresh token as needed. Returns null if the user has never signed in (not an error — the caller prompts for sign-in in that case) rather than throwing. */
+  private static synchronized String getSpotifyUserAccessToken() throws IOException {
+    loadSpotifyCredentialsIfNeeded();
+    if (spotifyUserAccessToken != null && System.currentTimeMillis() < spotifyUserTokenExpiryMillis) return spotifyUserAccessToken;
+    if (spotifyUserRefreshToken == null || spotifyUserRefreshToken.isEmpty()) return null;
+    String json = postToSpotifyTokenEndpoint("grant_type=refresh_token&refresh_token=" + URLEncoder.encode(spotifyUserRefreshToken, "UTF-8"));
+    Matcher accessMatch = SPOTIFY_ACCESS_TOKEN.matcher(json);
+    if (!accessMatch.find()) return null;
+    spotifyUserAccessToken = accessMatch.group(1);
+    Matcher refreshMatch = SPOTIFY_REFRESH_TOKEN.matcher(json); // Spotify sometimes rotates the refresh token on use — if so, the new one is what has to be persisted, not the old
+    if (refreshMatch.find()) { spotifyUserRefreshToken = refreshMatch.group(1); saveSpotifyRefreshToken(spotifyUserRefreshToken); }
+    Matcher expiresMatch = SPOTIFY_EXPIRES_IN.matcher(json);
+    long expiresInSeconds = expiresMatch.find() ? Long.parseLong(expiresMatch.group(1)) : 3600;
+    spotifyUserTokenExpiryMillis = System.currentTimeMillis() + Math.max(0, expiresInSeconds - 60) * 1000L;
+    return spotifyUserAccessToken;
+  }
+  private static String postToSpotifyTokenEndpoint(String body) throws IOException {
+    HttpURLConnection connection = (HttpURLConnection) new URL("https://accounts.spotify.com/api/token").openConnection();
+    connection.setRequestMethod("POST");
+    connection.setRequestProperty("Authorization", "Basic " + java.util.Base64.getEncoder().encodeToString((spotifyClientId + ":" + spotifyClientSecret).getBytes(StandardCharsets.UTF_8)));
+    connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+    connection.setConnectTimeout(5000); connection.setReadTimeout(8000); connection.setDoOutput(true);
+    try (java.io.OutputStream out = connection.getOutputStream()) { out.write(body.getBytes(StandardCharsets.UTF_8)); }
+    try (InputStream stream = connection.getInputStream()) { return new String(readAll(stream), StandardCharsets.UTF_8); }
+    finally { connection.disconnect(); }
   }
   private static BufferedImage searchSpotifyCover(String query) throws IOException {
     String token = getSpotifyAccessToken();
@@ -3259,6 +3508,146 @@ public final class CDPlayer extends JFrame {
     java.util.Set<String> words = new java.util.HashSet<String>();
     for (String w : text.toLowerCase(java.util.Locale.ROOT).split("[^a-z0-9]+")) if (w.length() >= 3) words.add(w);
     return words;
+  }
+  /**
+   * Index of the closing brace matching the '{' at json.charAt(openBraceIndex), skipping over brace characters
+   * that appear inside quoted string values (including escaped quotes) so those never throw off the depth
+   * count. Needed here specifically because Spotify's track objects reuse the same key names ("artists",
+   * "name") at multiple nesting depths (the album's own artists/name vs. the track's own) — regex alone can't
+   * reliably tell those apart, but "skip past this whole nested object first" can. Returns -1 if unmatched.
+   */
+  private static int findMatchingBrace(String json, int openBraceIndex) {
+    int depth = 0; boolean inString = false;
+    for (int i = openBraceIndex; i < json.length(); i++) {
+      char c = json.charAt(i);
+      if (inString) { if (c == '\\') { i++; continue; } if (c == '"') inString = false; continue; }
+      if (c == '"') inString = true;
+      else if (c == '{') depth++;
+      else if (c == '}') { depth--; if (depth == 0) return i; }
+    }
+    return -1;
+  }
+  /** {title, artist} for a single public track by Spotify ID — via the app-only Client Credentials token, which (unlike a playlist's full listing) is sufficient for reading one public track. Returns null if the track doesn't exist, credentials aren't configured, or the response couldn't be parsed. */
+  private static String[] resolveSpotifyTrack(String trackId) throws IOException {
+    String token = getSpotifyAccessToken();
+    if (token == null) return null;
+    HttpURLConnection connection = open("https://api.spotify.com/v1/tracks/" + trackId);
+    connection.setRequestProperty("Authorization", "Bearer " + token);
+    String json;
+    try (InputStream stream = connection.getInputStream()) { json = new String(readAll(stream), StandardCharsets.UTF_8); }
+    finally { connection.disconnect(); }
+    return extractTrackNameAndArtist(json, 0, json.length());
+  }
+  /**
+   * Every track (up to 1000, a generous real-world cap) in a public playlist, as {title, artist} pairs, via the
+   * user-signed-in token (see startSpotifySignIn — required, app-only Client Credentials 403s here). Requests
+   * only name+artists per track (fields=) rather than the full verbose object Spotify would otherwise return —
+   * smaller responses, and each track object is unambiguous on its own (no nested album to confuse "artists"/
+   * "name" with, unlike resolveSpotifyTrack's fuller response), so straightforward regex extraction is fine
+   * within each one's own bounded text. Paginates via the response's own "next" URL until exhausted or the cap
+   * is hit. Returns null specifically when there's no user token at all, distinct from "empty playlist"
+   * (empty list) — the caller uses that distinction to prompt sign-in only when it's actually needed.
+   */
+  private static List<String[]> fetchSpotifyPlaylistTracks(String playlistId) throws IOException {
+    String token = getSpotifyUserAccessToken();
+    if (token == null) return null;
+    List<String[]> results = new ArrayList<String[]>();
+    String url = "https://api.spotify.com/v1/playlists/" + playlistId + "/tracks?limit=50&fields=" + URLEncoder.encode("items(track(name,artists(name))),next", "UTF-8");
+    int pages = 0;
+    while (url != null && pages < 20) {
+      pages++;
+      HttpURLConnection connection = open(url);
+      connection.setRequestProperty("Authorization", "Bearer " + token);
+      String json;
+      try (InputStream stream = connection.getInputStream()) { json = new String(readAll(stream), StandardCharsets.UTF_8); }
+      finally { connection.disconnect(); }
+      int searchFrom = 0;
+      while (true) {
+        int trackKeyIdx = json.indexOf("\"track\":{", searchFrom);
+        if (trackKeyIdx < 0) break;
+        int braceStart = trackKeyIdx + "\"track\":".length();
+        int braceEnd = findMatchingBrace(json, braceStart);
+        if (braceEnd < 0) break;
+        String[] nameAndArtist = extractTrackNameAndArtist(json, braceStart, braceEnd + 1);
+        if (nameAndArtist != null) results.add(nameAndArtist);
+        searchFrom = braceEnd + 1;
+      }
+      Matcher nextMatch = Pattern.compile("\\\"next\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"").matcher(json);
+      url = nextMatch.find() ? nextMatch.group(1).replace("\\/", "/") : null;
+    }
+    return results;
+  }
+  /**
+   * Track name + first artist name from the JSON object spanning json[from,to). Deliberately doesn't assume any
+   * relative order between "album", "artists", and "name" (resolveSpotifyTrack's fuller /v1/tracks/{id}
+   * response has all three, alphabetically ordered so "name" comes last; the playlist-tracks fields= request
+   * below asks for name before artists, and it turned out Spotify preserves THAT order in the response instead
+   * of re-alphabetizing it — confirmed the hard way, an earlier version of this method assumed artists always
+   * comes first and silently returned null for every playlist track as a result). Instead: locate the bounds of
+   * the "album" object and "artists" array (if present) first, then take the first "name" field that falls
+   * outside BOTH of those spans — order-independent by construction, since it only cares whether a candidate
+   * "name" match is nested inside one of the known sub-structures, not what came before it textually.
+   */
+  private static String[] extractTrackNameAndArtist(String json, int from, int to) {
+    int albumStart = -1, albumEnd = -1;
+    int albumKeyIdx = json.indexOf("\"album\":{", from);
+    if (albumKeyIdx >= 0 && albumKeyIdx < to) {
+      albumStart = albumKeyIdx;
+      int albumBraceEnd = findMatchingBrace(json, albumKeyIdx + "\"album\":".length());
+      if (albumBraceEnd > 0 && albumBraceEnd < to) albumEnd = albumBraceEnd;
+    }
+    // The track's own "artists" key, specifically — indexOf alone would find the ALBUM's nested "artists"
+    // first if there is one (it appears earlier in the text), same class of bug as "name" above, so this scans
+    // past any occurrence that falls inside the already-located album span before accepting one.
+    int artistsStart = -1, artistsEnd = -1;
+    int artistsScanFrom = from;
+    while (true) {
+      int candidateIdx = json.indexOf("\"artists\":[", artistsScanFrom);
+      if (candidateIdx < 0 || candidateIdx >= to) break;
+      if (albumStart >= 0 && candidateIdx > albumStart && candidateIdx < albumEnd) { artistsScanFrom = candidateIdx + 1; continue; }
+      artistsStart = candidateIdx;
+      int arrayEnd = findMatchingBracket(json, candidateIdx + "\"artists\":".length());
+      if (arrayEnd > 0 && arrayEnd < to) artistsEnd = arrayEnd;
+      break;
+    }
+    // Bounded to the FIRST artist object specifically (via findMatchingBrace, not a [^}]*? character class) —
+    // a real artist object nests its own "external_urls":{...} before "name" alphabetically, and [^}]*? can't
+    // cross that nested object's closing brace at all, so it silently found nothing for every real API response
+    // even though the exact same pattern worked fine against a flatter synthetic test object with no nesting.
+    String artist = null;
+    if (artistsStart >= 0 && artistsEnd > 0) {
+      int firstArtistObjStart = json.indexOf('{', artistsStart);
+      int firstArtistObjEnd = firstArtistObjStart >= 0 && firstArtistObjStart < artistsEnd ? findMatchingBrace(json, firstArtistObjStart) : -1;
+      if (firstArtistObjEnd > 0 && firstArtistObjEnd <= artistsEnd) {
+        Matcher artistMatch = Pattern.compile("\\\"name\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"").matcher(json);
+        artistMatch.region(firstArtistObjStart, firstArtistObjEnd + 1);
+        if (artistMatch.find()) artist = unescapeJsonString(artistMatch.group(1));
+      }
+    }
+    Matcher nameMatch = Pattern.compile("\\\"name\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"").matcher(json);
+    nameMatch.region(from, to);
+    String name = null;
+    while (nameMatch.find()) {
+      int matchStart = nameMatch.start();
+      if (albumStart >= 0 && matchStart > albumStart && matchStart < albumEnd) continue; // inside "album": skip — that's the album's own name
+      if (artistsStart >= 0 && matchStart > artistsStart && matchStart < artistsEnd) continue; // inside "artists": skip — that's an artist's own name
+      name = unescapeJsonString(nameMatch.group(1));
+      break;
+    }
+    if (name == null) return null;
+    return new String[] { name, artist };
+  }
+  /** '[' / ']' counterpart to findMatchingBrace — same string-aware depth counting, needed because the array itself contains { } objects whose braces must not be mistaken for the array's own boundary. */
+  private static int findMatchingBracket(String json, int openBracketIndex) {
+    int depth = 0; boolean inString = false;
+    for (int i = openBracketIndex; i < json.length(); i++) {
+      char c = json.charAt(i);
+      if (inString) { if (c == '\\') { i++; continue; } if (c == '"') inString = false; continue; }
+      if (c == '"') inString = true;
+      else if (c == '[') depth++;
+      else if (c == ']') { depth--; if (depth == 0) return i; }
+    }
+    return -1;
   }
   private static String fetchText(String location) throws IOException { HttpURLConnection connection = open(location); try (InputStream stream = connection.getInputStream()) { return new String(readAll(stream), StandardCharsets.UTF_8); } finally { connection.disconnect(); } }
   private static BufferedImage fetchImage(String location) throws IOException { HttpURLConnection connection = open(location); try (InputStream stream = connection.getInputStream()) { return ImageIO.read(stream); } finally { connection.disconnect(); } }
