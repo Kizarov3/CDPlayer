@@ -1,73 +1,47 @@
-# CDPlayer — Windows-native build
+# CDPlayer — Windows-only build
 
-A from-scratch rewrite of CDPlayer targeting **Windows only**, living alongside the original
-cross-platform Java/Swing build in [`../src`](../src) — this does not replace it. Where the
-Java build reaches for the lowest common denominator across Windows/macOS/Linux (plain
-Swing/AWT, an external FFmpeg binary for most real-world audio formats), this build uses
-Windows' own native APIs directly:
+A Windows-only fork of the Java/Swing CDPlayer in [`../src`](../src) — this does not replace it.
+It starts from the exact same file (so it has full feature parity: themes, equalizer,
+visualizer, lyrics, Spotify import, everything) and then strips the handful of places that
+existed only to accommodate macOS/Linux, leaning into Windows-only assumptions instead.
 
-| Concern | Java build (`../src`) | This build (`windows/`) |
+## What's different from `../src`
+
+| Concern | Cross-platform build (`../src`) | This build (`windows/`) |
 | --- | --- | --- |
-| UI | Swing/AWT, hand-drawn | WPF (native Win32 windowing, DirectX-composited) |
-| Audio decode/playback | Java Sound + bundled **FFmpeg** for MP3/FLAC/M4A | `System.Windows.Media.MediaPlayer`, which is backed by **Media Foundation** — the same OS-level decoder Windows Media Player/Movies & TV use. MP3, AAC/M4A, WAV, WMA, and (Windows 10 1709+) FLAC all decode natively. **No FFmpeg dependency.** |
-| Tag/cover art reading | FFmpeg/`ffprobe` | Hand-written ID3v2/ID3v1 (MP3), Vorbis comment + PICTURE block (FLAC), and `ilst` atom (M4A/MP4) parsers in pure C# — see [`Services/MetadataReader.cs`](CDPlayer.Windows/Services/MetadataReader.cs). No external tool. |
-| File/folder pickers | Swing `JFileChooser` | Native Win32 common dialogs (`Microsoft.Win32.OpenFileDialog`, WinForms `FolderBrowserDialog`) |
+| Fullscreen | Branches at runtime: real exclusive `GraphicsDevice` fullscreen on macOS (needed there to cover the system menu bar), borderless-maximized on everything else | Always borderless-maximized — the original code's own `[perf]` measurements showed exclusive fullscreen costs far more per frame than a plain window on Windows, since it bypasses DWM entirely. No runtime OS check, no dead branch. |
+| FFmpeg/ffprobe lookup | Searches Homebrew/MacPorts paths (`/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin`, …) before falling back to PATH | Searches winget's shim directory (`%LOCALAPPDATA%\Microsoft\WinGet\Links`), `Program Files\ffmpeg\bin`, `C:\ffmpeg\bin` (the folder most Windows install guides tell people to extract to), and Chocolatey's bin folder, before falling back to PATH. The winget shim check matters concretely: right after `winget install`, a PATH update doesn't reach a process that was already running, so this closes that gap immediately instead of requiring a restart. |
+| App data storage | `~/.cdplayer/` (a Unix dotfile-in-home-directory convention that works on Windows but isn't native to it) | `%LOCALAPPDATA%\CDPlayer\` — the location Explorer, backup tools, and antivirus scanners actually expect for per-user app data on Windows |
+| Look & feel | `UIManager.getSystemLookAndFeelClassName()` — a runtime reflection lookup that resolves to the right L&F per OS | Sets `WindowsLookAndFeel` directly — same result, skips the per-OS detection step since this build only ever runs on Windows |
 
-## Current scope
-
-This is a **core-playback MVP**, not yet full feature parity with the Java build. Implemented:
-
-- Add files / add folder (recursive) / drag-and-drop files and folders onto the window
-- Queue list with per-track duration (populated the first time a track is opened — see
-  "Known simplifications" below), click-to-play, remove
-- Transport: play/pause, previous/next, shuffle, three-way repeat (off/one/all)
-- Seek bar, volume, elapsed/remaining time
-- Metadata (title/artist/album) and embedded cover art, filename as fallback
-- Queue + current track + playback position + volume persisted to
-  `%LOCALAPPDATA%\CDPlayer\state.json` and restored on next launch (paused, matching the
-  Java build's behavior)
-- Keyboard shortcuts: `Space`/`K` play-pause, `J`/`L` previous/next, `←`/`→` seek 15s
-
-**Not yet ported** from the Java build: themes, the 10-band equalizer, the audio-reactive
-visualizer, lyrics lookup, Spotify link import, crossfade, mono downmix, sleep timer,
-fullscreen/CD view, `.m3u` playlist import/export, recursive filename search, recently-played
-history, drag-to-reorder in the queue, and the animated welcome/what's-new dialogs.
-
-## Known simplifications
-
-- **Duration** for a queued track shows `--:--` until that track has actually been opened
-  once (Media Foundation only reports duration after opening a file, unlike `ffprobe` which
-  can be queried upfront without playing anything).
-- WAV/AIFF/AU files aren't tag-parsed (rare to have tags in practice) — they always fall back
-  to the filename.
+Nothing about the actual audio engine, UI, themes, or feature set changed — this is a lean-out
+of dead cross-platform accommodation, not a rewrite.
 
 ## Building and running
 
-**Prerequisites:** [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0), Windows 10
-version 1809 or later (Windows 10 1709+ for native FLAC decoding; earlier versions still play
-MP3/WAV/M4A/WMA fine).
+**Prerequisites:** JDK 8+, and (same as the cross-platform build) **FFmpeg** for MP3/FLAC/M4A
+playback — see the [FFmpeg install instructions](../README.md#installing-ffmpeg) in the main
+README; `winget install Gyan.FFmpeg` is the easiest route on Windows.
 
 ```powershell
-cd windows/CDPlayer.Windows
-dotnet run -r win-x64
+cd windows
+run.bat
 ```
 
-Or open `CDPlayer.Windows.csproj` in Visual Studio 2022 and run/debug from there (`F5`).
-
-To build a standalone folder you can copy elsewhere:
+Or manually, same shape as the cross-platform build's `run.sh`:
 
 ```powershell
-dotnet publish -r win-x64 -c Release --self-contained true -p:PublishSingleFile=true
+cd windows
+javac -d out (Get-ChildItem -Recurse -Filter *.java src | ForEach-Object FullName)
+Copy-Item src\main\java\com\cdplayer\icon.png out\com\cdplayer\icon.png
+java -cp out com.cdplayer.CDPlayer
 ```
 
 ## Project layout
 
 ```
-CDPlayer.Windows/
-  App.xaml(.cs)              Application entry point, shared styles/brushes
-  MainWindow.xaml(.cs)        The whole UI: queue panel + now-playing panel + transport
-  Models/AudioTrack.cs        Bindable track (title/artist/album/duration/art)
-  Services/PlaybackEngine.cs  Thin wrapper around WPF's MediaPlayer (Media Foundation)
-  Services/MetadataReader.cs  Pure C# ID3v2/ID3v1/FLAC/MP4 tag + cover art parser
-  Services/QueueStore.cs      JSON persistence to %LOCALAPPDATA%\CDPlayer\state.json
+windows/
+  run.bat                                    Build + launch in one step
+  src/main/java/com/cdplayer/CDPlayer.java   Forked from ../src, Windows-only edits applied
+  src/main/java/com/cdplayer/icon.png        Same app icon as the cross-platform build
 ```

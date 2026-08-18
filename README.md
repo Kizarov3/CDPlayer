@@ -2,7 +2,7 @@
 
 CDPlayer is a Java desktop app that recreates the tactile feel of a physical CD player for local audio playback. Load a track, press play, and enjoy a simple, distraction-free music experience without relying on a browser or web app — no accounts, no streaming, no internet required to play a song.
 
-> **Windows-only native build available.** [`windows/`](windows/) is a from-scratch C#/WPF rewrite that uses Windows' own Media Foundation for playback (no FFmpeg needed) and native Win32 dialogs — a smaller, in-progress MVP alongside this cross-platform Java build, not a replacement for it. See [`windows/README.md`](windows/README.md).
+> **Windows-only build available.** [`windows/`](windows/) is a fork of this same Java app with the macOS/Linux-only code paths stripped out and Windows-specific optimizations applied (native FFmpeg discovery via winget, `%LOCALAPPDATA%` app data storage, no dead fullscreen branch) — full feature parity, not a replacement for this cross-platform build. See [`windows/README.md`](windows/README.md).
 
 <p align="center">
   <img src="assets/screenshots/main-red-theme-4.png" width="49%" alt="CDPlayer main window, RED theme, playing a track">
