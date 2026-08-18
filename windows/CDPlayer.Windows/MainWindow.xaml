@@ -1,0 +1,204 @@
+<Window x:Class="CDPlayer.Windows.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="CDPlayer"
+        Width="1040" Height="680" MinWidth="760" MinHeight="520"
+        Background="{StaticResource BackgroundBrush}"
+        WindowStartupLocation="CenterScreen"
+        AllowDrop="True"
+        Drop="Window_Drop"
+        DragOver="Window_DragOver"
+        PreviewKeyDown="Window_PreviewKeyDown">
+
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="12"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="10"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="CDPLAYER" FontSize="20" FontWeight="Bold"
+                           Foreground="{StaticResource TextPrimaryBrush}"/>
+                <TextBlock Text="WINDOWS" FontSize="11" FontWeight="Bold" Margin="10,4,0,0"
+                           Foreground="{StaticResource AccentBrush}" VerticalAlignment="Bottom"/>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button Content="Add Files" Style="{StaticResource ToolbarButton}" Margin="0,0,8,0" Click="AddFiles_Click"/>
+                <Button Content="Add Folder" Style="{StaticResource ToolbarButton}" Margin="0,0,8,0" Click="AddFolder_Click"/>
+                <Button Content="Clear Queue" Style="{StaticResource ToolbarButton}" x:Name="ClearQueueButton" Click="ClearQueue_Click"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Body: queue + now playing -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.15*"/>
+                <ColumnDefinition Width="16"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Queue panel -->
+            <Border Grid.Column="0" Background="{StaticResource PanelBrush}" CornerRadius="10" Padding="16">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="10"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock x:Name="QueuePositionText" Grid.Row="0" Text="QUEUE 0 / 0"
+                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" FontWeight="SemiBold"/>
+
+                    <ListBox x:Name="QueueList" Grid.Row="2" Background="Transparent" BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             MouseDoubleClick="QueueList_MouseDoubleClick">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="10,8"/>
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="Margin" Value="0,0,0,2"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6"
+                                                    Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#2A2E37"/>
+                                                </Trigger>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#1F232B"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding DisplayTitle}" Foreground="{StaticResource TextPrimaryBrush}"
+                                                   FontSize="13" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding Artist}" Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="11" TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding DurationText}" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="10,0"/>
+                                    <Button Grid.Column="2" Content="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="11"
+                                            Style="{StaticResource TransportButton}" Width="26" Height="26"
+                                            Click="RemoveTrack_Click" Tag="{Binding}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+
+            <!-- Now playing panel -->
+            <Border Grid.Column="2" Background="{StaticResource PanelBrush}" CornerRadius="10" Padding="20">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="16"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="14"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="14"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" CornerRadius="8" Background="#12141A" MaxHeight="280">
+                        <Grid>
+                            <TextBlock Text="&#xE8D6;" FontFamily="Segoe MDL2 Assets" FontSize="64"
+                                       Foreground="{StaticResource BorderBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Image x:Name="AlbumArtImage" Stretch="Uniform" Margin="4"/>
+                        </Grid>
+                    </Border>
+
+                    <StackPanel Grid.Row="1" Margin="0,16,0,0">
+                        <TextBlock x:Name="TitleText" Text="No track loaded" FontSize="17" FontWeight="Bold"
+                                   Foreground="{StaticResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock x:Name="ArtistAlbumText" Text="Add files or drop them here to build a queue"
+                                   FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,3,0,0"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+
+                    <Grid Grid.Row="3">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="PositionText" Grid.Column="0" Text="0:00" FontSize="11"
+                                   Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                        <Slider x:Name="SeekSlider" Grid.Column="1" Margin="10,0" Minimum="0" Maximum="1"
+                                Thumb.DragStarted="SeekSlider_DragStarted" Thumb.DragCompleted="SeekSlider_DragCompleted"/>
+                        <TextBlock x:Name="DurationText" Grid.Column="2" Text="0:00" FontSize="11"
+                                   Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <Grid Grid.Row="5">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <ToggleButton x:Name="ShuffleToggle" Content="&#xE8B1;" FontFamily="Segoe MDL2 Assets"
+                                          Style="{StaticResource ToggleChip}" Click="ShuffleToggle_Click" ToolTip="Shuffle"/>
+                            <ToggleButton x:Name="RepeatToggle" Content="&#xE8EE;" FontFamily="Segoe MDL2 Assets"
+                                          Style="{StaticResource ToggleChip}" Margin="6,0,0,0" Click="RepeatToggle_Click" ToolTip="Repeat: off"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
+                            <Button Content="&#xE892;" FontSize="15" Style="{StaticResource TransportButton}"
+                                    Width="38" Height="38" Click="Previous_Click" ToolTip="Previous (J)"/>
+                            <Button x:Name="PlayPauseButton" Content="&#xE768;" FontSize="20" Style="{StaticResource TransportButton}"
+                                    Width="52" Height="52" Margin="10,0" Click="PlayPause_Click" ToolTip="Play/Pause (Space)"/>
+                            <Button Content="&#xE893;" FontSize="15" Style="{StaticResource TransportButton}"
+                                    Width="38" Height="38" Click="Next_Click" ToolTip="Next (L)"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <TextBlock Text="&#xE767;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                       Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                            <Slider x:Name="VolumeSlider" Width="90" Margin="8,0,0,0" Minimum="0" Maximum="1" Value="1"
+                                    ValueChanged="VolumeSlider_ValueChanged"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock x:Name="StatusText" Grid.Row="7" Text="" FontSize="11" Margin="0,4,0,0"
+                               Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <TextBlock Grid.Row="4" Text="Space play/pause · J/L prev/next · ←/→ seek 15s · drag &amp; drop files or folders"
+                   FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
+    </Grid>
+</Window>

@@ -2,5 +2,6 @@
 out/
 dist/
 *.class
+.vs/
 
 *.bundle
