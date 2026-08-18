@@ -220,6 +220,17 @@ public final class CDPlayer extends JFrame {
       return Math.max(1, Math.round(1000f / hz));
     } catch (Exception unavailable) { return 16; }
   }
+  // DISPLAY_REFRESH_MS matches the display exactly (down to ~7ms on this machine's 144Hz panel), which is right
+  // for brief, one-shot UI transitions but wrong for animations that run continuously for as long as a track is
+  // playing (disc spin, theme particles, disc eject): measured directly, running the disc's own repaint at 144Hz
+  // instead of 60Hz raised its CPU cost from ~14% to ~35% of one core — linear with the tick rate, not a bug, but
+  // real cost that competes for scheduling with StreamPlayer's real-time audio pump thread (see StreamPlayer.pump)
+  // for the entire time a song is playing. A spinning disc doesn't read as meaningfully smoother past 60fps the
+  // way responding-to-input content would, so there's no visual reason to pay that cost. Clamping to 16ms keeps
+  // the "adapt to a slower display" half of DISPLAY_REFRESH_MS's reasoning (a 30Hz display still gets matched
+  // exactly) while dropping the "chase a 144Hz+ display" half that was actively costing audio smoothness for no
+  // visible benefit.
+  private static final int ANIMATION_TICK_MS = Math.max(16, DISPLAY_REFRESH_MS);
   // 16ms (~60fps), not the original 70ms (~14fps): this timer drives the seek slider, elapsed-time label, and
   // visualizer during ordinary playback — i.e. the bulk of actual time spent using the app — so 70ms visibly
   // made the seek bar creep in discrete jumps and the visualizer/beat pulse look stepped rather than fluid.
@@ -5157,11 +5168,13 @@ public final class CDPlayer extends JFrame {
     private final List<double[]> shootingStars = new ArrayList<double[]>(); // each entry: {x, y, vx, vy, life}
     // Was a fixed 35ms (~28fps) — every particle motion constant below (fall speed, drift amplitude, spin rate,
     // shooting star velocity/spawn probability, clock's own increment) was tuned against that tick length.
-    // TICK_MS now tracks the real display refresh rate (see DISPLAY_REFRESH_MS) instead of a second hardcoded
-    // guess, and TIME_SCALE rescales every motion constant so particles cover the exact same real-world distance
-    // per real-world second regardless of the tick rate — a 144Hz display gets genuinely smoother-looking
-    // particles, not ones that fall 2.2x too fast just because ticks fire more often.
-    private static final int TICK_MS = DISPLAY_REFRESH_MS;
+    // TICK_MS tracks ANIMATION_TICK_MS (display refresh rate, capped at 60fps — see its own doc comment) instead
+    // of a second hardcoded guess, and TIME_SCALE rescales every motion constant so particles cover the exact
+    // same real-world distance per real-world second regardless of the tick rate. The 60fps cap matters here for
+    // the same reason it does for the disc: particle themes run for as long as a track plays, and the visual
+    // return on going past 60fps for ambient background particles isn't worth the CPU competing with the audio
+    // pump thread for the whole time.
+    private static final int TICK_MS = ANIMATION_TICK_MS;
     private static final double TIME_SCALE = TICK_MS / 35.0;
     private final Timer timer = new Timer(TICK_MS, null);
     private Mode mode = Mode.NONE;
@@ -5445,13 +5458,14 @@ public final class CDPlayer extends JFrame {
   }
 
   private static final class DiscView extends JPanel {
-    // Paced to the real display refresh rate (see DISPLAY_REFRESH_MS) rather than a hardcoded 16ms, so a 144Hz
-    // display genuinely gets 144 distinct spin positions a second instead of the 60 a fixed-16ms timer would cap
-    // it at. .045 rad was tuned per 16ms tick (2.8125 rad/s); ROTATION_RAD_PER_MS expresses that as a rate so the
-    // per-tick step scales with whatever interval actually runs, keeping real-world spin speed identical either way.
+    // Paced to ANIMATION_TICK_MS (display refresh rate, capped at 60fps — see its own doc comment for why the cap
+    // matters specifically here: the disc spins for as long as a track plays, competing with the real-time audio
+    // pump thread for the whole time). .045 rad was tuned per 16ms tick (2.8125 rad/s); ROTATION_RAD_PER_MS
+    // expresses that as a rate so the per-tick step scales with whatever interval actually runs, keeping
+    // real-world spin speed identical regardless.
     private static final double ROTATION_RAD_PER_MS = .045 / 16.0;
     private double angle; private boolean spinning; private boolean lookingUp; private BufferedImage cover;
-    private final Timer motion = new Timer(DISPLAY_REFRESH_MS, e -> { angle += ROTATION_RAD_PER_MS * DISPLAY_REFRESH_MS; repaint(); });
+    private final Timer motion = new Timer(ANIMATION_TICK_MS, e -> { angle += ROTATION_RAD_PER_MS * ANIMATION_TICK_MS; repaint(); });
     private Runnable onCoverChanged; // notifies the AUTO theme (see CDPlayer.onCoverChanged) to re-derive its palette; null everywhere else
     // maximumSize matters here, not just preferredSize: the drawn disc itself is capped at 300px (see side=
     // Math.min(300, ...) in paintComponent below), but GridBagLayout's fill=BOTH + weightx/weighty=1 on this
@@ -5622,11 +5636,11 @@ public final class CDPlayer extends JFrame {
     private Runnable onEjectPeak;
     private static final double EJECT_OUT_MS = 300, EJECT_HOLD_MS = 180, EJECT_BACK_MS = 320;
     private static final double EJECT_TOTAL_MS = EJECT_OUT_MS + EJECT_HOLD_MS + EJECT_BACK_MS;
-    // Paced to DISPLAY_REFRESH_MS (see its own doc comment) rather than a fixed 16ms, same reasoning as the disc's
+    // Paced to ANIMATION_TICK_MS (see its own doc comment) rather than a fixed 16ms, same reasoning as the disc's
     // own spin timer just above. ejectElapsedMs is a plain elapsed-milliseconds accumulator, so it stays correct
     // at any interval simply by adding that same interval each tick — no rate constant to rescale here.
-    private final Timer ejectTimer = new Timer(DISPLAY_REFRESH_MS, e -> {
-      ejectElapsedMs += DISPLAY_REFRESH_MS;
+    private final Timer ejectTimer = new Timer(ANIMATION_TICK_MS, e -> {
+      ejectElapsedMs += ANIMATION_TICK_MS;
       if (!ejectPeakFired && ejectElapsedMs >= EJECT_OUT_MS) { ejectPeakFired = true; if (onEjectPeak != null) onEjectPeak.run(); }
       if (ejectElapsedMs >= EJECT_TOTAL_MS) { ejectElapsedMs = -1; ((Timer) e.getSource()).stop(); }
       repaint();
