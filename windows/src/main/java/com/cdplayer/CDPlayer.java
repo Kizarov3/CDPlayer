@@ -98,6 +98,7 @@ public final class CDPlayer extends JFrame {
   private JPanel headerPanel; // the status pill + History/Settings row — hidden in CD view, unlike the triangle divider below it
   private JPanel playerPanelWrap; // track info, transport controls, queue — hidden in CD view
   private JPanel bodyPanel; // the GridBagLayout row holding discColumn + playerPanelWrap — see applyCdViewState() for why this needs to be reachable
+  private JPanel discColumn; // wraps disc for vertical centering in the main view — needs to be reachable so setMiniModeEnabled() can move disc back into it on exit
   private GridBagConstraints playerPanelWrapConstraints; // saved so playerPanelWrap can be re-added at its original cell when leaving CD view — see applyCdViewState()
   private JLabel hintLabel; // the keyboard-shortcuts line at the bottom — hidden in CD view
   private final JButton cdViewButton = textButton("CD VIEW");
@@ -295,6 +296,14 @@ public final class CDPlayer extends JFrame {
   private final JButton waveformButton = textButton("ON");
   private boolean waveformEnabled = true;
   private final JButton animationsButton = textButton("ON");
+  private final JButton miniModeButton = textButton("OFF");
+  private boolean miniModeEnabled = false;
+  private JPanel miniPanel; // built lazily on first use — see setMiniModeEnabled()
+  private final JLabel miniTrackLabel = new JLabel(); // mirrors track's text (see setTrackTitle) — the compact mini-player window's own "Artist – Title" label
+  private final JSlider miniProgress = new JSlider(0, 1000, 0); // mirrors progress's value (see syncMiniProgress) rather than being re-parented — progress lives inside playerPanel(), built once, and Mini Mode needs its own always-available small widgets instead of tearing a live component out of that tree on every toggle
+  private final JLabel miniElapsed = label("0:00", 9, MUTED);
+  private final JLabel miniLength = label("0:00", 9, MUTED);
+  private java.awt.Rectangle preMiniBounds; // window bounds to restore on exit — same pattern as preFullscreenBounds below
   private CenteredOverlay settingsOverlay;
   private CenteredOverlay lyricsOverlay;
   private CenteredOverlay eqOverlay;
@@ -364,6 +373,7 @@ public final class CDPlayer extends JFrame {
     // (returns false) with an empty queue or at the end of it, so no extra guard is needed here.
     disc.setOnEjectPeak(this::nextTrack);
     disc.setOnCoverChanged(this::onCoverChanged);
+    disc.setOnMiniClick(this::toggle);
     setDropTarget(new DropTarget(this, new DropTargetAdapter() {
       @SuppressWarnings("unchecked") public void drop(DropTargetDropEvent event) {
         // DropTarget is registered on the frame itself, not on any particular component — unlike a mouse click
@@ -433,6 +443,11 @@ public final class CDPlayer extends JFrame {
     bindKey(inputMap, actionMap, "L", "nextTrackL", e -> { if (!anyOverlayOpen()) nextTrack(); });
     bindKey(inputMap, actionMap, "F", "toggleFullscreen", e -> { if (!anyOverlayOpen()) toggleFullscreen(); });
     bindKey(inputMap, actionMap, "C", "toggleCdView", e -> { if (!anyOverlayOpen()) toggleCdView(); });
+    // Not gated on anyOverlayOpen() the way C/F are: Mini Mode's own window has no Settings/History/etc. buttons
+    // to open an overlay from in the first place (see buildMiniPanel), so that guard would only ever matter for
+    // toggling Mini Mode ON from the full window while some overlay happens to be open — harmless either way,
+    // but keeping it ungated means M reliably exits Mini Mode from inside it too, with nothing else to check.
+    bindKey(inputMap, actionMap, "M", "toggleMiniMode", e -> setMiniModeEnabled(!miniModeEnabled));
     // Closest-thing-open takes priority: the theme menu, then Settings, then CD view, then fullscreen. Both
     // overlays are plain in-window components (not separate JDialog/JPopupMenu windows — see
     // showSettingsDialog/showThemeMenu), so this single WHEN_IN_FOCUSED_WINDOW binding on the main frame handles
@@ -444,6 +459,7 @@ public final class CDPlayer extends JFrame {
       else if (historyOverlay != null && historyOverlay.isVisible()) closeHistory();
       else if (searchOverlay != null && searchOverlay.isVisible()) closeSearch();
       else if (settingsOverlay != null && settingsOverlay.isVisible()) closeSettingsDialog();
+      else if (miniModeEnabled) setMiniModeEnabled(false);
       else if (cdViewEnabled) toggleCdView();
       else if (fullscreen) toggleFullscreen();
     });
@@ -464,20 +480,29 @@ public final class CDPlayer extends JFrame {
    * frozen "before" snapshot fading away to reveal the already-applied "after" state underneath gets a smooth
    * transition without any of that, the same trick FadeableCard already uses for the overlays.
    */
-  // Cap on the "before" snapshot's internal render resolution for the CD-view crossfade — see ThemeOverlay's own
-  // RENDER_CAP note for the underlying reasoning (painting, then repeatedly alpha-blending, a full-resolution
-  // image costs roughly proportional to its pixel count, which at a large/fullscreen window dwarfs a windowed
-  // one). Below the cap this is a no-op: scale ends up 1.0 and the snapshot is captured at native resolution,
-  // exactly as before.
+  // Cap on the "before" snapshot's internal render resolution for the CD-view crossfade: painting, then
+  // repeatedly alpha-blending across the transition's animation steps, a full-resolution captured image (the
+  // whole window's content, not a handful of simple shapes) costs roughly proportional to its pixel count, which
+  // at a large/fullscreen window dwarfs a windowed one. Below the cap this is a no-op: scale ends up 1.0 and the
+  // snapshot is captured at native resolution, exactly as before.
   private static final int CD_VIEW_SNAPSHOT_CAP = 1600;
+  // Above this destination size, even the cheapest per-pixel blit (SnapshotFadeOverlay's NEAREST-interpolated
+  // drawImage — see its own doc comment) can't stay inside the transition's ~8ms/step budget: measured directly
+  // at 13ms/step by 3840x2160, climbing to 32ms/step by 6016x3384 — a "crossfade" that's actually stuttering
+  // through 1-2 dropped, stalled frames looks worse than no animation at all. 3200 sits with headroom below the
+  // 3840 measurement (6.06ms/step at 2560x1440, still comfortably inside budget) and above it, falling back to
+  // the same instant switch animationsEnabled=false already uses keeps CD view itself always responsive,
+  // trading only the crossfade's visual polish specifically where it wouldn't have read as smooth anyway.
+  private static final int CD_VIEW_ANIMATE_MAX = 3200;
   private void toggleCdView() {
+    if (miniModeEnabled) setMiniModeEnabled(false); // mutually exclusive — an enlarged disc makes no sense inside the tiny Mini Mode window
     cdViewEnabled = !cdViewEnabled;
-    if (!animationsEnabled) { applyCdViewState(); return; }
+    int w = Math.max(1, contentStack.getWidth()), h = Math.max(1, contentStack.getHeight());
+    if (!animationsEnabled || Math.max(w, h) > CD_VIEW_ANIMATE_MAX) { applyCdViewState(); return; }
 
     if (cdViewTransitionTimer != null && cdViewTransitionTimer.isRunning()) cdViewTransitionTimer.stop();
     if (cdViewTransitionOverlay != null) { contentStack.remove(cdViewTransitionOverlay); cdViewTransitionOverlay.releaseSnapshot(); cdViewTransitionOverlay = null; } // clean up an interrupted previous transition, if "C" was pressed again mid-fade
 
-    int w = Math.max(1, contentStack.getWidth()), h = Math.max(1, contentStack.getHeight());
     double snapshotScale = Math.min(1.0, CD_VIEW_SNAPSHOT_CAP / (double) Math.max(w, h));
     int bw = Math.max(1, (int) Math.round(w * snapshotScale)), bh = Math.max(1, (int) Math.round(h * snapshotScale));
     BufferedImage before = new BufferedImage(bw, bh, BufferedImage.TYPE_INT_ARGB);
@@ -538,6 +563,113 @@ public final class CDPlayer extends JFrame {
     bodyPanel.invalidate();
     contentStack.validate();
   }
+  private static final int MINI_WINDOW_WIDTH = 400, MINI_WINDOW_HEIGHT = 168;
+  /**
+   * Mini Mode: shrinks the whole window down to a small, glanceable, always-on-top widget — disc, title/artist,
+   * and a seek bar, nothing else — toggled from the Settings row (see buildSettingsPanel) rather than an
+   * animated in-window state change like CD view, since it needs the actual JFrame itself to become small, not
+   * just what's shown inside a fixed-size one. Swaps the whole content pane rather than hiding/showing pieces of
+   * the existing one (setContentPane() works fine on an already-visible frame — no dispose()/recreate needed,
+   * unlike toggleFullscreen()'s undecorated-peer dance): contentStack and everything inside it (including any
+   * currently-open Settings/Lyrics/etc. overlay) stays fully intact in memory while detached, and reappears
+   * exactly as it was left the moment Mini Mode turns back off.
+   */
+  // The main window's own floor, set once in the constructor — setSize() to Mini Mode's much smaller target
+  // is silently clamped back up to this by the native peer otherwise (confirmed directly: requested 400x168,
+  // got 760x785 — exactly this floor), so it has to come down too while Mini Mode is active and go back
+  // afterward. Mini Mode's own minimum is the window size itself: it's a fixed-size widget, never user-resized.
+  private static final Dimension MAIN_MINIMUM_SIZE = new Dimension(760, 785);
+  private void setMiniModeEnabled(boolean enabled) {
+    if (enabled == miniModeEnabled) return;
+    if (enabled) {
+      if (cdViewEnabled) toggleCdView(); // mutually exclusive — see toggleCdView()'s own guard
+      if (fullscreen) toggleFullscreen(); // mutually exclusive — see toggleFullscreen()'s own guard
+      if (miniPanel == null) miniPanel = buildMiniPanel();
+      preMiniBounds = getBounds();
+      miniModeEnabled = true;
+      miniModeButton.setText("ON");
+      disc.setMini(true);
+      miniPanel.add(disc, BorderLayout.WEST); // moves disc here — a component can only have one parent, so this auto-detaches it from discColumn; see the exit branch below for the move back
+      setContentPane(miniPanel);
+      setMinimumSize(new Dimension(MINI_WINDOW_WIDTH, MINI_WINDOW_HEIGHT));
+      setResizable(false);
+      setAlwaysOnTop(true);
+      setSize(MINI_WINDOW_WIDTH, MINI_WINDOW_HEIGHT);
+      syncMiniProgress();
+    } else {
+      miniModeEnabled = false;
+      miniModeButton.setText("OFF");
+      disc.setMini(false);
+      discColumn.add(disc, 1); // back between discColumn's two centering glue components (index 0 and what's now 1) — see the enter branch above for where it went
+      setContentPane(contentStack);
+      setResizable(true);
+      setAlwaysOnTop(false);
+      setMinimumSize(MAIN_MINIMUM_SIZE);
+      if (preMiniBounds != null) setBounds(preMiniBounds);
+    }
+    // validate() (immediate, synchronous), not revalidate() (deferred) — same reasoning as every other
+    // overlay/view-mode change in this file: disc was just re-parented (into or out of miniPanel) right above,
+    // and a deferred revalidate left it reporting its stale pre-swap size (confirmed directly: still 480 wide,
+    // Normal Mode's own preferred size, well after the swap and an explicit repaint).
+    getRootPane().validate();
+    getRootPane().repaint();
+    getRootPane().requestFocusInWindow(); // keyboard shortcuts live on the root pane's WHEN_IN_FOCUSED_WINDOW map — same reasoning as toggleFullscreen()'s own call
+  }
+  /** Built once, lazily, the first time Mini Mode is actually entered — mirrors showSettingsDialog()'s lazy-overlay pattern. Structure only — disc itself is moved in and out by setMiniModeEnabled() on every toggle, not added here, since it needs to move back to discColumn on exit rather than staying put. */
+  private JPanel buildMiniPanel() {
+    JPanel panel = new JPanel(new BorderLayout(12, 0));
+    panel.setBackground(BG); panel.setOpaque(true);
+    panel.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
+
+    JPanel right = new JPanel(); right.setOpaque(false); right.setLayout(new javax.swing.BoxLayout(right, javax.swing.BoxLayout.Y_AXIS));
+
+    JPanel titleRow = new JPanel(new BorderLayout()); titleRow.setOpaque(false); titleRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+    miniTrackLabel.setFont(new Font("SansSerif", Font.BOLD, 14)); miniTrackLabel.setForeground(TEXT);
+    // Locked to match setTrackTitle()'s own fitText width budget for this label — without an explicit size,
+    // BorderLayout.CENTER instead hands it whatever's left over in titleRow at layout time, which doesn't
+    // necessarily match that budget, and an HTML JLabel wraps to a second line (rather than the single-line
+    // ellipsis fitText/ellipsize() computed for) whenever its real rendered width comes in narrower than assumed.
+    miniTrackLabel.setPreferredSize(new Dimension(200, 18)); miniTrackLabel.setMinimumSize(new Dimension(0, 18));
+    titleRow.add(miniTrackLabel, BorderLayout.CENTER);
+    JButton exitButton = new JButton("×"); exitButton.setFont(new Font("SansSerif", Font.BOLD, 16)); exitButton.setForeground(MUTED);
+    exitButton.setFocusPainted(false); exitButton.setBorderPainted(false); exitButton.setContentAreaFilled(false); exitButton.setOpaque(false);
+    exitButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); exitButton.setMargin(new Insets(0, 8, 0, 0)); exitButton.setToolTipText("Exit Mini Mode");
+    exitButton.setFocusable(false);
+    attachColorHover(exitButton, MUTED, TEXT);
+    exitButton.addActionListener(e -> setMiniModeEnabled(false));
+    titleRow.add(exitButton, BorderLayout.EAST);
+    right.add(titleRow);
+
+    right.add(javax.swing.Box.createVerticalGlue());
+
+    miniProgress.setOpaque(false); miniProgress.setUI(new AccentSliderUI(miniProgress)); miniProgress.setFocusable(false);
+    miniProgress.setAlignmentX(Component.LEFT_ALIGNMENT);
+    miniProgress.setPreferredSize(new Dimension(200, 14)); miniProgress.setMaximumSize(new Dimension(Integer.MAX_VALUE, 14));
+    // Same drag-to-seek pattern as progress's own listener (see playerPanel()) — a separate widget/listener
+    // rather than re-parenting progress itself, per buildMiniPanel()'s doc comment; keeps progress (the main
+    // view's slider) and player state as the source of truth, mirrored back onto miniElapsed too so both stay
+    // in sync however the seek was actually made.
+    miniProgress.addChangeListener(e -> {
+      if (player != null && miniProgress.getValueIsAdjusting()) adjusting = true;
+      else if (player != null && adjusting) {
+        long target = (long) (player.getMicrosecondLength() * miniProgress.getValue() / 1000.0);
+        player.setMicrosecondPosition(target);
+        adjusting = false;
+        progress.setValue(miniProgress.getValue());
+        elapsed.setText(format(target));
+        miniElapsed.setText(elapsed.getText());
+        if (lyricsOverlay != null && lyricsOverlay.isVisible()) updateLyricsSync();
+      }
+    });
+    JPanel progressRow = new JPanel(new BorderLayout(8, 0)); progressRow.setOpaque(false); progressRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+    progressRow.add(miniElapsed, BorderLayout.WEST);
+    progressRow.add(miniProgress, BorderLayout.CENTER);
+    progressRow.add(miniLength, BorderLayout.EAST);
+    right.add(progressRow);
+
+    panel.add(right, BorderLayout.CENTER);
+    return panel;
+  }
   /**
    * Borderless-maximized fullscreen, not exclusive GraphicsDevice fullscreen. Windows' own DWM compositor already
    * does the "cover the whole display, hide the taskbar" job efficiently for a plain borderless window sized to
@@ -554,6 +686,7 @@ public final class CDPlayer extends JFrame {
    * itself is torn down and rebuilt.
    */
   private void toggleFullscreen() {
+    if (!fullscreen && miniModeEnabled) setMiniModeEnabled(false); // mutually exclusive — see toggleCdView()'s note
     java.awt.GraphicsDevice device = getGraphicsConfiguration().getDevice();
     if (!fullscreen) {
       preFullscreenBounds = getBounds();
@@ -1028,6 +1161,24 @@ public final class CDPlayer extends JFrame {
     JPanel animationsButtonWrap = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0)); animationsButtonWrap.setOpaque(false); animationsButtonWrap.add(animationsButton);
     animationsRow.add(animationsButtonWrap, BorderLayout.EAST);
     card.add(animationsRow);
+    card.add(javax.swing.Box.createVerticalStrut(22));
+
+    // Mini Mode toggle — shrinks the whole window to a small always-on-top widget (disc, title/artist, seek bar
+    // only). Also reachable with M, or the × button inside the mini window itself (see buildMiniPanel).
+    JPanel miniModeRow = new JPanel(new BorderLayout()); miniModeRow.setOpaque(false); miniModeRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+    miniModeRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+    JLabel miniModeLabel = label("MINI MODE", 10, MUTED);
+    for (java.awt.event.ActionListener l : miniModeButton.getActionListeners()) miniModeButton.removeActionListener(l); // rebuilt each open; avoid stacking duplicate listeners
+    miniModeButton.addActionListener(e -> setMiniModeEnabled(!miniModeEnabled));
+    miniModeRow.add(miniModeLabel, BorderLayout.WEST);
+    JPanel miniModeButtonWrap = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0)); miniModeButtonWrap.setOpaque(false); miniModeButtonWrap.add(miniModeButton);
+    miniModeRow.add(miniModeButtonWrap, BorderLayout.EAST);
+    card.add(miniModeRow);
+    card.add(javax.swing.Box.createVerticalStrut(10));
+    JLabel miniModeHint = new JLabel("<html><body style='width:280px'>Shrinks the window to a small always-on-top widget — just the disc, track info, and a seek bar. Press M or click the disc to play/pause while in it.</body></html>");
+    miniModeHint.setForeground(MUTED); miniModeHint.setFont(new Font("SansSerif", Font.PLAIN, 10));
+    miniModeHint.setAlignmentX(Component.LEFT_ALIGNMENT);
+    card.add(miniModeHint);
     card.add(javax.swing.Box.createVerticalStrut(22));
 
     JButton close = textButton("CLOSE");
@@ -2316,6 +2467,8 @@ public final class CDPlayer extends JFrame {
     elapsed.setForeground(MUTED); length.setForeground(MUTED); queueInfo.setForeground(MUTED); queueNext.setForeground(MUTED);
     nowPlayingLabel.setForeground(ACCENT2); crossfadeTitle.setForeground(MUTED); crossfadeValueLabel.setForeground(MUTED);
     volumeTitle.setForeground(MUTED); volumeValueLabel.setForeground(MUTED);
+    miniTrackLabel.setForeground(TEXT); miniElapsed.setForeground(MUTED); miniLength.setForeground(MUTED);
+    if (miniPanel != null) { miniPanel.setBackground(BG); miniPanel.repaint(); } // built lazily — see setMiniModeEnabled()
   }
 
   private static Color lerp(Color a, Color b, float t) {
@@ -2363,7 +2516,7 @@ public final class CDPlayer extends JFrame {
     // repaint cost balloon at 5K fullscreen). Glue above/below inside discColumn does the vertical centering
     // fill=BOTH would otherwise skip, since BoxLayout doesn't center children along its own axis on its own.
     constraints.fill = GridBagConstraints.BOTH;
-    JPanel discColumn = new JPanel(); discColumn.setOpaque(false); discColumn.setLayout(new javax.swing.BoxLayout(discColumn, javax.swing.BoxLayout.Y_AXIS));
+    discColumn = new JPanel(); discColumn.setOpaque(false); discColumn.setLayout(new javax.swing.BoxLayout(discColumn, javax.swing.BoxLayout.Y_AXIS));
     disc.setAlignmentX(Component.CENTER_ALIGNMENT);
     discColumn.add(javax.swing.Box.createVerticalGlue());
     discColumn.add(disc);
@@ -2385,7 +2538,7 @@ public final class CDPlayer extends JFrame {
     playerPanelWrapConstraints = (GridBagConstraints) constraints.clone();
     body.add(playerPanelWrap, constraints);
     root.add(body, BorderLayout.CENTER);
-    hintLabel = label("DROP WAV · AIFF · AU · FLAC · M4A · MP3 — SPACE/K PLAY · J/L PREV/NEXT · ←/→ SKIP 15S · C CD VIEW · F FULLSCREEN · ESC EXIT", 10, new Color(120, 122, 126));
+    hintLabel = label("DROP WAV · AIFF · AU · FLAC · M4A · MP3 — SPACE/K PLAY · J/L PREV/NEXT · ←/→ SKIP 15S · C CD VIEW · M MINI MODE · F FULLSCREEN · ESC EXIT", 10, new Color(120, 122, 126));
     hintLabel.setHorizontalAlignment(SwingConstants.CENTER); hintLabel.setBorder(BorderFactory.createEmptyBorder(18, 0, 0, 0));
     // Song name + author, centered at the bottom of the window in CD view — a footer, not tucked under the disc,
     // so it stays legible regardless of the disc's own size. Shares hintLabel's SOUTH slot: only one of the two
@@ -2908,7 +3061,7 @@ public final class CDPlayer extends JFrame {
       // taskbar/dock even when the window itself isn't focused or is minimized.
       setTitle((details.artist != null && !details.artist.trim().isEmpty() ? details.artist + " – " : "") + name);
       fadeInNowPlaying();
-      length.setText(format(opened.getMicrosecondLength())); elapsed.setText("0:00"); progress.setValue(0); status.setText("●  TRACK LOADED");
+      length.setText(format(opened.getMicrosecondLength())); elapsed.setText("0:00"); progress.setValue(0); status.setText("●  TRACK LOADED"); syncMiniProgress();
       boolean canLookUp = details.embeddedCover == null && details.title != null && !details.title.trim().isEmpty();
       disc.setCover(details.embeddedCover); disc.setLookingUp(canLookUp);
       if (details.embeddedCover != null) source.setText("EMBEDDED ALBUM ART · " + extension(file).toUpperCase());
@@ -3653,7 +3806,7 @@ public final class CDPlayer extends JFrame {
     deleteTemporaryAudio();
     setTrackTitle("Pick a track to get started.", null); source.setText("YOUR MUSIC LIBRARY");
     setTitle("CDPlayer");
-    elapsed.setText("0:00"); length.setText("0:00"); progress.setValue(0);
+    elapsed.setText("0:00"); length.setText("0:00"); progress.setValue(0); syncMiniProgress();
     disc.setCover(null); disc.setLookingUp(false); loadedFile = null; setPlaying(false);
     currentLyrics = null; lyricsButton.setVisible(false); refreshLyricsIfOpen();
     waveformSliderUI.setWaveform(null);
@@ -3704,21 +3857,22 @@ public final class CDPlayer extends JFrame {
         long duration = player.getMicrosecondLength();
         progress.setValue(duration == 0 ? 0 : (int) (target * 1000 / duration));
         elapsed.setText(format(target));
+        syncMiniProgress();
       }
     } catch (Exception ignored) { /* corrupt or unreadable state file; just start with an empty queue */ }
   }
-  /** Persists volume, crossfade, mono audio, the animations toggle, the current theme, and the EQ band gains so they carry over to the next launch instead of resetting to defaults. Runs on the same shutdown hook as {@link #saveQueueState()}, same EDT-quiescence rationale. Theme is stored by name (not index) so it survives THEMES being reordered later. */
+  /** Persists volume, crossfade, mono audio, the animations toggle, the current theme, the EQ band gains, the waveform toggle, and Mini Mode so they carry over to the next launch instead of resetting to defaults. Runs on the same shutdown hook as {@link #saveQueueState()}, same EDT-quiescence rationale. Theme is stored by name (not index) so it survives THEMES being reordered later. */
   private void saveSettingsState() {
     try {
       File parent = SETTINGS_FILE.getParentFile();
       if (parent != null) parent.mkdirs();
       StringBuilder eqLine = new StringBuilder();
       for (int i = 0; i < eqGains.length; i++) { if (i > 0) eqLine.append(','); eqLine.append(eqGains[i]); }
-      String content = volumeSlider.getValue() + "\n" + crossfadeSlider.getValue() + "\n" + (monoAudio ? "1" : "0") + "\n" + (animationsEnabled ? "1" : "0") + "\n" + THEMES[currentThemeIndex].name + "\n" + eqLine + "\n" + (waveformEnabled ? "1" : "0") + "\n";
+      String content = volumeSlider.getValue() + "\n" + crossfadeSlider.getValue() + "\n" + (monoAudio ? "1" : "0") + "\n" + (animationsEnabled ? "1" : "0") + "\n" + THEMES[currentThemeIndex].name + "\n" + eqLine + "\n" + (waveformEnabled ? "1" : "0") + "\n" + (miniModeEnabled ? "1" : "0") + "\n";
       java.nio.file.Files.write(SETTINGS_FILE.toPath(), content.getBytes(StandardCharsets.UTF_8));
     } catch (Exception ignored) { /* best-effort persistence; a failed save just means defaults next launch */ }
   }
-  /** Restores settings saved by {@link #saveSettingsState()}. Must run after createContent() has wired up the sliders' change listeners, so setting each value here also updates its label/live state the same way a manual drag would. The animations, theme, EQ, and waveform lines are optional (absent in files saved before those existed), defaulting to enabled / RED / flat / enabled. */
+  /** Restores settings saved by {@link #saveSettingsState()}. Must run after createContent() has wired up the sliders' change listeners, so setting each value here also updates its label/live state the same way a manual drag would. The animations, theme, EQ, waveform, and Mini Mode lines are optional (absent in files saved before those existed), defaulting to enabled / RED / flat / enabled / off. */
   private void restoreSettingsState() {
     try {
       if (!SETTINGS_FILE.isFile()) return;
@@ -3731,6 +3885,7 @@ public final class CDPlayer extends JFrame {
       String savedThemeName = lines.size() >= 5 ? lines.get(4).trim() : null;
       String savedEq = lines.size() >= 6 ? lines.get(5).trim() : null;
       boolean savedWaveform = lines.size() < 7 || "1".equals(lines.get(6).trim());
+      boolean savedMiniMode = lines.size() >= 8 && "1".equals(lines.get(7).trim()); // absent (new feature) defaults to off, unlike waveform's "absent defaults to on" — an old settings file never opted into this
       volumeSlider.setValue(Math.max(0, Math.min(100, savedVolume)));
       crossfadeSlider.setValue(Math.max(0, Math.min(15, savedCrossfade)));
       setMonoAudio(savedMono);
@@ -3749,6 +3904,10 @@ public final class CDPlayer extends JFrame {
           setEqGains(gains); // player is still null this early — just seeds eqGains for load() to pick up
         }
       }
+      // Last: buildMiniPanel() (called lazily from setMiniModeEnabled()) reads the live TEXT/ACCENT2/BG/MUTED
+      // fields for its labels' initial colors, which only reflect the restored theme once applyThemeInstant()
+      // above has already run.
+      if (savedMiniMode) setMiniModeEnabled(true);
     } catch (Exception ignored) { /* corrupt or unreadable state file; just start with defaults */ }
   }
   /** One preset per line: name|gain1,gain2,...,gain10. Loaded once at startup into customEqPresets, which the EQ panel's preset row reads directly. */
@@ -3804,12 +3963,28 @@ public final class CDPlayer extends JFrame {
     player.setMicrosecondPosition(target);
     progress.setValue(duration == 0 ? 0 : (int) (target * 1000 / duration));
     elapsed.setText(format(target));
+    syncMiniProgress();
     if (lyricsOverlay != null && lyricsOverlay.isVisible()) updateLyricsSync();
+  }
+  /**
+   * Mirrors progress/elapsed/length's just-updated state onto the Mini Mode window's own small widgets. Called
+   * right after every place those three change (load(), resetPlaybackToIdle(), restoreQueueState(), seekTo(),
+   * tick()) rather than re-parenting the live shared components themselves — progress/elapsed/length are built
+   * once inside playerPanel() and wired directly to player state, and moving actual JComponents in and out of
+   * that tree on every Mini Mode toggle risks disturbing their listeners for no real benefit when a plain mirror
+   * is this cheap. Gated on miniModeEnabled purely to skip pointless repaints while the window isn't showing it.
+   */
+  private void syncMiniProgress() {
+    if (!miniModeEnabled) return;
+    miniProgress.setValue(progress.getValue());
+    miniElapsed.setText(elapsed.getText());
+    miniLength.setText(length.getText());
   }
   private void tick(ActionEvent event) {
     if (player == null || adjusting) return;
     long duration = player.getMicrosecondLength(); long position = player.getMicrosecondPosition();
     progress.setValue(duration == 0 ? 0 : (int) (position * 1000 / duration)); elapsed.setText(format(position));
+    syncMiniProgress();
     double[] levels = computeLevels(5, 90);
     if (levels != null) {
       double instantEnergy = 0; for (double v : levels) instantEnergy += v; instantEnergy /= levels.length;
@@ -3994,6 +4169,10 @@ public final class CDPlayer extends JFrame {
     } else {
       artistLabel.setText(""); cdViewArtistLabel.setText("");
     }
+    // Mini Mode has just the one line for both — same "Artist – Title" convention as the window title (see
+    // load()) — rather than a second label row underneath, so the already-small widget doesn't spend its
+    // limited height on two separate lines when one reads just as well.
+    fitText(miniTrackLabel, hasArtist ? artist + " – " + name : name, 196, 14, 10, true);
   }
   /** Shrinks label's font from startSize down to minSize (stepping by 1pt) until text fits maxWidth, falling back to an ellipsis if it still doesn't fit at minSize. */
   private static void fitText(JLabel label, String text, int maxWidth, int startSize, int minSize, boolean bold) {
@@ -4667,7 +4846,7 @@ public final class CDPlayer extends JFrame {
       // Scaled draw, not a 1:1 blit: the snapshot may have been captured at a capped, smaller-than-actual
       // resolution (see toggleCdView()'s CD_VIEW_SNAPSHOT_CAP) — this is a no-op scale (1.0) and identical to the
       // old 1:1 draw whenever it wasn't.
-      g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+      g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
       g.drawImage(snapshot, 0, 0, getWidth(), getHeight(), null);
       g.dispose();
     }
@@ -5310,23 +5489,20 @@ public final class CDPlayer extends JFrame {
       for (double[] s : shootingStars) { s[0] += s[2] * TIME_SCALE; s[1] += s[3] * TIME_SCALE; s[4] -= 0.02 * TIME_SCALE; }
       shootingStars.removeIf(s -> s[4] <= 0 || s[0] > w + 40 || s[1] > h + 40);
     }
-    // Above this internal render resolution, particles are drawn into a capped-size offscreen buffer and the
-    // buffer is scale-blitted up to the real window size, instead of drawing every fillOval/glyph directly at
-    // native resolution. A transparent (non-opaque) layer this size has to be alpha-composited onto the window
-    // behind it on every repaint — cost that scales with total pixel count, not with how many particles are
-    // actually drawn — so at a large/fullscreen resolution (5K measured elsewhere in this class at up to 36x a
-    // windowed size's pixel count) that compositing itself became the bottleneck, independent of how cheap each
-    // individual particle draw call already was. Below the cap (ordinary windowed sizes) this path is skipped
-    // entirely — scale ends up 1.0 and bufW/bufH match getWidth()/getHeight() exactly — so normal windowed use
-    // pays zero extra cost for this.
-    private static final int RENDER_CAP = 1600;
-    private BufferedImage particleBuffer;
-    private int particleBufferW = -1, particleBufferH = -1;
+    // Particles are always drawn directly at native resolution — no capped-size offscreen buffer scaled back up
+    // to the real window size, unlike an earlier version of this method. That approach was built to avoid a
+    // theorized cost "that scales with total pixel count" at large/fullscreen resolutions, but measured directly
+    // (both end-to-end in real macOS exclusive fullscreen, and in isolation across resolutions from 1280x800 up
+    // through a real 6K display's 6016x3384) that theorized cost never actually showed up: this method's own
+    // draw cost is bound by PARTICLE_COUNT (a fixed 140 regardless of window size — the same shapes just span a
+    // wider area), so it stayed under 1ms at every resolution tested, 6K included. What the capped-buffer
+    // version WAS measurably expensive at — 38-46ms per frame under real fullscreen, confirmed by isolating each
+    // step — was blitting that offscreen buffer back onto the window with bilinear interpolation, a self-
+    // inflicted cost from the buffer/blit approach itself, not from painting particles at native size.
     protected void paintComponent(Graphics raw) {
       if (mode == Mode.NONE) return;
       int w = getWidth(), h = getHeight();
       if (w <= 0 || h <= 0) return;
-      double scale = Math.min(1.0, RENDER_CAP / (double) Math.max(w, h));
       // AA on for every mode except MATRIX: the other four modes draw filled ovals/lines, where antialiasing is
       // both cheap and visibly worth it, but MATRIX draws up to ~800 individual glyphs a frame (140 columns x a
       // 10-glyph trail), and antialiased text rasterization is a comparatively expensive Java2D path — measured
@@ -5335,34 +5511,14 @@ public final class CDPlayer extends JFrame {
       // faster, it's arguably more authentic too — the blocky, unsmoothed digits read closer to the actual
       // "Matrix" credits effect than a softened one would.
       Object aaHint = mode == Mode.MATRIX ? RenderingHints.VALUE_ANTIALIAS_OFF : RenderingHints.VALUE_ANTIALIAS_ON;
-      if (scale >= 1.0) {
-        Graphics2D g = (Graphics2D) raw.create();
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, aaHint);
-        // Punches the disc's (and any open card's) current on-screen rectangle out of this layer's paint clip, so
-        // particles/the OCEAN band never render over them — without needing either to actually sit in a higher
-        // paint layer than this glass pane (which nothing can, short of another glass-pane-like mechanism). See
-        // buildClip() for why this is cached rather than rebuilt from scratch on every single paint.
-        g.setClip(buildClip());
-        paintParticles(g);
-        g.dispose();
-        return;
-      }
-      int bufW = Math.max(1, (int) Math.round(w * scale)), bufH = Math.max(1, (int) Math.round(h * scale));
-      if (particleBuffer == null || particleBufferW != bufW || particleBufferH != bufH) {
-        if (particleBuffer != null) particleBuffer.flush();
-        particleBuffer = new BufferedImage(bufW, bufH, BufferedImage.TYPE_INT_ARGB);
-        particleBufferW = bufW; particleBufferH = bufH;
-      }
-      Graphics2D bg = particleBuffer.createGraphics();
-      bg.setComposite(AlphaComposite.Src); bg.setColor(new Color(0, 0, 0, 0)); bg.fillRect(0, 0, bufW, bufH); bg.setComposite(AlphaComposite.SrcOver);
-      bg.scale(scale, scale); // everything drawn below still uses the particles' real (unscaled) x/y/size — the transform maps it down to the capped buffer
-      bg.setRenderingHint(RenderingHints.KEY_ANTIALIASING, aaHint);
-      bg.setClip(buildClip()); // applied AFTER the scale, so buildClip()'s full-resolution Area maps onto the smaller buffer's actual pixels correctly
-      paintParticles(bg);
-      bg.dispose();
       Graphics2D g = (Graphics2D) raw.create();
-      g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-      g.drawImage(particleBuffer, 0, 0, w, h, null);
+      g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, aaHint);
+      // Punches the disc's (and any open card's) current on-screen rectangle out of this layer's paint clip, so
+      // particles/the OCEAN band never render over them — without needing either to actually sit in a higher
+      // paint layer than this glass pane (which nothing can, short of another glass-pane-like mechanism). See
+      // buildClip() for why this is cached rather than rebuilt from scratch on every single paint.
+      g.setClip(buildClip());
+      paintParticles(g);
       g.dispose();
     }
     private void paintParticles(Graphics2D g) {
@@ -5481,11 +5637,17 @@ public final class CDPlayer extends JFrame {
     // as 10x10 at the app's default 1120x820 window — a visual regression, not just wasted layout space.
     private static final int NORMAL_COMPONENT_SIDE = 480, NORMAL_DISC_CAP = 300;
     private static final int ENLARGED_COMPONENT_SIDE = 760, ENLARGED_DISC_CAP = 640; // CD view (see CDPlayer.toggleCdView) — a deliberate, bounded size increase, not the unbounded fill=BOTH stretch the maximumSize cap above exists to prevent
+    private static final int MINI_COMPONENT_SIDE = 92, MINI_DISC_CAP = 84; // Mini Mode (see CDPlayer.setMiniModeEnabled) — smaller than the 260 floor below, so setMini() also shrinks minimumSize, unlike setEnlarged() which never needs to
     private int discCapPx = NORMAL_DISC_CAP;
+    private boolean miniMode;
+    private Runnable onMiniClick; // fires on any click while miniMode is on, in place of the double-click-to-eject gesture below — see setMini()'s doc comment for why the two don't coexist
     DiscView() {
       setOpaque(false); setMinimumSize(new Dimension(260, 260)); setPreferredSize(new Dimension(NORMAL_COMPONENT_SIDE, NORMAL_COMPONENT_SIDE)); setMaximumSize(new Dimension(NORMAL_COMPONENT_SIDE, NORMAL_COMPONENT_SIDE));
       addMouseListener(new java.awt.event.MouseAdapter() {
-        public void mouseClicked(java.awt.event.MouseEvent e) { if (e.getClickCount() == 2) startEject(); }
+        public void mouseClicked(java.awt.event.MouseEvent e) {
+          if (miniMode) { if (onMiniClick != null) onMiniClick.run(); }
+          else if (e.getClickCount() == 2) startEject();
+        }
       });
     }
     /** CD view: a bigger, fixed size for both the component and the drawn disc's own cap (see side= below) — still bounded, so the same repaint-cost reasoning above still holds, just at a deliberately larger fixed number instead of an accidental unbounded one. */
@@ -5495,6 +5657,25 @@ public final class CDPlayer extends JFrame {
       setPreferredSize(new Dimension(side, side)); setMaximumSize(new Dimension(side, side));
       revalidate(); repaint();
     }
+    /**
+     * Mini Mode: a small fixed size, well below the 260 floor set in the constructor for the normal/enlarged
+     * tiers — that floor exists so GridBagLayout can't compress the disc past it in the main window, but Mini
+     * Mode's whole window is smaller than that floor, so minimumSize has to come down too here or the disc alone
+     * would force the tiny window wider than intended. Also swaps the double-click-to-eject gesture for a plain
+     * single-click play/pause toggle (see onMiniClick): eject's own animation needs real room to read as "the CD
+     * lifting up," which a ~90px disc in a widget-sized window doesn't have, and a glanceable mini player is
+     * exactly the place a quick single-click play/pause is actually useful.
+     */
+    void setMini(boolean mini) {
+      miniMode = mini;
+      int side = mini ? MINI_COMPONENT_SIDE : NORMAL_COMPONENT_SIDE;
+      discCapPx = mini ? MINI_DISC_CAP : NORMAL_DISC_CAP;
+      setMinimumSize(new Dimension(mini ? MINI_COMPONENT_SIDE : 260, mini ? MINI_COMPONENT_SIDE : 260));
+      setPreferredSize(new Dimension(side, side)); setMaximumSize(new Dimension(side, side));
+      setCursor(mini ? Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) : Cursor.getDefaultCursor());
+      revalidate(); repaint();
+    }
+    void setOnMiniClick(Runnable callback) { this.onMiniClick = callback; }
     void setSpinning(boolean value) { spinning = value; if (value) motion.start(); else motion.stop(); repaint(); }
     // flush() releases the native/GPU-accelerated surface Java2D caches behind an image the moment it's drawn
     // (macOS's Metal-backed pipeline keeps this off-heap, so it's invisible to the Java heap and to GC directly —
@@ -5591,8 +5772,12 @@ public final class CDPlayer extends JFrame {
       g.setStroke(new BasicStroke(Math.max(2, side / 110)));
       g.drawArc(side / 12, side / 12, side * 5 / 6, side * 5 / 6, 200, 80);
 
-      // center label
-      int labelSize = side / 3, labelX = centerX - labelSize / 2, labelY = centerY - labelSize / 2;
+      // center label — the full disc face (same in every size tier, not just Mini Mode) rather than the old
+      // side/3, so the cover art IS the disc rather than a small chip in the middle. At 100% this fully covers
+      // the grooves and reflective highlight arc drawn above whenever a cover exists — expected: those are only
+      // ever seen now on the "no cover" fallback states below (the loading "…" / plain "♪" note), where nothing
+      // gets drawn over them.
+      int labelSize = side, labelX = centerX - labelSize / 2, labelY = centerY - labelSize / 2;
       g.setColor(new Color(20, 21, 28));
       g.fillOval(labelX, labelY, labelSize, labelSize);
       if (cover != null && labelSize > 0) {
@@ -5662,28 +5847,37 @@ public final class CDPlayer extends JFrame {
       // and reliably 1.0 for the off-screen BufferedImage-backed Graphics2D this app's own verification tests
       // paint into, so no artificial upscale/blur there either).
       double displayScale = g.getTransform().getScaleX(); if (displayScale <= 0) displayScale = 1.0;
-      int side = Math.min(discCapPx, Math.min(getWidth(), getHeight()) - 40);
+      // Mini Mode's own component is far too small (~92px) to spare the normal/enlarged tiers' 40px margin the
+      // same way — that margin alone would eat nearly half its width, leaving a barely-visible disc. 8px keeps a
+      // small breathing gap without giving up real size the tiny widget can't afford to lose.
+      int margin = miniMode ? 8 : 40;
+      int side = Math.min(discCapPx, Math.min(getWidth(), getHeight()) - margin);
       int x = (getWidth() - side) / 2, y = (getHeight() - side) / 2, centerX = x + side / 2, centerY = y + side / 2;
 
-      // jewel case backdrop behind the disc
-      int caseSide = side + 60, caseX = centerX - caseSide / 2, caseY = centerY - caseSide / 2;
-      g.setColor(new Color(255, 255, 255, 14)); g.fillRoundRect(caseX, caseY, caseSide, caseSide, 12, 12);
-      g.setColor(new Color(ACCENT.getRed(), ACCENT.getGreen(), ACCENT.getBlue(), 95)); g.setStroke(new BasicStroke(1.6f)); g.drawRoundRect(caseX, caseY, caseSide, caseSide, 12, 12);
-      g.setColor(new Color(255, 255, 255, 26)); g.setStroke(new BasicStroke(1));
-      g.drawLine(caseX + 10, caseY + 10, caseX + caseSide - 10, caseY + 10);
-      g.drawLine(caseX + 10, caseY + caseSide - 10, caseX + caseSide - 10, caseY + caseSide - 10);
-      if (cover != null) {
-        int thumb = Math.round(side * 0.193f); // proportional to the disc, not a flat 58px — otherwise the thumbnail stayed tiny next to the much bigger disc in CD view (see setEnlarged)
-        g.setColor(new Color(0, 0, 0, 120)); g.fillRoundRect(caseX + 14, caseY + 14, thumb, thumb, 6, 6);
-        int thumbImgSize = thumb - 6;
-        if (thumbImgSize > 0) {
-          if (thumbCoverCache == null || thumbCoverCacheSize != thumbImgSize || thumbCoverCacheScale != displayScale || thumbCoverCacheSource != cover) {
-            if (thumbCoverCache != null) thumbCoverCache.flush();
-            thumbCoverCache = rescaleCover(cover, thumbImgSize, displayScale); thumbCoverCacheSize = thumbImgSize; thumbCoverCacheScale = displayScale; thumbCoverCacheSource = cover;
+      // jewel case backdrop behind the disc — skipped in Mini Mode: it's sized for the normal/enlarged disc (adds
+      // another +60px around an already-small side), and Mini Mode's own reference design is just the disc alone
+      // with the cover art filling most of its face (see renderDiscFace's miniMode branch) rather than a second,
+      // separate small thumbnail squeezed in beside it.
+      if (!miniMode) {
+        int caseSide = side + 60, caseX = centerX - caseSide / 2, caseY = centerY - caseSide / 2;
+        g.setColor(new Color(255, 255, 255, 14)); g.fillRoundRect(caseX, caseY, caseSide, caseSide, 12, 12);
+        g.setColor(new Color(ACCENT.getRed(), ACCENT.getGreen(), ACCENT.getBlue(), 95)); g.setStroke(new BasicStroke(1.6f)); g.drawRoundRect(caseX, caseY, caseSide, caseSide, 12, 12);
+        g.setColor(new Color(255, 255, 255, 26)); g.setStroke(new BasicStroke(1));
+        g.drawLine(caseX + 10, caseY + 10, caseX + caseSide - 10, caseY + 10);
+        g.drawLine(caseX + 10, caseY + caseSide - 10, caseX + caseSide - 10, caseY + caseSide - 10);
+        if (cover != null) {
+          int thumb = Math.round(side * 0.193f); // proportional to the disc, not a flat 58px — otherwise the thumbnail stayed tiny next to the much bigger disc in CD view (see setEnlarged)
+          g.setColor(new Color(0, 0, 0, 120)); g.fillRoundRect(caseX + 14, caseY + 14, thumb, thumb, 6, 6);
+          int thumbImgSize = thumb - 6;
+          if (thumbImgSize > 0) {
+            if (thumbCoverCache == null || thumbCoverCacheSize != thumbImgSize || thumbCoverCacheScale != displayScale || thumbCoverCacheSource != cover) {
+              if (thumbCoverCache != null) thumbCoverCache.flush();
+              thumbCoverCache = rescaleCover(cover, thumbImgSize, displayScale); thumbCoverCacheSize = thumbImgSize; thumbCoverCacheScale = displayScale; thumbCoverCacheSource = cover;
+            }
+            g.drawImage(thumbCoverCache, caseX + 17, caseY + 17, thumbImgSize, thumbImgSize, null);
           }
-          g.drawImage(thumbCoverCache, caseX + 17, caseY + 17, thumbImgSize, thumbImgSize, null);
+          g.setColor(ACCENT2); g.setStroke(new BasicStroke(1.2f)); g.drawRoundRect(caseX + 16, caseY + 16, thumb - 4, thumb - 4, 5, 5);
         }
-        g.setColor(ACCENT2); g.setStroke(new BasicStroke(1.2f)); g.drawRoundRect(caseX + 16, caseY + 16, thumb - 4, thumb - 4, 5, 5);
       }
 
       // Everything below is the disc itself (not the case, which stays put above): shifted up/sideways and
