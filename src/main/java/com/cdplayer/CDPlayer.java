@@ -228,7 +228,7 @@ public final class CDPlayer extends JFrame {
   private static final File ONBOARDING_FLAG_FILE = new File(System.getProperty("user.home"), ".cdplayer/onboarded");
   // Bumped by hand alongside CHANGELOG below whenever a build ships — also what's passed to jpackage's
   // --app-version at build time, so the two stay in sync.
-  private static final String APP_VERSION = "1.10.0";
+  private static final String APP_VERSION = "1.11.0";
   private static final File LAST_VERSION_FILE = new File(System.getProperty("user.home"), ".cdplayer/lastversion.txt");
   private static final File LAST_PATH_FILE = new File(System.getProperty("user.home"), ".cdplayer/lastpath.txt");
   private static final File SETTINGS_FILE = new File(System.getProperty("user.home"), ".cdplayer/settings.txt");
@@ -835,6 +835,13 @@ public final class CDPlayer extends JFrame {
   // entry matching the CURRENT version, not the whole history, so older entries are kept only as a record (and
   // in case a future "full changelog" view wants them), not because they're ever shown together.
   private static final ChangelogEntry[] CHANGELOG = {
+    new ChangelogEntry("1.11.0",
+      "<b>Mini Mode</b>: press M (or flip the switch in Settings) to shrink the window down to a small always-on-top widget — the disc, track title/artist, a seek bar, and play/pause/skip controls — so you can keep the music going while you work in other apps",
+      "Cover art now fills the entire disc face in every view, not just a small circle in the middle",
+      "Fixed severe lag when an animated theme (Snow, Ocean, Autumn, Galaxy, Matrix) was active in fullscreen",
+      "Fixed switching themes momentarily stalling the whole window, especially with Settings open at the time",
+      "Fixed long track titles and artist names getting cut off or overlapping each other in Mini Mode"
+    ),
     new ChangelogEntry("1.10.0",
       "Tracks with no embedded lyrics now try an <b>online lookup</b> (lrclib.net) automatically, including synced karaoke-style lyrics when available",
       "<b>Spotify</b>: added as a third cover art source when iTunes/Deezer come up empty, and paste a Spotify track or playlist link into Search to queue any matching songs you already have locally (playlist links need a one-time Spotify sign-in)",
