@@ -26,6 +26,13 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Exposes the app's Documents directory under Files > On My iPhone, so a folder placed there (see
+	     DevLibraryLoader) is reachable from the real UIDocumentPickerViewController folder picker (Phase 3's
+	     library-folder access) — both keys are needed together for Files app visibility. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

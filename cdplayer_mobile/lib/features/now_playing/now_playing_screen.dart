@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/theme/palette.dart';
 import '../../app/theme/particle_mode_provider.dart';
 import '../../app/theme/theme_controller.dart';
+import '../../core/library/library_controller.dart';
 import '../cd_view/cd_view_screen.dart';
+import '../library/library_search_screen.dart';
 import '../queue/player_controller.dart';
 import '../queue/player_state.dart';
 import '../themes_gallery/particles/particle_field.dart';
@@ -34,6 +36,13 @@ class NowPlayingScreen extends ConsumerWidget {
         title: Text('CDPlayer', style: TextStyle(color: palette.text)),
         actions: [
           IconButton(
+            icon: Icon(Icons.search, color: palette.muted),
+            tooltip: 'Search library',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => LibrarySearchScreen(palette: palette)),
+            ),
+          ),
+          IconButton(
             icon: Icon(Icons.palette_outlined, color: palette.muted),
             tooltip: 'Theme',
             onPressed: () => showThemePicker(context),
@@ -44,6 +53,11 @@ class NowPlayingScreen extends ConsumerWidget {
             onPressed: track == null
                 ? null
                 : () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CdViewScreen())),
+          ),
+          IconButton(
+            icon: Icon(Icons.folder_open, color: palette.muted),
+            tooltip: 'Change music folder',
+            onPressed: () => ref.read(libraryControllerProvider.notifier).pickFolder(),
           ),
         ],
       ),
