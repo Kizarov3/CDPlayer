@@ -263,10 +263,21 @@ public final class CDPlayer extends JFrame {
   private final JButton miniModeButton = textButton("OFF");
   private boolean miniModeEnabled = false;
   private JPanel miniPanel; // built lazily on first use — see setMiniModeEnabled()
-  private final JLabel miniTrackLabel = new JLabel(); // mirrors track's text (see setTrackTitle) — the compact mini-player window's own "Artist – Title" label
+  private final JLabel miniTrackLabel = new JLabel(); // mirrors track's text (see setTrackTitle) — the compact mini-player window's own title line
+  private final JLabel miniArtistLabel = new JLabel(); // the artist's own line underneath — split from miniTrackLabel so a long title and a long artist each get their own fitText budget instead of fighting for room on one combined "Artist – Title" line
   private final JSlider miniProgress = new JSlider(0, 1000, 0); // mirrors progress's value (see syncMiniProgress) rather than being re-parented — progress lives inside playerPanel(), built once, and Mini Mode needs its own always-available small widgets instead of tearing a live component out of that tree on every toggle
   private final JLabel miniElapsed = label("0:00", 9, MUTED);
   private final JLabel miniLength = label("0:00", 9, MUTED);
+  // Built lazily inside buildMiniPanel() — null until Mini Mode is entered for the first time, same as miniPanel
+  // itself — but unlike the labels/slider above, setPlaying() (called constantly, well before Mini Mode is ever
+  // entered) needs to touch miniPlayButton specifically, hence the null-guard there rather than eager construction.
+  private TransportButton miniPlayButton;
+  // The raw (non-HTML, non-ellipsized) name/artist last passed to setTrackTitle() — kept so buildMiniPanel() can
+  // re-run fitText on the mini labels against the CURRENT track right after constructing them (see
+  // setMiniModeEnabled()'s call site), rather than the hardcoded placeholder font buildMiniPanel() sets initially
+  // silently winning over whatever fitText had already computed for a track loaded before Mini Mode was ever
+  // first entered.
+  private String currentTrackName = "Pick a track to get started.", currentTrackArtist;
   private java.awt.Rectangle preMiniBounds; // window bounds to restore on exit — same pattern as preFullscreenBounds below
   private CenteredOverlay settingsOverlay;
   private CenteredOverlay lyricsOverlay;
@@ -525,7 +536,9 @@ public final class CDPlayer extends JFrame {
     bodyPanel.invalidate();
     contentStack.validate();
   }
-  private static final int MINI_WINDOW_WIDTH = 400, MINI_WINDOW_HEIGHT = 168;
+  // Height grew from the original 168 to fit the added artist line + transport button row (see buildMiniPanel())
+  // without feeling cramped.
+  private static final int MINI_WINDOW_WIDTH = 400, MINI_WINDOW_HEIGHT = 210;
   /**
    * Mini Mode: shrinks the whole window down to a small, glanceable, always-on-top widget — disc, title/artist,
    * and a seek bar, nothing else — toggled from the Settings row (see buildSettingsPanel) rather than an
@@ -546,7 +559,10 @@ public final class CDPlayer extends JFrame {
     if (enabled) {
       if (cdViewEnabled) toggleCdView(); // mutually exclusive — see toggleCdView()'s own guard
       if (fullscreen) toggleFullscreen(); // mutually exclusive — see toggleFullscreen()'s own guard
-      if (miniPanel == null) miniPanel = buildMiniPanel();
+      // The re-fit call right after building is what keeps a long title/artist correctly sized the very first
+      // time Mini Mode is entered — see currentTrackName/currentTrackArtist's own doc comment for why
+      // buildMiniPanel()'s own hardcoded initial font isn't enough on its own.
+      if (miniPanel == null) { miniPanel = buildMiniPanel(); setTrackTitle(currentTrackName, currentTrackArtist); }
       preMiniBounds = getBounds();
       miniModeEnabled = true;
       miniModeButton.setText("ON");
@@ -583,15 +599,24 @@ public final class CDPlayer extends JFrame {
     panel.setBackground(BG); panel.setOpaque(true);
     panel.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
 
-    JPanel right = new JPanel(); right.setOpaque(false); right.setLayout(new javax.swing.BoxLayout(right, javax.swing.BoxLayout.Y_AXIS));
+    // GridBagLayout, not BoxLayout Y_AXIS: BoxLayout's minor-axis (width) sizing measurably failed to stretch
+    // these rows to the column's actual available width once a row's own preferred width (driven by a long
+    // fitText-ellipsized HTML label) exceeded what an early/first layout pass had — confirmed directly (a long
+    // title's row settling at ~150px wide inside a 264px-wide column, no amount of extra validate() passes fixing
+    // it). Each GridBagConstraints row below is pinned to weightx=1/fill=HORIZONTAL explicitly instead of relying
+    // on BoxLayout's alignment-based minor-axis stretching, which sidesteps that failure mode entirely.
+    JPanel right = new JPanel(new GridBagLayout()); right.setOpaque(false);
+    GridBagConstraints rightGc = new GridBagConstraints();
+    rightGc.gridx = 0; rightGc.fill = GridBagConstraints.HORIZONTAL; rightGc.weightx = 1.0; rightGc.anchor = GridBagConstraints.WEST;
+    int rightRow = 0;
 
-    JPanel titleRow = new JPanel(new BorderLayout()); titleRow.setOpaque(false); titleRow.setAlignmentX(Component.LEFT_ALIGNMENT);
-    miniTrackLabel.setFont(new Font("SansSerif", Font.BOLD, 14)); miniTrackLabel.setForeground(TEXT);
+    JPanel titleRow = new JPanel(new BorderLayout()); titleRow.setOpaque(false);
+    miniTrackLabel.setFont(new Font("SansSerif", Font.BOLD, 13)); miniTrackLabel.setForeground(TEXT);
     // Locked to match setTrackTitle()'s own fitText width budget for this label — without an explicit size,
     // BorderLayout.CENTER instead hands it whatever's left over in titleRow at layout time, which doesn't
     // necessarily match that budget, and an HTML JLabel wraps to a second line (rather than the single-line
     // ellipsis fitText/ellipsize() computed for) whenever its real rendered width comes in narrower than assumed.
-    miniTrackLabel.setPreferredSize(new Dimension(200, 18)); miniTrackLabel.setMinimumSize(new Dimension(0, 18));
+    miniTrackLabel.setPreferredSize(new Dimension(220, 16)); miniTrackLabel.setMinimumSize(new Dimension(0, 16));
     titleRow.add(miniTrackLabel, BorderLayout.CENTER);
     JButton exitButton = new JButton("×"); exitButton.setFont(new Font("SansSerif", Font.BOLD, 16)); exitButton.setForeground(MUTED);
     exitButton.setFocusPainted(false); exitButton.setBorderPainted(false); exitButton.setContentAreaFilled(false); exitButton.setOpaque(false);
@@ -600,13 +625,40 @@ public final class CDPlayer extends JFrame {
     attachColorHover(exitButton, MUTED, TEXT);
     exitButton.addActionListener(e -> setMiniModeEnabled(false));
     titleRow.add(exitButton, BorderLayout.EAST);
-    right.add(titleRow);
+    rightGc.gridy = rightRow++; rightGc.insets = new Insets(0, 0, 2, 0); right.add(titleRow, rightGc);
 
-    right.add(javax.swing.Box.createVerticalGlue());
+    miniArtistLabel.setFont(new Font("SansSerif", Font.PLAIN, 10)); miniArtistLabel.setForeground(MUTED);
+    miniArtistLabel.setPreferredSize(new Dimension(220, 13)); miniArtistLabel.setMinimumSize(new Dimension(0, 13));
+    rightGc.gridy = rightRow++; rightGc.insets = new Insets(0, 0, 0, 0); right.add(miniArtistLabel, rightGc);
+
+    // Flexible gap: weighty=1 on this row alone (every other row keeps its natural height) so it absorbs
+    // whatever vertical space the window has beyond the other rows' combined natural height, same centering
+    // effect the old BoxLayout glue was after.
+    GridBagConstraints glueGc = (GridBagConstraints) rightGc.clone();
+    glueGc.gridy = rightRow++; glueGc.weighty = 1.0; glueGc.fill = GridBagConstraints.VERTICAL;
+    right.add(javax.swing.Box.createGlue(), glueGc);
+
+    // Prev/play-pause/next — mirrors the main transport row's buttons (see playerPanel()), just smaller and
+    // built as separate instances rather than reusing play/back/forward directly, since a Swing component can
+    // only ever have one parent (same reasoning as disc's own re-parenting between discColumn and miniPanel).
+    // FlowLayout.CENTER inside a row stretched to the column's full width (fill=HORIZONTAL, above) centers the
+    // button cluster horizontally without needing a separate alignment mechanism.
+    JPanel transportRow = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 14, 0));
+    transportRow.setOpaque(false);
+    JButton miniPrevButton = roundButton(Glyph.PREVIOUS_TRACK, 26, false);
+    miniPrevButton.setToolTipText("Previous track");
+    miniPrevButton.addActionListener(e -> previousTrack());
+    miniPlayButton = new TransportButton(player != null && player.isRunning() ? Glyph.PAUSE : Glyph.PLAY, 34, true);
+    miniPlayButton.setToolTipText("Play/Pause");
+    miniPlayButton.addActionListener(e -> toggle());
+    JButton miniNextButton = roundButton(Glyph.NEXT_TRACK, 26, false);
+    miniNextButton.setToolTipText("Next track");
+    miniNextButton.addActionListener(e -> nextTrack());
+    transportRow.add(miniPrevButton); transportRow.add(miniPlayButton); transportRow.add(miniNextButton);
+    rightGc.gridy = rightRow++; rightGc.insets = new Insets(0, 0, 8, 0); right.add(transportRow, rightGc);
 
     miniProgress.setOpaque(false); miniProgress.setUI(new AccentSliderUI(miniProgress)); miniProgress.setFocusable(false);
-    miniProgress.setAlignmentX(Component.LEFT_ALIGNMENT);
-    miniProgress.setPreferredSize(new Dimension(200, 14)); miniProgress.setMaximumSize(new Dimension(Integer.MAX_VALUE, 14));
+    miniProgress.setPreferredSize(new Dimension(220, 14)); miniProgress.setMaximumSize(new Dimension(Integer.MAX_VALUE, 14));
     // Same drag-to-seek pattern as progress's own listener (see playerPanel()) — a separate widget/listener
     // rather than re-parenting progress itself, per buildMiniPanel()'s doc comment; keeps progress (the main
     // view's slider) and player state as the source of truth, mirrored back onto miniElapsed too so both stay
@@ -623,11 +675,11 @@ public final class CDPlayer extends JFrame {
         if (lyricsOverlay != null && lyricsOverlay.isVisible()) updateLyricsSync();
       }
     });
-    JPanel progressRow = new JPanel(new BorderLayout(8, 0)); progressRow.setOpaque(false); progressRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+    JPanel progressRow = new JPanel(new BorderLayout(8, 0)); progressRow.setOpaque(false);
     progressRow.add(miniElapsed, BorderLayout.WEST);
     progressRow.add(miniProgress, BorderLayout.CENTER);
     progressRow.add(miniLength, BorderLayout.EAST);
-    right.add(progressRow);
+    rightGc.gridy = rightRow++; rightGc.insets = new Insets(0, 0, 0, 0); right.add(progressRow, rightGc);
 
     panel.add(right, BorderLayout.CENTER);
     return panel;
@@ -2445,7 +2497,7 @@ public final class CDPlayer extends JFrame {
     elapsed.setForeground(MUTED); length.setForeground(MUTED); queueInfo.setForeground(MUTED); queueNext.setForeground(MUTED);
     nowPlayingLabel.setForeground(ACCENT2); crossfadeTitle.setForeground(MUTED); crossfadeValueLabel.setForeground(MUTED);
     volumeTitle.setForeground(MUTED); volumeValueLabel.setForeground(MUTED);
-    miniTrackLabel.setForeground(TEXT); miniElapsed.setForeground(MUTED); miniLength.setForeground(MUTED);
+    miniTrackLabel.setForeground(TEXT); miniArtistLabel.setForeground(MUTED); miniElapsed.setForeground(MUTED); miniLength.setForeground(MUTED);
     if (miniPanel != null) { miniPanel.setBackground(BG); miniPanel.repaint(); } // built lazily — see setMiniModeEnabled()
   }
 
@@ -3995,6 +4047,7 @@ public final class CDPlayer extends JFrame {
   }
   private void setPlaying(boolean playing) {
     disc.setSpinning(playing); play.setGlyph(playing ? Glyph.PAUSE : Glyph.PLAY); play.pulse();
+    if (miniPlayButton != null) { miniPlayButton.setGlyph(playing ? Glyph.PAUSE : Glyph.PLAY); miniPlayButton.pulse(); }
     status.setText(playing ? "●  NOW SPINNING" : (loadedFile == null ? "●  READY TO PLAY" : "●  PAUSED"));
     visualizer.setActive(playing);
     if (playing) clock.start(); else clock.stop();
@@ -4131,6 +4184,7 @@ public final class CDPlayer extends JFrame {
    * the disc, so they have much more room to work with.
    */
   private void setTrackTitle(String name, String artist) {
+    currentTrackName = name; currentTrackArtist = artist;
     fitText(track, name, 456, 34, 20, true);
     fitText(cdViewTrackLabel, name, 860, 30, 18, true);
     boolean hasArtist = artist != null && !artist.trim().isEmpty();
@@ -4142,10 +4196,13 @@ public final class CDPlayer extends JFrame {
     } else {
       artistLabel.setText(""); cdViewArtistLabel.setText("");
     }
-    // Mini Mode has just the one line for both — same "Artist – Title" convention as the window title (see
-    // load()) — rather than a second label row underneath, so the already-small widget doesn't spend its
-    // limited height on two separate lines when one reads just as well.
-    fitText(miniTrackLabel, hasArtist ? artist + " – " + name : name, 196, 14, 10, true);
+    // Mini Mode gets its own title + artist lines, same hasArtist-visibility pattern as the main/CD-View labels
+    // above, rather than one combined "Artist – Title" line: a long title and a long artist name were fighting
+    // over the same fitText budget on one line, so a long-enough combination lost both to a single ellipsis
+    // instead of at least the title staying legible on its own line.
+    fitText(miniTrackLabel, name, 220, 13, 10, true);
+    miniArtistLabel.setVisible(hasArtist);
+    if (hasArtist) fitText(miniArtistLabel, artist, 220, 10, 8, false); else miniArtistLabel.setText("");
   }
   /** Shrinks label's font from startSize down to minSize (stepping by 1pt) until text fits maxWidth, falling back to an ellipsis if it still doesn't fit at minSize. */
   private static void fitText(JLabel label, String text, int maxWidth, int startSize, int minSize, boolean bold) {
