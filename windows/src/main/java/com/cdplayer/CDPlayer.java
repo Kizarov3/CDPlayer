@@ -5862,7 +5862,22 @@ public final class CDPlayer extends JFrame {
         String note = "♪"; java.awt.FontMetrics fm = g.getFontMetrics();
         g.drawString(note, centerX - fm.stringWidth(note) / 2, centerY + fm.getAscent() / 3);
       }
-      g.setColor(new Color(255, 255, 255, 45)); g.setStroke(new BasicStroke(1f)); g.drawOval(labelX, labelY, labelSize, labelSize);
+      // Two concentric strokes, not one: with the cover art now filling the entire disc face (see this method's
+      // own "100% fill" note above), the disc's true edge sits directly against whatever the cover art itself
+      // looks like there — a dark, low-contrast region of the cover (a shadowed area, a black background) can
+      // make a single pale ring alone hard to see, reading as if the disc simply stops short of its actual edge
+      // rather than the cover just being dark there. A darker ring just outside the lighter one keeps the
+      // boundary legible against bright cover content too, without needing to know the cover's colors up front.
+      // Light ring drawn first, centered exactly on the disc's true edge — this defines where the boundary
+      // actually sits. The dark ring is drawn second but on a smaller, inset bounding box (not the same one) so
+      // its stroke stays entirely inside the light ring's inner edge, instead of straddling the same path: two
+      // strokes of different widths centered on the *same* circle both extend past it by half their own width,
+      // so the wider dark stroke used to poke a sliver of black out past the light ring into the space just
+      // outside the disc — visible as a thin black line running just outside the CD's actual outline.
+      g.setColor(new Color(255, 255, 255, 160)); g.setStroke(new BasicStroke(1.6f)); g.drawOval(labelX, labelY, labelSize, labelSize);
+      int ringInset = 2;
+      g.setColor(new Color(0, 0, 0, 120)); g.setStroke(new BasicStroke(2f));
+      g.drawOval(labelX + ringInset, labelY + ringInset, labelSize - ringInset * 2, labelSize - ringInset * 2);
 
       // spindle hole
       int holeSize = side / 11;
@@ -5956,9 +5971,16 @@ public final class CDPlayer extends JFrame {
       g.scale(1.0, ejectSquish);
       g.translate(-centerX, -centerY);
 
-      // soft drop shadow beneath the disc
-      g.setColor(new Color(0, 0, 0, 110));
-      g.fillOval(x, y + 12, side, side);
+      // Soft shadow all around the disc, not just beneath it: the old version offset the shadow oval down by
+      // 12px with no size change, meaning it only ever peeked out past the disc's own edge along the bottom arc
+      // (the disc's higher top edge always fully covered the shadow up there) — a real-world-lighting-style
+      // directional shadow in isolation, but combined with the disc's already-subtle boundary ring, that one-
+      // sided dark sliver read as the disc looking cut off / missing content at the bottom rather than a
+      // deliberate shadow, especially against darker cover art. A symmetric halo — same center, just a few
+      // pixels larger — peeks out evenly on every side instead, reading as an intentional soft elevation effect.
+      int shadowPad = Math.max(4, side / 90);
+      g.setColor(new Color(0, 0, 0, 90));
+      g.fillOval(x - shadowPad, y - shadowPad, side + shadowPad * 2, side + shadowPad * 2);
 
       AffineTransform old = g.getTransform();
       g.rotate(angle, centerX, centerY);
