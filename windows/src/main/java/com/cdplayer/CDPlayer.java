@@ -1151,7 +1151,7 @@ public final class CDPlayer extends JFrame {
    */
   private void animateThemeColors(Color[] toColors) {
     Color[] fromColors = { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED };
-    if (themeAnim != null && themeAnim.isRunning()) themeAnim.stop();
+    if (themeAnim != null && themeAnim.isRunning()) { themeAnim.stop(); disc.setColorAnimationInProgress(false); } // an interrupted-mid-transition timer never reaches its own t>=1 cleanup below, so clear the suppression flag here too
     if (!animationsEnabled) {
       BG = toColors[0]; CARD = toColors[1]; ACCENT = toColors[2]; ACCENT2 = toColors[3]; TEXT = toColors[4]; MUTED = toColors[5];
       applyThemeColors(); getContentPane().repaint(); refreshSettingsIfOpen(); updateQueueUI();
