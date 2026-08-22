@@ -1304,8 +1304,19 @@ public final class CDPlayer extends JFrame {
       ACCENT2 = lerp(fromColors[3], toColors[3], t); TEXT = lerp(fromColors[4], toColors[4], t); MUTED = lerp(fromColors[5], toColors[5], t);
       applyThemeColors();
       getContentPane().repaint();
-      refreshSettingsIfOpen(); // so an already-open Settings dialog fades along with the main window, not just on next open
-      if (t >= 1f) { ((Timer) e.getSource()).stop(); disc.setColorTransitionActive(false); updateQueueUI(); }
+      if (t >= 1f) {
+        ((Timer) e.getSource()).stop(); disc.setColorTransitionActive(false); updateQueueUI();
+        // refreshSettingsIfOpen() doesn't just repaint — it does settingsOverlay.card.removeAll() followed by
+        // buildSettingsPanel(), reconstructing every button/slider/label in the dialog from scratch, plus a
+        // synchronous validate(). Measured directly at ~10ms per call at a large/fullscreen size — already over
+        // this timer's own 8ms tick budget on its own — so calling it every tick (as this used to) meant the
+        // transition was switching themes with Settings open exactly the scenario a fullscreen viewer would
+        // actually see it happen in. invokeLater() queues it as a separate, later EDT event instead: the main
+        // fade timer stays completely clear of that cost on every one of its own ticks, and the settings dialog
+        // (a secondary overlay, not what's actually being watched fade) catches up to the final colors moments
+        // after the main fade finishes instead of tracking it step by step.
+        SwingUtilities.invokeLater(this::refreshSettingsIfOpen);
+      }
     });
     themeAnim.start();
   }
