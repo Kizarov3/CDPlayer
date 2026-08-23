@@ -189,6 +189,7 @@ public final class CDPlayer extends JFrame {
   private boolean crossfadeStarted;
   private boolean crossfading;
   private float volume = 1f;
+  private int volumeBeforeMute = -1; // -1 = not currently muted; otherwise the slider value to restore on unmute
   private boolean monoAudio;
   // Beat detection state for the visualizer — a classic "energy vs. its own rolling average" onset detector: no
   // FFT/frequency analysis, just broadband RMS energy (levels[] from computeLevels() is already that) compared
@@ -288,6 +289,11 @@ public final class CDPlayer extends JFrame {
   private JPanel contentStack; // the OverlayLayout stack: themeMenuOverlay / settingsOverlay / lyricsOverlay / historyOverlay / searchOverlay (topmost, added lazily) > foreground > themeOverlay > background
   private java.awt.Rectangle preFullscreenBounds;
   private boolean fullscreen;
+  // Tracks the window's bounds only while it's in its ordinary (not Mini Mode, not fullscreen) state, via a
+  // ComponentListener registered in the constructor — reading getBounds() directly at shutdown would instead
+  // capture whatever transient size/position Mini Mode or fullscreen last left the window at if the app happens
+  // to quit from either of those, which is never what the user actually resized to.
+  private java.awt.Rectangle normalBounds;
 
   public static void main(String[] args) {
     // The theme dropdown (showThemeMenu) uses a JPopupMenu; Swing normally decides per-popup whether to use a
@@ -333,6 +339,13 @@ public final class CDPlayer extends JFrame {
     setMinimumSize(new Dimension(760, 785));
     setSize(1120, 820);
     setLocationByPlatform(true);
+    // Keeps normalBounds current for saveSettingsState() to persist — only while genuinely in the ordinary
+    // window state, so a resize/move event fired by entering/exiting Mini Mode or fullscreen (both call
+    // setBounds()/setSize() themselves) doesn't overwrite it with a transient size.
+    addComponentListener(new java.awt.event.ComponentAdapter() {
+      public void componentResized(java.awt.event.ComponentEvent e) { captureNormalBounds(); }
+      public void componentMoved(java.awt.event.ComponentEvent e) { captureNormalBounds(); }
+    });
     setContentPane(createContent());
     // The glass pane, not a regular sibling layer — see createContent()'s doc comment for why: it's the one
     // mechanism Swing actually composites independently, so themeOverlay's continuous particle-animation
@@ -410,6 +423,9 @@ public final class CDPlayer extends JFrame {
     javax.swing.ActionMap actionMap = root.getActionMap();
     bindKey(inputMap, actionMap, "LEFT", "skipBack15", e -> { if (!anyOverlayOpen()) seek(-15); });
     bindKey(inputMap, actionMap, "RIGHT", "skipForward15", e -> { if (!anyOverlayOpen()) seek(15); });
+    bindKey(inputMap, actionMap, "UP", "volumeUp", e -> { if (!anyOverlayOpen()) adjustVolume(5); });
+    bindKey(inputMap, actionMap, "DOWN", "volumeDown", e -> { if (!anyOverlayOpen()) adjustVolume(-5); });
+    bindKey(inputMap, actionMap, "U", "toggleMute", e -> { if (!anyOverlayOpen()) toggleMute(); });
     bindKey(inputMap, actionMap, "SPACE", "togglePlaySpace", e -> { if (!anyOverlayOpen()) toggle(); });
     bindKey(inputMap, actionMap, "K", "togglePlayK", e -> { if (!anyOverlayOpen()) toggle(); });
     bindKey(inputMap, actionMap, "J", "previousTrackJ", e -> { if (!anyOverlayOpen()) previousTrack(); });
@@ -595,9 +611,11 @@ public final class CDPlayer extends JFrame {
   }
   /** Built once, lazily, the first time Mini Mode is actually entered — mirrors showSettingsDialog()'s lazy-overlay pattern. Structure only — disc itself is moved in and out by setMiniModeEnabled() on every toggle, not added here, since it needs to move back to discColumn on exit rather than staying put. */
   private JPanel buildMiniPanel() {
+    // Asymmetric: more padding/gap on the disc's side than the (trimmed) right side, pushing the title/artist
+    // column's own centering region toward the window's right edge.
     JPanel panel = new JPanel(new BorderLayout(12, 0));
     panel.setBackground(BG); panel.setOpaque(true);
-    panel.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
+    panel.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 8));
 
     // GridBagLayout, not BoxLayout Y_AXIS: BoxLayout's minor-axis (width) sizing measurably failed to stretch
     // these rows to the column's actual available width once a row's own preferred width (driven by a long
@@ -610,24 +628,36 @@ public final class CDPlayer extends JFrame {
     rightGc.gridx = 0; rightGc.fill = GridBagConstraints.HORIZONTAL; rightGc.weightx = 1.0; rightGc.anchor = GridBagConstraints.WEST;
     int rightRow = 0;
 
-    JPanel titleRow = new JPanel(new BorderLayout()); titleRow.setOpaque(false);
-    miniTrackLabel.setFont(new Font("SansSerif", Font.BOLD, 13)); miniTrackLabel.setForeground(TEXT);
-    // Locked to match setTrackTitle()'s own fitText width budget for this label — without an explicit size,
-    // BorderLayout.CENTER instead hands it whatever's left over in titleRow at layout time, which doesn't
-    // necessarily match that budget, and an HTML JLabel wraps to a second line (rather than the single-line
-    // ellipsis fitText/ellipsize() computed for) whenever its real rendered width comes in narrower than assumed.
-    miniTrackLabel.setPreferredSize(new Dimension(220, 16)); miniTrackLabel.setMinimumSize(new Dimension(0, 16));
-    titleRow.add(miniTrackLabel, BorderLayout.CENTER);
     JButton exitButton = new JButton("×"); exitButton.setFont(new Font("SansSerif", Font.BOLD, 16)); exitButton.setForeground(MUTED);
     exitButton.setFocusPainted(false); exitButton.setBorderPainted(false); exitButton.setContentAreaFilled(false); exitButton.setOpaque(false);
     exitButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)); exitButton.setMargin(new Insets(0, 8, 0, 0)); exitButton.setToolTipText("Exit Mini Mode");
     exitButton.setFocusable(false);
     attachColorHover(exitButton, MUTED, TEXT);
     exitButton.addActionListener(e -> setMiniModeEnabled(false));
-    titleRow.add(exitButton, BorderLayout.EAST);
-    rightGc.gridy = rightRow++; rightGc.insets = new Insets(0, 0, 2, 0); right.add(titleRow, rightGc);
 
-    miniArtistLabel.setFont(new Font("SansSerif", Font.PLAIN, 10)); miniArtistLabel.setForeground(MUTED);
+    // OverlayLayout, not BorderLayout.EAST: reserving a column for the button there would shrink the width
+    // miniTrackLabel/miniArtistLabel center within, pulling them left of transportRow's own center below —
+    // transportRow has no such reservation (FlowLayout.CENTER just centers within the column's full width), and
+    // the whole point here is lining the title/artist up with the play/pause button's center. OverlayLayout
+    // stacks both children within titleRow's actual bounds according to each one's own alignmentX/Y, so the
+    // button sits in the corner without taking width away from the label's own centering (a plain null-layout
+    // panel with hand-rolled doLayout() was tried first — it left the title rendering as a garbled double-image,
+    // apparently a stale-bounds/repaint issue; OverlayLayout is the standard, battle-tested Swing tool for this).
+    JPanel titleRow = new JPanel();
+    titleRow.setLayout(new javax.swing.OverlayLayout(titleRow));
+    titleRow.setOpaque(false);
+    miniTrackLabel.setFont(new Font("SansSerif", Font.BOLD, 13)); miniTrackLabel.setForeground(TEXT); miniTrackLabel.setHorizontalAlignment(SwingConstants.CENTER);
+    // Locked to match setTrackTitle()'s own fitText width budget for this label — without an explicit size,
+    // an HTML JLabel wraps to a second line (rather than the single-line ellipsis fitText/ellipsize() computed
+    // for) whenever its real rendered width comes in narrower than assumed.
+    miniTrackLabel.setPreferredSize(new Dimension(220, 16)); miniTrackLabel.setMinimumSize(new Dimension(0, 16));
+    miniTrackLabel.setAlignmentX(0.5f); miniTrackLabel.setAlignmentY(0.5f);
+    exitButton.setAlignmentX(1.0f); exitButton.setAlignmentY(0.5f);
+    titleRow.add(miniTrackLabel);
+    titleRow.add(exitButton); // added last = painted/hit-tested on top, so it stays clickable even where the centered label's bounds happen to reach into its corner
+    rightGc.gridy = rightRow++; rightGc.insets = new Insets(32, 0, 2, 0); right.add(titleRow, rightGc); // top inset nudges the title/artist block down from the column's very top edge
+
+    miniArtistLabel.setFont(new Font("SansSerif", Font.PLAIN, 10)); miniArtistLabel.setForeground(MUTED); miniArtistLabel.setHorizontalAlignment(SwingConstants.CENTER);
     miniArtistLabel.setPreferredSize(new Dimension(220, 13)); miniArtistLabel.setMinimumSize(new Dimension(0, 13));
     rightGc.gridy = rightRow++; rightGc.insets = new Insets(0, 0, 0, 0); right.add(miniArtistLabel, rightGc);
 
@@ -1225,6 +1255,20 @@ public final class CDPlayer extends JFrame {
     githubRow.add(new GitHubLinkButton("Kizarov3"));
     card.add(githubRow);
     return card;
+  }
+  /** Records the window's current bounds into normalBounds, but only while genuinely in the ordinary (not Mini Mode, not fullscreen) state — see normalBounds' own doc comment for why. */
+  private void captureNormalBounds() {
+    if (!miniModeEnabled && !fullscreen) normalBounds = getBounds();
+  }
+  /** Nudges the volume slider by delta (clamped 0-100) — the slider's own ChangeListener (see playerPanel()) does the actual gain/label update, this just drives it like a drag would. Cancels an active mute, same as touching the slider by hand would. */
+  private void adjustVolume(int delta) {
+    volumeBeforeMute = -1;
+    volumeSlider.setValue(Math.max(0, Math.min(100, volumeSlider.getValue() + delta)));
+  }
+  /** Toggles mute by driving the slider to 0 and back, not a separate silent-but-remembers-volume flag — keeps the slider itself as the single source of truth for volume/gain instead of a second code path that could drift out of sync with it. */
+  private void toggleMute() {
+    if (volumeBeforeMute >= 0) { volumeSlider.setValue(volumeBeforeMute); volumeBeforeMute = -1; }
+    else { volumeBeforeMute = volumeSlider.getValue(); volumeSlider.setValue(0); }
   }
   /** Applies the mono toggle to the live player (takes effect within ~20ms, on the pump thread's next chunk) and persists the choice for the next track load. */
   private void setMonoAudio(boolean value) {
@@ -2575,7 +2619,7 @@ public final class CDPlayer extends JFrame {
     playerPanelWrapConstraints = (GridBagConstraints) constraints.clone();
     body.add(playerPanelWrap, constraints);
     root.add(body, BorderLayout.CENTER);
-    hintLabel = label("DROP WAV · AIFF · AU · FLAC · M4A · MP3 — SPACE/K PLAY · J/L PREV/NEXT · ←/→ SKIP 15S · C CD VIEW · M MINI MODE · F FULLSCREEN · ESC EXIT", 10, new Color(120, 122, 126));
+    hintLabel = label("DROP WAV · AIFF · AU · FLAC · M4A · MP3 — SPACE/K PLAY · J/L PREV/NEXT · ←/→ SKIP 15S · ↑/↓ VOLUME · U MUTE · C CD VIEW · M MINI MODE · F FULLSCREEN · ESC EXIT", 10, new Color(120, 122, 126));
     hintLabel.setHorizontalAlignment(SwingConstants.CENTER); hintLabel.setBorder(BorderFactory.createEmptyBorder(18, 0, 0, 0));
     // Song name + author, centered at the bottom of the window in CD view — a footer, not tucked under the disc,
     // so it stays legible regardless of the disc's own size. Shares hintLabel's SOUTH slot: only one of the two
@@ -3893,18 +3937,21 @@ public final class CDPlayer extends JFrame {
       }
     } catch (Exception ignored) { /* corrupt or unreadable state file; just start with an empty queue */ }
   }
-  /** Persists volume, crossfade, mono audio, the animations toggle, the current theme, the EQ band gains, the waveform toggle, and Mini Mode so they carry over to the next launch instead of resetting to defaults. Runs on the same shutdown hook as {@link #saveQueueState()}, same EDT-quiescence rationale. Theme is stored by name (not index) so it survives THEMES being reordered later. */
+  /** Persists volume, crossfade, mono audio, the animations toggle, the current theme, the EQ band gains, the waveform toggle, Mini Mode, and the normal window bounds so they carry over to the next launch instead of resetting to defaults. Runs on the same shutdown hook as {@link #saveQueueState()}, same EDT-quiescence rationale. Theme is stored by name (not index) so it survives THEMES being reordered later. */
   private void saveSettingsState() {
     try {
       File parent = SETTINGS_FILE.getParentFile();
       if (parent != null) parent.mkdirs();
       StringBuilder eqLine = new StringBuilder();
       for (int i = 0; i < eqGains.length; i++) { if (i > 0) eqLine.append(','); eqLine.append(eqGains[i]); }
-      String content = volumeSlider.getValue() + "\n" + crossfadeSlider.getValue() + "\n" + (monoAudio ? "1" : "0") + "\n" + (animationsEnabled ? "1" : "0") + "\n" + THEMES[currentThemeIndex].name + "\n" + eqLine + "\n" + (waveformEnabled ? "1" : "0") + "\n" + (miniModeEnabled ? "1" : "0") + "\n";
+      // normalBounds, not getBounds() directly — see its own doc comment: at shutdown time the window could
+      // still be sitting in Mini Mode's or fullscreen's transient size if the app quit from either of those.
+      String boundsLine = normalBounds != null ? (normalBounds.x + "," + normalBounds.y + "," + normalBounds.width + "," + normalBounds.height) : "";
+      String content = volumeSlider.getValue() + "\n" + crossfadeSlider.getValue() + "\n" + (monoAudio ? "1" : "0") + "\n" + (animationsEnabled ? "1" : "0") + "\n" + THEMES[currentThemeIndex].name + "\n" + eqLine + "\n" + (waveformEnabled ? "1" : "0") + "\n" + (miniModeEnabled ? "1" : "0") + "\n" + boundsLine + "\n";
       java.nio.file.Files.write(SETTINGS_FILE.toPath(), content.getBytes(StandardCharsets.UTF_8));
     } catch (Exception ignored) { /* best-effort persistence; a failed save just means defaults next launch */ }
   }
-  /** Restores settings saved by {@link #saveSettingsState()}. Must run after createContent() has wired up the sliders' change listeners, so setting each value here also updates its label/live state the same way a manual drag would. The animations, theme, EQ, waveform, and Mini Mode lines are optional (absent in files saved before those existed), defaulting to enabled / RED / flat / enabled / off. */
+  /** Restores settings saved by {@link #saveSettingsState()}. Must run after createContent() has wired up the sliders' change listeners, so setting each value here also updates its label/live state the same way a manual drag would. The animations, theme, EQ, waveform, Mini Mode, and window bounds lines are optional (absent in files saved before those existed), defaulting to enabled / RED / flat / enabled / off / the constructor's own default size+position. */
   private void restoreSettingsState() {
     try {
       if (!SETTINGS_FILE.isFile()) return;
@@ -3918,6 +3965,7 @@ public final class CDPlayer extends JFrame {
       String savedEq = lines.size() >= 6 ? lines.get(5).trim() : null;
       boolean savedWaveform = lines.size() < 7 || "1".equals(lines.get(6).trim());
       boolean savedMiniMode = lines.size() >= 8 && "1".equals(lines.get(7).trim()); // absent (new feature) defaults to off, unlike waveform's "absent defaults to on" — an old settings file never opted into this
+      String savedBounds = lines.size() >= 9 ? lines.get(8).trim() : null;
       volumeSlider.setValue(Math.max(0, Math.min(100, savedVolume)));
       crossfadeSlider.setValue(Math.max(0, Math.min(15, savedCrossfade)));
       setMonoAudio(savedMono);
@@ -3936,9 +3984,25 @@ public final class CDPlayer extends JFrame {
           setEqGains(gains); // player is still null this early — just seeds eqGains for load() to pick up
         }
       }
+      if (savedBounds != null && !savedBounds.isEmpty()) {
+        String[] parts = savedBounds.split(",");
+        if (parts.length == 4) {
+          java.awt.Rectangle rect = new java.awt.Rectangle(Integer.parseInt(parts[0].trim()), Integer.parseInt(parts[1].trim()), Integer.parseInt(parts[2].trim()), Integer.parseInt(parts[3].trim()));
+          // Only trust it if it still lands on a currently-connected screen — otherwise a monitor that's since
+          // been unplugged (or a saved position from a since-changed display arrangement) would reopen the
+          // window somewhere the user can no longer see or reach it.
+          boolean onScreen = false;
+          for (java.awt.GraphicsDevice gd : java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
+            if (gd.getDefaultConfiguration().getBounds().intersects(rect)) { onScreen = true; break; }
+          }
+          if (onScreen && rect.width >= 760 && rect.height >= 785) { setBounds(rect); normalBounds = rect; }
+        }
+      }
       // Last: buildMiniPanel() (called lazily from setMiniModeEnabled()) reads the live TEXT/ACCENT2/BG/MUTED
       // fields for its labels' initial colors, which only reflect the restored theme once applyThemeInstant()
-      // above has already run.
+      // above has already run. Also last for normalBounds/preMiniBounds' sake: setMiniModeEnabled(true) captures
+      // getBounds() as preMiniBounds right as it switches over, so restoring the normal bounds above first means
+      // exiting Mini Mode later this session correctly lands back on them instead of the constructor's default.
       if (savedMiniMode) setMiniModeEnabled(true);
     } catch (Exception ignored) { /* corrupt or unreadable state file; just start with defaults */ }
   }

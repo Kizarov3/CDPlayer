@@ -47,7 +47,7 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - A 10-band graphic **Equalizer** (31Hz–16kHz), tucked into Settings, with 8 built-in presets (Bass Boost, Treble Boost, Vocal, Rock, Pop, Classical, Electronic, Flat) plus your own — adjust any band, save or delete named presets, right from the panel (the presets list scrolls once you've saved a few)
 - The seek bar can show the track's real amplitude shape instead of a plain line, so quiet and loud passages are visible at a glance — toggle it on/off in Settings
 - True fullscreen (`F` to enter, `Esc` to exit) that hides the OS menu bar/dock, not just a resized window
-- Keyboard shortcuts: `Space` / `K` play-pause, `J` / `L` previous/next track, `←` / `→` skip 15 seconds
+- Keyboard shortcuts: `Space` / `K` play-pause, `J` / `L` previous/next track, `←` / `→` skip 15 seconds, `↑` / `↓` volume, `U` mute/unmute
 
 **Queue**
 - Full queue list with per-track duration, click-to-play, and a hover-to-reveal remove (×) button
@@ -76,7 +76,7 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - A dedicated Settings dialog (opened from the header) holds the Theme picker, Equalizer, Crossfade slider, Sleep Timer, Mono Audio toggle, Waveform toggle, and an Animations toggle, keeping the main screen focused on playback
 - Sleep Timer pauses playback after a set number of minutes (up to 120); once armed it shows a live countdown in the header, which you can click at any time to cancel it
 - Fully live: switching themes updates the dialog's own colors immediately, even while it's open
-- Volume, crossfade, mono audio, the waveform and animations preferences, your equalizer settings, and your last-used theme all persist across launches instead of resetting to defaults
+- Volume, crossfade, mono audio, the waveform and animations preferences, your equalizer settings, your last-used theme, and the main window's size and position all persist across launches instead of resetting to defaults
 - A GitHub link at the bottom (icon + username) opens the project author's profile in your browser
 
 **Motion**
