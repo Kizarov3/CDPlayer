@@ -640,10 +640,16 @@ public final class CDPlayer extends JFrame {
   private JPanel buildVisualizerModeOverlay() {
     JPanel overlay = new JPanel(new GridBagLayout());
     overlay.setOpaque(true);
-    overlay.add(bigVisualizer);
+    // fill=BOTH + weight 1,1: makes the visualizer actually claim the whole window (minus these margins and the
+    // hint row below) rather than just sitting at its own preferred size — see VisualizerBars.applySize()'s own
+    // note on why an unbounded maximumSize there is what lets this stretch take effect at all.
+    GridBagConstraints visGc = new GridBagConstraints();
+    visGc.gridx = 0; visGc.gridy = 0; visGc.weightx = 1; visGc.weighty = 1; visGc.fill = GridBagConstraints.BOTH;
+    visGc.insets = new Insets(50, 50, 20, 50);
+    overlay.add(bigVisualizer, visGc);
     JLabel hint = label("MOVE THE MOUSE, OR PRESS V / ESC, TO EXIT", 10, new Color(120, 122, 126));
     GridBagConstraints hintGc = new GridBagConstraints();
-    hintGc.gridx = 0; hintGc.gridy = 1; hintGc.insets = new Insets(28, 0, 0, 0);
+    hintGc.gridx = 0; hintGc.gridy = 1; hintGc.insets = new Insets(0, 0, 40, 0);
     overlay.add(hint, hintGc);
     // A click also exits — same "any input dismisses it" idea the idle-triggered auto-entry follows, for anyone
     // who'd rather click than wait for mouse-move detection to notice (e.g. a single click with no motion).
@@ -5588,8 +5594,20 @@ public final class CDPlayer extends JFrame {
       applySize();
     }
     private void applySize() {
-      Dimension size = mode == Mode.BARS ? (big ? BIG_BAR_SIZE : BAR_SIZE) : (big ? BIG_CUSTOM_SIZE : CUSTOM_SIZE);
-      setPreferredSize(size); setMaximumSize(size);
+      if (big) {
+        // preferredSize is just a baseline here, not a cap — buildVisualizerModeOverlay()'s GridBagConstraints
+        // gives this component fill=BOTH + weight 1,1, so it actually gets stretched to fill however much of
+        // the window is available (window size minus margins minus the hint row), however big that turns out to
+        // be. An unbounded maximumSize is what makes that stretch actually happen — GridBagLayout caps a
+        // component's grown size at its own maximumSize, so leaving that at the small BIG_BAR_SIZE/BIG_CUSTOM_SIZE
+        // constants (as the normal, non-big case does) would have silently capped the "big" visualizer right
+        // back down to that fixed size regardless of how much room the window actually had.
+        setPreferredSize(mode == Mode.BARS ? BIG_BAR_SIZE : BIG_CUSTOM_SIZE);
+        setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+      } else {
+        Dimension size = mode == Mode.BARS ? BAR_SIZE : CUSTOM_SIZE;
+        setPreferredSize(size); setMaximumSize(size);
+      }
       revalidate(); repaint();
     }
     private double level(int i) { double floor = mode == Mode.TREE || mode == Mode.LEAVES ? 0.12 : 0.1; return active ? Math.max(floor, levels[i]) : floor; }
@@ -5606,11 +5624,17 @@ public final class CDPlayer extends JFrame {
       g.dispose();
     }
     private void paintBars(Graphics2D g) {
-      int barWidth = 4, gap = 3, totalWidth = BARS_COUNT * barWidth + (BARS_COUNT - 1) * gap, startX = (getWidth() - totalWidth) / 2;
+      // Proportional to getWidth(), not the old fixed 4px/3px — at the small meter's own size (42px wide) this
+      // reduces to exactly 4/3 again (unchanged there), but without it Visualizer Mode's much wider canvas left
+      // the same skinny 4px bars floating in a sea of empty space instead of actually filling the room they'd
+      // just been given.
+      int barWidth = Math.max(4, getWidth() / 22), gap = Math.max(3, getWidth() / 45);
+      int totalWidth = BARS_COUNT * barWidth + (BARS_COUNT - 1) * gap, startX = (getWidth() - totalWidth) / 2;
+      int arc = Math.max(2, barWidth / 4);
       for (int i = 0; i < BARS_COUNT; i++) {
         int barHeight = Math.max(2, (int) (level(i) * getHeight()));
         g.setColor(i % 2 == 0 ? ACCENT : ACCENT2);
-        g.fillRoundRect(startX + i * (barWidth + gap), getHeight() - barHeight, barWidth, barHeight, 2, 2);
+        g.fillRoundRect(startX + i * (barWidth + gap), getHeight() - barHeight, barWidth, barHeight, arc, arc);
       }
     }
     private static final double[][] LIGHT_POSITIONS = { { 0.30, 0.42 }, { 0.68, 0.42 }, { 0.22, 0.64 }, { 0.78, 0.64 }, { 0.5, 0.82 } };
