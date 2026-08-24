@@ -2342,7 +2342,21 @@ public final class CDPlayer extends JFrame {
     List<File> list = albumGroups.get(key);
     if (list == null) { list = new ArrayList<File>(); albumGroups.put(key, list); }
     list.add(file);
-    if (details.embeddedCover != null && !albumCovers.containsKey(key)) albumCovers.put(key, details.embeddedCover);
+    // A copy, not details.embeddedCover directly — that BufferedImage is the exact same cached object
+    // DiscView.setCover() also draws from (both come from the same cached SongDetails via metadataCache), and
+    // DiscView.setCover() calls .flush() on whichever cover it's replacing every time a track loads. Storing
+    // the shared reference here left an album tile showing corrupted/garbled art (confirmed directly — playing
+    // a track whose album is in the shelf, then loading a different one, then reopening Albums) once the disc
+    // flushed the very image this map was still holding onto. A cheap one-time copy per album (not per file —
+    // the containsKey guard below still applies) decouples the two lifetimes entirely.
+    if (details.embeddedCover != null && !albumCovers.containsKey(key)) albumCovers.put(key, copyImage(details.embeddedCover));
+  }
+  private static BufferedImage copyImage(BufferedImage source) {
+    BufferedImage copy = new BufferedImage(source.getWidth(), source.getHeight(), BufferedImage.TYPE_INT_ARGB);
+    Graphics2D g = copy.createGraphics();
+    g.drawImage(source, 0, 0, null);
+    g.dispose();
+    return copy;
   }
   /** Opens the EQ panel — same in-window-overlay approach as Settings/Lyrics, and its own CenteredOverlay/Timer for the same "must not stomp another overlay's in-progress animation" reason given on showLyrics(). */
   private void showEq() {
