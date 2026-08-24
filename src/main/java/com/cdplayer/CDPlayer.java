@@ -52,6 +52,7 @@ import javax.swing.JButton;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JLayeredPane;
 import javax.swing.JPanel;
 import javax.swing.JSlider;
 import javax.swing.JTextField;
@@ -109,8 +110,8 @@ public final class CDPlayer extends JFrame {
   private final JLabel cdViewArtistLabel = new JLabel(); // mirrors artistLabel's text (see setTrackTitle) — sits under cdViewTrackLabel in the same bottom info block
   private JPanel cdViewInfoPanel; // wraps cdViewTrackLabel + cdViewArtistLabel, swapped in for hintLabel at the bottom of the window while in CD view — see applyCdViewState()
   // Only ever used by CD view's own transition — Mini Mode's toggle stays an instant switch, no animation.
-  private GenieOverlay cdViewTransitionOverlay;
-  private Timer cdViewTransitionTimer;
+  private GenieOverlay transitionOverlay;
+  private Timer transitionTimer;
   private final JLabel status = label("●  READY TO PLAY", 11, ACCENT);
   private final JLabel track = new JLabel("Pick a track to get started.");
   private final JLabel artistLabel = new JLabel(); // author's name under the song title in normal view — hidden when the track has no artist tag
@@ -548,34 +549,52 @@ public final class CDPlayer extends JFrame {
     // from the disc's old enlarged bounds back out to the full window.
     Rectangle sourceRect = entering ? fullRect : discBoundsBefore;
     Rectangle targetRect = entering ? discBoundsAfter : fullRect;
+    runGenieTransition(before, sourceRect, targetRect);
+  }
+  /**
+   * Shared by every view-mode toggle that wants a snapshot-based transition (CD View's disc warp, and the plain
+   * crossfades used by Visualizer Mode and Mini Mode below): stops/discards any transition already in flight
+   * (e.g. the same key pressed again mid-animation, or one mode toggle chaining into another via their
+   * mutual-exclusion guards) and animates a frozen "before" image from sourceRect to targetRect over it.
+   * Hosted on the root pane's own JLayeredPane rather than contentStack: Mini Mode swaps the frame's entire
+   * content pane between contentStack and miniPanel (two containers with different layout managers), and the
+   * layered pane is the one place that sits above whichever of those is active without needing to know or care
+   * which one that is — contentStack.add() worked for CD View/Visualizer Mode only because contentStack itself
+   * never stops being the content pane for those two.
+   * Equal sourceRect/targetRect (Visualizer Mode, Mini Mode) degenerates the per-strip warp math to a no-op —
+   * every strip's start and end rect are identical, so nothing moves and only the alpha changes — giving a plain
+   * crossfade for free instead of a second overlay implementation.
+   */
+  private void runGenieTransition(BufferedImage snapshot, Rectangle sourceRect, Rectangle targetRect) {
+    JLayeredPane layered = getRootPane().getLayeredPane();
+    if (transitionTimer != null && transitionTimer.isRunning()) transitionTimer.stop();
+    if (transitionOverlay != null) { layered.remove(transitionOverlay); transitionOverlay.releaseSnapshot(); transitionOverlay = null; } // clean up an interrupted previous transition
 
-    if (cdViewTransitionTimer != null && cdViewTransitionTimer.isRunning()) cdViewTransitionTimer.stop();
-    if (cdViewTransitionOverlay != null) { contentStack.remove(cdViewTransitionOverlay); cdViewTransitionOverlay.releaseSnapshot(); cdViewTransitionOverlay = null; } // clean up an interrupted previous transition, if "C" was pressed again mid-warp
+    GenieOverlay overlay = new GenieOverlay(snapshot, sourceRect, targetRect);
+    overlay.setBounds(0, 0, Math.max(1, layered.getWidth()), Math.max(1, layered.getHeight()));
+    transitionOverlay = overlay;
+    layered.add(overlay, JLayeredPane.DRAG_LAYER);
+    layered.revalidate();
+    layered.repaint();
 
-    GenieOverlay overlay = new GenieOverlay(before, sourceRect, targetRect);
-    overlay.setPreferredSize(new Dimension(w, h)); overlay.setMaximumSize(new Dimension(w, h));
-    cdViewTransitionOverlay = overlay;
-    contentStack.add(overlay, 0);
-    contentStack.validate();
-
-    // More steps than the old plain fade (6) — a warp reads as motion, not just a cross-fade, and needs the
-    // extra frames to look fluid rather than jumpy.
-    final int steps = 20;
+    // A warp (unequal rects) reads as motion, not just a cross-fade, and needs more frames to look fluid rather
+    // than jumpy; a plain fade has no motion to smooth out, so fewer, quicker steps read as snappier, not choppier.
+    final int steps = sourceRect.equals(targetRect) ? 10 : 20;
     final int[] step = { 0 };
-    cdViewTransitionTimer = new Timer(10, null);
-    cdViewTransitionTimer.addActionListener(e -> {
+    transitionTimer = new Timer(10, null);
+    transitionTimer.addActionListener(e -> {
       step[0]++;
       float t = Math.min(1f, step[0] / (float) steps);
       overlay.setProgress(t);
       if (t >= 1f) {
         ((Timer) e.getSource()).stop();
-        contentStack.remove(overlay);
+        layered.remove(overlay);
         overlay.releaseSnapshot();
-        if (cdViewTransitionOverlay == overlay) cdViewTransitionOverlay = null;
-        contentStack.repaint();
+        if (transitionOverlay == overlay) transitionOverlay = null;
+        layered.repaint();
       }
     });
-    cdViewTransitionTimer.start();
+    transitionTimer.start();
   }
   /**
    * playerPanelWrap.setVisible(false) alone isn't enough to free up its column's width for the enlarged disc:
@@ -619,6 +638,9 @@ public final class CDPlayer extends JFrame {
     if (miniModeEnabled) setMiniModeEnabled(false); // mutually exclusive — same reasoning as toggleCdView()'s own guard
     if (cdViewEnabled) toggleCdView();
     visualizerModeEnabled = !visualizerModeEnabled;
+    // Captured before the state flips below — whatever's on screen right now, whichever direction this is
+    // going — then crossfaded away by runGenieTransition() once the real (instant) switch has happened underneath.
+    BufferedImage before = animationsEnabled ? captureContentSnapshot() : null;
     if (visualizerModeEnabled) {
       if (visualizerModeOverlay == null) visualizerModeOverlay = buildVisualizerModeOverlay();
       visualizerModeOverlay.setBackground(BG);
@@ -636,6 +658,20 @@ public final class CDPlayer extends JFrame {
     }
     contentStack.validate();
     contentStack.repaint();
+    if (before != null) {
+      Rectangle full = new Rectangle(0, 0, Math.max(1, contentStack.getWidth()), Math.max(1, contentStack.getHeight()));
+      runGenieTransition(before, full, full); // equal rects = plain crossfade, no warp
+    }
+  }
+  /** Unscaled paint of contentStack's current contents into a fresh buffer — the "before" half of a crossfade. */
+  private BufferedImage captureContentSnapshot() {
+    int w = Math.max(1, contentStack.getWidth()), h = Math.max(1, contentStack.getHeight());
+    BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+    Graphics2D g = img.createGraphics();
+    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+    contentStack.paint(g);
+    g.dispose();
+    return img;
   }
   private JPanel buildVisualizerModeOverlay() {
     JPanel overlay = new JPanel(new GridBagLayout());
@@ -678,6 +714,11 @@ public final class CDPlayer extends JFrame {
   private static final Dimension MAIN_MINIMUM_SIZE = new Dimension(760, 785);
   private void setMiniModeEnabled(boolean enabled) {
     if (enabled == miniModeEnabled) return;
+    // Captured up front, via the layered pane rather than contentStack directly: at this point the active
+    // content pane could be either one (contentStack normally, miniPanel if this is an exit), and the layered
+    // pane paints whichever is actually installed without needing to know which — see runGenieTransition()'s
+    // own note on why it's hosted there instead of on contentStack the way CD View/Visualizer Mode's are.
+    BufferedImage before = animationsEnabled ? captureLayeredSnapshot() : null;
     if (enabled) {
       if (cdViewEnabled) toggleCdView(); // mutually exclusive — see toggleCdView()'s own guard
       if (fullscreen) toggleFullscreen(); // mutually exclusive — see toggleFullscreen()'s own guard
@@ -715,6 +756,27 @@ public final class CDPlayer extends JFrame {
     getRootPane().validate();
     getRootPane().repaint();
     getRootPane().requestFocusInWindow(); // keyboard shortcuts live on the root pane's WHEN_IN_FOCUSED_WINDOW map — same reasoning as toggleFullscreen()'s own call
+    if (before != null) {
+      // Sized to the layered pane's CURRENT bounds, not before's own — before is still the old (pre-resize)
+      // window's pixel dimensions when entering/exiting Mini Mode, but by this point the frame has already
+      // resized underneath it, so the fade rect has to match where it's landing, not where it started.
+      JLayeredPane layered = getRootPane().getLayeredPane();
+      Rectangle full = new Rectangle(0, 0, Math.max(1, layered.getWidth()), Math.max(1, layered.getHeight()));
+      runGenieTransition(before, full, full); // equal rects = plain crossfade, no warp — a real geometric warp toward/away from the about-to-change window size read as far too busy for something this small
+    }
+  }
+  /** Unscaled paint of the root pane's layered pane — whichever content pane (contentStack or miniPanel) is
+   * currently installed underneath it — into a fresh buffer. Used for transitions where the active content pane
+   * might not be contentStack, unlike captureContentSnapshot(). */
+  private BufferedImage captureLayeredSnapshot() {
+    JLayeredPane layered = getRootPane().getLayeredPane();
+    int w = Math.max(1, layered.getWidth()), h = Math.max(1, layered.getHeight());
+    BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+    Graphics2D g = img.createGraphics();
+    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+    layered.paint(g);
+    g.dispose();
+    return img;
   }
   /** Built once, lazily, the first time Mini Mode is actually entered — mirrors showSettingsDialog()'s lazy-overlay pattern. Structure only — disc itself is moved in and out by setMiniModeEnabled() on every toggle, not added here, since it needs to move back to discColumn on exit rather than staying put. */
   private JPanel buildMiniPanel() {
