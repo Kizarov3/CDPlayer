@@ -180,6 +180,13 @@ public final class CDPlayer extends JFrame {
   private JPanel visualizerModeOverlay; // built lazily, first time Visualizer Mode is entered
   private long lastActivityMillis = System.currentTimeMillis();
   private static final int IDLE_SECONDS_UNTIL_VISUALIZER = 180; // 3 minutes of no mouse/keyboard activity while playing
+  private long lastCdViewMouseMillis = System.currentTimeMillis();
+  private boolean cdViewCursorHidden;
+  private static final int CD_VIEW_CURSOR_IDLE_SECONDS = 5;
+  // A fully transparent 1x1 image, not a null/predefined cursor — Cursor has no built-in "invisible" constant,
+  // this is the standard AWT idiom for hiding the pointer entirely rather than just swapping its shape.
+  private static final Cursor BLANK_CURSOR = java.awt.Toolkit.getDefaultToolkit().createCustomCursor(
+      new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB), new java.awt.Point(0, 0), "cdplayer-blank-cursor");
   private final ThemeOverlay themeOverlay = new ThemeOverlay();
   private final List<File> queue = new ArrayList<File>();
   private int queueIndex = -1;
@@ -412,6 +419,13 @@ public final class CDPlayer extends JFrame {
     java.awt.Toolkit.getDefaultToolkit().addAWTEventListener(e -> {
       lastActivityMillis = System.currentTimeMillis();
       if (visualizerModeEnabled && e instanceof java.awt.event.MouseEvent) toggleVisualizerMode();
+      // Cursor gets un-hidden on the next real MOUSE_MOTION event, not merely any mouse event (a click while
+      // already hidden shouldn't first flash the pointer back — only genuine movement should), and only bothers
+      // touching the cursor at all if it's actually hidden right now.
+      if (cdViewEnabled && e instanceof java.awt.event.MouseEvent && ((java.awt.event.MouseEvent) e).getID() == java.awt.event.MouseEvent.MOUSE_MOVED) {
+        lastCdViewMouseMillis = System.currentTimeMillis();
+        if (cdViewCursorHidden) { getRootPane().setCursor(Cursor.getDefaultCursor()); cdViewCursorHidden = false; }
+      }
     }, java.awt.AWTEvent.MOUSE_EVENT_MASK | java.awt.AWTEvent.MOUSE_MOTION_EVENT_MASK | java.awt.AWTEvent.KEY_EVENT_MASK);
     Timer idleCheckTimer = new Timer(5000, e -> {
       if (!visualizerModeEnabled && !miniModeEnabled && !anyOverlayOpen() && player != null && player.isRunning()
@@ -420,6 +434,16 @@ public final class CDPlayer extends JFrame {
       }
     });
     idleCheckTimer.start();
+    // A separate, much shorter-interval timer than idleCheckTimer above: that one polls every 5s, fine for a
+    // 3-minute threshold but far too coarse for a 5-second one (worst case, almost a second 5-second threshold's
+    // worth of extra lag before the pointer actually disappears).
+    Timer cdViewCursorTimer = new Timer(500, e -> {
+      if (cdViewEnabled && !cdViewCursorHidden && System.currentTimeMillis() - lastCdViewMouseMillis >= CD_VIEW_CURSOR_IDLE_SECONDS * 1000L) {
+        getRootPane().setCursor(BLANK_CURSOR);
+        cdViewCursorHidden = true;
+      }
+    });
+    cdViewCursorTimer.start();
     // Wired once here rather than inside buildSettingsPanel(), which is rebuilt fresh every time the Settings
     // dialog opens — attaching it there would stack a duplicate listener on each open.
     themeButton.addActionListener(e -> showThemeMenu());
@@ -636,6 +660,12 @@ public final class CDPlayer extends JFrame {
     playerPanelWrap.setVisible(!cdViewEnabled);
     bodyPanel.invalidate();
     contentStack.validate();
+    // Restarts the 5-second countdown fresh on entry (not whatever's left over from idle time before CD View was
+    // even opened) and unconditionally shows the pointer again on exit — cdViewCursorTimer's own check is gated
+    // on cdViewEnabled, but a hidden cursor left over from just before exiting would otherwise still be invisible
+    // for a frame or two in Normal Mode until the next real mouse move.
+    lastCdViewMouseMillis = System.currentTimeMillis();
+    if (cdViewCursorHidden) { getRootPane().setCursor(Cursor.getDefaultCursor()); cdViewCursorHidden = false; }
   }
   /**
    * Visualizer Mode: a fullscreen-ish, distraction-free view showing nothing but a large version of the current
@@ -2134,7 +2164,10 @@ public final class CDPlayer extends JFrame {
     albumsGrid = new JPanel();
     albumsGrid.setOpaque(true); albumsGrid.setBackground(CARD);
     JScrollPane scroll = new JScrollPane(albumsGrid);
-    scroll.setOpaque(true); scroll.getViewport().setOpaque(true); scroll.getViewport().setBackground(CARD); scroll.setBorder(null);
+    // scroll itself needs an explicit background too, not just the viewport — made opaque (for the scroll-mode
+    // fix below) without one, it defaults to the L&F's plain white, which showed straight through around/behind
+    // the vertical scrollbar's own column as a solid white bar behind GreyScrollBarUI's transparent track.
+    scroll.setOpaque(true); scroll.setBackground(CARD); scroll.getViewport().setOpaque(true); scroll.getViewport().setBackground(CARD); scroll.setBorder(null);
     // SIMPLE, not the default BLIT: blit-scroll copies the viewport's existing pixels and repaints only the
     // newly-exposed strip, which left stale fragments of whichever tiles previously occupied that strip visible
     // behind the freshly-scrolled-in cover art (confirmed directly — reported as tiles looking corrupted/
@@ -5326,6 +5359,11 @@ public final class CDPlayer extends JFrame {
    * color and a light track that clashes with this app's uniformly dark theme backgrounds.
    */
   private static final class GreyScrollBarUI extends BasicScrollBarUI {
+    // paintTrack below already paints nothing, but that alone isn't enough: JComponent's own paint chain fills
+    // an opaque component with its background color BEFORE handing off to the UI delegate, and JScrollBar's
+    // default background is opaque white — so without this, the track still showed up as a solid white bar with
+    // the grey thumb floating on top of it, not the transparent track paintTrack's own doc comment intends.
+    public void installUI(javax.swing.JComponent c) { super.installUI(c); c.setOpaque(false); }
     protected void configureScrollBarColors() { /* deliberately empty — colors are hardcoded directly in paintThumb/paintTrack below instead of relying on the *Color fields this would otherwise set, since we also skip the arrow buttons and default track painting entirely */ }
     protected JButton createDecreaseButton(int orientation) { return zeroSizeButton(); }
     protected JButton createIncreaseButton(int orientation) { return zeroSizeButton(); }
