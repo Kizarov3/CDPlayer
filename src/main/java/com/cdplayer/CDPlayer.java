@@ -130,12 +130,24 @@ public final class CDPlayer extends JFrame {
   private double[] eqGains = new double[Equalizer.BANDS]; // all 0 = flat; applied to the live player and persisted across launches
   private final java.util.List<EqPreset> customEqPresets = new ArrayList<EqPreset>();
   private final JButton historyButton = textButton("HISTORY");
+  private final JButton albumsButton = textButton("ALBUMS");
   private static final int HISTORY_LIMIT = 50;
   private final java.util.List<File> playHistory = new ArrayList<File>(); // most-recently-played first
   private static final int SEARCH_RESULTS_LIMIT = 100;
   private final java.util.List<File> searchIndex = new ArrayList<File>(); // every audio file found under the last-used folder, filename-filtered live as the user types
   private int searchScanGeneration = 0; // bumped on every rescan so a slow background scan can't clobber results with stale data from a folder that's since changed
   private boolean searchScanning = false;
+  // Albums shelf: groups searchIndex's files by (artist, album) tag once each one's been inspected. Keyed by
+  // "artist album" rather than a small record/class — this file has no existing tuple-key pattern to match,
+  // and a single string key sidesteps writing equals()/hashCode() for something used in exactly one place.
+  private final java.util.Map<String, java.util.List<File>> albumGroups = new java.util.LinkedHashMap<String, java.util.List<File>>();
+  private final java.util.Map<String, BufferedImage> albumCovers = new java.util.HashMap<String, BufferedImage>();
+  private int albumScanGeneration = 0; // same "don't let a superseded scan clobber fresher results" guard as searchScanGeneration
+  private boolean albumScanning = false;
+  private int albumScanDone = 0, albumScanTotal = 0;
+  private JPanel albumsGrid; // rebuilt in place as the scan progresses — see rebuildAlbumsGrid()
+  private JLabel albumsStatusLabel;
+  private static final int ALBUM_TILE_COVER = 132, ALBUM_TILE_WIDTH = 148;
   private JTextField searchField; // live query box; a field so the background scan's completion callback can re-filter against whatever's currently typed
   private JPanel searchResultsList; // rebuilt in place on every keystroke, without rebuilding the whole card
   private JLabel searchStatusLabel;
@@ -298,8 +310,9 @@ public final class CDPlayer extends JFrame {
   private CenteredOverlay eqOverlay;
   private CenteredOverlay historyOverlay;
   private CenteredOverlay searchOverlay;
+  private CenteredOverlay albumsOverlay;
   private ThemeMenuOverlay themeMenuOverlay;
-  private JPanel contentStack; // the OverlayLayout stack: themeMenuOverlay / settingsOverlay / lyricsOverlay / historyOverlay / searchOverlay (topmost, added lazily) > foreground > themeOverlay > background
+  private JPanel contentStack; // the OverlayLayout stack: themeMenuOverlay / settingsOverlay / lyricsOverlay / historyOverlay / searchOverlay / albumsOverlay (topmost, added lazily) > foreground > themeOverlay > background
   private java.awt.Rectangle preFullscreenBounds;
   private boolean fullscreen;
   // Tracks the window's bounds only while it's in its ordinary (not Mini Mode, not fullscreen) state, via a
@@ -446,6 +459,7 @@ public final class CDPlayer extends JFrame {
         || (eqOverlay != null && eqOverlay.isVisible())
         || (historyOverlay != null && historyOverlay.isVisible())
         || (searchOverlay != null && searchOverlay.isVisible())
+        || (albumsOverlay != null && albumsOverlay.isVisible())
         || (settingsOverlay != null && settingsOverlay.isVisible());
   }
   private void bindKeys() {
@@ -479,6 +493,7 @@ public final class CDPlayer extends JFrame {
       else if (eqOverlay != null && eqOverlay.isVisible()) closeEq();
       else if (historyOverlay != null && historyOverlay.isVisible()) closeHistory();
       else if (searchOverlay != null && searchOverlay.isVisible()) closeSearch();
+      else if (albumsOverlay != null && albumsOverlay.isVisible()) closeAlbums();
       else if (settingsOverlay != null && settingsOverlay.isVisible()) closeSettingsDialog();
       else if (miniModeEnabled) setMiniModeEnabled(false);
       else if (visualizerModeEnabled) toggleVisualizerMode();
@@ -2038,6 +2053,252 @@ public final class CDPlayer extends JFrame {
     });
     searchAnimTimer.start();
   }
+  /** Opens the album shelf — same in-window-overlay approach as Search/History, and its own CenteredOverlay/Timer for the same "must not stomp another overlay's in-progress animation" reason given on showLyrics(). Reuses searchIndex/startLibraryScan() for the underlying file list rather than scanning the folder a second time; startAlbumScan() (kicked off once that finishes — see its completion callback) is the extra pass that groups those files by album tag. */
+  private void showAlbums() {
+    if (albumsOverlay == null) {
+      albumsOverlay = new CenteredOverlay();
+      albumsOverlay.setVisible(false);
+      contentStack.add(albumsOverlay, 0);
+      themeOverlay.setAlbumsCardReference(albumsOverlay.card);
+    }
+    startLibraryScan(); // before building the panel, so its initial render already reflects "scanning" state instead of a blank flash; its completion callback calls startAlbumScan() once the file list is ready
+    albumsOverlay.card.removeAll();
+    albumsOverlay.card.add(buildAlbumsPanel(), BorderLayout.CENTER);
+    settleOverlayBounds(albumsOverlay); // see settleOverlayBounds()'s note on why a plain validate() alone isn't enough
+    albumsOverlay.setVisible(true);
+    animateAlbumsIn();
+  }
+  private void closeAlbums() { if (albumsOverlay != null) animateAlbumsOut(); getRootPane().requestFocusInWindow(); } // see closeSettingsDialog()'s note on why every overlay close does this
+  /** Rebuilds just the grid in place — used by startAlbumScan()'s progressive updates instead of tearing down and rebuilding the whole card each time. */
+  private void refreshAlbumsIfOpen() {
+    if (albumsOverlay == null || !albumsOverlay.isVisible()) return;
+    rebuildAlbumsGrid();
+  }
+  private Timer albumsAnimTimer;
+  private void animateAlbumsIn() {
+    if (albumsAnimTimer != null && albumsAnimTimer.isRunning()) albumsAnimTimer.stop();
+    FadeableCard card = albumsOverlay.card;
+    if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; card.repaint(); return; }
+    card.beginTransformAnimation();
+    card.opacity = 0f; card.scale = 0.9f;
+    final int steps = 6;
+    final int[] step = { 0 };
+    albumsAnimTimer = new Timer(8, null);
+    albumsAnimTimer.addActionListener(e -> {
+      step[0]++;
+      float t = Math.min(1f, step[0] / (float) steps);
+      float eased = 1f - (float) Math.pow(1f - t, 3);
+      card.opacity = eased; card.scale = 0.9f + 0.1f * eased;
+      // card.repaint(), not albumsOverlay.repaint() — see animateSettingsIn()'s note: the overlay spans the whole
+      // window now (the dimmed click-blocking backdrop), so repainting it on every tick recomposited the entire
+      // window ~80 times/second for an animation that only changes the card.
+      card.repaint();
+      if (t >= 1f) { ((Timer) e.getSource()).stop(); card.opacity = 1f; card.scale = 1f; card.endTransformAnimation(); }
+    });
+    albumsAnimTimer.start();
+  }
+  private void animateAlbumsOut() {
+    if (!albumsOverlay.isVisible()) return;
+    if (albumsAnimTimer != null && albumsAnimTimer.isRunning()) albumsAnimTimer.stop();
+    FadeableCard card = albumsOverlay.card;
+    if (!animationsEnabled) { albumsOverlay.setVisible(false); card.opacity = 1f; card.scale = 1f; return; }
+    card.beginTransformAnimation();
+    final int steps = 5;
+    final int[] step = { 0 };
+    albumsAnimTimer = new Timer(8, null);
+    albumsAnimTimer.addActionListener(e -> {
+      step[0]++;
+      float t = Math.min(1f, step[0] / (float) steps);
+      card.opacity = 1f - t; card.scale = 1f - 0.1f * t;
+      card.repaint(); // see animateSettingsIn()'s note on why this is card.repaint(), not albumsOverlay.repaint()
+      if (t >= 1f) {
+        ((Timer) e.getSource()).stop();
+        albumsOverlay.setVisible(false);
+        card.opacity = 1f; card.scale = 1f;
+        card.endTransformAnimation();
+      }
+    });
+    albumsAnimTimer.start();
+  }
+  private JPanel buildAlbumsPanel() {
+    JPanel card = new JPanel(new BorderLayout(0, 16));
+    card.setBackground(CARD); card.setOpaque(true);
+    card.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 40), 1), BorderFactory.createEmptyBorder(26, 30, 22, 30)));
+
+    JLabel title = label("ALBUMS", 16, ACCENT);
+    albumsStatusLabel = label("", 10, MUTED);
+    JPanel north = new JPanel(new BorderLayout()); north.setOpaque(false);
+    north.add(title, BorderLayout.WEST); north.add(albumsStatusLabel, BorderLayout.EAST);
+    card.add(north, BorderLayout.NORTH);
+
+    albumsGrid = new JPanel();
+    albumsGrid.setOpaque(false);
+    JScrollPane scroll = new JScrollPane(albumsGrid);
+    scroll.setOpaque(false); scroll.getViewport().setOpaque(false); scroll.setBorder(null);
+    scroll.setPreferredSize(new Dimension(4 * ALBUM_TILE_WIDTH + 72, 420));
+    scroll.getVerticalScrollBar().setUnitIncrement(16);
+    scroll.getVerticalScrollBar().setUI(new GreyScrollBarUI());
+    card.add(scroll, BorderLayout.CENTER);
+    JButton close = textButton("CLOSE");
+    close.addActionListener(e -> closeAlbums());
+    JPanel buttonRow = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0));
+    buttonRow.setOpaque(false); buttonRow.add(close);
+    card.add(buttonRow, BorderLayout.SOUTH);
+
+    rebuildAlbumsGrid(); // reflects whatever albumGroups already has from a prior/in-progress scan
+    return card;
+  }
+  /** Rebuilds albumsGrid's children in place from the current albumGroups/albumScanning state — called both when the panel first opens and progressively as startAlbumScan()'s background workers report results back. */
+  private void rebuildAlbumsGrid() {
+    if (albumsGrid == null) return;
+    albumsGrid.removeAll();
+    File folder = readLastPath();
+    List<String> keys = new ArrayList<String>(albumGroups.keySet());
+    Collections.sort(keys, (a, b) -> a.substring(a.indexOf(' ') + 1).compareToIgnoreCase(b.substring(b.indexOf(' ') + 1)));
+    if (folder == null || !folder.isDirectory()) {
+      albumsGrid.setLayout(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
+      albumsGrid.add(label("LOAD A TRACK FIRST TO SET A LIBRARY FOLDER", 12, MUTED));
+      albumsStatusLabel.setText("");
+    } else if (keys.isEmpty()) {
+      albumsGrid.setLayout(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
+      albumsGrid.add(label(albumScanning ? "SCANNING…" : "NO TAGGED ALBUMS FOUND", 12, MUTED));
+      albumsStatusLabel.setText(albumScanning ? "SCANNING " + folder.getName() + "…" : "0 ALBUMS");
+    } else {
+      albumsGrid.setLayout(new java.awt.GridLayout(0, 4, 12, 16));
+      for (String key : keys) {
+        List<File> tracks = albumGroups.get(key);
+        Collections.sort(tracks, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+        int split = key.indexOf(' ');
+        albumsGrid.add(buildAlbumTile(key.substring(split + 1), key.substring(0, split), tracks, albumCovers.get(key)));
+      }
+      albumsStatusLabel.setText(albumScanning
+          ? "SCANNING… " + albumScanDone + " / " + albumScanTotal
+          : keys.size() + " ALBUM" + (keys.size() == 1 ? "" : "S"));
+    }
+    albumsGrid.revalidate();
+    albumsGrid.repaint();
+  }
+  private JPanel buildAlbumTile(String album, String artist, List<File> tracks, BufferedImage cover) {
+    JPanel tile = new JPanel();
+    tile.setOpaque(false);
+    tile.setLayout(new javax.swing.BoxLayout(tile, javax.swing.BoxLayout.Y_AXIS));
+    tile.setPreferredSize(new Dimension(ALBUM_TILE_WIDTH, ALBUM_TILE_COVER + 46));
+    tile.setMaximumSize(new Dimension(ALBUM_TILE_WIDTH, ALBUM_TILE_COVER + 46));
+
+    JPanel coverPanel = new JPanel() {
+      protected void paintComponent(Graphics raw) {
+        Graphics2D g = (Graphics2D) raw.create();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        int side = ALBUM_TILE_COVER;
+        if (cover != null) {
+          Graphics2D clipped = (Graphics2D) g.create();
+          clipped.setClip(new java.awt.geom.RoundRectangle2D.Float(0, 0, side, side, 8, 8));
+          clipped.drawImage(cover, 0, 0, side, side, null);
+          clipped.dispose();
+        } else {
+          g.setColor(new Color(255, 255, 255, 20));
+          g.fillRoundRect(0, 0, side, side, 8, 8);
+          g.setColor(MUTED);
+          g.setFont(new Font("SansSerif", Font.BOLD, 28));
+          String letter = album.trim().isEmpty() ? "?" : album.trim().substring(0, 1).toUpperCase();
+          java.awt.FontMetrics fm = g.getFontMetrics();
+          g.drawString(letter, (side - fm.stringWidth(letter)) / 2, (side + fm.getAscent()) / 2 - 4);
+        }
+        g.setColor(new Color(255, 255, 255, 30));
+        g.setStroke(new BasicStroke(1));
+        g.drawRoundRect(0, 0, side - 1, side - 1, 8, 8);
+        g.dispose();
+      }
+    };
+    coverPanel.setOpaque(false);
+    coverPanel.setPreferredSize(new Dimension(ALBUM_TILE_COVER, ALBUM_TILE_COVER));
+    coverPanel.setMaximumSize(new Dimension(ALBUM_TILE_COVER, ALBUM_TILE_COVER));
+    coverPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
+    tile.add(coverPanel);
+    tile.add(javax.swing.Box.createVerticalStrut(6));
+
+    JLabel albumLabel = new JLabel(); albumLabel.setForeground(TEXT);
+    fitText(albumLabel, album, ALBUM_TILE_COVER, 11, 9, true);
+    albumLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+    tile.add(albumLabel);
+    JLabel artistLabel = new JLabel(); artistLabel.setForeground(MUTED);
+    fitText(artistLabel, artist, ALBUM_TILE_COVER, 10, 8, false);
+    artistLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+    tile.add(artistLabel);
+
+    tile.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+    tile.setToolTipText("Play " + album + " — " + artist + " (" + tracks.size() + (tracks.size() == 1 ? " track" : " tracks") + ")");
+    java.awt.event.MouseAdapter click = new java.awt.event.MouseAdapter() {
+      public void mouseClicked(java.awt.event.MouseEvent e) { playAlbum(tracks); }
+    };
+    tile.addMouseListener(click);
+    coverPanel.addMouseListener(click);
+    return tile;
+  }
+  /** Appends every track in an album (already sorted by filename) to the end of the live queue and jumps to the first one — same "append, don't replace" convention as appendAndPlay()'s single-track version used by History/Search. */
+  private void playAlbum(List<File> tracks) {
+    if (tracks.isEmpty()) return;
+    queueIndex = queue.size();
+    queue.addAll(tracks);
+    load(tracks.get(0));
+    closeAlbums();
+  }
+  /**
+   * Groups searchIndex's current files by (artist, album) tag, reusing metadataCache for anything already
+   * inspected (queueDisplay/load() populate it too) and only spawning fresh ffprobe/ffmpeg work for the rest.
+   * That fresh work runs on a small background thread pool — inspectSong() is a static call with no shared
+   * state, so it's safe to run concurrently — but every read/write of metadataCache and albumGroups themselves
+   * happens back on the EDT via invokeLater, since both are plain (non-thread-safe) collections everywhere else
+   * in this file already assumes single-threaded (EDT-only) access to.
+   */
+  private void startAlbumScan() {
+    int generation = ++albumScanGeneration;
+    albumGroups.clear();
+    albumCovers.clear();
+    List<File> toScan = new ArrayList<File>();
+    for (File file : searchIndex) {
+      SongDetails cached = metadataCache.get(file);
+      if (cached != null) recordAlbumEntry(file, cached); else toScan.add(file);
+    }
+    albumScanTotal = toScan.size();
+    albumScanDone = 0;
+    albumScanning = !toScan.isEmpty();
+    refreshAlbumsIfOpen();
+    if (toScan.isEmpty()) return;
+    Thread coordinator = new Thread(() -> {
+      java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(Math.min(4, toScan.size()));
+      for (File file : toScan) {
+        pool.submit(() -> {
+          SongDetails details;
+          try { details = inspectSong(file); } catch (Exception ignored) { return; }
+          SwingUtilities.invokeLater(() -> {
+            if (generation != albumScanGeneration) return; // superseded by a newer scan (folder changed, or Albums was reopened)
+            metadataCache.put(file, details);
+            recordAlbumEntry(file, details);
+            albumScanDone++;
+            if (albumScanDone >= albumScanTotal) albumScanning = false;
+            // Rebuilding the grid on every single completion (up to hundreds in a large library) would mean
+            // hundreds of full removeAll()+re-add passes; throttling to every 8th completion (plus always the
+            // final one) keeps the progress readout live without the UI churn.
+            if (albumScanDone >= albumScanTotal || albumScanDone % 8 == 0) refreshAlbumsIfOpen();
+          });
+        });
+      }
+      pool.shutdown();
+    }, "cdplayer-album-scan");
+    coordinator.setDaemon(true);
+    coordinator.start();
+  }
+  /** Files with no album tag at all don't belong on a shelf of albums — silently skipped, same "degrade gracefully" spirit as the disc's own no-embedded-cover fallback. */
+  private void recordAlbumEntry(File file, SongDetails details) {
+    if (details.album == null || details.album.trim().isEmpty()) return;
+    String artist = details.hasArtist() ? details.artist.trim() : "Unknown Artist";
+    String key = artist + " " + details.album.trim();
+    List<File> list = albumGroups.get(key);
+    if (list == null) { list = new ArrayList<File>(); albumGroups.put(key, list); }
+    list.add(file);
+    if (details.embeddedCover != null && !albumCovers.containsKey(key)) albumCovers.put(key, details.embeddedCover);
+  }
   /** Opens the EQ panel — same in-window-overlay approach as Settings/Lyrics, and its own CenteredOverlay/Timer for the same "must not stomp another overlay's in-progress animation" reason given on showLyrics(). */
   private void showEq() {
     if (eqOverlay == null) {
@@ -2507,6 +2768,7 @@ public final class CDPlayer extends JFrame {
         searchIndex.addAll(found);
         searchScanning = false;
         if (searchOverlay != null && searchOverlay.isVisible()) refreshSearchResults();
+        if (albumsOverlay != null && albumsOverlay.isVisible()) startAlbumScan();
       });
     }, "cdplayer-search-index");
     worker.setDaemon(true);
@@ -2993,11 +3255,13 @@ public final class CDPlayer extends JFrame {
       public void mouseClicked(java.awt.event.MouseEvent e) { armSleepTimer(0); sleepTimerSlider.setValue(0); }
     });
     historyButton.addActionListener(e -> showHistory());
+    albumsButton.setToolTipText("Browse your library grouped by album");
+    albumsButton.addActionListener(e -> showAlbums());
     cdViewButton.setToolTipText("Distraction-free view: just the disc");
     cdViewButton.addActionListener(e -> toggleCdView());
     visualizerModeButton.setToolTipText("Fullscreen audio-reactive visualizer — also kicks in on its own after a few minutes idle");
     visualizerModeButton.addActionListener(e -> toggleVisualizerMode());
-    JPanel east = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 8, 0)); east.setOpaque(false); east.add(sleepTimerIndicator); east.add(historyButton); east.add(cdViewButton); east.add(visualizerModeButton); east.add(settingsButton);
+    JPanel east = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 8, 0)); east.setOpaque(false); east.add(sleepTimerIndicator); east.add(historyButton); east.add(albumsButton); east.add(cdViewButton); east.add(visualizerModeButton); east.add(settingsButton);
     JPanel eastLayer = new JPanel(new BorderLayout()); eastLayer.setOpaque(false); eastLayer.add(east, BorderLayout.EAST);
     eastLayer.setAlignmentX(Component.CENTER_ALIGNMENT); eastLayer.setAlignmentY(Component.CENTER_ALIGNMENT);
     eastLayer.setMaximumSize(new Dimension(Short.MAX_VALUE, Short.MAX_VALUE));
@@ -5843,6 +6107,7 @@ public final class CDPlayer extends JFrame {
     private Component eqCardRef; // set once the EQ panel is first opened; same reasoning as settingsCardRef
     private Component historyCardRef; // set once the History panel is first opened; same reasoning as settingsCardRef
     private Component searchCardRef; // set once the Search panel is first opened; same reasoning as settingsCardRef
+    private Component albumsCardRef; // set once the Albums panel is first opened; same reasoning as settingsCardRef
     ThemeOverlay() {
       setOpaque(false);
       timer.addActionListener(e -> { advance(); repaint(); });
@@ -5863,6 +6128,7 @@ public final class CDPlayer extends JFrame {
     void setEqCardReference(Component card) { this.eqCardRef = card; }
     void setHistoryCardReference(Component card) { this.historyCardRef = card; }
     void setSearchCardReference(Component card) { this.searchCardRef = card; }
+    void setAlbumsCardReference(Component card) { this.albumsCardRef = card; }
     private java.awt.Rectangle boundsIfShowing(Component c) {
       if (c == null || !c.isShowing()) return null;
       return SwingUtilities.convertRectangle(c.getParent(), c.getBounds(), this);
@@ -5875,12 +6141,13 @@ public final class CDPlayer extends JFrame {
     // Cached here and only rebuilt when the window size or any tracked component's bounds has actually changed.
     private java.awt.geom.Area cachedClip;
     private int cachedClipW = -1, cachedClipH = -1;
-    private final java.awt.Rectangle[] cachedExcluded = new java.awt.Rectangle[7];
+    private final java.awt.Rectangle[] cachedExcluded = new java.awt.Rectangle[8];
     private java.awt.geom.Area buildClip() {
       int w = getWidth(), h = getHeight();
       java.awt.Rectangle[] current = {
         boundsIfShowing(discRef), boundsIfShowing(settingsCardRef), boundsIfShowing(themeMenuRef),
-        boundsIfShowing(lyricsCardRef), boundsIfShowing(eqCardRef), boundsIfShowing(historyCardRef), boundsIfShowing(searchCardRef)
+        boundsIfShowing(lyricsCardRef), boundsIfShowing(eqCardRef), boundsIfShowing(historyCardRef), boundsIfShowing(searchCardRef),
+        boundsIfShowing(albumsCardRef)
       };
       if (cachedClip != null && cachedClipW == w && cachedClipH == h && java.util.Arrays.equals(current, cachedExcluded)) return cachedClip;
       java.awt.geom.Area clip = new java.awt.geom.Area(new java.awt.Rectangle(0, 0, w, h));
