@@ -2164,16 +2164,16 @@ public final class CDPlayer extends JFrame {
     albumsGrid = new JPanel();
     albumsGrid.setOpaque(true); albumsGrid.setBackground(CARD);
     JScrollPane scroll = new JScrollPane(albumsGrid);
-    // scroll itself needs an explicit background too, not just the viewport — made opaque (for the scroll-mode
-    // fix below) without one, it defaults to the L&F's plain white, which showed straight through around/behind
-    // the vertical scrollbar's own column as a solid white bar behind GreyScrollBarUI's transparent track.
+    // scroll itself needs an explicit background too, not just the viewport — made opaque without one, it
+    // defaults to the L&F's plain white, which showed straight through around/behind the vertical scrollbar's
+    // own column as a solid white bar behind GreyScrollBarUI's transparent track.
     scroll.setOpaque(true); scroll.setBackground(CARD); scroll.getViewport().setOpaque(true); scroll.getViewport().setBackground(CARD); scroll.setBorder(null);
-    // SIMPLE, not the default BLIT: blit-scroll copies the viewport's existing pixels and repaints only the
-    // newly-exposed strip, which left stale fragments of whichever tiles previously occupied that strip visible
-    // behind the freshly-scrolled-in cover art (confirmed directly — reported as tiles looking corrupted/
-    // overlapping after scrolling). None of this app's other scrollable panels carry real images, just flat text
-    // rows, which is almost certainly why this never surfaced before the album grid's thumbnails made it obvious.
-    scroll.getViewport().setScrollMode(javax.swing.JViewport.SIMPLE_SCROLL_MODE);
+    // Deliberately NOT forcing SIMPLE_SCROLL_MODE here (tried first): it stopped the scroll-ghosting this
+    // opaque/self-filling setup above already fixes on its own, but on a small enough window — where the grid's
+    // full un-scrolled height exceeds the fixed 420px below — it painted tiles past the viewport's own clip
+    // rect, straight over the CLOSE button beneath it (confirmed directly via accessibility bounds: the
+    // scroll area and CLOSE button never actually overlapped structurally, only in what got painted). Default
+    // BLIT mode doesn't have that failure mode and still scrolls clean with opaque tiles.
     scroll.setPreferredSize(new Dimension(4 * ALBUM_TILE_WIDTH + 72, 420));
     scroll.getVerticalScrollBar().setUnitIncrement(16);
     scroll.getVerticalScrollBar().setUI(new GreyScrollBarUI());
