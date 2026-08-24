@@ -6106,7 +6106,7 @@ public final class CDPlayer extends JFrame {
     // GridBagLayout will compress even a fill=NONE component below its preferred size when the container is
     // tighter than the sum of every column's preferred size, and with no floor that shrank the disc to as little
     // as 10x10 at the app's default 1120x820 window — a visual regression, not just wasted layout space.
-    private static final int NORMAL_COMPONENT_SIDE = 480, NORMAL_DISC_CAP = 300;
+    private static final int NORMAL_COMPONENT_SIDE = 480, NORMAL_DISC_CAP = 380; // component box unchanged (no layout risk) — just lets the drawn disc use more of the room already reserved for it, from 300 up toward the 440 (480 - the 40px margin below) actual ceiling
     private static final int ENLARGED_COMPONENT_SIDE = 760, ENLARGED_DISC_CAP = 640; // CD view (see CDPlayer.toggleCdView) — a deliberate, bounded size increase, not the unbounded fill=BOTH stretch the maximumSize cap above exists to prevent
     private static final int MINI_COMPONENT_SIDE = 92, MINI_DISC_CAP = 84; // Mini Mode (see CDPlayer.setMiniModeEnabled) — smaller than the 260 floor below, so setMini() also shrinks minimumSize, unlike setEnlarged() which never needs to
     private int discCapPx = NORMAL_DISC_CAP;
