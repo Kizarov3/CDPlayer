@@ -2299,6 +2299,12 @@ public final class CDPlayer extends JFrame {
   private void startAlbumScan() {
     int generation = ++albumScanGeneration;
     albumGroups.clear();
+    // Explicit flush before discarding, not just clear() — these are the copies recordAlbumEntry() made
+    // specifically to own their own GPU-backed surface (see its own doc comment); dropping the last Java
+    // reference alone leaves that surface reclaimed only whenever GC gets around to it, same reasoning as
+    // DiscView.setCover()'s own flush-before-drop. Reopening Albums repeatedly without this accumulated
+    // unreleased accelerated surfaces over a session.
+    for (BufferedImage cover : albumCovers.values()) cover.flush();
     albumCovers.clear();
     List<File> toScan = new ArrayList<File>();
     for (File file : searchIndex) {
