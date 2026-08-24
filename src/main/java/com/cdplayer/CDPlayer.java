@@ -2132,9 +2132,15 @@ public final class CDPlayer extends JFrame {
     card.add(north, BorderLayout.NORTH);
 
     albumsGrid = new JPanel();
-    albumsGrid.setOpaque(false);
+    albumsGrid.setOpaque(true); albumsGrid.setBackground(CARD);
     JScrollPane scroll = new JScrollPane(albumsGrid);
-    scroll.setOpaque(false); scroll.getViewport().setOpaque(false); scroll.setBorder(null);
+    scroll.setOpaque(true); scroll.getViewport().setOpaque(true); scroll.getViewport().setBackground(CARD); scroll.setBorder(null);
+    // SIMPLE, not the default BLIT: blit-scroll copies the viewport's existing pixels and repaints only the
+    // newly-exposed strip, which left stale fragments of whichever tiles previously occupied that strip visible
+    // behind the freshly-scrolled-in cover art (confirmed directly — reported as tiles looking corrupted/
+    // overlapping after scrolling). None of this app's other scrollable panels carry real images, just flat text
+    // rows, which is almost certainly why this never surfaced before the album grid's thumbnails made it obvious.
+    scroll.getViewport().setScrollMode(javax.swing.JViewport.SIMPLE_SCROLL_MODE);
     scroll.setPreferredSize(new Dimension(4 * ALBUM_TILE_WIDTH + 72, 420));
     scroll.getVerticalScrollBar().setUnitIncrement(16);
     scroll.getVerticalScrollBar().setUI(new GreyScrollBarUI());
@@ -2180,7 +2186,7 @@ public final class CDPlayer extends JFrame {
   }
   private JPanel buildAlbumTile(String album, String artist, List<File> tracks, BufferedImage cover) {
     JPanel tile = new JPanel();
-    tile.setOpaque(false);
+    tile.setOpaque(true); tile.setBackground(CARD); // opaque + self-filling, not transparent — see the scroll pane's own note on why (stale-tile ghosting during scroll)
     tile.setLayout(new javax.swing.BoxLayout(tile, javax.swing.BoxLayout.Y_AXIS));
     tile.setPreferredSize(new Dimension(ALBUM_TILE_WIDTH, ALBUM_TILE_COVER + 46));
     tile.setMaximumSize(new Dimension(ALBUM_TILE_WIDTH, ALBUM_TILE_COVER + 46));
@@ -2189,6 +2195,12 @@ public final class CDPlayer extends JFrame {
       protected void paintComponent(Graphics raw) {
         Graphics2D g = (Graphics2D) raw.create();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        // Fills the component's full square bounds first, not just the rounded cover area within it — this
+        // panel is opaque now (see below), so Swing trusts it to paint every one of its own pixels itself and
+        // skips repainting whatever's behind it; skipping this fill would leave whatever the backing buffer
+        // last held (a previous scroll position's different tile) showing through the corners.
+        g.setColor(CARD);
+        g.fillRect(0, 0, getWidth(), getHeight());
         int side = ALBUM_TILE_COVER;
         if (cover != null) {
           Graphics2D clipped = (Graphics2D) g.create();
@@ -2210,7 +2222,7 @@ public final class CDPlayer extends JFrame {
         g.dispose();
       }
     };
-    coverPanel.setOpaque(false);
+    coverPanel.setOpaque(true); coverPanel.setBackground(CARD);
     coverPanel.setPreferredSize(new Dimension(ALBUM_TILE_COVER, ALBUM_TILE_COVER));
     coverPanel.setMaximumSize(new Dimension(ALBUM_TILE_COVER, ALBUM_TILE_COVER));
     coverPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
