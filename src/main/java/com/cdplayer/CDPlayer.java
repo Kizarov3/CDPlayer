@@ -100,6 +100,7 @@ public final class CDPlayer extends JFrame {
   private JPanel headerPanel; // the status pill + History/Settings row — hidden in CD view, unlike the triangle divider below it
   private JPanel playerPanelWrap; // track info, transport controls, queue — hidden in CD view
   private JPanel bodyPanel; // the GridBagLayout row holding discColumn + playerPanelWrap — see applyCdViewState() for why this needs to be reachable
+  private BrushedMetalPanel backgroundPanel; // the content pane's own opaque background — reachable so onCoverChanged() can update its ambient blurred-cover backdrop
   private JPanel discColumn; // wraps disc for vertical centering in the main view — needs to be reachable so setMiniModeEnabled() can move disc back into it on exit
   private GridBagConstraints playerPanelWrapConstraints; // saved so playerPanelWrap can be re-added at its original cell when leaving CD view — see applyCdViewState()
   private JLabel hintLabel; // the keyboard-shortcuts line at the bottom — hidden in CD view
@@ -1655,6 +1656,10 @@ public final class CDPlayer extends JFrame {
   }
   /** Called whenever the disc's cover art changes (see DiscView.setOnCoverChanged) — including asynchronously, once an iTunes/Deezer lookup completes after playback has already started. Re-derives the AUTO theme's palette, but only while AUTO is actually the active theme — everywhere else this is a cheap no-op check. */
   private void onCoverChanged() {
+    // Ambient background, every theme, not just AUTO — a blurred wash of the current cover instead of the
+    // plain gradient, same reasoning as the AUTO theme's own palette but applied to the backdrop rather than
+    // the accent colors.
+    if (backgroundPanel != null) backgroundPanel.setBackdropCover(disc.getCover());
     if (currentThemeIndex < 0 || currentThemeIndex >= THEMES.length || !"AUTO".equals(THEMES[currentThemeIndex].name)) return;
     Theme fresh = refreshAutoTheme();
     animateThemeColors(new Color[] { fresh.bg, fresh.card, fresh.accent, fresh.accent2, fresh.text, fresh.muted });
@@ -3242,7 +3247,8 @@ public final class CDPlayer extends JFrame {
    * clip below for how it still avoids painting over the disc without that cost.
    */
   private JPanel createContent() {
-    JPanel root = new BrushedMetalPanel();
+    BrushedMetalPanel root = new BrushedMetalPanel();
+    backgroundPanel = root;
     root.setBorder(BorderFactory.createEmptyBorder(32, 64, 28, 64));
     JPanel headerBlock = new JPanel(new BorderLayout()); headerBlock.setOpaque(false);
     headerPanel = header();
@@ -5537,11 +5543,50 @@ public final class CDPlayer extends JFrame {
   }
 
   private static final class BrushedMetalPanel extends JPanel {
+    // The current track's cover, pre-blurred down to a tiny seed image rather than blurred at full window size —
+    // scaling a real gaussian/box blur kernel across a whole window on every paint would be far too expensive for
+    // something this panel repaints as often as it does (see the scanline-clipping note below); shrinking first
+    // and then stretching the tiny result back up with bilinear interpolation is the standard cheap approximation
+    // of a heavy blur, and only has to run once per track (setBackdropCover), not once per paint.
+    private BufferedImage backdropSeed;
     BrushedMetalPanel() { super(new BorderLayout()); setOpaque(true); }
+    /** cover: the current track's raw embedded/looked-up art, any size or aspect — or null to fall back to the plain gradient (no cover at all, or nothing loaded yet). */
+    void setBackdropCover(BufferedImage cover) {
+      if (backdropSeed != null) { backdropSeed.flush(); backdropSeed = null; }
+      if (cover != null) {
+        int side = Math.min(cover.getWidth(), cover.getHeight());
+        int sx = (cover.getWidth() - side) / 2, sy = (cover.getHeight() - side) / 2;
+        int seedSize = 48;
+        BufferedImage seed = new BufferedImage(seedSize, seedSize, BufferedImage.TYPE_INT_RGB);
+        Graphics2D sg = seed.createGraphics();
+        sg.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        sg.drawImage(cover, 0, 0, seedSize, seedSize, sx, sy, sx + side, sy + side, null);
+        sg.dispose();
+        backdropSeed = seed;
+      }
+      repaint();
+    }
     protected void paintComponent(Graphics raw) {
       Graphics2D g = (Graphics2D) raw.create(); int w = getWidth(), h = getHeight();
-      g.setPaint(new GradientPaint(0, 0, new Color(28, 28, 31), 0, h, new Color(9, 9, 10)));
-      g.fillRect(0, 0, w, h);
+      if (backdropSeed != null) {
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        int seedSize = backdropSeed.getWidth();
+        // "Cover" scaling (like CSS background-size: cover), not a plain stretch to w x h — the seed is square
+        // but the window usually isn't, and stretching non-uniformly would skew the blurred colors into visibly
+        // elongated blobs instead of the soft, roughly-circular wash a real blur produces.
+        double scale = Math.max((double) w / seedSize, (double) h / seedSize);
+        int dw = (int) Math.ceil(seedSize * scale), dh = (int) Math.ceil(seedSize * scale);
+        g.drawImage(backdropSeed, (w - dw) / 2, (h - dh) / 2, dw, dh, null);
+        // A translucent scrim over the blurred art, not the plain opaque gradient below — keeps the ambient
+        // color/mood of the cover visible while still giving the light UI on top enough contrast to stay
+        // readable regardless of how bright the source art is. Same dark tones as the plain gradient, just
+        // alpha'd instead of opaque.
+        g.setPaint(new GradientPaint(0, 0, new Color(15, 15, 17, 205), 0, h, new Color(9, 9, 10, 225)));
+        g.fillRect(0, 0, w, h);
+      } else {
+        g.setPaint(new GradientPaint(0, 0, new Color(28, 28, 31), 0, h, new Color(9, 9, 10)));
+        g.fillRect(0, 0, w, h);
+      }
       g.setColor(new Color(255, 255, 255, 6));
       // Only iterate scanlines actually within the current paint clip. This panel is the content pane's opaque
       // background, so it repaints (clipped to just the damaged rectangle) every time any non-opaque child above
