@@ -3323,27 +3323,13 @@ public final class CDPlayer extends JFrame {
   }
 
   private JPanel header() {
-    // OverlayLayout, not BorderLayout: with a plain BorderLayout, CENTER only gets the space left over after
-    // EAST claims its own width, so a FlowLayout.CENTER pill inside it lands centered on that leftover region —
-    // biased noticeably left of the bar's true midpoint by roughly half the east button cluster's width, not
-    // actually centered on the window. Overlaying two independent full-bar-width layers instead — one centering
-    // the pill against the WHOLE bar, one right-anchoring the buttons against the WHOLE bar — centers the pill
-    // for real, regardless of how wide the button cluster happens to be.
-    JPanel bar = new JPanel() {
-      // Same reasoning as contentStack's override elsewhere in this file: the two layers below now genuinely
-      // overlap (both stretched to the bar's full bounds), so the default "children never overlap" repaint
-      // optimization would risk stale pixels wherever the transparent parts of one layer sit on top of the other.
-      public boolean isOptimizedDrawingEnabled() { return false; }
-    };
+    JPanel bar = new JPanel(new BorderLayout());
     bar.setOpaque(false); bar.setPreferredSize(new Dimension(0, 56));
-    bar.setLayout(new javax.swing.OverlayLayout(bar));
     JPanel statusPill = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0)) {
       protected void paintComponent(Graphics raw) { Graphics2D g = (Graphics2D) raw.create(); g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON); g.setColor(new Color(0,0,0,90)); g.fillRoundRect(0, 0, getWidth(), getHeight(), 4, 4); g.setColor(new Color(255,255,255,30)); g.setStroke(new BasicStroke(1)); g.drawRoundRect(0, 0, getWidth()-1, getHeight()-1, 4, 4); g.dispose(); super.paintComponent(raw); }
     };
     statusPill.setOpaque(false); statusPill.setBorder(BorderFactory.createEmptyBorder(6, 16, 6, 16)); statusPill.add(status);
     JPanel center = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0)); center.setOpaque(false); center.add(statusPill);
-    center.setAlignmentX(Component.CENTER_ALIGNMENT); center.setAlignmentY(Component.CENTER_ALIGNMENT);
-    center.setMaximumSize(new Dimension(Short.MAX_VALUE, Short.MAX_VALUE)); // stretch to the bar's full actual width under OverlayLayout — see the method-level comment above
     settingsButton.addActionListener(e -> showSettingsDialog());
     sleepTimerIndicator.setFont(new Font("SansSerif", Font.BOLD, 10));
     sleepTimerIndicator.setToolTipText("Click to cancel the sleep timer");
@@ -3361,10 +3347,34 @@ public final class CDPlayer extends JFrame {
     visualizerModeButton.setToolTipText("Fullscreen audio-reactive visualizer — also kicks in on its own after a few minutes idle");
     visualizerModeButton.addActionListener(e -> toggleVisualizerMode());
     JPanel east = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 8, 0)); east.setOpaque(false); east.add(sleepTimerIndicator); east.add(historyButton); east.add(albumsButton); east.add(cdViewButton); east.add(visualizerModeButton); east.add(settingsButton);
-    JPanel eastLayer = new JPanel(new BorderLayout()); eastLayer.setOpaque(false); eastLayer.add(east, BorderLayout.EAST);
-    eastLayer.setAlignmentX(Component.CENTER_ALIGNMENT); eastLayer.setAlignmentY(Component.CENTER_ALIGNMENT);
-    eastLayer.setMaximumSize(new Dimension(Short.MAX_VALUE, Short.MAX_VALUE));
-    bar.add(eastLayer); bar.add(center); // both stretch to fill the whole bar (see maximumSize above) — order doesn't affect the (non-overlapping, in practice) content, only which layer would win a click in the sliver where they could theoretically touch
+    // An invisible spacer mirroring east's own width, not a plain BorderLayout.CENTER on its own — a bare
+    // CENTER region only gets whatever's left after EAST claims its width, landing the status pill noticeably
+    // left of the bar's true midpoint. That used to just look a little off; with the button cluster having
+    // grown to six items over this app's life, at the app's own default window width the pill and HISTORY
+    // button started genuinely overlapping instead. BorderLayout hands CENTER exactly "bar width minus WEST
+    // minus EAST", so mirroring EAST's width as an invisible WEST keeps that leftover region symmetric around
+    // the bar's real center regardless of how wide the button cluster is.
+    // The mirror is capped, not applied in full unconditionally — a first attempt at this did that, and at the
+    // app's own default window width east's real width (six buttons) left so little room that the *mirrored*
+    // west spacer squeezed center's own remaining space down below the pill's preferred width, clipping its
+    // text instead of just re-centering it. Capping the mirror at whatever's actually safe to give up — leaving
+    // the pill's own preferred width plus a small margin — degrades gracefully toward the old "pill drifts left
+    // of true center" behavior exactly when room is tight, instead of squeezing or overlapping. Kept in sync
+    // via the listener since east's own width isn't fixed (the sleep timer's countdown label changes length
+    // while armed, and the button set itself has grown before and could again).
+    JPanel westSpacer = new JPanel(); westSpacer.setOpaque(false);
+    east.addComponentListener(new java.awt.event.ComponentAdapter() {
+      public void componentResized(java.awt.event.ComponentEvent e) {
+        int barWidth = bar.getWidth();
+        int pillBudget = statusPill.getPreferredSize().width + 24;
+        int maxSafeWest = Math.max(0, barWidth - east.getWidth() - pillBudget);
+        westSpacer.setPreferredSize(new Dimension(Math.min(east.getWidth(), maxSafeWest), 1));
+        bar.revalidate();
+      }
+    });
+    bar.add(westSpacer, BorderLayout.WEST);
+    bar.add(east, BorderLayout.EAST);
+    bar.add(center, BorderLayout.CENTER);
     return bar;
   }
 
