@@ -5599,8 +5599,15 @@ public final class CDPlayer extends JFrame {
       int startY = clip == null ? 0 : Math.max(0, clip.y - (clip.y % 3));
       int endY = clip == null ? h : Math.min(h, clip.y + clip.height);
       for (int lineY = startY; lineY < endY; lineY += 3) g.drawLine(0, lineY, w, lineY);
-      g.setPaint(new GradientPaint(0, 0, new Color(0, 0, 0, 130), 0, h * 0.18f, new Color(0, 0, 0, 0)));
-      g.fillRect(0, 0, w, (int) (h * 0.18f));
+      // Stronger and taller behind an ambient backdrop than the plain gradient ever needed — the header row's
+      // pill buttons were designed against that gradient's near-flat top, and read as patchy/dirty with a busy
+      // blurred photo (bright detail bleeding through unevenly across each pill) showing through at the old
+      // 130-alpha strength instead. A near-opaque base here settles the header back down to one calm tone,
+      // independent of the plain gradient case, where the header already looked clean without help.
+      int topAlpha = backdropSeed != null ? 225 : 130;
+      float topHeight = backdropSeed != null ? 0.24f : 0.18f;
+      g.setPaint(new GradientPaint(0, 0, new Color(0, 0, 0, topAlpha), 0, h * topHeight, new Color(0, 0, 0, 0)));
+      g.fillRect(0, 0, w, (int) (h * topHeight));
       g.dispose();
     }
   }
