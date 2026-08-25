@@ -2175,6 +2175,15 @@ public final class CDPlayer extends JFrame {
     scroll.setPreferredSize(new Dimension(4 * ALBUM_TILE_WIDTH + 72, 420));
     scroll.getVerticalScrollBar().setUnitIncrement(16);
     scroll.getVerticalScrollBar().setUI(new GreyScrollBarUI());
+    // BLIT mode's own repaint of the strip it just exposed is a plain (coalesced, deferred) repaint() request,
+    // same category rebuildAlbumsGrid()'s own note already flags as unreliable against this grid's nested
+    // opaque custom-painted tiles — during a live scroll it left the row nearest the viewport's bottom edge
+    // showing whichever row previously sat there instead of the one that actually belongs at the new scroll
+    // position (confirmed directly: dragging the thumb repeatedly reproduced the same stale row every time,
+    // regardless of true scroll offset). Forcing a synchronous paint of the viewport's current visible rect on
+    // every position change, same paintImmediately() fix already used after a rebuild, keeps that strip correct
+    // through an active drag too.
+    scroll.getViewport().addChangeListener(e -> albumsGrid.paintImmediately(albumsGrid.getVisibleRect()));
     card.add(scroll, BorderLayout.CENTER);
     JButton close = textButton("CLOSE");
     close.addActionListener(e -> closeAlbums());
