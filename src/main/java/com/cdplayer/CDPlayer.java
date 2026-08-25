@@ -2105,27 +2105,20 @@ public final class CDPlayer extends JFrame {
     rebuildAlbumsGrid();
   }
   private Timer albumsAnimTimer;
+  /**
+   * Deliberately always instant on entry — never takes FadeableCard's usual scale/opacity snapshot animation,
+   * even with animationsEnabled on. beginTransformAnimation()'s snapshot is captured via a plain super.paint(g)
+   * into a fresh offscreen buffer; for every other overlay that's a static card the JViewport-free content
+   * paints identically either way, but here it reliably baked in a corrupted row nearest the grid's scroll
+   * clip boundary (confirmed directly, repeatedly: happened regardless of scroll mode, regardless of a forced
+   * synchronous repaint beforehand, and vanished every single time only when the snapshot path was skipped
+   * entirely — i.e. exactly what animationsEnabled=false already does). Not worth the visual polish of a fade
+   * here given the alternative is genuinely corrupted cover art.
+   */
   private void animateAlbumsIn() {
     if (albumsAnimTimer != null && albumsAnimTimer.isRunning()) albumsAnimTimer.stop();
     FadeableCard card = albumsOverlay.card;
-    if (!animationsEnabled) { card.opacity = 1f; card.scale = 1f; card.repaint(); return; }
-    card.beginTransformAnimation();
-    card.opacity = 0f; card.scale = 0.9f;
-    final int steps = 6;
-    final int[] step = { 0 };
-    albumsAnimTimer = new Timer(8, null);
-    albumsAnimTimer.addActionListener(e -> {
-      step[0]++;
-      float t = Math.min(1f, step[0] / (float) steps);
-      float eased = 1f - (float) Math.pow(1f - t, 3);
-      card.opacity = eased; card.scale = 0.9f + 0.1f * eased;
-      // card.repaint(), not albumsOverlay.repaint() — see animateSettingsIn()'s note: the overlay spans the whole
-      // window now (the dimmed click-blocking backdrop), so repainting it on every tick recomposited the entire
-      // window ~80 times/second for an animation that only changes the card.
-      card.repaint();
-      if (t >= 1f) { ((Timer) e.getSource()).stop(); card.opacity = 1f; card.scale = 1f; card.endTransformAnimation(); }
-    });
-    albumsAnimTimer.start();
+    card.opacity = 1f; card.scale = 1f; card.repaint();
   }
   private void animateAlbumsOut() {
     if (!albumsOverlay.isVisible()) return;
@@ -2215,7 +2208,26 @@ public final class CDPlayer extends JFrame {
           : keys.size() + " ALBUM" + (keys.size() == 1 ? "" : "S"));
     }
     albumsGrid.revalidate();
-    albumsGrid.repaint();
+    // validate(), not just the revalidate() above — same reasoning as settleOverlayBounds()'s own note
+    // elsewhere in this file: revalidate() only *schedules* a deferred layout pass, so a repaint() called right
+    // after it can queue against stale (pre-rebuild) bounds instead of the tiles' real, current ones. Cheap
+    // insurance here since this whole method now only ever runs once per open plus once per completed scan
+    // (see startAlbumScan()'s own note on why it no longer rebuilds progressively) rather than dozens of times
+    // in a burst.
+    contentStack.validate();
+    // paintImmediately, not repaint() — a deferred repaint() request on a viewport-clipped component's very
+    // first paint after a rebuild left the row nearest the clip boundary showing fragments of an unrelated
+    // tile blended into it (confirmed directly — resizing the window, which forces AWT to hand it a genuinely
+    // fresh backing surface, made the exact same row render correctly). Forcing a synchronous, immediate paint
+    // here sidesteps whatever stale/uninitialized backing-store region a deferred repaint was reading from.
+    albumsGrid.paintImmediately(0, 0, albumsGrid.getWidth(), albumsGrid.getHeight());
+  }
+  /** Updates just the "N ALBUMS" / "SCANNING…" status text without touching the grid — cheap enough to call on
+   * every scan-progress tick, unlike rebuildAlbumsGrid() itself (see startAlbumScan()'s own note on why that
+   * only runs once the scan is fully done, not progressively). */
+  private void updateAlbumsStatusLabel() {
+    if (albumsStatusLabel == null || albumsOverlay == null || !albumsOverlay.isVisible()) return;
+    albumsStatusLabel.setText("SCANNING… " + albumScanDone + " / " + albumScanTotal);
   }
   private JPanel buildAlbumTile(String album, String artist, List<File> tracks, BufferedImage cover) {
     JPanel tile = new JPanel();
@@ -2238,7 +2250,14 @@ public final class CDPlayer extends JFrame {
         if (cover != null) {
           Graphics2D clipped = (Graphics2D) g.create();
           clipped.setClip(new java.awt.geom.RoundRectangle2D.Float(0, 0, side, side, 8, 8));
-          clipped.drawImage(cover, 0, 0, side, side, null);
+          // Scaled by the LARGER of the two ratios and center-cropped, not stretched to side x side directly —
+          // embedded cover art isn't always perfectly square (a common source of slightly-off aspect ratios
+          // from whatever originally cropped/encoded it), and a naive stretch visibly warped those two tiles
+          // instead of just cropping their edges like every other cover here already reads as doing.
+          int cw = cover.getWidth(), ch = cover.getHeight();
+          double coverScale = Math.max((double) side / cw, (double) side / ch);
+          int dw = (int) Math.round(cw * coverScale), dh = (int) Math.round(ch * coverScale);
+          clipped.drawImage(cover, (side - dw) / 2, (side - dh) / 2, dw, dh, null);
           clipped.dispose();
         } else {
           g.setColor(new Color(255, 255, 255, 20));
@@ -2327,11 +2346,20 @@ public final class CDPlayer extends JFrame {
             metadataCache.put(file, details);
             recordAlbumEntry(file, details);
             albumScanDone++;
-            if (albumScanDone >= albumScanTotal) albumScanning = false;
-            // Rebuilding the grid on every single completion (up to hundreds in a large library) would mean
-            // hundreds of full removeAll()+re-add passes; throttling to every 8th completion (plus always the
-            // final one) keeps the progress readout live without the UI churn.
-            if (albumScanDone >= albumScanTotal || albumScanDone % 8 == 0) refreshAlbumsIfOpen();
+            if (albumScanDone >= albumScanTotal) {
+              // A full rebuild, but only once, right here — not progressively as each result trickles in. An
+              // earlier version rebuilt every 8th completion for a live progress readout, but with 4 worker
+              // threads finishing in a loose cluster, one rebuild could land mid-reflow of a PREVIOUS one:
+              // GridLayout reshuffles every tile's position as newly-discovered albums shift the alphabetical
+              // sort, and a tile repainted against its about-to-be-stale bounds left a fragment of whichever
+              // album previously sat at that screen position showing through the next one (confirmed directly
+              // — a Korn tile with Radiohead's cover bleeding through its bottom edge, gone once the scan had
+              // fully settled). The status label alone still updates live below; only the grid itself waits.
+              albumScanning = false;
+              refreshAlbumsIfOpen();
+            } else {
+              updateAlbumsStatusLabel();
+            }
           });
         });
       }
