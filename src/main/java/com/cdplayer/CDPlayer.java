@@ -290,6 +290,8 @@ public final class CDPlayer extends JFrame {
   private final JButton monoButton = textButton("OFF");
   private final JButton waveformButton = textButton("ON");
   private boolean waveformEnabled = true;
+  private final JButton ambientBackgroundButton = textButton("ON");
+  private boolean ambientBackgroundEnabled = true;
   private final JButton animationsButton = textButton("ON");
   private final JButton miniModeButton = textButton("OFF");
   private boolean miniModeEnabled = false;
@@ -1440,6 +1442,23 @@ public final class CDPlayer extends JFrame {
     card.add(waveformRow);
     card.add(javax.swing.Box.createVerticalStrut(22));
 
+    // Ambient background toggle — blurred wash of the current cover behind the whole window vs. the plain dark gradient it used before that feature existed.
+    JPanel ambientBackgroundRow = new JPanel(new BorderLayout()); ambientBackgroundRow.setOpaque(false); ambientBackgroundRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+    ambientBackgroundRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+    JLabel ambientBackgroundLabel = label("AMBIENT BACKGROUND", 10, MUTED);
+    for (java.awt.event.ActionListener l : ambientBackgroundButton.getActionListeners()) ambientBackgroundButton.removeActionListener(l); // rebuilt each open; avoid stacking duplicate listeners
+    ambientBackgroundButton.addActionListener(e -> setAmbientBackgroundEnabled(!ambientBackgroundEnabled));
+    ambientBackgroundRow.add(ambientBackgroundLabel, BorderLayout.WEST);
+    JPanel ambientBackgroundButtonWrap = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0)); ambientBackgroundButtonWrap.setOpaque(false); ambientBackgroundButtonWrap.add(ambientBackgroundButton);
+    ambientBackgroundRow.add(ambientBackgroundButtonWrap, BorderLayout.EAST);
+    card.add(ambientBackgroundRow);
+    card.add(javax.swing.Box.createVerticalStrut(10));
+    JLabel ambientBackgroundHint = new JLabel("<html><body style='width:280px'>Washes the window's background with a blurred glow of the current cover art. Turn off for the plain dark background instead.</body></html>");
+    ambientBackgroundHint.setForeground(MUTED); ambientBackgroundHint.setFont(new Font("SansSerif", Font.PLAIN, 10));
+    ambientBackgroundHint.setAlignmentX(Component.LEFT_ALIGNMENT);
+    card.add(ambientBackgroundHint);
+    card.add(javax.swing.Box.createVerticalStrut(22));
+
     // Animations toggle — hover fades, pulses, on/off crossfades, dialog open/close, the now-playing fade-in, and
     // the theme color transition all check this and jump straight to their end state when off.
     JPanel animationsRow = new JPanel(new BorderLayout()); animationsRow.setOpaque(false); animationsRow.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -1509,6 +1528,12 @@ public final class CDPlayer extends JFrame {
     waveformEnabled = value;
     waveformButton.setText(value ? "ON" : "OFF");
     waveformSliderUI.setEnabled(value);
+  }
+  /** Switches the window's own backdrop between the ambient blurred-cover wash and the plain dark gradient it used before that feature existed. Takes effect immediately against whatever's already loaded, not just future tracks. */
+  private void setAmbientBackgroundEnabled(boolean value) {
+    ambientBackgroundEnabled = value;
+    ambientBackgroundButton.setText(value ? "ON" : "OFF");
+    if (backgroundPanel != null) backgroundPanel.setBackdropCover(value ? disc.getCover() : null);
   }
   /** Applies new band gains to the live player (if any) and remembers them for the next track load / app restart. Takes effect within about one 20ms chunk, same as gain/mono. */
   private void setEqGains(double[] gains) {
@@ -1671,8 +1696,9 @@ public final class CDPlayer extends JFrame {
   private void onCoverChanged() {
     // Ambient background, every theme, not just AUTO — a blurred wash of the current cover instead of the
     // plain gradient, same reasoning as the AUTO theme's own palette but applied to the backdrop rather than
-    // the accent colors.
-    if (backgroundPanel != null) backgroundPanel.setBackdropCover(disc.getCover());
+    // the accent colors. Skipped entirely when the user has turned it off in Settings (see
+    // setAmbientBackgroundEnabled) — passing null here is exactly what falls back to the old plain dark gradient.
+    if (backgroundPanel != null) backgroundPanel.setBackdropCover(ambientBackgroundEnabled ? disc.getCover() : null);
     if (currentThemeIndex < 0 || currentThemeIndex >= THEMES.length || !"AUTO".equals(THEMES[currentThemeIndex].name)) return;
     Theme fresh = refreshAutoTheme();
     animateThemeColors(new Color[] { fresh.bg, fresh.card, fresh.accent, fresh.accent2, fresh.text, fresh.muted });
@@ -4325,7 +4351,7 @@ public final class CDPlayer extends JFrame {
       }
     } catch (Exception ignored) { /* corrupt or unreadable state file; just start with an empty queue */ }
   }
-  /** Persists volume, crossfade, mono audio, the animations toggle, the current theme, the EQ band gains, the waveform toggle, Mini Mode, and the normal window bounds so they carry over to the next launch instead of resetting to defaults. Runs on the same shutdown hook as {@link #saveQueueState()}, same EDT-quiescence rationale. Theme is stored by name (not index) so it survives THEMES being reordered later. */
+  /** Persists volume, crossfade, mono audio, the animations toggle, the current theme, the EQ band gains, the waveform toggle, Mini Mode, the normal window bounds, and the ambient background toggle so they carry over to the next launch instead of resetting to defaults. Runs on the same shutdown hook as {@link #saveQueueState()}, same EDT-quiescence rationale. Theme is stored by name (not index) so it survives THEMES being reordered later. */
   private void saveSettingsState() {
     try {
       File parent = SETTINGS_FILE.getParentFile();
@@ -4335,11 +4361,11 @@ public final class CDPlayer extends JFrame {
       // normalBounds, not getBounds() directly — see its own doc comment: at shutdown time the window could
       // still be sitting in Mini Mode's or fullscreen's transient size if the app quit from either of those.
       String boundsLine = normalBounds != null ? (normalBounds.x + "," + normalBounds.y + "," + normalBounds.width + "," + normalBounds.height) : "";
-      String content = volumeSlider.getValue() + "\n" + crossfadeSlider.getValue() + "\n" + (monoAudio ? "1" : "0") + "\n" + (animationsEnabled ? "1" : "0") + "\n" + THEMES[currentThemeIndex].name + "\n" + eqLine + "\n" + (waveformEnabled ? "1" : "0") + "\n" + (miniModeEnabled ? "1" : "0") + "\n" + boundsLine + "\n";
+      String content = volumeSlider.getValue() + "\n" + crossfadeSlider.getValue() + "\n" + (monoAudio ? "1" : "0") + "\n" + (animationsEnabled ? "1" : "0") + "\n" + THEMES[currentThemeIndex].name + "\n" + eqLine + "\n" + (waveformEnabled ? "1" : "0") + "\n" + (miniModeEnabled ? "1" : "0") + "\n" + boundsLine + "\n" + (ambientBackgroundEnabled ? "1" : "0") + "\n";
       java.nio.file.Files.write(SETTINGS_FILE.toPath(), content.getBytes(StandardCharsets.UTF_8));
     } catch (Exception ignored) { /* best-effort persistence; a failed save just means defaults next launch */ }
   }
-  /** Restores settings saved by {@link #saveSettingsState()}. Must run after createContent() has wired up the sliders' change listeners, so setting each value here also updates its label/live state the same way a manual drag would. The animations, theme, EQ, waveform, Mini Mode, and window bounds lines are optional (absent in files saved before those existed), defaulting to enabled / RED / flat / enabled / off / the constructor's own default size+position. */
+  /** Restores settings saved by {@link #saveSettingsState()}. Must run after createContent() has wired up the sliders' change listeners, so setting each value here also updates its label/live state the same way a manual drag would. The animations, theme, EQ, waveform, Mini Mode, window bounds, and ambient background lines are optional (absent in files saved before those existed), defaulting to enabled / RED / flat / enabled / off / the constructor's own default size+position / enabled. */
   private void restoreSettingsState() {
     try {
       if (!SETTINGS_FILE.isFile()) return;
@@ -4354,11 +4380,13 @@ public final class CDPlayer extends JFrame {
       boolean savedWaveform = lines.size() < 7 || "1".equals(lines.get(6).trim());
       boolean savedMiniMode = lines.size() >= 8 && "1".equals(lines.get(7).trim()); // absent (new feature) defaults to off, unlike waveform's "absent defaults to on" — an old settings file never opted into this
       String savedBounds = lines.size() >= 9 ? lines.get(8).trim() : null;
+      boolean savedAmbientBackground = lines.size() < 10 || "1".equals(lines.get(9).trim());
       volumeSlider.setValue(Math.max(0, Math.min(100, savedVolume)));
       crossfadeSlider.setValue(Math.max(0, Math.min(15, savedCrossfade)));
       setMonoAudio(savedMono);
       setAnimationsEnabled(savedAnimations);
       setWaveformEnabled(savedWaveform);
+      setAmbientBackgroundEnabled(savedAmbientBackground);
       if (savedThemeName != null) {
         for (int i = 0; i < THEMES.length; i++) {
           if (THEMES[i].name.equals(savedThemeName)) { applyThemeInstant(i); break; }
