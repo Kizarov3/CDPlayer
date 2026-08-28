@@ -415,7 +415,14 @@ public final class CDPlayer extends JFrame {
     // bindKey() handler (below) exits it, since this listener fires before that handler does on every key press.
     java.awt.Toolkit.getDefaultToolkit().addAWTEventListener(e -> {
       lastActivityMillis = System.currentTimeMillis();
-      if (visualizerModeEnabled && e instanceof java.awt.event.MouseEvent) toggleVisualizerMode();
+      // MOUSE_CLICKED deliberately excluded: it's a synthesized event the EventQueue posts AFTER the press/release
+      // pair (and after the target's own listeners, e.g. visualizerModeButton's actionListener) has already run —
+      // so the very click that turns Visualizer Mode ON via the button would show up here as a CLICKED event with
+      // visualizerModeEnabled already true, and immediately toggle it back off again. PRESSED/RELEASED/MOVED/
+      // DRAGGED all still exit it (and are seen here before that target processing happens, avoiding the same
+      // double-toggle), so genuine dismiss-by-click/move activity is unaffected.
+      if (visualizerModeEnabled && e instanceof java.awt.event.MouseEvent
+          && ((java.awt.event.MouseEvent) e).getID() != java.awt.event.MouseEvent.MOUSE_CLICKED) toggleVisualizerMode();
       // Cursor gets un-hidden on the next real MOUSE_MOTION event, not merely any mouse event (a click while
       // already hidden shouldn't first flash the pointer back — only genuine movement should), and only bothers
       // touching the cursor at all if it's actually hidden right now.
@@ -425,7 +432,7 @@ public final class CDPlayer extends JFrame {
       }
     }, java.awt.AWTEvent.MOUSE_EVENT_MASK | java.awt.AWTEvent.MOUSE_MOTION_EVENT_MASK | java.awt.AWTEvent.KEY_EVENT_MASK);
     Timer idleCheckTimer = new Timer(5000, e -> {
-      if (!visualizerModeEnabled && !miniModeEnabled && !anyOverlayOpen() && player != null && player.isRunning()
+      if (!visualizerModeEnabled && !miniModeEnabled && !cdViewEnabled && !anyOverlayOpen() && player != null && player.isRunning()
           && System.currentTimeMillis() - lastActivityMillis >= IDLE_SECONDS_UNTIL_VISUALIZER * 1000L) {
         toggleVisualizerMode();
       }
@@ -672,7 +679,9 @@ public final class CDPlayer extends JFrame {
    * Visualizer Mode: a fullscreen-ish, distraction-free view showing nothing but a large version of the current
    * theme's audio-reactive visualizer shape — manually toggleable (V / Esc), and auto-entered after
    * IDLE_SECONDS_UNTIL_VISUALIZER of no mouse/keyboard activity while a track is playing (see the
-   * AWTEventListener registered in the constructor), the way an actual screensaver would.
+   * AWTEventListener registered in the constructor), the way an actual screensaver would. Only reachable from the
+   * normal view — a no-op while Mini Mode or CD View is active, both of which have their own idea of what fills
+   * the window. Fullscreen is unaffected, since it's a window state rather than a competing view.
    *
    * Implemented as one more layer added to contentStack's own OverlayLayout stack (the same mechanism
    * settingsOverlay/lyricsOverlay/etc. already use — see contentStack's own field doc comment) rather than
@@ -681,8 +690,10 @@ public final class CDPlayer extends JFrame {
    * for something this transient (any mouse move dismisses it).
    */
   private void toggleVisualizerMode() {
-    if (miniModeEnabled) setMiniModeEnabled(false); // mutually exclusive — same reasoning as toggleCdView()'s own guard
-    if (cdViewEnabled) toggleCdView();
+    // Only reachable from the normal view — Mini Mode and CD View each no-op the button/shortcut/idle trigger
+    // rather than silently switching out from under them. Doesn't gate the exit direction: entry being blocked
+    // means visualizerModeEnabled can never be true while either of those is, so there's nothing to guard there.
+    if (!visualizerModeEnabled && (miniModeEnabled || cdViewEnabled)) return;
     visualizerModeEnabled = !visualizerModeEnabled;
     // Captured before the state flips below — whatever's on screen right now, whichever direction this is
     // going — then crossfaded away by runGenieTransition() once the real (instant) switch has happened underneath.
@@ -1015,6 +1026,7 @@ public final class CDPlayer extends JFrame {
     root.getActionMap().put("closeOnboarding", new javax.swing.AbstractAction() { public void actionPerformed(ActionEvent e) { dialog.dispose(); } });
     dialog.addWindowListener(new java.awt.event.WindowAdapter() { public void windowClosed(java.awt.event.WindowEvent e) { markOnboarded(); } });
     dialog.setVisible(true); // blocks (modal) until the dialog is dismissed via the button or Escape
+    getRootPane().requestFocusInWindow(); // keyboard shortcuts live on the root pane's WHEN_IN_FOCUSED_WINDOW map — same reasoning as closeSettingsDialog()'s own call
   }
   private static void markOnboarded() {
     try {
@@ -1159,6 +1171,7 @@ public final class CDPlayer extends JFrame {
     root.getActionMap().put("closeChangelog", new javax.swing.AbstractAction() { public void actionPerformed(ActionEvent e) { dialog.dispose(); } });
     dialog.addWindowListener(new java.awt.event.WindowAdapter() { public void windowClosed(java.awt.event.WindowEvent e) { writeLastVersion(APP_VERSION); } });
     dialog.setVisible(true); // blocks (modal) until the dialog is dismissed via the button or Escape
+    getRootPane().requestFocusInWindow(); // keyboard shortcuts live on the root pane's WHEN_IN_FOCUSED_WINDOW map — same reasoning as closeSettingsDialog()'s own call
   }
   private JPanel buildChangelogCard(javax.swing.JDialog dialog, ChangelogEntry entry) {
     JPanel card = new JPanel();
