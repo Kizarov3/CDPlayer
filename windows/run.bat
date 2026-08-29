@@ -10,4 +10,4 @@ if errorlevel 1 exit /b 1
 
 copy /y "src\main\java\com\cdplayer\icon.png" "out\com\cdplayer\icon.png" >nul
 
-java -cp out com.cdplayer.CDPlayer
+java --enable-native-access=ALL-UNNAMED -cp out com.cdplayer.CDPlayer

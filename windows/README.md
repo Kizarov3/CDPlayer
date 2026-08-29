@@ -13,9 +13,13 @@ existed only to accommodate macOS/Linux, leaning into Windows-only assumptions i
 | FFmpeg/ffprobe lookup | Searches Homebrew/MacPorts paths (`/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin`, …) before falling back to PATH | Searches winget's shim directory (`%LOCALAPPDATA%\Microsoft\WinGet\Links`), `Program Files\ffmpeg\bin`, `C:\ffmpeg\bin` (the folder most Windows install guides tell people to extract to), and Chocolatey's bin folder, before falling back to PATH. The winget shim check matters concretely: right after `winget install`, a PATH update doesn't reach a process that was already running, so this closes that gap immediately instead of requiring a restart. |
 | App data storage | `~/.cdplayer/` (a Unix dotfile-in-home-directory convention that works on Windows but isn't native to it) | `%LOCALAPPDATA%\CDPlayer\` — the location Explorer, backup tools, and antivirus scanners actually expect for per-user app data on Windows |
 | Look & feel | `UIManager.getSystemLookAndFeelClassName()` — a runtime reflection lookup that resolves to the right L&F per OS | Sets `WindowsLookAndFeel` directly — same result, skips the per-OS detection step since this build only ever runs on Windows |
+| Continuous animation pacing (disc spin, theme particles, disc eject) | Fixed intervals (16ms disc/eject, 35ms particles) tuned by feel | Paced to the real display refresh rate via `ANIMATION_TICK_MS` (capped at 60fps — see its own doc comment), so DWM's compositor never re-presents a stale frame or discards one the app painted too fast. Motion constants (particle fall speed, drift, shooting-star velocity/spawn rate, disc rotation) are all rescaled by `TIME_SCALE`/`ROTATION_RAD_PER_MS` so real-world animation speed stays identical regardless of the tick length. |
 
 Nothing about the actual audio engine, UI, themes, or feature set changed — this is a lean-out
-of dead cross-platform accommodation, not a rewrite.
+of dead cross-platform accommodation, not a rewrite. Kept in sync with `../src` by hand (see its
+own commit history for "windows: ..." / "Mirrored into windows/ ..." commits) whenever the
+cross-platform build changes; this fork is periodically re-forked wholesale from `../src` and has
+the deltas above re-applied, rather than porting every intervening commit one at a time.
 
 ## Building and running
 
