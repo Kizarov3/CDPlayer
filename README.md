@@ -71,10 +71,6 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - **Visualizer Mode** (`V`, or the header button) fills the whole window with the active theme's fullscreen audio-reactive shape and nothing else — also kicks in on its own after a few minutes idle while a track is playing, like a screensaver; move the mouse, click, or press `V`/`Esc` to exit
 - On macOS, now-playing metadata, playback state, and transport controls are exposed to Control Center's Now Playing widget and hardware media keys, the same as any native macOS media app
 
-<p align="center">
-  <img src="assets/screenshots/visualizer-mode-1.png" width="70%" alt="CDPlayer Visualizer Mode, showing the SNOW theme's fullscreen tree visualizer">
-</p>
-
 **Mini Mode**
 - Press `M` (or flip the switch in Settings) to shrink the whole window down to a small, always-on-top widget — the disc, track title/artist, a seek bar, and play/pause/skip controls — so you can keep the music going while you work in other apps
 - Click the disc to play/pause while in it; press `M` again (or the × button) to return to the full window
