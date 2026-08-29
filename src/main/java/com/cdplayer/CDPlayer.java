@@ -218,6 +218,13 @@ public final class CDPlayer extends JFrame {
   private boolean adjusting;
   private boolean crossfadeStarted;
   private boolean crossfading;
+  // The in-flight crossfade's own Timer and the StreamPlayer it's fading OUT — startCrossfade() doesn't store
+  // either anywhere else, so without these, a track change that lands mid-crossfade (Next/clear/remove while an
+  // auto-crossfade is still ramping) had no way to stop that Timer or close its outgoing player: the Timer kept
+  // firing every 30ms against a StreamPlayer nothing else references, audibly bleeding for the rest of the fade
+  // window. cancelCrossfade() (below) is what actually stops/closes these; see its callers.
+  private Timer crossfadeTimer;
+  private StreamPlayer crossfadeOutgoing;
   private float volume = 1f;
   private int volumeBeforeMute = -1; // -1 = not currently muted; otherwise the slider value to restore on unmute
   private boolean monoAudio;
@@ -490,6 +497,14 @@ public final class CDPlayer extends JFrame {
    * in the first place, via its own priority chain below.
    */
   private boolean anyOverlayOpen() {
+    // Mini Mode swaps the content pane away from contentStack entirely (see setMiniModeEnabled()'s own doc
+    // comment), so an overlay that was open before entering it stays flagged isVisible()==true in memory —
+    // deliberately, so it reappears exactly as it was left once Mini Mode turns back off — but isn't actually
+    // drawn anywhere while Mini Mode's own tiny window is what's on screen. Without this check, every shortcut
+    // gated on anyOverlayOpen() (Space, the arrows, U, J/K/L, F, C, V) would silently stop working the moment
+    // Mini Mode was entered from within Settings (its toggle lives there) or via M while any overlay happened to
+    // be open, even though nothing overlay-related is visible to justify blocking them.
+    if (miniModeEnabled) return false;
     return (themeMenuOverlay != null && themeMenuOverlay.isVisible())
         || (lyricsOverlay != null && lyricsOverlay.isVisible())
         || (eqOverlay != null && eqOverlay.isVisible())
@@ -523,13 +538,17 @@ public final class CDPlayer extends JFrame {
     // showSettingsDialog/showThemeMenu), so this single WHEN_IN_FOCUSED_WINDOW binding on the main frame handles
     // all of these; there's no separate window with its own key bindings to manage.
     bindKey(inputMap, actionMap, "ESCAPE", "escapeAction", e -> {
-      if (themeMenuOverlay != null && themeMenuOverlay.isVisible()) hideThemeMenu();
+      // Mini Mode checked first, ahead of the overlay-visible flags: an overlay left open behind it (see
+      // anyOverlayOpen()'s own note) isn't actually on screen while in Mini Mode, so it shouldn't win Escape's
+      // priority over what the user is actually looking at — otherwise the first Escape press would silently
+      // play that overlay's close animation off-screen and only a second press would exit Mini Mode itself.
+      if (miniModeEnabled) setMiniModeEnabled(false);
+      else if (themeMenuOverlay != null && themeMenuOverlay.isVisible()) hideThemeMenu();
       else if (lyricsOverlay != null && lyricsOverlay.isVisible()) closeLyrics();
       else if (eqOverlay != null && eqOverlay.isVisible()) closeEq();
       else if (historyOverlay != null && historyOverlay.isVisible()) closeHistory();
       else if (searchOverlay != null && searchOverlay.isVisible()) closeSearch();
       else if (settingsOverlay != null && settingsOverlay.isVisible()) closeSettingsDialog();
-      else if (miniModeEnabled) setMiniModeEnabled(false);
       else if (visualizerModeEnabled) toggleVisualizerMode();
       else if (cdViewEnabled) toggleCdView();
       else if (fullscreen) toggleFullscreen();
@@ -1636,7 +1655,9 @@ public final class CDPlayer extends JFrame {
     if (themeAnim != null && themeAnim.isRunning()) { themeAnim.stop(); disc.setColorTransitionActive(false); } // an interrupted-mid-transition timer never reaches its own t>=1 cleanup below, so clear the suppression flag here too
     if (!animationsEnabled) {
       BG = toColors[0]; CARD = toColors[1]; ACCENT = toColors[2]; ACCENT2 = toColors[3]; TEXT = toColors[4]; MUTED = toColors[5];
-      applyThemeColors(); getContentPane().repaint(); refreshSettingsIfOpen(); updateQueueUI();
+      applyThemeColors(); getContentPane().repaint();
+      refreshSettingsIfOpen(); refreshLyricsIfOpen(); refreshHistoryIfOpen(); refreshEqIfOpen();
+      updateQueueUI();
       return;
     }
     // Elapsed-time-based progress, not a fixed step count: this is the one theme animation that repaints the
@@ -1673,7 +1694,10 @@ public final class CDPlayer extends JFrame {
         // fade timer stays completely clear of that cost on every one of its own ticks, and the settings dialog
         // (a secondary overlay, not what's actually being watched fade) catches up to the final colors moments
         // after the main fade finishes instead of tracking it step by step.
-        SwingUtilities.invokeLater(this::refreshSettingsIfOpen);
+        // Lyrics/History/EQ get the same deferred treatment, and for the same reason: each one used to be left
+        // showing stale pre-transition colors if it happened to be the overlay open during a theme switch, since
+        // only Settings was ever wired into this completion callback.
+        SwingUtilities.invokeLater(() -> { refreshSettingsIfOpen(); refreshLyricsIfOpen(); refreshHistoryIfOpen(); refreshEqIfOpen(); });
       }
     });
     themeAnim.start();
@@ -2505,7 +2529,10 @@ public final class CDPlayer extends JFrame {
       File parent = HISTORY_FILE.getParentFile();
       if (parent != null) parent.mkdirs();
       StringBuilder content = new StringBuilder();
-      for (File file : playHistory) content.append(file.getAbsolutePath()).append('\n');
+      // A path containing its own newline (legal on macOS/Linux, just unusual) would otherwise split across two
+      // lines in this one-path-per-line format, silently corrupting itself AND the entry after it on restore —
+      // skip persisting it rather than write something loadHistory() could never parse back correctly anyway.
+      for (File file : playHistory) { String path = file.getAbsolutePath(); if (path.indexOf('\n') < 0 && path.indexOf('\r') < 0) content.append(path).append('\n'); }
       java.nio.file.Files.write(HISTORY_FILE.toPath(), content.toString().getBytes(StandardCharsets.UTF_8));
     } catch (Exception ignored) { /* best-effort; a failed save just means history isn't there next launch */ }
   }
@@ -3525,6 +3552,11 @@ public final class CDPlayer extends JFrame {
    */
   private void load(File file, boolean autoPlay, boolean allowCrossfade) {
     try {
+      // Closes out whatever an EARLIER crossfade was still fading out from under a previous load() — otherwise
+      // that Timer and its outgoing StreamPlayer would keep running/playing in the background indefinitely, since
+      // nothing else ever references them once `player` has moved on. Must run before `outgoing = player` below,
+      // which only knows about the CURRENT player, not a stale crossfade's.
+      cancelCrossfade();
       StreamPlayer outgoing = player;
       int fadeSeconds = crossfadeSlider.getValue();
       boolean doCrossfade = allowCrossfade && outgoing != null && outgoing.isRunning() && fadeSeconds > 0;
@@ -3581,9 +3613,11 @@ public final class CDPlayer extends JFrame {
   }
   /** Fades `outgoing` out and `incoming` in over `seconds` using an equal-power curve, then closes the outgoing player. Equal-power (cos/sin, not linear 1-t/t) keeps the combined perceived loudness roughly constant through the transition, instead of dipping in the middle — this is the same principle Spotify's crossfade (and most professional DJ mixers) use. */
   private void startCrossfade(final StreamPlayer outgoing, final StreamPlayer incoming, int seconds) {
+    cancelCrossfade(); // shouldn't normally overlap, but guarantees no earlier fade's Timer/outgoing survives this one
     final long durationMillis = seconds * 1000L;
     final long startTime = System.currentTimeMillis();
     crossfading = true;
+    crossfadeOutgoing = outgoing;
     outgoing.setGain(volume); incoming.setGain(0f);
     Timer fade = new Timer(30, null);
     fade.addActionListener(e -> {
@@ -3598,10 +3632,23 @@ public final class CDPlayer extends JFrame {
         ((Timer) e.getSource()).stop();
         outgoing.close();
         crossfading = false;
+        crossfadeTimer = null; crossfadeOutgoing = null;
         if (player == incoming) { incoming.setGain(volume); status.setText("●  NOW SPINNING"); }
       }
     });
+    crossfadeTimer = fade;
     fade.start();
+  }
+  /**
+   * Stops any crossfade currently in flight and closes the StreamPlayer it was fading OUT — called whenever the
+   * track changes from under it (load()) or playback resets to idle (resetPlaybackToIdle()), so that path no
+   * longer has to separately remember to reach into the Timer's own closure to clean it up. A no-op when no
+   * crossfade is running.
+   */
+  private void cancelCrossfade() {
+    if (crossfadeTimer != null) { crossfadeTimer.stop(); crossfadeTimer = null; }
+    if (crossfadeOutgoing != null) { crossfadeOutgoing.close(); crossfadeOutgoing = null; }
+    crossfading = false;
   }
   private static final Map<String, String> BINARY_PATH_CACHE = new HashMap<String, String>();
   /**
@@ -3626,6 +3673,41 @@ public final class CDPlayer extends JFrame {
     BINARY_PATH_CACHE.put(name, name); // fall back to relying on PATH (e.g. on Linux/Windows or a terminal launch)
     return name;
   }
+  private static final long FFMPEG_TIMEOUT_SECONDS = 20;
+  /**
+   * Bounded process.waitFor() — every ffmpeg/ffprobe call below used to wait on this indefinitely, so one stuck
+   * subprocess (a corrupt/truncated file that never reaches EOF, or ffmpeg itself hanging) could block its caller
+   * forever with no way to recover short of a force-quit. Several of these callers run synchronously on the
+   * EDT — prepareAudio() is reachable straight from restoreQueueState() at app startup — so a single bad file
+   * could hang the entire app before a single frame is ever shown. Returns the exit code, or -1 if the process
+   * had to be force-killed for running past the timeout.
+   */
+  private static int waitForBounded(Process process) {
+    try {
+      if (process.waitFor(FFMPEG_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)) return process.exitValue();
+    } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    process.destroyForcibly();
+    try { process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    return -1;
+  }
+  /** Bundles what {@link #runBounded} reads back from a process's stdout alongside its (possibly forced) exit code. */
+  private static final class ProcessOutput { byte[] bytes = new byte[0]; int exitCode = -1; }
+  /**
+   * Drains a process's stdout on a background thread (same reason the original code read before waiting: so a
+   * chatty process can't deadlock writing into a full OS pipe buffer with nobody reading it) while bounding the
+   * process's own lifetime via {@link #waitForBounded} on the calling thread. Forcibly killing a hung process
+   * closes its stdout, which is what unblocks the reader thread if the timeout is hit — a plain "read first, wait
+   * second" ordering would otherwise still hang forever on the read itself before ever reaching a bounded wait.
+   */
+  private static ProcessOutput runBounded(Process process) {
+    ProcessOutput out = new ProcessOutput();
+    Thread reader = new Thread(() -> { try { out.bytes = readAll(process.getInputStream()); } catch (Exception ignored) { } }, "cdplayer-ffprobe-reader");
+    reader.setDaemon(true);
+    reader.start();
+    out.exitCode = waitForBounded(process);
+    try { reader.join(2000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    return out;
+  }
   private File prepareAudio(File sourceFile) throws Exception {
     String extension = extension(sourceFile);
     if (!"flac".equals(extension) && !"m4a".equals(extension) && !"mp3".equals(extension)) return sourceFile;
@@ -3636,7 +3718,7 @@ public final class CDPlayer extends JFrame {
     } catch (IOException missingFfmpeg) {
       deleteTemporaryAudio(); throw new IOException("FFmpeg was not found", missingFfmpeg);
     }
-    if (process.waitFor() != 0 || !temporaryAudio.isFile() || temporaryAudio.length() == 0) { deleteTemporaryAudio(); throw new IOException("FFmpeg could not decode this audio file"); }
+    if (waitForBounded(process) != 0 || !temporaryAudio.isFile() || temporaryAudio.length() == 0) { deleteTemporaryAudio(); throw new IOException("FFmpeg could not decode this audio file"); }
     return temporaryAudio;
   }
   private void deleteTemporaryAudio() { if (temporaryAudio != null) { temporaryAudio.delete(); temporaryAudio = null; } }
@@ -3647,7 +3729,7 @@ public final class CDPlayer extends JFrame {
     Process probe = null;
     try {
       probe = new ProcessBuilder(resolveBinary("ffprobe"), "-v", "error", "-show_entries", "format_tags=title,artist,album", "-of", "default=noprint_wrappers=1", file.getAbsolutePath()).redirectErrorStream(true).start();
-      String tags = new String(readAll(probe.getInputStream()), StandardCharsets.UTF_8); probe.waitFor();
+      String tags = new String(runBounded(probe).bytes, StandardCharsets.UTF_8);
       for (String line : tags.split("\\R")) { int equals = line.indexOf('='); if (equals < 1) continue; String key = line.substring(0, equals).toLowerCase(); String value = line.substring(equals + 1).trim(); if ("tag:title".equals(key)) title = value; else if ("tag:artist".equals(key)) artist = value; else if ("tag:album".equals(key)) album = value; }
     } catch (Exception ignored) { /* FFmpeg metadata is optional. */ }
     finally { if (probe != null) closeProcessStreams(probe); }
@@ -3661,7 +3743,7 @@ public final class CDPlayer extends JFrame {
     try {
       image = File.createTempFile("cdplayer-art-", ".jpg");
       extract = new ProcessBuilder(resolveBinary("ffmpeg"), "-nostdin", "-y", "-v", "error", "-i", file.getAbsolutePath(), "-map", "0:v:0", "-frames:v", "1", "-pix_fmt", "yuvj420p", image.getAbsolutePath()).redirectErrorStream(true).start();
-      readAll(extract.getInputStream()); if (extract.waitFor() == 0 && image.length() > 0) { BufferedImage decoded = ImageIO.read(image); if (decoded != null) return decoded; }
+      if (runBounded(extract).exitCode == 0 && image.length() > 0) { BufferedImage decoded = ImageIO.read(image); if (decoded != null) return decoded; }
     } catch (Exception ignored) { /* No embedded artwork is normal. */ }
     finally { if (image != null) image.delete(); if (extract != null) closeProcessStreams(extract); }
     return null;
@@ -3678,7 +3760,7 @@ public final class CDPlayer extends JFrame {
       Process probe = null;
       try {
         probe = new ProcessBuilder(resolveBinary("ffprobe"), "-v", "error", "-show_entries", "format_tags=" + tagName, "-of", "default=noprint_wrappers=1:nokey=1", file.getAbsolutePath()).redirectErrorStream(true).start();
-        String raw = new String(readAll(probe.getInputStream()), StandardCharsets.UTF_8); probe.waitFor();
+        String raw = new String(runBounded(probe).bytes, StandardCharsets.UTF_8);
         String trimmed = raw.trim();
         if (!trimmed.isEmpty()) return trimmed;
       } catch (Exception ignored) { /* Lyrics are optional, and so is FFmpeg itself. */ }
@@ -4291,6 +4373,7 @@ public final class CDPlayer extends JFrame {
   }
   /** Stops and releases the current player and resets the now-playing UI back to its empty-queue state. */
   private void resetPlaybackToIdle(String statusMessage) {
+    cancelCrossfade(); // same reasoning as load()'s own call — don't leave a stale crossfade audible after queue/clear/remove resets playback
     queueIndex = -1;
     if (player != null) { StreamPlayer closing = player; player = null; closing.close(); }
     deleteTemporaryAudio();
@@ -4316,7 +4399,9 @@ public final class CDPlayer extends JFrame {
       long position = player != null ? player.getMicrosecondPosition() : 0L;
       StringBuilder content = new StringBuilder();
       content.append(queueIndex).append(',').append(position).append('\n');
-      for (File file : queue) content.append(file.getAbsolutePath()).append('\n');
+      // Same reasoning as saveHistory()'s identical guard: a path with an embedded newline would otherwise split
+      // across two lines and corrupt this one-path-per-line format on restore.
+      for (File file : queue) { String path = file.getAbsolutePath(); if (path.indexOf('\n') < 0 && path.indexOf('\r') < 0) content.append(path).append('\n'); }
       java.nio.file.Files.write(QUEUE_STATE_FILE.toPath(), content.toString().getBytes(StandardCharsets.UTF_8));
     } catch (Exception ignored) { /* best-effort persistence; a failed save just means an empty queue next launch */ }
   }
@@ -4330,15 +4415,24 @@ public final class CDPlayer extends JFrame {
       int savedIndex = Integer.parseInt(header[0].trim());
       long savedPosition = header.length > 1 ? Long.parseLong(header[1].trim()) : 0L;
       List<File> restored = new ArrayList<File>();
+      // Tracks where the saved current-track ends up in `restored`, not just in the original saved list: a file
+      // moved/deleted earlier in the queue shifts every later index down once skipped below, so re-using
+      // `savedIndex` as-is against the shorter `restored` list could land on a completely different track (and
+      // then seek it to the OLD track's saved position). -1 means the file that was actually playing/current is
+      // itself among the ones that got skipped.
+      int mappedIndex = -1;
       for (int i = 1; i < lines.size(); i++) {
         String path = lines.get(i).trim();
         if (path.isEmpty()) continue;
         File file = new File(path);
-        if (file.isFile()) restored.add(file);
+        if (file.isFile()) {
+          if (i - 1 == savedIndex) mappedIndex = restored.size();
+          restored.add(file);
+        }
       }
       if (restored.isEmpty()) return;
       queue.addAll(restored);
-      queueIndex = Math.max(0, Math.min(savedIndex, queue.size() - 1));
+      queueIndex = mappedIndex >= 0 ? mappedIndex : Math.max(0, Math.min(savedIndex, queue.size() - 1));
       updateQueueUI();
       load(queue.get(queueIndex), false);
       if (savedPosition > 0 && player != null) {
@@ -4365,14 +4459,21 @@ public final class CDPlayer extends JFrame {
       java.nio.file.Files.write(SETTINGS_FILE.toPath(), content.getBytes(StandardCharsets.UTF_8));
     } catch (Exception ignored) { /* best-effort persistence; a failed save just means defaults next launch */ }
   }
+  /** Integer.parseInt with a fallback instead of a thrown exception — used while restoring settings so one malformed numeric line doesn't need its own try/catch, or worse, abort every field parsed after it. */
+  private static int intOr(String s, int fallback) {
+    try { return Integer.parseInt(s.trim()); } catch (Exception ignored) { return fallback; }
+  }
   /** Restores settings saved by {@link #saveSettingsState()}. Must run after createContent() has wired up the sliders' change listeners, so setting each value here also updates its label/live state the same way a manual drag would. The animations, theme, EQ, waveform, Mini Mode, window bounds, and ambient background lines are optional (absent in files saved before those existed), defaulting to enabled / RED / flat / enabled / off / the constructor's own default size+position / enabled. */
   private void restoreSettingsState() {
     try {
       if (!SETTINGS_FILE.isFile()) return;
       List<String> lines = java.nio.file.Files.readAllLines(SETTINGS_FILE.toPath(), StandardCharsets.UTF_8);
       if (lines.size() < 3) return;
-      int savedVolume = Integer.parseInt(lines.get(0).trim());
-      int savedCrossfade = Integer.parseInt(lines.get(1).trim());
+      // intOr, not a bare Integer.parseInt: a corrupt volume/crossfade line used to throw out of this whole
+      // method, silently skipping every field parsed further down too (EQ, Mini Mode, window bounds) even though
+      // they'd have parsed fine on their own — see the EQ/bounds blocks below for how those are now isolated too.
+      int savedVolume = intOr(lines.get(0), 100);
+      int savedCrossfade = intOr(lines.get(1), 0);
       boolean savedMono = "1".equals(lines.get(2).trim());
       boolean savedAnimations = lines.size() < 4 || "1".equals(lines.get(3).trim());
       String savedThemeName = lines.size() >= 5 ? lines.get(4).trim() : null;
@@ -4392,27 +4493,35 @@ public final class CDPlayer extends JFrame {
           if (THEMES[i].name.equals(savedThemeName)) { applyThemeInstant(i); break; }
         }
       }
+      // Each wrapped in its own try/catch — isolated from each other and from everything below (savedMiniMode's
+      // apply, last in this method) so one malformed line can't silently skip fields that parsed fine on their
+      // own. Previously a single bad EQ token aborted the whole method, so Mini Mode and the saved window bounds
+      // never got restored even though both had already been read successfully into locals above.
       if (savedEq != null && !savedEq.isEmpty()) {
-        String[] parts = savedEq.split(",");
-        if (parts.length == Equalizer.BANDS) {
-          double[] gains = new double[Equalizer.BANDS];
-          for (int i = 0; i < parts.length; i++) gains[i] = Double.parseDouble(parts[i].trim());
-          setEqGains(gains); // player is still null this early — just seeds eqGains for load() to pick up
-        }
+        try {
+          String[] parts = savedEq.split(",");
+          if (parts.length == Equalizer.BANDS) {
+            double[] gains = new double[Equalizer.BANDS];
+            for (int i = 0; i < parts.length; i++) gains[i] = Double.parseDouble(parts[i].trim());
+            setEqGains(gains); // player is still null this early — just seeds eqGains for load() to pick up
+          }
+        } catch (Exception ignored) { /* corrupt EQ line; leave eqGains at its default flat curve */ }
       }
       if (savedBounds != null && !savedBounds.isEmpty()) {
-        String[] parts = savedBounds.split(",");
-        if (parts.length == 4) {
-          java.awt.Rectangle rect = new java.awt.Rectangle(Integer.parseInt(parts[0].trim()), Integer.parseInt(parts[1].trim()), Integer.parseInt(parts[2].trim()), Integer.parseInt(parts[3].trim()));
-          // Only trust it if it still lands on a currently-connected screen — otherwise a monitor that's since
-          // been unplugged (or a saved position from a since-changed display arrangement) would reopen the
-          // window somewhere the user can no longer see or reach it.
-          boolean onScreen = false;
-          for (java.awt.GraphicsDevice gd : java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
-            if (gd.getDefaultConfiguration().getBounds().intersects(rect)) { onScreen = true; break; }
+        try {
+          String[] parts = savedBounds.split(",");
+          if (parts.length == 4) {
+            java.awt.Rectangle rect = new java.awt.Rectangle(Integer.parseInt(parts[0].trim()), Integer.parseInt(parts[1].trim()), Integer.parseInt(parts[2].trim()), Integer.parseInt(parts[3].trim()));
+            // Only trust it if it still lands on a currently-connected screen — otherwise a monitor that's since
+            // been unplugged (or a saved position from a since-changed display arrangement) would reopen the
+            // window somewhere the user can no longer see or reach it.
+            boolean onScreen = false;
+            for (java.awt.GraphicsDevice gd : java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
+              if (gd.getDefaultConfiguration().getBounds().intersects(rect)) { onScreen = true; break; }
+            }
+            if (onScreen && rect.width >= 760 && rect.height >= 785) { setBounds(rect); normalBounds = rect; }
           }
-          if (onScreen && rect.width >= 760 && rect.height >= 785) { setBounds(rect); normalBounds = rect; }
-        }
+        } catch (Exception ignored) { /* corrupt bounds line; keep the constructor's default size/position */ }
       }
       // Last: buildMiniPanel() (called lazily from setMiniModeEnabled()) reads the live TEXT/ACCENT2/BG/MUTED
       // fields for its labels' initial colors, which only reflect the restored theme once applyThemeInstant()
@@ -4428,14 +4537,20 @@ public final class CDPlayer extends JFrame {
     try {
       if (!EQ_PRESETS_FILE.isFile()) return;
       for (String line : java.nio.file.Files.readAllLines(EQ_PRESETS_FILE.toPath(), StandardCharsets.UTF_8)) {
-        int bar = line.indexOf('|');
-        if (bar < 1) continue;
-        String name = line.substring(0, bar).trim();
-        String[] parts = line.substring(bar + 1).split(",");
-        if (name.isEmpty() || parts.length != Equalizer.BANDS) continue;
-        double[] gains = new double[Equalizer.BANDS];
-        for (int i = 0; i < parts.length; i++) gains[i] = Double.parseDouble(parts[i].trim());
-        customEqPresets.add(new EqPreset(name, gains));
+        try {
+          // lastIndexOf, not indexOf: the name is free-text from a JTextField with no character restriction, so a
+          // preset named e.g. "Bass|Boost" would otherwise split at ITS OWN pipe instead of the real name/gains
+          // separator, truncating the name and feeding "Boost|1.0,2.0,..." to the gains parser below, which
+          // throws — the gains portion itself is always just digits/commas/decimal points/minus, never a pipe.
+          int bar = line.lastIndexOf('|');
+          if (bar < 1) continue;
+          String name = line.substring(0, bar).trim();
+          String[] parts = line.substring(bar + 1).split(",");
+          if (name.isEmpty() || parts.length != Equalizer.BANDS) continue;
+          double[] gains = new double[Equalizer.BANDS];
+          for (int i = 0; i < parts.length; i++) gains[i] = Double.parseDouble(parts[i].trim());
+          customEqPresets.add(new EqPreset(name, gains));
+        } catch (Exception ignored) { /* one corrupt line shouldn't drop every preset listed after it */ }
       }
     } catch (Exception ignored) { /* corrupt or unreadable presets file; just start with none */ }
   }
@@ -4661,8 +4776,7 @@ public final class CDPlayer extends JFrame {
     Process probe = null;
     try {
       probe = new ProcessBuilder(resolveBinary("ffprobe"), "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file.getAbsolutePath()).redirectErrorStream(true).start();
-      String output = new String(readAll(probe.getInputStream()), StandardCharsets.UTF_8).trim();
-      probe.waitFor();
+      String output = new String(runBounded(probe).bytes, StandardCharsets.UTF_8).trim();
       return (long) (Double.parseDouble(output) * 1_000_000L);
     } catch (Exception ignored) { return 0L; }
     finally { if (probe != null) closeProcessStreams(probe); }
