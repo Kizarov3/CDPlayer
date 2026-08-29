@@ -761,7 +761,13 @@ public final class CDPlayer extends JFrame {
     visGc.gridx = 0; visGc.gridy = 0; visGc.weightx = 1; visGc.weighty = 1; visGc.fill = GridBagConstraints.BOTH;
     visGc.insets = new Insets(50, 50, 20, 50);
     overlay.add(bigVisualizer, visGc);
-    JLabel hint = label("MOVE THE MOUSE, OR PRESS V / ESC, TO EXIT", 10, new Color(120, 122, 126));
+    // Not the label() helper: it always wraps text in <html>, and an HTML JLabel's preferred-width guess collides
+    // badly with GridBagLayout here, sharing a column with bigVisualizer's own weightx=1/fill=BOTH constraint —
+    // measured directly as collapsing to a sliver of its real width, wrapping this one-line hint down to a single
+    // word per line. A plain (non-HTML) JLabel never reflows, sidestepping the quirk entirely.
+    JLabel hint = new JLabel("MOVE THE MOUSE, OR PRESS V / ESC, TO EXIT");
+    hint.setForeground(new Color(120, 122, 126));
+    hint.setFont(new Font("SansSerif", Font.BOLD, 10));
     GridBagConstraints hintGc = new GridBagConstraints();
     hintGc.gridx = 0; hintGc.gridy = 1; hintGc.insets = new Insets(0, 0, 40, 0);
     overlay.add(hint, hintGc);
@@ -1503,7 +1509,7 @@ public final class CDPlayer extends JFrame {
     miniModeRow.add(miniModeButtonWrap, BorderLayout.EAST);
     card.add(miniModeRow);
     card.add(javax.swing.Box.createVerticalStrut(10));
-    JLabel miniModeHint = new JLabel("<html><body style='width:280px'>Shrinks the window to a small always-on-top widget — just the disc, track info, and a seek bar. Press M or click the disc to play/pause while in it.</body></html>");
+    JLabel miniModeHint = new JLabel("<html><body style='width:280px'>Shrinks the window to a small always-on-top widget — just the disc, track info, and a seek bar. Click the disc to play/pause, or press M again to exit.</body></html>");
     miniModeHint.setForeground(MUTED); miniModeHint.setFont(new Font("SansSerif", Font.PLAIN, 10));
     miniModeHint.setAlignmentX(Component.LEFT_ALIGNMENT);
     card.add(miniModeHint);

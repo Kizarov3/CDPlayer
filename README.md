@@ -5,8 +5,8 @@ CDPlayer is a Java desktop app that recreates the tactile feel of a physical CD 
 > **Windows-only build available.** [`windows/`](windows/) is a fork of this same Java app with the macOS/Linux-only code paths stripped out and Windows-specific optimizations applied (native FFmpeg discovery via winget, `%LOCALAPPDATA%` app data storage, no dead fullscreen branch) — full feature parity, not a replacement for this cross-platform build. See [`windows/README.md`](windows/README.md).
 
 <p align="center">
-  <img src="assets/screenshots/main-red-theme-4.png" width="49%" alt="CDPlayer main window, RED theme, playing a track">
-  <img src="assets/screenshots/main-snow-theme-4.png" width="49%" alt="CDPlayer main window, SNOW theme with falling snow overlay">
+  <img src="assets/screenshots/main-red-theme-5.png" width="49%" alt="CDPlayer main window, RED theme, playing a track">
+  <img src="assets/screenshots/main-snow-theme-5.png" width="49%" alt="CDPlayer main window, SNOW theme with falling snow overlay">
 </p>
 
 ## About
@@ -17,7 +17,8 @@ CDPlayer is a Java desktop app that recreates the tactile feel of a physical CD 
 - Ten built-in themes — nine animated ones plus AUTO, which derives its whole palette from the current track's own album art
 - A sleep timer that pauses playback after a set time, with a live countdown in the header
 - A 10-band graphic equalizer with built-in and savable custom presets, and a beat-synced visualizer
-- True fullscreen, and a dedicated Settings dialog for theme/crossfade/mono
+- True fullscreen, a distraction-free fullscreen Visualizer Mode, and a Mini Mode that shrinks the whole app down to a small always-on-top widget
+- A dedicated Settings dialog for theme, crossfade, mono, and an ambient blurred-cover-art background wash
 - Automatic metadata and album art, with an online lookup fallback when a file has none
 - Works on Windows, macOS, and Linux
 
@@ -47,7 +48,7 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - A 10-band graphic **Equalizer** (31Hz–16kHz), tucked into Settings, with 8 built-in presets (Bass Boost, Treble Boost, Vocal, Rock, Pop, Classical, Electronic, Flat) plus your own — adjust any band, save or delete named presets, right from the panel (the presets list scrolls once you've saved a few)
 - The seek bar can show the track's real amplitude shape instead of a plain line, so quiet and loud passages are visible at a glance — toggle it on/off in Settings
 - True fullscreen (`F` to enter, `Esc` to exit) that hides the OS menu bar/dock, not just a resized window
-- Keyboard shortcuts: `Space` / `K` play-pause, `J` / `L` previous/next track, `←` / `→` skip 15 seconds, `↑` / `↓` volume, `U` mute/unmute
+- Keyboard shortcuts: `Space` / `K` play-pause, `J` / `L` previous/next track, `←` / `→` skip 15 seconds, `↑` / `↓` volume, `U` mute/unmute, `C` CD view, `M` Mini Mode, `V` Visualizer Mode
 
 **Queue**
 - Full queue list with per-track duration, click-to-play, and a hover-to-reveal remove (×) button
@@ -67,13 +68,28 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - A **Lyrics** button appears whenever the current track has embedded lyrics, or — automatically, no setup needed — a matching lyrics lookup on [lrclib.net](https://lrclib.net) succeeds for a track that doesn't. Opens a panel that follows the track: for LRC-timed lyrics (embedded or looked up), the current line highlights and auto-scrolls in sync with playback, karaoke-style, and clicking any line seeks playback straight to it; otherwise it's a plain scrollable read
 - A **History** button in the header opens Recently Played — your last 50 tracks, most recent first, each one click away from playing again or adding back to the queue
 - **CD view** (`C`, or the header button) hides everything but the spinning disc — enlarged — and the header divider for a distraction-free "now playing" look, with the title and artist centered underneath and a crossfade transition in and out; press `C` or `Esc` again to bring the rest of the UI back
+- **Visualizer Mode** (`V`, or the header button) fills the whole window with the active theme's fullscreen audio-reactive shape and nothing else — also kicks in on its own after a few minutes idle while a track is playing, like a screensaver; move the mouse, click, or press `V`/`Esc` to exit
+- On macOS, now-playing metadata, playback state, and transport controls are exposed to Control Center's Now Playing widget and hardware media keys, the same as any native macOS media app
 
 <p align="center">
-  <img src="assets/screenshots/cd-view-1.png" width="70%" alt="CDPlayer CD view, showing just the enlarged spinning disc with the track title and artist below it">
+  <img src="assets/screenshots/visualizer-mode-1.png" width="70%" alt="CDPlayer Visualizer Mode, showing the SNOW theme's fullscreen tree visualizer">
+</p>
+
+**Mini Mode**
+- Press `M` (or flip the switch in Settings) to shrink the whole window down to a small, always-on-top widget — the disc, track title/artist, a seek bar, and play/pause/skip controls — so you can keep the music going while you work in other apps
+- Click the disc to play/pause while in it; press `M` again (or the × button) to return to the full window
+
+<p align="center">
+  <img src="assets/screenshots/mini-mode-1.png" width="55%" alt="CDPlayer Mini Mode, a small always-on-top widget showing the disc, track info, and transport controls">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/cd-view-2.png" width="70%" alt="CDPlayer CD view, showing just the enlarged spinning disc with the track title and artist below it">
 </p>
 
 **Settings**
-- A dedicated Settings dialog (opened from the header) holds the Theme picker, Equalizer, Crossfade slider, Sleep Timer, Mono Audio toggle, Waveform toggle, and an Animations toggle, keeping the main screen focused on playback
+- A dedicated Settings dialog (opened from the header) holds the Theme picker, Equalizer, Crossfade slider, Sleep Timer, Mono Audio toggle, Waveform toggle, Ambient Background toggle, Animations toggle, and the Mini Mode switch, keeping the main screen focused on playback
+- **Ambient Background** washes the window's backdrop with a blurred glow of the current cover art; turn it off in Settings for a plain dark background instead
 - Sleep Timer pauses playback after a set number of minutes (up to 120); once armed it shows a live countdown in the header, which you can click at any time to cancel it
 - Fully live: switching themes updates the dialog's own colors immediately, even while it's open
 - Volume, crossfade, mono audio, the waveform and animations preferences, your equalizer settings, your last-used theme, and the main window's size and position all persist across launches instead of resetting to defaults
@@ -84,7 +100,7 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - An **Animations** toggle in Settings turns all of it off at once for anyone who prefers a completely static UI
 
 <p align="center">
-  <img src="assets/screenshots/settings-dialog-5.png" width="70%" alt="CDPlayer Settings dialog showing Theme, Equalizer, Crossfade, Sleep Timer, Mono Audio, Waveform, and Animations controls">
+  <img src="assets/screenshots/settings-dialog-6.png" width="55%" alt="CDPlayer Settings dialog showing Theme, Equalizer, Crossfade, Sleep Timer, Mono Audio, Waveform, Ambient Background, Animations, and Mini Mode controls">
 </p>
 
 **Themes**
@@ -175,9 +191,14 @@ Or just run `./run.sh`, which does the same thing.
 | `L` | Next track |
 | `←` | Skip back 15 seconds |
 | `→` | Skip forward 15 seconds |
+| `↑` | Volume up |
+| `↓` | Volume down |
+| `U` | Mute / unmute |
 | `F` | Toggle fullscreen |
 | `C` | Toggle CD view |
-| `Esc` | Exit fullscreen |
+| `M` | Toggle Mini Mode |
+| `V` | Toggle Visualizer Mode |
+| `Esc` | Exit fullscreen / CD view / Visualizer Mode / Mini Mode, or close whatever's open |
 
 ## License
 
