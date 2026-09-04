@@ -301,10 +301,8 @@ public final class CDPlayer extends JFrame {
   private static final File QUEUE_STATE_FILE = new File(APP_DATA_DIR, "queue.txt");
   private static final File ONBOARDING_FLAG_FILE = new File(APP_DATA_DIR, "onboarded");
   // Bumped by hand alongside CHANGELOG below whenever a build ships — also what's passed to jpackage's
-  // --app-version at build time, so the two stay in sync. Versioned independently of ../src's APP_VERSION: this
-  // fork carries its own Windows-only fixes between cross-platform resyncs (see windows/README.md's own note on
-  // how the two stay in sync), so a patch bump here doesn't imply anything shipped on the cross-platform build.
-  private static final String APP_VERSION = "1.12.1";
+  // --app-version at build time, so the two stay in sync.
+  private static final String APP_VERSION = "1.12.0";
   private static final File LAST_VERSION_FILE = new File(APP_DATA_DIR, "lastversion.txt");
   private static final File LAST_PATH_FILE = new File(APP_DATA_DIR, "lastpath.txt");
   private static final File SETTINGS_FILE = new File(APP_DATA_DIR, "settings.txt");
@@ -1142,20 +1140,14 @@ public final class CDPlayer extends JFrame {
   // entry matching the CURRENT version, not the whole history, so older entries are kept only as a record (and
   // in case a future "full changelog" view wants them), not because they're ever shown together.
   private static final ChangelogEntry[] CHANGELOG = {
-    new ChangelogEntry("1.12.1",
-      "Fixed stutter in the disc spin and visualizer during playback, caused by two separate animation timers drifting out of sync with each other",
-      "Enabled Java2D's OpenGL rendering pipeline, so the disc and every other animated element are drawn by the GPU instead of the CPU",
-      "Removed the unused macOS Control Center integration that was silently forcing a newer JDK to build than the app otherwise needs",
-      "Fixed the build silently failing without a clear error in a couple of misconfigured-toolchain cases"
-    ),
     new ChangelogEntry("1.12.0",
       "<b>Visualizer Mode</b>: press V (or the header button) for a fullscreen, distraction-free view of the current theme's audio-reactive visualizer — it also kicks in on its own like a screensaver after a few idle minutes while a track is playing",
       "<b>Library import</b>: the Search panel's new IMPORT LIBRARY button pulls tracks in from an exported iTunes/Music.app library or a Spotify export (CSV or YourLibrary.json), matched against what you already have locally",
       "<b>Ambient background</b>: the window now washes with a soft blurred glow of the current cover art instead of a flat gradient — toggle it off in Settings if you prefer the old look",
-      "<b>macOS Control Center</b> now shows this app's Now Playing info — title, artist, album art, elapsed time — with working play/pause/skip from there too",
       "CD View now switches with a genie-style warp instead of a plain crossfade, and the disc itself is bigger in Normal Mode",
       "Up/Down arrow keys nudge the volume, U toggles mute, and the window remembers its size and position across launches",
-      "Fixed a crossfade bug that could leave the previous track audibly playing after a mid-fade skip, plus several settings/queue-restore bugs and hangs on stuck ffmpeg processes"
+      "Fixed a crossfade bug that could leave the previous track audibly playing after a mid-fade skip, plus several settings/queue-restore bugs and hangs on stuck ffmpeg processes",
+      "<b>Windows build</b>: enabled Java2D's OpenGL rendering pipeline so the disc and every other animated element are drawn by the GPU instead of the CPU, and fixed stutter in the disc spin and visualizer caused by two separate animation timers drifting out of sync with each other"
     ),
     new ChangelogEntry("1.11.0",
       "<b>Mini Mode</b>: press M (or flip the switch in Settings) to shrink the window down to a small always-on-top widget — the disc, track title/artist, a seek bar, and play/pause/skip controls — so you can keep the music going while you work in other apps",
