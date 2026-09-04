@@ -59,6 +59,7 @@ See [Installing FFmpeg](#installing-ffmpeg) below for your platform.
 - Save the current queue as a standard `.m3u` playlist file, or load one back in — next to **Load a Track**, order preserved exactly as saved
 - A **Search** button (also next to Load a Track) recursively scans your whole last-used music folder by filename, filtering live as you type, so you can find and add a track without digging through folders
 - Paste a Spotify track or playlist link into Search to queue every matching song you already have locally — nothing is streamed from Spotify itself, it's just used to resolve the link to track names (playlist links need a one-time Spotify sign-in)
+- **IMPORT LIBRARY…** button in Search bulk-imports tracks from an exported iTunes/Music.app library (`Library.xml`) or a Spotify export (a CSV, or Spotify's own "Download your data" `YourLibrary.json`), matched against what you already have locally
 
 **Now playing**
 - Spinning disc animation inside a jewel-case backdrop, with your album art on the disc label and case thumbnail
