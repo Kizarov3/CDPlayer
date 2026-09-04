@@ -15,6 +15,7 @@ existed only to accommodate macOS/Linux, leaning into Windows-only assumptions i
 | Look & feel | `UIManager.getSystemLookAndFeelClassName()` — a runtime reflection lookup that resolves to the right L&F per OS | Sets `WindowsLookAndFeel` directly — same result, skips the per-OS detection step since this build only ever runs on Windows |
 | Continuous animation pacing (disc spin, theme particles, disc eject) | Fixed intervals (16ms disc/eject, 35ms particles) tuned by feel | Paced to the real display refresh rate via `ANIMATION_TICK_MS` (capped at 60fps — see its own doc comment), so DWM's compositor never re-presents a stale frame or discards one the app painted too fast. Motion constants (particle fall speed, drift, shooting-star velocity/spawn rate, disc rotation) are all rescaled by `TIME_SCALE`/`ROTATION_RAD_PER_MS` so real-world animation speed stays identical regardless of the tick length. |
 | macOS Control Center bridge | `MacNowPlaying` talks to `MPNowPlayingInfoCenter`/`MPRemoteCommandCenter` via the JDK's Foreign Function & Memory API, guarded to a no-op off macOS | Stripped entirely — it's dead weight here (never activates on Windows) but its `java.lang.foreign` imports force a JDK 22+ compiler, breaking the JDK 8+ promise below for no benefit |
+| Java2D rendering pipeline | `-Dsun.java2d.metal=false` — Metal (the default since JDK 17) is disabled in favor of the older OpenGL pipeline; see run.sh's own comment for why | `-Dsun.java2d.opengl=true` — Windows has had no hardware-accelerated pipeline by default since the Direct3D one was removed after JDK 8, so every antialiased fill/gradient and the disc's own per-frame rotate+blit (see DiscView.paintComponent) runs on the CPU otherwise. Requesting OpenGL explicitly turns those back into GPU work; Java2D silently falls back to software if a machine's drivers don't support it, so this is safe to leave on unconditionally. |
 
 Nothing about the actual audio engine, UI, themes, or feature set changed — this is a lean-out
 of dead cross-platform accommodation, not a rewrite. Kept in sync with `../src` by hand (see its
@@ -39,7 +40,7 @@ Or manually, same shape as the cross-platform build's `run.sh`:
 cd windows
 javac -d out (Get-ChildItem -Recurse -Filter *.java src | ForEach-Object FullName)
 Copy-Item src\main\java\com\cdplayer\icon.png out\com\cdplayer\icon.png
-java -cp out com.cdplayer.CDPlayer
+java -Dsun.java2d.opengl=true -cp out com.cdplayer.CDPlayer
 ```
 
 ## Project layout

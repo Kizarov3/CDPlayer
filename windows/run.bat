@@ -15,7 +15,7 @@ if errorlevel 1 (
 
 copy /y "src\main\java\com\cdplayer\icon.png" "out\com\cdplayer\icon.png" >nul
 
-java -cp out com.cdplayer.CDPlayer
+java -Dsun.java2d.opengl=true -cp out com.cdplayer.CDPlayer
 if errorlevel 1 (
   echo.
   echo CDPlayer exited with an error - see above.
