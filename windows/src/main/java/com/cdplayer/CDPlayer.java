@@ -27,15 +27,6 @@ import java.awt.geom.Ellipse2D;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.foreign.Arena;
-import java.lang.foreign.FunctionDescriptor;
-import java.lang.foreign.Linker;
-import java.lang.foreign.MemorySegment;
-import java.lang.foreign.SymbolLookup;
-import java.lang.foreign.ValueLayout;
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -516,12 +507,6 @@ public final class CDPlayer extends JFrame {
     loadHistory();
     restoreSettingsState();
     restoreQueueState();
-    // So Control Center's Now Playing widget (and hardware media keys) can see and drive this app — see
-    // MacNowPlaying's own doc comment; a no-op off macOS or if anything about the bridge failed to set up.
-    MacNowPlaying.registerCommands(
-        () -> { if (player != null && !player.isRunning()) toggle(); },
-        () -> { if (player != null && player.isRunning()) toggle(); },
-        this::toggle, this::nextTrack, this::previousTrack);
   }
 
   /**
@@ -3188,7 +3173,7 @@ public final class CDPlayer extends JFrame {
     panel.add(javax.swing.Box.createVerticalStrut(6)); source.setAlignmentX(Component.LEFT_ALIGNMENT); source.setFont(new Font("SansSerif", Font.PLAIN, 12)); source.setPreferredSize(new Dimension(460, 16)); source.setMaximumSize(new Dimension(460, 16)); source.setMinimumSize(new Dimension(460, 16)); panel.add(source);
     panel.add(javax.swing.Box.createVerticalStrut(38));
     progress.setOpaque(false); waveformSliderUI = new WaveformSliderUI(progress); progress.setUI(waveformSliderUI); progress.setAlignmentX(Component.LEFT_ALIGNMENT); progress.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20)); progress.setFocusable(false);
-    progress.addChangeListener(e -> { if (player != null && progress.getValueIsAdjusting()) adjusting = true; else if (player != null && adjusting) { long target = (long) (player.getMicrosecondLength() * progress.getValue() / 1000.0); player.setMicrosecondPosition(target); adjusting = false; MacNowPlaying.setPlayback(player.isRunning(), target / 1_000_000.0); if (lyricsOverlay != null && lyricsOverlay.isVisible()) updateLyricsSync(); } });
+    progress.addChangeListener(e -> { if (player != null && progress.getValueIsAdjusting()) adjusting = true; else if (player != null && adjusting) { long target = (long) (player.getMicrosecondLength() * progress.getValue() / 1000.0); player.setMicrosecondPosition(target); adjusting = false; if (lyricsOverlay != null && lyricsOverlay.isVisible()) updateLyricsSync(); } });
     panel.add(progress);
     JPanel times = new JPanel(new BorderLayout()); times.setOpaque(false); times.setMaximumSize(new Dimension(Integer.MAX_VALUE, 16)); elapsed.setFont(new Font("SansSerif", Font.PLAIN, 11)); length.setFont(new Font("SansSerif", Font.PLAIN, 11)); times.add(elapsed, BorderLayout.WEST); times.add(length, BorderLayout.EAST); panel.add(times);
     panel.add(javax.swing.Box.createVerticalStrut(28));
@@ -3625,7 +3610,6 @@ public final class CDPlayer extends JFrame {
       SongDetails details = getSongDetails(file);
       String name = details.title;
       setTrackTitle(name, details.artist); source.setText("LOCAL AUDIO FILE · " + file.getName().substring(file.getName().lastIndexOf('.') + 1).toUpperCase());
-      MacNowPlaying.setMetadata(name, details.artist, details.album, opened.getMicrosecondLength() / 1_000_000.0, details.embeddedCover);
       // Mirrors what's playing in the window title, same idea as Spotify/most media apps — visible in the
       // taskbar/dock even when the window itself isn't focused or is minimized.
       setTitle((details.artist != null && !details.artist.trim().isEmpty() ? details.artist + " – " : "") + name);
@@ -3856,7 +3840,7 @@ public final class CDPlayer extends JFrame {
       SwingUtilities.invokeLater(() -> {
         if (!requestedFile.equals(loadedFile)) return;
         disc.setLookingUp(false);
-        if (cover != null) { disc.setCover(cover); source.setText(label + " COVER ART · " + extension(requestedFile).toUpperCase()); MacNowPlaying.setArtwork(cover); }
+        if (cover != null) { disc.setCover(cover); source.setText(label + " COVER ART · " + extension(requestedFile).toUpperCase()); }
         else source.setText((hadNetworkError ? "COVER LOOKUP UNAVAILABLE · " : "COVER NOT FOUND · ") + extension(requestedFile).toUpperCase());
       });
     }, "cdplayer-cover-lookup");
@@ -4638,7 +4622,6 @@ public final class CDPlayer extends JFrame {
     progress.setValue(duration == 0 ? 0 : (int) (target * 1000 / duration));
     elapsed.setText(format(target));
     syncMiniProgress();
-    MacNowPlaying.setPlayback(player.isRunning(), target / 1_000_000.0);
     if (lyricsOverlay != null && lyricsOverlay.isVisible()) updateLyricsSync();
   }
   /**
@@ -4705,7 +4688,6 @@ public final class CDPlayer extends JFrame {
     visualizer.setActive(playing);
     bigVisualizer.setActive(playing);
     if (playing) clock.start(); else clock.stop();
-    MacNowPlaying.setPlayback(playing, player != null ? player.getMicrosecondPosition() / 1_000_000.0 : 0);
   }
   private double[] computeLevels(int bars, int windowMillis) {
     try {
@@ -6747,225 +6729,4 @@ public final class CDPlayer extends JFrame {
     }
   }
 
-  /**
-   * Best-effort bridge to macOS's Control Center "Now Playing" widget, so CDPlayer's title/artist/artwork and
-   * transport state show up system-wide (and its play/pause/next/previous controls actually drive this app) the
-   * same way they would for any app that registers with MPNowPlayingInfoCenter / MPRemoteCommandCenter. Talks to
-   * those Objective-C frameworks directly through the JDK's own Foreign Function & Memory API — no JNA, no native
-   * helper binary — to keep with this file's "standalone, dependency-free" design (see the class doc comment at
-   * the top of CDPlayer). Every entry point below is a no-op off macOS or if any part of setup failed (an
-   * unsupported OS version, a renamed framework symbol, whatever) since none of this is required for CDPlayer to
-   * work — it's a pure cosmetic/convenience layer.
-   */
-  private static final class MacNowPlaying {
-    static final boolean MAC = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("mac");
-    static volatile boolean ready = false;
-    static Arena arena;
-    static Linker linker;
-    static final java.lang.foreign.MemoryLayout CG_SIZE = java.lang.foreign.MemoryLayout.structLayout(ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE);
-    static MethodHandle objc_getClass, sel_registerName, msgSend0, msgSend1, msgSend2, msgSendLong1, msgSendDouble1, msgSendAddrLong, msgSendSizeBlock;
-    static MemorySegment nowPlayingCenter, dict, clsString, selStringWithUTF8, selSetObjectForKey, selRemoveObjectForKey, selSetNowPlayingInfo, selSetPlaybackState, clsNumber, selNumberWithDouble, clsData, clsImage, clsArtwork;
-    static MemorySegment keyTitle, keyArtist, keyAlbum, keyDuration, keyElapsed, keyRate, keyArtwork, globalBlockClass;
-
-    // Set once by registerCommands(); read by dispatch() whenever Control Center (or a hardware media key) fires
-    // one of the five remote commands below. Plain static fields, not passed through the native call, since the
-    // block trampolines only carry a small integer tag (see makeBlock) — there is only ever one CDPlayer window.
-    static Runnable onPlay, onPause, onToggle, onNext, onPrevious;
-
-    static {
-      boolean ok = false;
-      try { if (MAC) { init(); ok = true; } } catch (Throwable ignored) { /* macOS version too old, framework layout changed, etc. — Now Playing just stays unavailable */ }
-      ready = ok;
-    }
-
-    private static void init() throws Throwable {
-      linker = Linker.nativeLinker();
-      arena = Arena.ofShared();
-      SymbolLookup objc = SymbolLookup.libraryLookup("/usr/lib/libobjc.A.dylib", arena);
-      objc_getClass = objc.find("objc_getClass").map(s -> linker.downcallHandle(s, FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS))).orElseThrow();
-      sel_registerName = objc.find("sel_registerName").map(s -> linker.downcallHandle(s, FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS))).orElseThrow();
-      MemorySegment msgSendSym = objc.find("objc_msgSend").orElseThrow();
-      msgSend0 = linker.downcallHandle(msgSendSym, FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-      msgSend1 = linker.downcallHandle(msgSendSym, FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-      msgSend2 = linker.downcallHandle(msgSendSym, FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-      msgSendLong1 = linker.downcallHandle(msgSendSym, FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-      msgSendDouble1 = linker.downcallHandle(msgSendSym, FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_DOUBLE));
-      msgSendAddrLong = linker.downcallHandle(msgSendSym, FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-      msgSendSizeBlock = linker.downcallHandle(msgSendSym, FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, CG_SIZE, ValueLayout.ADDRESS));
-      globalBlockClass = objc.find("_NSConcreteGlobalBlock").orElseThrow();
-
-      SymbolLookup mediaPlayer = SymbolLookup.libraryLookup("/System/Library/Frameworks/MediaPlayer.framework/MediaPlayer", arena);
-
-      MemorySegment clsCenter = (MemorySegment) objc_getClass.invoke(str("MPNowPlayingInfoCenter"));
-      nowPlayingCenter = (MemorySegment) msgSend0.invoke(clsCenter, sel("defaultCenter"));
-      MemorySegment clsDict = (MemorySegment) objc_getClass.invoke(str("NSMutableDictionary"));
-      dict = (MemorySegment) msgSend0.invoke(clsDict, sel("dictionary"));
-      clsString = (MemorySegment) objc_getClass.invoke(str("NSString"));
-      selStringWithUTF8 = sel("stringWithUTF8String:");
-      selSetObjectForKey = sel("setObject:forKey:");
-      selRemoveObjectForKey = sel("removeObjectForKey:");
-      selSetNowPlayingInfo = sel("setNowPlayingInfo:");
-      selSetPlaybackState = sel("setPlaybackState:");
-      clsNumber = (MemorySegment) objc_getClass.invoke(str("NSNumber"));
-      selNumberWithDouble = sel("numberWithDouble:");
-      clsData = (MemorySegment) objc_getClass.invoke(str("NSData"));
-      clsImage = (MemorySegment) objc_getClass.invoke(str("NSImage"));
-      clsArtwork = (MemorySegment) objc_getClass.invoke(str("MPMediaItemArtwork"));
-
-      keyTitle = constant(mediaPlayer, "MPMediaItemPropertyTitle");
-      keyArtist = constant(mediaPlayer, "MPMediaItemPropertyArtist");
-      keyAlbum = constant(mediaPlayer, "MPMediaItemPropertyAlbumTitle");
-      keyDuration = constant(mediaPlayer, "MPMediaItemPropertyPlaybackDuration");
-      keyElapsed = constant(mediaPlayer, "MPNowPlayingInfoPropertyElapsedPlaybackTime");
-      keyRate = constant(mediaPlayer, "MPNowPlayingInfoPropertyPlaybackRate");
-      keyArtwork = constant(mediaPlayer, "MPMediaItemPropertyArtwork");
-    }
-
-    private static MemorySegment str(String s) { return arena.allocateFrom(s); }
-    private static MemorySegment sel(String s) throws Throwable { return (MemorySegment) sel_registerName.invoke(str(s)); }
-    /** Reads an `extern NSString * const` framework constant: the symbol's own address holds a pointer to the actual NSString object, so this dereferences once — unlike globalBlockClass above, which IS the object (see makeBlock). */
-    private static MemorySegment constant(SymbolLookup lookup, String name) {
-      return lookup.find(name).orElseThrow().reinterpret(8).get(ValueLayout.ADDRESS, 0);
-    }
-    private static MemorySegment nsstr(String s) throws Throwable { return (MemorySegment) msgSend1.invoke(clsString, selStringWithUTF8, str(s)); }
-    private static MemorySegment nsnum(double d) throws Throwable { return (MemorySegment) msgSendDouble1.invoke(clsNumber, selNumberWithDouble, d); }
-    private static void put(MemorySegment key, MemorySegment value) throws Throwable { msgSend2.invoke(dict, selSetObjectForKey, value, key); }
-    private static void remove(MemorySegment key) throws Throwable { msgSend1.invoke(dict, selRemoveObjectForKey, key); }
-    private static void publish() throws Throwable { msgSend1.invoke(nowPlayingCenter, selSetNowPlayingInfo, dict); }
-
-    /** Called once per track load (see CDPlayer.load()): title/artist/album/duration/cover change together, elapsed resets to 0. `cover` is the track's embedded artwork, or null if it has none — a null here clears whatever the previous track's cover left in the dict rather than leaving it showing stale art. */
-    static void setMetadata(String title, String artist, String album, double durationSeconds, BufferedImage cover) {
-      if (!ready) return;
-      try {
-        put(keyTitle, nsstr(title == null ? "" : title));
-        put(keyArtist, nsstr(artist == null ? "" : artist));
-        put(keyAlbum, nsstr(album == null ? "" : album));
-        put(keyDuration, nsnum(durationSeconds));
-        put(keyElapsed, nsnum(0));
-        if (cover != null) put(keyArtwork, makeArtwork(cover)); else remove(keyArtwork);
-        publish();
-      } catch (Throwable ignored) { /* cosmetic only — never let a native-call failure disturb playback */ }
-    }
-    /** Called when findCover()'s async network lookup lands after setMetadata() already published with no cover — patches just the artwork key in rather than resending everything else, which hasn't changed. */
-    static void setArtwork(BufferedImage cover) {
-      if (!ready || cover == null) return;
-      try { put(keyArtwork, makeArtwork(cover)); publish(); } catch (Throwable ignored) { }
-    }
-    /**
-     * Builds an MPMediaItemArtwork from a decoded cover image: PNG-encodes it into an NSData, wraps that in an
-     * NSImage, then hands it to MPMediaItemArtwork's only initializer available on macOS — one that (like the
-     * remote commands above) takes an Objective-C block rather than the image directly, since the real, iOS-
-     * shared API lets Control Center request a specific size and the image gets handed back lazily. This always
-     * hands back the same full-size image regardless of the requested CGSize; Control Center scales it down itself,
-     * and a fixed small cover never needs the multi-resolution version this callback exists to support.
-     */
-    private static MemorySegment makeArtwork(BufferedImage cover) throws Throwable {
-      java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-      javax.imageio.ImageIO.write(cover, "png", out);
-      byte[] bytes = out.toByteArray();
-      MemorySegment nativeBytes = arena.allocate(Math.max(1, bytes.length));
-      MemorySegment.copy(bytes, 0, nativeBytes, ValueLayout.JAVA_BYTE, 0, bytes.length);
-      MemorySegment data = (MemorySegment) msgSendAddrLong.invoke(clsData, sel("dataWithBytes:length:"), nativeBytes, (long) bytes.length);
-      MemorySegment image = (MemorySegment) msgSend1.invoke((MemorySegment) msgSend0.invoke(clsImage, sel("alloc")), sel("initWithData:"), data);
-      MemorySegment size = arena.allocate(CG_SIZE);
-      size.set(ValueLayout.JAVA_DOUBLE, 0, cover.getWidth());
-      size.set(ValueLayout.JAVA_DOUBLE, 8, cover.getHeight());
-      MemorySegment allocedArtwork = (MemorySegment) msgSend0.invoke(clsArtwork, sel("alloc"));
-      return (MemorySegment) msgSendSizeBlock.invoke(allocedArtwork, sel("initWithBoundsSize:requestHandler:"), size, makeImageBlock(image));
-    }
-    /** Same tagged-block trick as dispatch()/makeBlock() below, but the tag is the NSImage pointer to hand back instead of a small integer, and the return type is an object instead of a status code. */
-    private static MemorySegment dispatchImage(MemorySegment blockSelf, MemorySegment requestedSize) {
-      try { return blockSelf.reinterpret(40).get(ValueLayout.ADDRESS, 32); } catch (Throwable t) { return MemorySegment.NULL; }
-    }
-    private static MemorySegment makeImageBlock(MemorySegment nsImage) throws Throwable {
-      MethodHandle dispatchHandle = MethodHandles.lookup().findStatic(MacNowPlaying.class, "dispatchImage",
-          MethodType.methodType(MemorySegment.class, MemorySegment.class, MemorySegment.class));
-      MemorySegment invoke = linker.upcallStub(dispatchHandle, FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, CG_SIZE), arena);
-      MemorySegment descriptor = arena.allocate(16);
-      descriptor.set(ValueLayout.JAVA_LONG, 0, 0L);
-      descriptor.set(ValueLayout.JAVA_LONG, 8, 40L);
-      MemorySegment block = arena.allocate(40);
-      block.set(ValueLayout.ADDRESS, 0, globalBlockClass);
-      block.set(ValueLayout.JAVA_INT, 8, 1 << 28);
-      block.set(ValueLayout.JAVA_INT, 12, 0);
-      block.set(ValueLayout.ADDRESS, 16, invoke);
-      block.set(ValueLayout.ADDRESS, 24, descriptor);
-      block.set(ValueLayout.ADDRESS, 32, nsImage);
-      return block;
-    }
-    /** Called on every play/pause toggle and on every seek (see CDPlayer.setPlaying()/seekTo()): keeps Control Center's elapsed-time readout and its play/pause glyph in sync without re-sending the title/artist/album/duration that setMetadata() already published. */
-    static void setPlayback(boolean playing, double elapsedSeconds) {
-      if (!ready) return;
-      try {
-        put(keyElapsed, nsnum(elapsedSeconds));
-        put(keyRate, nsnum(playing ? 1.0 : 0.0));
-        publish();
-        msgSendLong1.invoke(nowPlayingCenter, selSetPlaybackState, playing ? 1L : 2L); // MPNowPlayingPlaybackState: Playing=1, Paused=2
-      } catch (Throwable ignored) { }
-    }
-
-    /**
-     * Wires Control Center's (and any hardware media key's) play/pause/toggle/next/previous controls to the given
-     * callbacks. Called once from the CDPlayer constructor. Each MPRemoteCommand needs an Objective-C block handed
-     * to addTargetWithHandler: — blocks aren't objc_msgSend targets, they're a distinct runtime structure with a
-     * raw C function pointer inside (see makeBlock) — so this hand-builds one block per command entirely in native
-     * memory rather than pulling in a bridging library just for this.
-     */
-    static void registerCommands(Runnable onPlay, Runnable onPause, Runnable onToggle, Runnable onNext, Runnable onPrevious) {
-      if (!ready) return;
-      MacNowPlaying.onPlay = onPlay; MacNowPlaying.onPause = onPause; MacNowPlaying.onToggle = onToggle;
-      MacNowPlaying.onNext = onNext; MacNowPlaying.onPrevious = onPrevious;
-      try {
-        MemorySegment clsCommandCenter = (MemorySegment) objc_getClass.invoke(str("MPRemoteCommandCenter"));
-        MemorySegment center = (MemorySegment) msgSend0.invoke(clsCommandCenter, sel("sharedCommandCenter"));
-        MemorySegment selAddTarget = sel("addTargetWithHandler:");
-        msgSend1.invoke((MemorySegment) msgSend0.invoke(center, sel("playCommand")), selAddTarget, makeBlock(0));
-        msgSend1.invoke((MemorySegment) msgSend0.invoke(center, sel("pauseCommand")), selAddTarget, makeBlock(1));
-        msgSend1.invoke((MemorySegment) msgSend0.invoke(center, sel("togglePlayPauseCommand")), selAddTarget, makeBlock(2));
-        msgSend1.invoke((MemorySegment) msgSend0.invoke(center, sel("nextTrackCommand")), selAddTarget, makeBlock(3));
-        msgSend1.invoke((MemorySegment) msgSend0.invoke(center, sel("previousTrackCommand")), selAddTarget, makeBlock(4));
-      } catch (Throwable ignored) { /* buttons just won't do anything; metadata display (setMetadata/setPlayback) is unaffected */ }
-    }
-
-    /**
-     * Invoked directly by the native runtime — via the upcall stub installed as each block's `invoke` pointer in
-     * makeBlock() — whenever Control Center calls one of the five blocks built below. `blockSelf` is the address
-     * of that specific block's own literal struct, so re-reading the tag this method itself stashed there (byte
-     * offset 32, right after the four standard Block ABI fields) is what tells one shared trampoline apart from
-     * the other four without needing five separate upcall stubs.
-     */
-    private static long dispatch(MemorySegment blockSelf, MemorySegment event) {
-      try {
-        long tag = blockSelf.reinterpret(40).get(ValueLayout.JAVA_LONG, 32);
-        Runnable r = tag == 0 ? onPlay : tag == 1 ? onPause : tag == 2 ? onToggle : tag == 3 ? onNext : tag == 4 ? onPrevious : null;
-        if (r != null) SwingUtilities.invokeLater(r);
-      } catch (Throwable ignored) { }
-      return 0L; // MPRemoteCommandHandlerStatusSuccess
-    }
-
-    /**
-     * Hand-builds one Objective-C block literal in native memory: { isa; flags; reserved; invoke; descriptor } per
-     * the Clang Block ABI, plus one extra trailing 8-byte tag field of our own (see dispatch()). Marked
-     * BLOCK_IS_GLOBAL (isa = &_NSConcreteGlobalBlock, no captured variables) so the runtime treats retain/release/
-     * copy as no-ops on it — exactly right for a block that lives for the app's entire lifetime and closes over
-     * nothing, which sidesteps ever having to implement the copy/dispose helper functions a captured-variable
-     * block would need.
-     */
-    private static MemorySegment makeBlock(long tag) throws Throwable {
-      MethodHandle dispatchHandle = MethodHandles.lookup().findStatic(MacNowPlaying.class, "dispatch",
-          MethodType.methodType(long.class, MemorySegment.class, MemorySegment.class));
-      MemorySegment invoke = linker.upcallStub(dispatchHandle, FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS), arena);
-      MemorySegment descriptor = arena.allocate(16);
-      descriptor.set(ValueLayout.JAVA_LONG, 0, 0L); // reserved
-      descriptor.set(ValueLayout.JAVA_LONG, 8, 40L); // size of the block struct below
-      MemorySegment block = arena.allocate(40);
-      block.set(ValueLayout.ADDRESS, 0, globalBlockClass); // isa
-      block.set(ValueLayout.JAVA_INT, 8, 1 << 28); // flags = BLOCK_IS_GLOBAL
-      block.set(ValueLayout.JAVA_INT, 12, 0); // reserved
-      block.set(ValueLayout.ADDRESS, 16, invoke);
-      block.set(ValueLayout.ADDRESS, 24, descriptor);
-      block.set(ValueLayout.JAVA_LONG, 32, tag);
-      return block;
-    }
-  }
 }
