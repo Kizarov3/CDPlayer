@@ -1144,10 +1144,10 @@ public final class CDPlayer extends JFrame {
       "<b>Visualizer Mode</b>: press V (or the header button) for a fullscreen, distraction-free view of the current theme's audio-reactive visualizer — it also kicks in on its own like a screensaver after a few idle minutes while a track is playing",
       "<b>Library import</b>: the Search panel's new IMPORT LIBRARY button pulls tracks in from an exported iTunes/Music.app library or a Spotify export (CSV or YourLibrary.json), matched against what you already have locally",
       "<b>Ambient background</b>: the window now washes with a soft blurred glow of the current cover art instead of a flat gradient — toggle it off in Settings if you prefer the old look",
+      "<b>macOS Control Center</b> now shows this app's Now Playing info — title, artist, album art, elapsed time — with working play/pause/skip from there too",
       "CD View now switches with a genie-style warp instead of a plain crossfade, and the disc itself is bigger in Normal Mode",
       "Up/Down arrow keys nudge the volume, U toggles mute, and the window remembers its size and position across launches",
-      "Fixed a crossfade bug that could leave the previous track audibly playing after a mid-fade skip, plus several settings/queue-restore bugs and hangs on stuck ffmpeg processes",
-      "<b>Windows build</b>: enabled Java2D's OpenGL rendering pipeline so the disc and every other animated element are drawn by the GPU instead of the CPU, and fixed stutter in the disc spin and visualizer caused by two separate animation timers drifting out of sync with each other"
+      "Fixed a crossfade bug that could leave the previous track audibly playing after a mid-fade skip, plus several settings/queue-restore bugs and hangs on stuck ffmpeg processes"
     ),
     new ChangelogEntry("1.11.0",
       "<b>Mini Mode</b>: press M (or flip the switch in Settings) to shrink the window down to a small always-on-top widget — the disc, track title/artist, a seek bar, and play/pause/skip controls — so you can keep the music going while you work in other apps",
