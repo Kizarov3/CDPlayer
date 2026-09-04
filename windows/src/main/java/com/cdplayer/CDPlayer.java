@@ -302,7 +302,7 @@ public final class CDPlayer extends JFrame {
   private static final File ONBOARDING_FLAG_FILE = new File(APP_DATA_DIR, "onboarded");
   // Bumped by hand alongside CHANGELOG below whenever a build ships — also what's passed to jpackage's
   // --app-version at build time, so the two stay in sync.
-  private static final String APP_VERSION = "1.11.0";
+  private static final String APP_VERSION = "1.12.0";
   private static final File LAST_VERSION_FILE = new File(APP_DATA_DIR, "lastversion.txt");
   private static final File LAST_PATH_FILE = new File(APP_DATA_DIR, "lastpath.txt");
   private static final File SETTINGS_FILE = new File(APP_DATA_DIR, "settings.txt");
@@ -1046,8 +1046,8 @@ public final class CDPlayer extends JFrame {
     // eventually (advance() reseeds a particle's x/y using the CURRENT width/height every time it wraps around),
     // but that's a per-particle, one-at-a-time process spread over several fall cycles, so right after entering
     // fullscreen the snow/etc. visibly stayed confined to the old window's rectangle instead of covering the
-    // screen. invokeLater, not immediate: setFullScreenWindow()'s bounds change isn't guaranteed to have already
-    // propagated through to getWidth()/getHeight() by the time this line runs.
+    // screen. invokeLater, not immediate: this method's own setBounds()/setVisible() calls above aren't guaranteed
+    // to have already propagated through to getWidth()/getHeight() by the time this line runs.
     SwingUtilities.invokeLater(() -> { getRootPane().revalidate(); themeOverlay.reseedForCurrentSize(); getRootPane().repaint(); });
   }
 
@@ -1146,6 +1146,15 @@ public final class CDPlayer extends JFrame {
   // entry matching the CURRENT version, not the whole history, so older entries are kept only as a record (and
   // in case a future "full changelog" view wants them), not because they're ever shown together.
   private static final ChangelogEntry[] CHANGELOG = {
+    new ChangelogEntry("1.12.0",
+      "<b>Visualizer Mode</b>: press V (or the header button) for a fullscreen, distraction-free view of the current theme's audio-reactive visualizer — it also kicks in on its own like a screensaver after a few idle minutes while a track is playing",
+      "<b>Library import</b>: the Search panel's new IMPORT LIBRARY button pulls tracks in from an exported iTunes/Music.app library or a Spotify export (CSV or YourLibrary.json), matched against what you already have locally",
+      "<b>Ambient background</b>: the window now washes with a soft blurred glow of the current cover art instead of a flat gradient — toggle it off in Settings if you prefer the old look",
+      "<b>macOS Control Center</b> now shows this app's Now Playing info — title, artist, album art, elapsed time — with working play/pause/skip from there too",
+      "CD View now switches with a genie-style warp instead of a plain crossfade, and the disc itself is bigger in Normal Mode",
+      "Up/Down arrow keys nudge the volume, U toggles mute, and the window remembers its size and position across launches",
+      "Fixed a crossfade bug that could leave the previous track audibly playing after a mid-fade skip, plus several settings/queue-restore bugs and hangs on stuck ffmpeg processes"
+    ),
     new ChangelogEntry("1.11.0",
       "<b>Mini Mode</b>: press M (or flip the switch in Settings) to shrink the window down to a small always-on-top widget — the disc, track title/artist, a seek bar, and play/pause/skip controls — so you can keep the music going while you work in other apps",
       "Cover art now fills the entire disc face in every view, not just a small circle in the middle",
@@ -1685,7 +1694,7 @@ public final class CDPlayer extends JFrame {
    */
   private void animateThemeColors(Color[] toColors) {
     Color[] fromColors = { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED };
-    if (themeAnim != null && themeAnim.isRunning()) { themeAnim.stop(); disc.setColorAnimationInProgress(false); } // an interrupted-mid-transition timer never reaches its own t>=1 cleanup below, so clear the suppression flag here too
+    if (themeAnim != null && themeAnim.isRunning()) { themeAnim.stop(); disc.setColorTransitionActive(false); } // an interrupted-mid-transition timer never reaches its own t>=1 cleanup below, so clear the suppression flag here too
     if (!animationsEnabled) {
       BG = toColors[0]; CARD = toColors[1]; ACCENT = toColors[2]; ACCENT2 = toColors[3]; TEXT = toColors[4]; MUTED = toColors[5];
       applyThemeColors(); getContentPane().repaint();
@@ -1707,9 +1716,9 @@ public final class CDPlayer extends JFrame {
     // Also holds the disc's own expensive per-frame cost down: DiscView caches its rotating face as a bitmap and
     // normally only rebuilds it when ACCENT/ACCENT2/BG actually change, but during this animation they change on
     // literally every tick — measured at up to ~22ms per rebuild at a CD-View/Retina/fullscreen disc size, which
-    // alone blew multiple times past this timer's whole 8ms tick budget. See DiscView.setColorAnimationInProgress()
+    // alone blew multiple times past this timer's whole 8ms tick budget. See DiscView.setColorTransitionActive()
     // for why holding it on pre-transition colors for these ~150ms is safe to do.
-    disc.setColorAnimationInProgress(true);
+    disc.setColorTransitionActive(true);
     themeAnim = new Timer(8, e -> {
       float t = Math.min(1f, (System.currentTimeMillis() - startTime) / (float) durationMillis);
       BG = lerp(fromColors[0], toColors[0], t); CARD = lerp(fromColors[1], toColors[1], t); ACCENT = lerp(fromColors[2], toColors[2], t);
@@ -1717,7 +1726,7 @@ public final class CDPlayer extends JFrame {
       applyThemeColors();
       getContentPane().repaint();
       if (t >= 1f) {
-        ((Timer) e.getSource()).stop(); disc.setColorAnimationInProgress(false); updateQueueUI();
+        ((Timer) e.getSource()).stop(); disc.setColorTransitionActive(false); updateQueueUI();
         // refreshSettingsIfOpen() doesn't just repaint — it does settingsOverlay.card.removeAll() followed by
         // buildSettingsPanel(), reconstructing every button/slider/label in the dialog from scratch, plus a
         // synchronous validate(). Measured directly at ~10ms per call at a large/fullscreen size — already over
@@ -6524,18 +6533,17 @@ public final class CDPlayer extends JFrame {
     // (measured as the single largest share of this component's own per-frame cost). Rendered once into this
     // cache at the disc's own local (0,0)-(side,side) origin — paintComponent just blits-and-rotates it instead
     // of redrawing — and only rebuilt when size, display scale, the live theme colors it's drawn with, the cover
-    // art, or the "looking up cover art" placeholder state actually changes. During a theme color transition,
-    // ACCENT/ACCENT2/BG genuinely differ tick to tick, which used to force a full rebuild — a supersampled
-    // gradient fill plus several antialiased stroked ovals plus a clipped image draw — on every single one of
-    // those ticks. Measured directly as the largest single contributor to a ~150ms theme transition costing
-    // 20-25ms per tick against an 8ms budget, which made the fade visibly skip straight from frame 1 to frame 3
-    // instead of interpolating smoothly. colorAnimationInProgress (see setColorAnimationInProgress) suppresses
-    // just the color part of that invalidation check while a transition is running — the disc's own gradient
-    // holds its pre-transition colors for that brief window instead of animating through every intermediate
-    // step, barely noticeable on its own against everything else genuinely fading, and rebuilds once for real
-    // the moment the transition ends and colors settle at their final value.
-    private boolean colorAnimationInProgress;
-    void setColorAnimationInProgress(boolean value) { colorAnimationInProgress = value; if (!value) repaint(); } // repaint once more so the final-color rebuild actually happens right away instead of waiting for the next unrelated repaint
+    // art, or the "looking up cover art" placeholder state actually changes. During a theme color transition
+    // ACCENT/ACCENT2/BG genuinely differ tick to tick, which used to mean rebuilding this on every single one of
+    // those ticks too — measured at up to ~22ms per rebuild at a CD-View/Retina/fullscreen disc size (2560x2560
+    // supersampled), i.e. nearly 3x the animation's own 8ms tick budget, turning a "150ms" theme switch into a
+    // multi-hundred-ms stall. colorRebuildSuppressed (see setColorTransitionActive()) keeps this cache on its
+    // pre-transition colors for the animation's duration instead, and CDPlayer forces the one real rebuild once
+    // the transition lands on its final colors — the gradient/grooves/arc this recolors are entirely hidden
+    // behind the cover art anyway whenever a cover is loaded (see renderDiscFace()'s labelSize == side note), so
+    // holding stale colors for ~150ms is imperceptible.
+    private boolean colorRebuildSuppressed;
+    void setColorTransitionActive(boolean active) { colorRebuildSuppressed = active; if (!active) repaint(); }
     private BufferedImage discFaceCache;
     private int discFaceCacheSide = -1; private double discFaceCacheScale = -1;
     private Color discFaceCacheAccent, discFaceCacheAccent2, discFaceCacheBg;
@@ -6716,10 +6724,10 @@ public final class CDPlayer extends JFrame {
 
       AffineTransform old = g.getTransform();
       g.rotate(angle, centerX, centerY);
-      boolean colorChanged = !colorAnimationInProgress
-          && (!java.util.Objects.equals(discFaceCacheAccent, ACCENT) || !java.util.Objects.equals(discFaceCacheAccent2, ACCENT2) || !java.util.Objects.equals(discFaceCacheBg, BG));
+      boolean colorsChanged = !java.util.Objects.equals(discFaceCacheAccent, ACCENT) || !java.util.Objects.equals(discFaceCacheAccent2, ACCENT2) || !java.util.Objects.equals(discFaceCacheBg, BG);
       if (discFaceCache == null || discFaceCacheSide != side || discFaceCacheScale != displayScale
-          || colorChanged || discFaceCacheCoverSource != cover || discFaceCacheLookingUp != lookingUp) {
+          || (colorsChanged && !colorRebuildSuppressed)
+          || discFaceCacheCoverSource != cover || discFaceCacheLookingUp != lookingUp) {
         if (discFaceCache != null) discFaceCache.flush();
         discFaceCache = renderDiscFace(side, displayScale);
         discFaceCacheSide = side; discFaceCacheScale = displayScale;
