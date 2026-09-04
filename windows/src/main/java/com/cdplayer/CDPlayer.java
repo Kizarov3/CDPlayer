@@ -226,18 +226,27 @@ public final class CDPlayer extends JFrame {
   private final double[] beatEnergyHistory = new double[106]; // ~1.7s of history at the 16ms tick rate
   private int beatEnergyHistoryIndex;
   private double beatPulse; // 0..1, spikes to 1 on a detected beat and decays each tick; visualizer levels are boosted by this
-  // 0.15 per tick, rescaled from the original 70ms tick to this clock's current 16ms one (0.15 * 16/70) so the
-  // snap-and-fade pulse still fades over the same ~0.5s of real time instead of 4.4x faster.
-  private static final double BEAT_DECAY_PER_TICK = 0.15 * 16.0 / 70.0;
+  // 0.15 per tick, rescaled from the original 70ms tick to a 16ms rate (0.15 * 16/70), then expressed per-ms so
+  // updateBeatDetection() can rescale it again by whatever ANIMATION_TICK_MS actually is (same pattern as
+  // ROTATION_RAD_PER_MS/TIME_SCALE below) — the snap-and-fade pulse fades over the same ~0.5s of real time
+  // regardless of the display's refresh rate instead of speeding up/slowing down with it.
+  private static final double BEAT_DECAY_PER_TICK_RATE = 0.15 * 16.0 / 70.0 / 16.0;
   private byte[] rawAudio;
   private AudioFormat audioFormat;
   private WaveformSliderUI waveformSliderUI;
-  // 16ms (~60fps), not the original 70ms (~14fps): this timer drives the seek slider, elapsed-time label, and
-  // visualizer during ordinary playback — i.e. the bulk of actual time spent using the app — so 70ms visibly
-  // made the seek bar creep in discrete jumps and the visualizer/beat pulse look stepped rather than fluid.
+  // Paced to ANIMATION_TICK_MS (display refresh rate, capped at 60fps — see that field's own doc comment), not a
+  // separate hardcoded interval: this timer drives the seek slider, elapsed-time label, visualizer, and (via
+  // disc.advanceRotation()) the disc's own spin — i.e. every piece of continuous animation that runs for as long
+  // as a track is playing, the bulk of actual time spent using the app. Originally a plain flat 16ms, independent
+  // of the disc's own separate ANIMATION_TICK_MS-paced Timer; the two intervals differ by a millisecond on an
+  // ordinary 60Hz display (16 vs 17), and two Timers started microseconds apart with different periods drift in
+  // and out of phase every ~272ms (16*17, their periods being coprime) — measured as visible stutter, since each
+  // drifts into firing as two separate EDT dispatches/repaints instead of one coalesced pair. Using the same
+  // constant for both (and driving the disc's rotation from this tick instead of its own Timer — see
+  // DiscView.advanceRotation()) keeps them permanently in phase: one dispatch, one repaint, per animation frame.
   // computeLevels() only samples a small ~90ms audio window each tick (a few thousand cheap RMS multiplies), so
-  // the extra calls at 4x the old rate cost microseconds, not milliseconds — nowhere near the 16ms budget.
-  private final Timer clock = new Timer(16, this::tick);
+  // the extra calls at up to 4x the original 70ms rate cost microseconds, not milliseconds — nowhere near budget.
+  private final Timer clock = new Timer(ANIMATION_TICK_MS, this::tick);
   private static final Pattern ITUNES_COVER = Pattern.compile("\\\"artworkUrl100\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
   private static final Pattern DEEZER_COVER = Pattern.compile("\\\"cover_xl\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
   private static final Pattern SPOTIFY_ACCESS_TOKEN = Pattern.compile("\\\"access_token\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
@@ -4639,6 +4648,11 @@ public final class CDPlayer extends JFrame {
     miniLength.setText(length.getText());
   }
   private void tick(ActionEvent event) {
+    // Advances the disc's own spin regardless of the early-returns below (player==null/adjusting): setSpinning()
+    // (called from setPlaying(), the only place clock.start()/stop() are called too) is what actually gates
+    // whether it visibly moves — see DiscView.advanceRotation()'s own doc comment for why this replaced the
+    // disc's former separate Timer.
+    disc.advanceRotation();
     if (player == null || adjusting) return;
     long duration = player.getMicrosecondLength(); long position = player.getMicrosecondPosition();
     progress.setValue(duration == 0 ? 0 : (int) (position * 1000 / duration)); elapsed.setText(format(position));
@@ -4679,7 +4693,7 @@ public final class CDPlayer extends JFrame {
     boolean isBeat = instantEnergy > 0.015 && instantEnergy > average * 1.4;
     beatEnergyHistory[beatEnergyHistoryIndex] = instantEnergy;
     beatEnergyHistoryIndex = (beatEnergyHistoryIndex + 1) % beatEnergyHistory.length;
-    beatPulse = isBeat ? 1.0 : Math.max(0, beatPulse - BEAT_DECAY_PER_TICK);
+    beatPulse = isBeat ? 1.0 : Math.max(0, beatPulse - BEAT_DECAY_PER_TICK_RATE * ANIMATION_TICK_MS);
   }
   private void setPlaying(boolean playing) {
     disc.setSpinning(playing); play.setGlyph(playing ? Glyph.PAUSE : Glyph.PLAY); play.pulse();
@@ -6401,20 +6415,26 @@ public final class CDPlayer extends JFrame {
   }
 
   private static final class DiscView extends JPanel {
-    // Paced to ANIMATION_TICK_MS (display refresh rate, capped at 60fps — see its own doc comment for why the cap
-    // matters specifically here: the disc spins for as long as a track plays, competing with the real-time audio
-    // pump thread for the whole time). .045 rad was tuned per 16ms tick (2.8125 rad/s); ROTATION_RAD_PER_MS
-    // expresses that as a rate so the per-tick step scales with whatever interval actually runs, keeping
-    // real-world spin speed identical regardless.
+    // Paced by CDPlayer's own clock tick (see its field doc) rather than a separate Timer of its own — a second,
+    // independently-scheduled Timer at the "same" interval still drifts out of phase with clock's (Swing Timers
+    // are scheduled from whenever .start() happened to run, not aligned to each other), which measured as a
+    // beat pattern: two nearly-simultaneous repaints several times a second, then a stretch of unevenly-spaced
+    // ones as the two drift apart, read as visible stutter specifically whenever both were running together
+    // (i.e. exactly "disc spinning + visualizer/seek bar live," the common case while music plays). Driving the
+    // rotation from the same tick that already runs during playback means exactly one EDT dispatch and one
+    // coalesced repaint per animation frame instead of two competing ones. .045 rad was tuned per 16ms tick
+    // (2.8125 rad/s); ROTATION_RAD_PER_MS expresses that as a rate so the per-tick step scales with whatever
+    // interval actually runs, keeping real-world spin speed identical regardless.
     private static final double ROTATION_RAD_PER_MS = .045 / 16.0;
     private double angle; private boolean spinning; private boolean lookingUp; private BufferedImage cover;
-    private final Timer motion = new Timer(ANIMATION_TICK_MS, e -> { angle += ROTATION_RAD_PER_MS * ANIMATION_TICK_MS; repaint(); });
+    /** Called once per CDPlayer.tick() while playing (see that field's doc for why this isn't its own Timer). No-ops while not spinning so a stray call after setSpinning(false) can't sneak in one more frame of rotation. */
+    void advanceRotation() { if (spinning) { angle += ROTATION_RAD_PER_MS * ANIMATION_TICK_MS; repaint(); } }
     private Runnable onCoverChanged; // notifies the AUTO theme (see CDPlayer.onCoverChanged) to re-derive its palette; null everywhere else
     // maximumSize matters here, not just preferredSize: the drawn disc itself is capped at 300px (see side=
     // Math.min(300, ...) in paintComponent below), but GridBagLayout's fill=BOTH + weightx/weighty=1 on this
     // column otherwise stretches the *component's actual bounds* to fill all available space in its cell —
     // measured growing from 231x611 in a windowed layout to 1923x2671 at a 5K fullscreen resolution. Since the
-    // disc spins on a 16ms Timer while playing, every repaint() marks that entire (non-opaque) component's
+    // disc spins on every clock tick while playing (see advanceRotation()), every repaint() marks that entire (non-opaque) component's
     // bounds dirty, forcing the opaque background panel beneath it to redraw across that whole area each tick —
     // over 5 million pixels/frame at 5K vs ~140K windowed, a ~36x increase, regardless of which theme is active.
     // Capping maximumSize keeps the dirty rectangle bounded to roughly what's actually drawn.
@@ -6463,7 +6483,7 @@ public final class CDPlayer extends JFrame {
       revalidate(); repaint();
     }
     void setOnMiniClick(Runnable callback) { this.onMiniClick = callback; }
-    void setSpinning(boolean value) { spinning = value; if (value) motion.start(); else motion.stop(); repaint(); }
+    void setSpinning(boolean value) { spinning = value; repaint(); }
     // flush() releases the native/GPU-accelerated surface Java2D caches behind an image the moment it's drawn
     // (macOS's Metal-backed pipeline keeps this off-heap, so it's invisible to the Java heap and to GC directly —
     // it's only reclaimed once the BufferedImage itself is collected and Java2D's own Disposer gets around to it,
