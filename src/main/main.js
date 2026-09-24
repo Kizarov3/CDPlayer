@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog, protocol, screen, shell, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, protocol, screen, shell, Menu, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -22,9 +22,16 @@ const updates = require('./updates');
 const cue = require('./cue');
 
 const APP_VERSION = app.getVersion();
+const APP_ID = 'com.kizarov3.cdplayer'; // = build.appId in package.json
 const MAIN_MIN = { width: 760, height: 785 };
 const MAIN_DEFAULT = { width: 1120, height: 820 };
 const MINI = { width: 340, height: 152 };
+
+// The player is always dark, so the window's title bar should be too (Windows otherwise follows a light system theme).
+nativeTheme.themeSource = 'dark';
+// Windows names whoever is playing in its media controls by the app's ID (AppUserModelID), which it looks up in the
+// Start menu — so set a stable one here, and keep a Start menu shortcut carrying it (see registerWindowsShortcut).
+if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'cdp', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
@@ -326,10 +333,28 @@ handle('updates:check', () => (smokeDir ? null : updates.checkForUpdate(APP_VERS
 handle('updates:openReleases', () => shell.openExternal(updates.RELEASES_PAGE));
 handle('shell:openGitHub', (user) => { if (/^[A-Za-z0-9-]+$/.test(user)) shell.openExternal(`https://github.com/${user}`); });
 
+// ---- Windows Start menu shortcut ----------------------------------------------------------------------------------
+// Without a Start menu shortcut carrying the app's ID, Windows can't tell whose media session it is and shows
+// "Unknown app" in its media controls. The portable .exe installs nothing, so the app keeps this one shortcut up to
+// date itself — which also makes taskbar pins launch the real .exe, not the temporary copy it runs from.
+function registerWindowsShortcut() {
+  if (process.platform !== 'win32' || !app.isPackaged || smokeDir || process.env.CDPLAYER_HOME) return;
+  const exe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+  const link = path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'CDPlayer.lnk');
+  try {
+    const existing = fs.existsSync(link) ? shell.readShortcutLink(link) : null;
+    if (existing && existing.target === exe && existing.appUserModelId === APP_ID) return;
+    shell.writeShortcutLink(link, existing ? 'replace' : 'create', {
+      target: exe, cwd: path.dirname(exe), appUserModelId: APP_ID, icon: exe, iconIndex: 0, description: 'CDPlayer',
+    });
+  } catch { /* best effort — only the media controls' app name depends on it */ }
+}
+
 // ---- Lifecycle --------------------------------------------------------------------------------------------------
 
 app.whenReady().then(() => {
   protocol.handle('cdp', media.handle);
+  registerWindowsShortcut();
   buildMenu();
   createWindow();
   app.on('activate', () => {

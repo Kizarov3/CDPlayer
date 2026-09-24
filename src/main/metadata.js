@@ -7,6 +7,7 @@ const path = require('path');
 const { nativeImage } = require('electron');
 const cue = require('./cue');
 const { describeFormat } = require('./audio-format');
+const { cleanTrackName, parseFilename } = require('./track-names');
 
 let mmPromise = null;
 const mm = () => (mmPromise ||= import('music-metadata'));
@@ -123,11 +124,15 @@ async function getDetails(filePath, { withCover = true } = {}) {
         cover = coverToDataUrl(front);
       }
     } catch { /* unreadable tags are normal — fall back to the filename, same as the Java version */ }
+    // Untagged: fall back to the filename, read as "Artist - Title" when it's named that way. Either way, website
+    // tags ("(mp3.pm)") and video-site noise ("(Official Video)") come off, so the name reads properly and the
+    // cover and lyrics lookups search for the real song.
+    const fromName = parseFilename(filePath);
     const details = {
       path: filePath,
-      title: title && title.trim() ? title.trim() : fallbackTitle(filePath),
-      artist: artist && artist.trim() ? artist.trim() : null,
-      album: album && album.trim() ? album.trim() : null,
+      title: cleanTrackName(title && title.trim() ? title.trim() : fromName.title) || fallbackTitle(filePath),
+      artist: cleanTrackName(artist && artist.trim() ? artist.trim() : fromName.artist) || null,
+      album: cleanTrackName(album && album.trim() ? album.trim() : null) || null,
       lyrics,
       duration,
       ext: path.extname(filePath).slice(1).toUpperCase(),

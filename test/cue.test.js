@@ -138,3 +138,26 @@ test('audio quality readout', () => {
   assert.strictEqual(describeFormat({ codec: 'Opus', sampleRate: 48000 }, 'OGG'), 'OPUS');
   assert.strictEqual(describeFormat(null, 'AU'), 'AU');
 });
+
+test('website tags and video-site noise come off track names; "Artist - Title" filenames are split', () => {
+  const { cleanTrackName, parseFilename, searchVariants } = require('../src/main/track-names');
+  assert.strictEqual(cleanTrackName('Got The Life (mp3.pm)'), 'Got The Life');
+  assert.strictEqual(cleanTrackName('Numb [muzmo.ru]'), 'Numb');
+  assert.strictEqual(cleanTrackName('Song www.zaycev.net'), 'Song');
+  assert.strictEqual(cleanTrackName('Korn - Got The Life - mp3.pm'), 'Korn - Got The Life');
+  assert.strictEqual(cleanTrackName('Freak On a Leash (Official Music Video) [HD]'), 'Freak On a Leash');
+  assert.strictEqual(cleanTrackName('Blind (Lyrics) 320 kbps'), 'Blind');
+  assert.strictEqual(cleanTrackName('Still D.R.E. (feat. Snoop Dogg)'), 'Still D.R.E. (feat. Snoop Dogg)');
+  assert.strictEqual(cleanTrackName('Money (Pt.2)'), 'Money (Pt.2)');
+  assert.strictEqual(cleanTrackName('Meet Me in St.Louis'), 'Meet Me in St.Louis');
+  assert.strictEqual(cleanTrackName('Video Killed the Radio Star'), 'Video Killed the Radio Star');
+  assert.strictEqual(cleanTrackName('(mp3.pm)'), '(mp3.pm)'); // never cleaned down to nothing
+  assert.deepStrictEqual(parseFilename('/m/Korn - Got The Life (mp3.pm).mp3'), { artist: 'Korn', title: 'Got The Life' });
+  assert.deepStrictEqual(parseFilename('/m/Korn Got The Life (mp3.pm).mp3'), { artist: null, title: 'Korn Got The Life' });
+  assert.deepStrictEqual(parseFilename('/m/01 - Korn - Freak On a Leash.mp3'), { artist: 'Korn', title: 'Freak On a Leash' });
+  assert.deepStrictEqual(parseFilename('/m/03 Blind.flac'), { artist: null, title: 'Blind' });
+  assert.deepStrictEqual(parseFilename('/m/Twenty_One_Pilots_-_Heathens.mp3'), { artist: 'Twenty One Pilots', title: 'Heathens' });
+  assert.deepStrictEqual(parseFilename('/m/korn-got-the-life-mp3.pm.mp3'), { artist: null, title: 'korn got the life' });
+  assert.deepStrictEqual(searchVariants('Korn Got The Life (Remastered 2011) (mp3.pm)'), ['Korn Got The Life (Remastered 2011)', 'Korn Got The Life']);
+  assert.deepStrictEqual(searchVariants('Eminem Stan feat. Dido'), ['Eminem Stan feat. Dido', 'Eminem Stan']);
+});

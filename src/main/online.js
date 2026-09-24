@@ -7,6 +7,7 @@ const http = require('http');
 const crypto = require('crypto');
 const { shell, nativeImage } = require('electron');
 const store = require('./store');
+const { searchVariants } = require('./track-names');
 
 const USER_AGENT = 'CDPlayer/2.0 (open cover lookup)';
 const TIMEOUT_MS = 8000;
@@ -63,13 +64,16 @@ async function searchSpotifyCover(query) {
   return image ? fetchImageDataUrl(image.url) : null;
 }
 
+// Each source with the full cleaned name first; if none has it, all of them again with the plainer variant.
 async function findCover(query) {
   let networkError = false;
-  for (const [label, search] of [['ITUNES', searchItunesCover], ['DEEZER', searchDeezerCover], ['SPOTIFY', searchSpotifyCover]]) {
-    try {
-      const cover = await search(query);
-      if (cover) return { cover, source: label };
-    } catch { networkError = true; }
+  for (const q of searchVariants(query)) {
+    for (const [label, search] of [['ITUNES', searchItunesCover], ['DEEZER', searchDeezerCover], ['SPOTIFY', searchSpotifyCover]]) {
+      try {
+        const cover = await search(q);
+        if (cover) return { cover, source: label };
+      } catch { networkError = true; }
+    }
   }
   return { cover: null, source: null, networkError };
 }
