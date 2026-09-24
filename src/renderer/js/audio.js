@@ -5,6 +5,9 @@
 //   deck gain (crossfade) ─┴→ mono downmix → 10-band EQ → analyser (visualizer/beats) → volume → speakers
 //
 // That graph replaces the Java app's hand-written PCM pump: gain, mono, EQ and crossfade are all native nodes.
+//
+// A deck can also play just a stretch of its file — a cue sheet track inside an album-length rip. position,
+// duration and seek are then relative to that stretch, and reaching its end counts as the track ending.
 
 export const EQ_FREQUENCIES = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 
@@ -51,7 +54,7 @@ export class AudioEngine {
     const gain = this.ctx.createGain();
     source.connect(gain);
     gain.connect(this.input);
-    const deck = { el, source, gain, url };
+    const deck = { el, source, gain, url, start: 0, end: null, endFired: false };
     el.addEventListener('ended', () => { if (this.onEnded) this.onEnded(deck); });
     return deck;
   }
@@ -67,9 +70,10 @@ export class AudioEngine {
   /**
    * Loads a track. With crossfadeSeconds > 0 and something currently playing, the old deck keeps playing and
    * fades out along an equal-power (cos/sin) curve while the new one fades in; otherwise the old deck stops now.
-   * Resolves once the new track's duration is known; rejects if it can't be decoded.
+   * Resolves once the new track's duration is known; rejects if it can't be decoded. `segment` ({ start, end } in
+   * seconds, end null for "to the end of the file") plays only that part of the file.
    */
-  async load(url, { autoPlay = true, crossfadeSeconds = 0 } = {}) {
+  async load(url, { autoPlay = true, crossfadeSeconds = 0, segment = null } = {}) {
     this.cancelCrossfade();
     const outgoing = this.deck;
     const doCrossfade = crossfadeSeconds > 0 && outgoing && !outgoing.el.paused;
@@ -88,6 +92,7 @@ export class AudioEngine {
       throw e;
     });
     if (this.deck !== deck) return false; // superseded by a newer load while waiting
+    if (segment) { this.setSegment(segment); deck.el.currentTime = segment.start; }
     if (doCrossfade) this.startCrossfade(outgoing, deck, crossfadeSeconds);
     else deck.gain.gain.value = 1;
     if (autoPlay) await this.play();
@@ -124,6 +129,34 @@ export class AudioEngine {
   }
   get crossfading() { return !!this.fadingOut; }
 
+  /** Switches the current deck to another stretch of the same file, without touching playback. */
+  setSegment({ start, end }) {
+    if (!this.deck) return;
+    Object.assign(this.deck, { start, end: end === null || end === undefined ? null : end, endFired: false });
+  }
+  /** True when the track now playing ends exactly where `start` of the same file begins: the album's next cue track. */
+  runsInto(url, start) {
+    const d = this.deck;
+    return !!d && !this.fadingOut && d.url === url && d.end !== null && Math.abs(d.end - start) < 0.01;
+  }
+  /** …and it's reached that point while playing, so the player can just carry on instead of reloading: gapless. */
+  continuesInto(url, start) {
+    return this.runsInto(url, start) && !this.deck.el.paused && this.deck.el.currentTime >= this.deck.end - 0.25;
+  }
+  /**
+   * The end of a stretch isn't the end of the file, so no 'ended' event comes: this is called on the playback
+   * timer and reports it — once, timed to the moment rather than the next tick when it's that close.
+   */
+  watchSegmentEnd() {
+    const deck = this.deck;
+    if (!deck || deck.end === null || deck.endFired || deck.el.paused) return;
+    const left = deck.end - deck.el.currentTime;
+    if (left > 0.06) return;
+    deck.endFired = true;
+    const fire = () => { if (this.deck === deck && this.onEnded) this.onEnded(deck); };
+    if (left > 0) setTimeout(fire, left * 1000); else fire();
+  }
+
   async play() {
     if (!this.deck) return;
     if (this.ctx.state !== 'running') await this.ctx.resume();
@@ -132,9 +165,24 @@ export class AudioEngine {
   pause() { if (this.deck) this.deck.el.pause(); }
   stop() { this.cancelCrossfade(); this.disposeDeck(this.deck); this.deck = null; }
   get playing() { return !!this.deck && !this.deck.el.paused && !this.deck.el.ended; }
-  get position() { return this.deck ? this.deck.el.currentTime || 0 : 0; }
-  get duration() { const d = this.deck ? this.deck.el.duration : 0; return Number.isFinite(d) ? d : 0; }
-  seek(seconds) { if (this.deck) this.deck.el.currentTime = Math.max(0, Math.min(this.duration || 0, seconds)); }
+  get position() {
+    if (!this.deck) return 0;
+    const p = (this.deck.el.currentTime || 0) - this.deck.start;
+    return Math.max(0, this.deck.end === null ? p : Math.min(this.duration, p));
+  }
+  get duration() {
+    if (!this.deck) return 0;
+    const file = Number.isFinite(this.deck.el.duration) ? this.deck.el.duration : 0;
+    const end = this.deck.end === null ? file : file ? Math.min(file, this.deck.end) : this.deck.end;
+    return Math.max(0, end - this.deck.start);
+  }
+  seek(seconds) {
+    const d = this.deck;
+    if (!d) return;
+    const target = Math.max(0, Math.min(this.duration || 0, seconds));
+    d.el.currentTime = d.start + target;
+    if (d.end === null || d.start + target < d.end - 0.06) d.endFired = false;
+  }
 
   /**
    * Visualizer levels: the last ~90ms of output split into `bars` consecutive slices, each slice's RMS scaled by

@@ -18,6 +18,8 @@ const metadata = require('./metadata');
 const online = require('./online');
 const library = require('./library');
 const media = require('./media-protocol');
+const updates = require('./updates');
+const cue = require('./cue');
 
 const APP_VERSION = app.getVersion();
 const MAIN_MIN = { width: 760, height: 785 };
@@ -32,7 +34,7 @@ protocol.registerSchemesAsPrivileged([
 // single window — a second launch hands its files to the running instance instead of opening another player.
 const pendingOpenFiles = [];
 function audioArgs(argv) {
-  return argv.slice(1).filter((a) => !a.startsWith('-') && library.isSupportedAudio(a) && store.isFile(a));
+  return argv.slice(1).filter((a) => !a.startsWith('-') && (library.isSupportedAudio(a) || cue.isCueFile(a)) && store.isFile(a));
 }
 if (!smokeDir && !app.requestSingleInstanceLock()) {
   app.quit();
@@ -172,7 +174,7 @@ handle('state:writeLastVersion', (v) => store.writeLastVersion(v));
 // Synchronous on purpose: called from the renderer's beforeunload, where async IPC may never be delivered.
 ipcMain.on('state:saveQueueSync', (e, q) => { e.returnValue = store.writeQueue(q); });
 
-handle('fs:exists', (p) => store.isFile(p));
+handle('fs:exists', (p) => cue.entryExists(p));
 handle('meta:details', (p, opts) => metadata.getDetails(p, opts));
 handle('online:cover', (query) => online.findCover(query));
 handle('online:lyrics', (details) => online.findLyrics(details));
@@ -186,14 +188,14 @@ handle('library:collect', async (items) => (await library.collectAudio(items)).s
 handle('library:scan', async () => {
   const folder = store.readLastPath();
   if (!folder || !store.isDir(folder)) return { folder: null, files: [] };
-  return { folder, name: path.basename(folder), files: await library.scanLibrary(folder) };
+  return { folder, name: path.basename(folder), ...(await library.scanLibrary(folder)) };
 });
 
 function dialogDefaultPath() {
   const last = store.readLastPath();
   return last && store.isDir(last) ? last : app.getPath('music');
 }
-const AUDIO_FILTER = { name: 'Audio files (MP3, M4A, FLAC, WAV, AIFF, AU, OGG, Opus)', extensions: [...library.AUDIO_EXTENSIONS] };
+const AUDIO_FILTER = { name: 'Audio files (MP3, M4A, FLAC, WAV, AIFF, AU, OGG, Opus) and CUE sheets', extensions: [...library.AUDIO_EXTENSIONS, 'cue'] };
 
 handle('dialog:openTracks', async () => {
   // macOS can pick files and folders in one dialog; Windows/Linux dialogs are one or the other, so pick files there
@@ -329,6 +331,8 @@ handle('win:capture', async () => {
   const scaled = img.getSize().width > w ? img.resize({ width: w, quality: 'good' }) : img;
   return `data:image/jpeg;base64,${scaled.toJPEG(85).toString('base64')}`;
 });
+handle('updates:check', () => (smokeDir ? null : updates.checkForUpdate(APP_VERSION)));
+handle('updates:openReleases', () => shell.openExternal(updates.RELEASES_PAGE));
 handle('shell:openGitHub', (user) => { if (/^[A-Za-z0-9-]+$/.test(user)) shell.openExternal(`https://github.com/${user}`); });
 
 // ---- Lifecycle --------------------------------------------------------------------------------------------------

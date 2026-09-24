@@ -35,6 +35,8 @@ contextBridge.exposeInMainWorld('cdp', {
   isFullscreen: invoke('win:isFullscreen'),
   capture: invoke('win:capture'),
   openGitHub: invoke('shell:openGitHub'),
+  checkForUpdate: invoke('updates:check'),
+  openReleasesPage: invoke('updates:openReleases'),
 
   pathForFile: (file) => webUtils.getPathForFile(file),
   mediaUrl: (p) => `cdp://app/media?p=${encodeURIComponent(p)}`,

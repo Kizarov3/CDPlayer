@@ -5,6 +5,8 @@
  */
 const path = require('path');
 const { nativeImage } = require('electron');
+const cue = require('./cue');
+const { describeFormat } = require('./audio-format');
 
 let mmPromise = null;
 const mm = () => (mmPromise ||= import('music-metadata'));
@@ -76,7 +78,29 @@ async function parse(filePath, { covers }) {
   return meta;
 }
 
+// A cue sheet track: its own title/performer from the sheet, and the cover, format and length of the album file it's
+// a stretch of. `cue` tells the player which file to play and from/to where (null: the track couldn't be found).
+async function getCueTrackDetails(ref, withCover) {
+  const track = await cue.resolveRef(ref);
+  const { cuePath, number } = cue.parseRef(ref);
+  const fallback = `${displayName(cuePath)} · Track ${number}`;
+  if (!track) return { path: ref, title: fallback, artist: null, album: null, lyrics: null, duration: 0, ext: 'CUE', quality: 'CUE', cue: null, cover: withCover ? null : undefined };
+  const file = await getDetails(track.file, { withCover });
+  const end = track.end !== null ? track.end : file.duration;
+  return {
+    ...file,
+    path: ref,
+    title: track.title || `Track ${number}`,
+    artist: track.performer || file.artist,
+    album: track.album || file.album,
+    lyrics: null, // embedded lyrics belong to the whole album file, not this track
+    duration: Math.max(0, end - track.start),
+    cue: { file: track.file, start: track.start, end: track.end },
+  };
+}
+
 async function getDetails(filePath, { withCover = true } = {}) {
+  if (cue.parseRef(filePath)) return getCueTrackDetails(filePath, withCover);
   const cached = detailsCache.get(filePath);
   if (cached && (!withCover || coverCache.get(filePath) !== undefined)) {
     return { ...cached, cover: withCover ? coverCache.get(filePath) : undefined };
@@ -84,7 +108,7 @@ async function getDetails(filePath, { withCover = true } = {}) {
   const key = `${filePath}\0${withCover}`;
   if (inflight.has(key)) return inflight.get(key);
   const job = (async () => {
-    let title = null, artist = null, album = null, lyrics = null, duration = 0, cover = null;
+    let title = null, artist = null, album = null, lyrics = null, duration = 0, cover = null, format = null;
     try {
       const meta = await parse(filePath, { covers: withCover });
       const c = meta.common;
@@ -93,6 +117,7 @@ async function getDetails(filePath, { withCover = true } = {}) {
       album = c.album || null;
       lyrics = extractLyrics(c);
       duration = meta.format.duration || 0;
+      format = meta.format;
       if (withCover && c.picture && c.picture.length) {
         const front = c.picture.find((p) => /front/i.test(p.type || '')) || c.picture[0];
         cover = coverToDataUrl(front);
@@ -106,6 +131,7 @@ async function getDetails(filePath, { withCover = true } = {}) {
       lyrics,
       duration,
       ext: path.extname(filePath).slice(1).toUpperCase(),
+      quality: describeFormat(format, path.extname(filePath).slice(1).toUpperCase()),
     };
     detailsCache.set(filePath, details);
     if (withCover) coverCache.set(filePath, cover);

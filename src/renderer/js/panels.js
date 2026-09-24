@@ -264,9 +264,11 @@ function buildHistory(app) {
 
 // ---- Search ------------------------------------------------------------------------------------------------------
 
-const search = { index: [], folder: null, scanning: false, generation: 0, lastSpotifyUrl: null, field: null, results: null, status: null };
+const search = { index: [], labels: {}, folder: null, scanning: false, generation: 0, lastSpotifyUrl: null, field: null, results: null, status: null };
 const SEARCH_LIMIT = 100;
 const basename = (p) => p.split(/[\\/]/).pop();
+// What a search matches and shows: the filename, or for a cue sheet track "<album> · 03 <title>".
+const searchName = (p) => search.labels[p] || basename(p);
 function significantWords(text) { return new Set(String(text).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3)); }
 function wordOverlap(query, result) {
   const q = significantWords(query);
@@ -279,7 +281,7 @@ function findLocalMatch(title, artist) {
   const query = `${title}${artist ? ` ${artist}` : ''}`;
   let best = null, bestScore = 0;
   for (const p of search.index) {
-    const score = wordOverlap(query, basename(p).replace(/\.[^.]+$/, ''));
+    const score = wordOverlap(query, search.labels[p] || basename(p).replace(/\.[^.]+$/, ''));
     if (score > bestScore) { bestScore = score; best = p; }
   }
   return bestScore >= 0.5 ? best : null;
@@ -287,10 +289,10 @@ function findLocalMatch(title, artist) {
 
 async function startLibraryScan(app) {
   const generation = ++search.generation;
-  search.index = []; search.scanning = true;
+  search.index = []; search.labels = {}; search.scanning = true;
   const result = await app.cdp.scanLibrary().catch(() => ({ folder: null, files: [] }));
   if (generation !== search.generation) return; // superseded by a newer scan
-  search.index = result.files; search.folder = result.name || null; search.scanning = false;
+  search.index = result.files; search.labels = result.labels || {}; search.folder = result.name || null; search.scanning = false;
   refreshSearchResults(app);
 }
 
@@ -330,12 +332,12 @@ function refreshSearchResults(app) {
   }
   const matches = [];
   for (const p of search.index) {
-    if (!query || basename(p).toLowerCase().includes(query)) { matches.push(p); if (matches.length >= SEARCH_LIMIT) break; }
+    if (!query || searchName(p).toLowerCase().includes(query)) { matches.push(p); if (matches.length >= SEARCH_LIMIT) break; }
   }
   setSearchStatus(search.scanning ? 'SCANNING YOUR MUSIC FOLDER…'
     : `${matches.length}${matches.length >= SEARCH_LIMIT ? '+' : ''} MATCH${matches.length === 1 ? '' : 'ES'} IN ${search.folder}`);
   search.results.replaceChildren(...(matches.length
-    ? matches.map((p) => trackRow(app, p, basename(p), async () => {
+    ? matches.map((p) => trackRow(app, p, searchName(p), async () => {
       if (!(await app.cdp.exists(p))) { app.setStatus('FILE NO LONGER FOUND'); startLibraryScan(app); return; }
       app.appendAndPlay(p); closePanel('search');
     }))
@@ -425,6 +427,12 @@ export function showOnboarding(app) {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.2.0', changes: [
+    '<b>CUE sheet support</b>: an album ripped to one big file plus a .cue now shows up as its separate tracks, with their own titles &mdash; and plays through them gaplessly, like the CD',
+    'Cleared the queue by accident? The button turns into <b>UNDO CLEAR</b> for a few seconds (or press &#8984;Z / Ctrl+Z)',
+    'The audio quality now shows under the title &mdash; FLAC &middot; 24-BIT &middot; 96 KHZ, MP3 &middot; 320 KBPS and so on',
+    'When a newer CDPlayer is released, a small button in the top-left corner says so and opens the download page',
+  ] },
   { version: '2.1.0', changes: [
     '<b>New mini player</b>, styled after Apple Music&rsquo;s: a compact frosted window with the spinning disc, title and artist, a full-width seek bar, and shuffle / back / play / forward / repeat. Press M (or use Settings) to switch; M or Esc brings the full player back, and it remembers where you put it',
     'Keyboard shortcuts (J, K, L and the rest) now work whichever keyboard layout is active &mdash; including Russian and other non-Latin layouts',

@@ -17,6 +17,9 @@ const STATUS_DOT = '●  ';
 const IDLE_SECONDS_UNTIL_VISUALIZER = 180;
 const CD_VIEW_CURSOR_IDLE_SECONDS = 5;
 const HISTORY_LIMIT = 50;
+const UNDO_CLEAR_SECONDS = 8;
+// The player can stay open for days; the main process only actually asks GitHub once a day.
+const UPDATE_RECHECK_MS = 6 * 60 * 60 * 1000;
 
 export const BUILTIN_EQ_PRESETS = [
   { name: 'Flat', gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
@@ -50,8 +53,14 @@ const detailsCache = new Map(); // path -> details without cover (queue labels, 
 // ---- Status / labels ---------------------------------------------------------------------------------------
 
 function setStatus(text) { $('status').textContent = STATUS_DOT + text; }
-function displayName(p) { return p.split(/[\\/]/).pop().replace(/\.[^.]+$/, '').replace(/[_-]/g, ' '); }
-function extension(p) { const m = /\.([^.\\/]+)$/.exec(p); return m ? m[1].toUpperCase() : ''; }
+// A cue sheet track is queued as "<path to .cue>#<track number>" (see src/main/cue.js).
+const cueRef = (p) => /^(.*\.cue)#(\d+)$/i.exec(p);
+function displayName(p) {
+  const ref = cueRef(p);
+  const name = (ref ? ref[1] : p).split(/[\\/]/).pop().replace(/\.[^.]+$/, '').replace(/[_-]/g, ' ');
+  return ref ? `${name} · Track ${ref[2]}` : name;
+}
+function extension(p) { const m = /\.([^.\\/#]+)(#\d+)?$/.exec(p); return m ? m[1].toUpperCase() : ''; }
 function queueDisplay(p) {
   const d = detailsCache.get(p);
   return d && d.artist ? `${d.artist} · ${d.title}` : displayName(p);
@@ -133,7 +142,12 @@ function scheduleQueueRender() {
 const drag = { index: -1, lastY: 0, accumulated: 0, moved: false };
 function renderQueue() {
   const list = $('queue-list');
-  $('clear-queue-button').disabled = !state.queue.length;
+  if (undoClear && state.queue.length) { clearTimeout(undoClear.timer); undoClear = null; } // new songs since: keep them
+  const clearButton = $('clear-queue-button');
+  clearButton.textContent = undoClear ? 'UNDO CLEAR' : 'CLEAR QUEUE';
+  clearButton.title = undoClear ? 'Bring the cleared queue back (⌘Z / Ctrl+Z)' : '';
+  clearButton.classList.toggle('on', !!undoClear);
+  clearButton.disabled = !state.queue.length && !undoClear;
   if (!state.queue.length || state.index < 0) {
     $('queue-info').textContent = 'QUEUE EMPTY';
     $('queue-next').textContent = 'DROP SONGS OR A FOLDER TO BUILD A QUEUE';
@@ -211,11 +225,28 @@ function removeFromQueue(i) {
   else if (i < state.index) state.index--;
   renderQueue(); saveQueueSoon();
 }
+// CLEAR QUEUE can be taken back for a few seconds: the button turns into UNDO CLEAR (and ⌘Z / Ctrl+Z works), and
+// the queue comes back with the same track at the same spot, playing if it was.
+let undoClear = null;
 function clearQueue() {
   if (!state.queue.length) return;
+  if (undoClear) clearTimeout(undoClear.timer);
+  undoClear = {
+    queue: state.queue, index: state.index, position: engine.position, playing: engine.playing,
+    timer: setTimeout(() => { undoClear = null; renderQueue(); }, UNDO_CLEAR_SECONDS * 1000),
+  };
   state.queue = [];
   resetToIdle('QUEUE CLEARED');
   renderQueue(); saveQueueSoon();
+}
+function undoClearQueue() {
+  if (!undoClear || state.queue.length) return;
+  const u = undoClear;
+  clearTimeout(u.timer); undoClear = null;
+  state.queue = u.queue; state.index = u.index;
+  renderQueue(); saveQueueSoon();
+  setStatus('QUEUE RESTORED');
+  if (state.index >= 0) load(state.queue[state.index], { autoPlay: u.playing, startAt: u.position });
 }
 function resetToIdle(message) {
   state.index = -1; state.loadToken++;
@@ -243,16 +274,29 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   state.loadedPath = path;
   progress.setWaveform(null);
   const detailsPromise = cdp.details(path, { withCover: true }).catch(() => null);
-  try {
-    const ok = await engine.load(cdp.mediaUrl(path), { autoPlay: false, crossfadeSeconds: fade });
-    if (!ok || token !== state.loadToken) return;
-  } catch {
-    if (token !== state.loadToken) return;
-    setPlaying(false);
-    setStatus((await cdp.exists(path)) ? "COULDN'T PLAY THAT FILE" : 'FILE NO LONGER FOUND');
+  // A cue sheet track is a stretch of an album-length file, so which file and where it starts must be known first.
+  const cue = cueRef(path) ? ((await detailsPromise) || {}).cue : null;
+  if (token !== state.loadToken) return;
+  if (cueRef(path) && !cue) {
+    engine.stop(); setPlaying(false);
+    setStatus((await cdp.exists(path)) ? 'TRACK NOT FOUND IN CUE SHEET' : 'FILE NO LONGER FOUND');
     return;
   }
-  if (startAt > 0) engine.seek(Math.min(startAt, engine.duration));
+  const url = cdp.mediaUrl(cue ? cue.file : path);
+  if (cue && !fade && startAt === 0 && engine.continuesInto(url, cue.start)) {
+    engine.setSegment(cue); // the previous track runs straight into this one: keep playing, no reload, no gap
+  } else {
+    try {
+      const ok = await engine.load(url, { autoPlay: false, crossfadeSeconds: fade, segment: cue });
+      if (!ok || token !== state.loadToken) return;
+    } catch {
+      if (token !== state.loadToken) return;
+      setPlaying(false);
+      setStatus((await cdp.exists(path)) ? "COULDN'T PLAY THAT FILE" : 'FILE NO LONGER FOUND');
+      return;
+    }
+    if (startAt > 0) engine.seek(Math.min(startAt, engine.duration));
+  }
   if (autoPlay) { recordHistory(path); await engine.play(); }
   if (token !== state.loadToken) return;
   setPlaying(autoPlay);
@@ -268,7 +312,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   detailsCache.set(path, { ...details, cover: undefined, duration: details.duration || engine.duration });
   setTrackTitle(details.title, details.artist);
   fadeInNowPlaying();
-  const ext = details.ext || extension(path);
+  const ext = details.quality || details.ext || extension(path);
   const canLookUp = !details.cover && !!details.title;
   await setCover(details.cover);
   disc.lookingUp = canLookUp;
@@ -280,8 +324,9 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   if (!state.lyrics && details.title) lookUpLyrics(details, token);
   panels.refreshLyricsIfOpen(app);
   renderQueue();
-  // Waveform last — it decodes the whole file, so it shouldn't hold up anything the user sees first.
-  if (engine.duration && engine.duration < 30 * 60) {
+  // Waveform last — it decodes the whole file, so it shouldn't hold up anything the user sees first. (Not for a cue
+  // track: that would mean decoding the entire album file for one song's outline.)
+  if (!cue && engine.duration && engine.duration < 30 * 60) {
     engine.computeWaveform(cdp.mediaUrl(path)).then((w) => { if (token === state.loadToken) progress.setWaveform(w); }).catch(() => {});
   }
 }
@@ -291,7 +336,7 @@ async function lookUpCover(details, path, token) {
   const result = await cdp.findCover(query).catch(() => ({ cover: null, networkError: true }));
   if (token !== state.loadToken || state.loadedPath !== path) return;
   disc.lookingUp = false;
-  const ext = details.ext || extension(path);
+  const ext = details.quality || details.ext || extension(path);
   if (result.cover) {
     await setCover(result.cover);
     $('track-source').textContent = `${result.source} COVER ART · ${ext}`;
@@ -360,9 +405,21 @@ function previousTrack() {
   if (state.index > 0) { state.index--; load(state.queue[state.index]); }
   else if (engine.deck) seekTo(0);
 }
+// The queue entry `p` picks up exactly where the playing cue sheet track ends, in the same file (atBoundary: and
+// playback has got there).
+function continuesCurrent(p, { atBoundary = true } = {}) {
+  const d = detailsCache.get(p);
+  if (!d || !d.cue) return false;
+  const url = cdp.mediaUrl(d.cue.file);
+  return atBoundary ? engine.continuesInto(url, d.cue.start) : engine.runsInto(url, d.cue.start);
+}
 function trackFinished(deck) {
   if (deck !== engine.deck) return;
   if (state.repeat === 'ONE') { engine.seek(0); engine.play(); setPlaying(true); return; }
+  const next = upcomingIndex();
+  // A cue sheet track ends mid-file: unless the next track carries straight on from here, stop the file right now
+  // rather than let the following song start playing underneath.
+  if (next < 0 || !continuesCurrent(state.queue[next])) engine.pause();
   if (nextTrack()) return;
   setPlaying(false);
 }
@@ -688,12 +745,13 @@ function buildStaticUi() {
   $('save-playlist-button').addEventListener('click', savePlaylist);
   $('load-playlist-button').addEventListener('click', loadPlaylist);
   $('search-button').addEventListener('click', () => panels.showSearch(app));
-  $('clear-queue-button').addEventListener('click', clearQueue);
+  $('clear-queue-button').addEventListener('click', () => (undoClear ? undoClearQueue() : clearQueue()));
   $('lyrics-button').addEventListener('click', () => panels.showLyrics(app));
   $('history-button').addEventListener('click', () => panels.showHistory(app));
   $('settings-button').addEventListener('click', () => panels.showSettings(app));
   $('cd-view-button').addEventListener('click', toggleCdView);
   $('visualizer-button').addEventListener('click', toggleVisualizerMode);
+  $('update-button').addEventListener('click', () => cdp.openReleasesPage());
   $('sleep-indicator').addEventListener('click', () => { armSleepTimer(0); panels.refreshSettingsIfOpen(app); });
   $('vis-mode').addEventListener('mousedown', () => { if (state.visualizerMode) toggleVisualizerMode(); });
   disc.onEjectPeak = () => nextTrack();
@@ -728,6 +786,7 @@ function isTyping(e) { const t = e.target; return t && (t.tagName === 'INPUT' ||
 function onKeyDown(e) {
   state.lastActivity = Date.now();
   if (e.key === 'Escape') { e.preventDefault(); escape(); return; }
+  if (undoClear && (e.metaKey || e.ctrlKey) && e.code === 'KeyZ' && !e.shiftKey && !e.altKey && !isTyping(e)) { e.preventDefault(); undoClearQueue(); return; }
   if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return;
   const key = shortcutKey(e);
   if (key === 'm') { e.preventDefault(); setMiniMode(!state.miniMode); return; }
@@ -773,12 +832,17 @@ function updateProgressUi(force = false) {
 let sessionTick = 0, miniLevelsAt = 0;
 function playbackTick() {
   if (!engine.deck || !engine.playing) return;
-  // Crossfade into the next track once we're within the crossfade window of the end.
+  engine.watchSegmentEnd();
+  // Crossfade into the next track once we're within the crossfade window of the end — except between cue sheet
+  // tracks that run into each other in the same file, which play on through, as on the album.
   const dur = engine.duration, pos = engine.position;
   if (!state.crossfadeStarted && state.crossfade > 0 && dur > 0 && dur - pos <= state.crossfade) {
     state.crossfadeStarted = true;
     if (state.repeat === 'ONE' && state.loadedPath) load(state.loadedPath, { allowCrossfade: true });
-    else { const next = upcomingIndex(); if (next >= 0) { state.index = next; load(state.queue[next], { allowCrossfade: true }); } }
+    else {
+      const next = upcomingIndex();
+      if (next >= 0 && !continuesCurrent(state.queue[next], { atBoundary: false })) { state.index = next; load(state.queue[next], { allowCrossfade: true }); }
+    }
   }
   const now = performance.now();
   if (now - sessionTick > 1000) { sessionTick = now; updateMediaSessionPosition(); }
@@ -834,6 +898,14 @@ export const app = {
 
 // ---- Startup ---------------------------------------------------------------------------------------------------
 
+// A newer release on GitHub shows a pill in the header; clicking it opens the download page. Nothing is installed.
+async function checkForUpdate() {
+  const update = await cdp.checkForUpdate().catch(() => null);
+  const button = $('update-button');
+  button.hidden = !update;
+  if (update) button.textContent = `${update.version} AVAILABLE`;
+}
+
 async function start() {
   buildStaticUi();
   setupMediaSession();
@@ -871,6 +943,8 @@ async function start() {
   renderQueue();
   requestAnimationFrame(frame);
   setInterval(playbackTick, 40);
+  checkForUpdate();
+  setInterval(checkForUpdate, UPDATE_RECHECK_MS);
   if (s.miniMode) setMiniMode(true);
 
   if (saved.queue) {

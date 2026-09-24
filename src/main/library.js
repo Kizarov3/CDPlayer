@@ -4,14 +4,20 @@ const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const { fileURLToPath } = require('url');
+const cue = require('./cue');
 
 const AUDIO_EXTENSIONS = new Set(['wav', 'wave', 'aif', 'aiff', 'aifc', 'au', 'snd', 'flac', 'm4a', 'mp3', 'aac', 'ogg', 'oga', 'opus']);
 const isSupportedAudio = (p) => AUDIO_EXTENSIONS.has(path.extname(p).slice(1).toLowerCase());
 const byName = (a, b) => path.basename(a).localeCompare(path.basename(b), undefined, { sensitivity: 'base', numeric: true });
 
-/** Recursively collects supported audio under each dropped/chosen item (files or folders). */
-async function collectAudio(items) {
+/**
+ * Recursively collects supported audio under each dropped/chosen item (files or folders). A cue sheet becomes one
+ * entry per track ("album.cue#3") in place of the album-length file it splits up. `labels`, if given, is filled with
+ * a searchable name for each cue track, since its path alone doesn't say which song it is.
+ */
+async function collectAudio(items, labels = null) {
   const out = [];
+  const cueSheets = [];
   const seenDirs = new Set();
   async function walk(p) {
     let st;
@@ -26,17 +32,30 @@ async function collectAudio(items) {
       for (const name of entries) await walk(path.join(p, name));
     } else if (st.isFile() && isSupportedAudio(p)) {
       out.push(p);
+    } else if (st.isFile() && cue.isCueFile(p)) {
+      cueSheets.push(p);
     }
   }
   for (const item of items) await walk(item);
-  return out;
+  const tracks = [];
+  const covered = new Set();
+  for (const sheet of new Set(cueSheets)) {
+    const found = (await cue.readCueSheet(sheet)) || [];
+    for (const t of found) {
+      tracks.push(t.ref);
+      covered.add(t.file);
+      if (labels) labels[t.ref] = `${path.basename(sheet).replace(/\.cue$/i, '')} · ${String(t.number).padStart(2, '0')} ${t.title || ''}`.trim();
+    }
+  }
+  return out.filter((p) => !covered.has(p)).concat(tracks);
 }
 
-/** Search-panel index: every audio file under the last-used folder, sorted by filename. */
+/** Search-panel index: every audio file (and cue track) under the last-used folder, sorted by filename. */
 async function scanLibrary(folder) {
-  const files = await collectAudio([folder]);
+  const labels = {};
+  const files = await collectAudio([folder], labels);
   files.sort(byName);
-  return files;
+  return { files, labels };
 }
 
 function formatM3u(entries) {
@@ -58,7 +77,7 @@ function parseM3u(text, playlistPath) {
     if (/^file:\/\//i.test(p)) { try { p = fileURLToPath(p); } catch { continue; } }
     // Playlists written on another OS may use the other separator style.
     if (!path.isAbsolute(p)) p = path.resolve(base, p.replace(/[\\/]/g, path.sep));
-    try { if (fs.statSync(p).isFile() && isSupportedAudio(p)) tracks.push(p); } catch { /* missing file */ }
+    if ((cue.parseRef(p) || isSupportedAudio(p)) && cue.entryExists(p)) tracks.push(p);
   }
   return tracks;
 }

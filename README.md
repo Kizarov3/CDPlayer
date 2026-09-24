@@ -19,6 +19,8 @@ Grab the file for your system from the [**Releases**](https://github.com/Kizarov
 | **Windows** 10 / 11 | `CDPlayer-x.y.z-windows.exe` | Double-click it — no installation, runs straight from wherever you saved it |
 | **Linux** (any distro) | `CDPlayer-x.y.z-linux.AppImage` | Make it executable (right-click → Properties → *Allow executing*, or `chmod +x`), then double-click |
 
+When a newer version is released, a small **x.y.z AVAILABLE** button appears in the top-left corner of the player — click it to open this page. CDPlayer checks at most once a day and never downloads or installs anything by itself.
+
 ### First launch
 
 These builds aren't signed with a paid Apple/Microsoft developer certificate, so the first time you open them your system asks you to confirm:
@@ -33,6 +35,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - Plays MP3, M4A (AAC and Apple Lossless/ALAC), FLAC, WAV, AIFF, AU, OGG and Opus — all built in
 - Drag and drop individual files or whole folders (recursively) to build a queue, or use **Load a Track** — the file picker remembers the last folder you browsed
 - Open files straight from Finder / Explorer (*Open With → CDPlayer*) or drop them on the app icon
+- **CUE sheets**: an album ripped to one big file plus a `.cue` shows up as its separate tracks, with their own titles, and plays through them gaplessly, like the CD. The FILE line doesn't have to match exactly (a sheet written for `album.wav` finds `album.flac`), and older Windows cue sheets in Cyrillic or Western code pages read correctly
 - Shuffle, and a three-way repeat cycle (off → repeat one track → repeat the whole queue), with an "Up Next" preview that always reflects what will actually play next
 - Adjustable crossfade (0–15s) on an equal-power curve, so the transition doesn't dip in volume — only when the queue naturally advances, never when you pick a different track yourself
 - Volume slider with instant response, blended correctly into an in-progress crossfade
@@ -44,7 +47,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 **Queue**
 - Full queue list with per-track duration, click-to-play, and a hover-to-reveal remove (×) button
 - Drag any row up or down to reorder the queue, even the one currently playing
-- **Clear Queue**, "Up next" preview and live queue position (e.g. `QUEUE 3 / 10`)
+- **Clear Queue** — with a few seconds to change your mind: the button turns into **UNDO CLEAR** (or press ⌘Z / Ctrl+Z) — "Up next" preview and live queue position (e.g. `QUEUE 3 / 10`)
 - The queue, current track, and exact playback position are saved when you close the app and restored next launch — ready to play, not auto-started
 - Save the queue as a standard `.m3u` playlist, or load one back in
 - **Search** recursively scans your last-used music folder by filename, filtering live as you type
@@ -55,6 +58,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - Spinning disc in a jewel case, with your album art on the disc and the case thumbnail — double-click the disc for a little surprise
 - Live audio visualizer driven by the actual audio, pulsing on detected beats, with a shape that changes with the theme
 - Artist, title and album from the file's tags, with the filename as a fallback
+- The audio quality under the title: `FLAC · 24-BIT · 96 KHZ` for lossless files, `MP3 · 320 KBPS` for compressed ones
 - Embedded album art, with automatic iTunes → Deezer → Spotify cover lookup when a file has none
 - **Lyrics** — embedded lyrics, or an automatic [lrclib.net](https://lrclib.net) lookup. Timed (LRC) lyrics highlight and auto-scroll karaoke-style, and clicking a line jumps playback to it
 - **History** — your last 50 tracks, one click away from playing again or adding back to the queue

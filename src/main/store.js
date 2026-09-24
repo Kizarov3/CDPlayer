@@ -8,6 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { entryExists } = require('./cue');
 
 let resolvedDir = null;
 function dataDir() {
@@ -29,7 +30,7 @@ const file = (name) => path.join(dataDir(), name);
 const FILES = {
   queue: 'queue.txt', onboarded: 'onboarded', lastVersion: 'lastversion.txt', lastPath: 'lastpath.txt',
   settings: 'settings.txt', eqPresets: 'eq-presets.txt', history: 'history.txt', spotify: 'spotify.txt',
-  miniPosition: 'mini-position.txt',
+  miniPosition: 'mini-position.txt', updateCheck: 'update-check.txt',
 };
 
 function readText(name) {
@@ -93,7 +94,7 @@ function writeSettings(s) {
   return writeText(FILES.settings, content);
 }
 
-// queue.txt — "index,positionMicros" then one absolute path per line. Missing files are dropped on restore,
+// queue.txt — "index,positionMicros" then one absolute path per line (a cue sheet track is "<.cue path>#<number>"). Missing files are dropped on restore,
 // remapping the saved index so it still points at the same track.
 function readQueue() {
   const l = lines(readText(FILES.queue));
@@ -105,7 +106,7 @@ function readQueue() {
   for (let i = 1; i < l.length; i++) {
     const p = l[i].trim();
     if (!p) continue;
-    if (isFile(p)) { if (i - 1 === savedIndex) mapped = paths.length; paths.push(p); }
+    if (entryExists(p)) { if (i - 1 === savedIndex) mapped = paths.length; paths.push(p); }
   }
   if (!paths.length) return null;
   const index = mapped >= 0 ? mapped : Math.max(0, Math.min(Number.isFinite(savedIndex) ? savedIndex : 0, paths.length - 1));
@@ -118,7 +119,7 @@ function writeQueue({ paths, index, positionMicros }) {
 
 const HISTORY_LIMIT = 50;
 function readHistory() {
-  return lines(readText(FILES.history)).map((p) => p.trim()).filter((p) => p && isFile(p)).slice(0, HISTORY_LIMIT);
+  return lines(readText(FILES.history)).map((p) => p.trim()).filter((p) => p && entryExists(p)).slice(0, HISTORY_LIMIT);
 }
 function writeHistory(paths) {
   const body = paths.filter(safePath).slice(0, HISTORY_LIMIT).join('\n');

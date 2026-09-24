@@ -63,6 +63,7 @@ button { font-family: inherit; outline: none; }
 }
 #header { height: 56px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; }
 #header-west { min-width: 0; }
+#update-button { color: rgb(var(--accent)); }
 #status-pill {
   justify-self: center;
   padding: 6px 16px; border-radius: 2px;
