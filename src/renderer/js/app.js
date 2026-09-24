@@ -560,17 +560,20 @@ const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
 let discMorph = null;
 function morphCdView(entering) {
   const canvas = $('disc'), body = document.body;
-  // Where the disc sits in both layouts, measured without a paint in between.
+  // Where the disc sits in both layouts, measured without a paint in between. Leaving, the real layout is switched
+  // back first and measured as it is — the CD View title under the disc is gone from it, so the disc sits lower.
   const from = canvas.getBoundingClientRect();
-  body.classList.toggle('cd-view', entering);
-  const to = canvas.getBoundingClientRect();
-  body.classList.toggle('cd-view', !entering);
+  let to;
   // The divider too: the header above it comes and goes, so it sits higher in CD View.
   const chrome = ['header', 'divider', 'player', 'hint'].map($);
   if (entering) {
+    body.classList.add('cd-view');
+    to = canvas.getBoundingClientRect();
+    body.classList.remove('cd-view');
     for (const node of chrome) node.animate([{ opacity: 1 }, { opacity: 0 }], { duration: CD_MORPH_MS * 0.45, easing: 'ease-out', fill: 'forwards' });
   } else {
     state.cdView = false; applyCdViewState(); // the player is laid out again underneath, and fades in as the disc lands
+    to = canvas.getBoundingClientRect();
     for (const node of chrome) node.animate([{ opacity: 0 }, { opacity: 1 }], { duration: CD_MORPH_MS * 0.5, delay: CD_MORPH_MS * 0.5, easing: 'ease-in', fill: 'backwards' });
   }
   Object.assign(canvas.style, { position: 'fixed', right: 'auto', bottom: 'auto', zIndex: '5' });

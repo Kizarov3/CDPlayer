@@ -454,10 +454,10 @@ export function showChangelogIfNeeded(app, lastVersion, existingInstall) {
   const version = app.state.version;
   if (lastVersion === version) return;
   if (!lastVersion && !existingInstall) { app.cdp.writeLastVersion(version); return; } // fresh install: nothing is "new"
-  // Everything released since the version this user last ran (so someone coming straight from the Java app, or
-  // skipping a release, still sees all of it), newest first.
-  const newer = (a, b) => { const x = a.split('.').map(Number), y = (b || '0').split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
-  const changes = CHANGELOG.filter((c) => newer(c.version, lastVersion) && !newer(c.version, version)).flatMap((c) => c.changes);
+  // Just this release's new features — not everything since whichever version this user last ran, which could be a
+  // wall of notes for someone coming from the Java app or skipping releases.
+  const entry = CHANGELOG.find((c) => c.version === version);
+  const changes = entry ? entry.changes : [];
   if (!changes.length) { app.cdp.writeLastVersion(version); return; }
   const p = openPanel('changelog', () => tipsCard("WHAT'S NEW", `CDPlayer ${version}`, changes, () => closePanel('changelog')));
   p.onClose = () => app.cdp.writeLastVersion(version);
