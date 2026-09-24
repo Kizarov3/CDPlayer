@@ -157,7 +157,6 @@ function renderQueue() {
       drag.index = i; drag.lastY = e.clientY; drag.accumulated = 0; drag.moved = false;
       list.setPointerCapture(e.pointerId);
     });
-    row.addEventListener('click', () => { if (!drag.moved) { state.index = i; load(p); } drag.moved = false; });
     return row;
   });
   list.replaceChildren(...rows);
@@ -182,7 +181,16 @@ function setupQueueDrag() {
     }
     if (changed) { renderQueue(); saveQueueSoon(); }
   });
-  const end = () => { if (drag.index >= 0) { drag.index = -1; if (drag.moved) renderQueue(); } };
+  // The list captures the pointer on press (so a drag keeps tracking outside the row), which also means the
+  // browser delivers the release — and the click — to the list, not the row. So "pressed and released without
+  // dragging" is handled here: that's a click on the row, and plays it.
+  const end = (e) => {
+    if (drag.index < 0) return;
+    const index = drag.index, moved = drag.moved;
+    drag.index = -1; drag.moved = false;
+    if (moved) renderQueue();
+    else if (e.type === 'pointerup' && index < state.queue.length) { state.index = index; load(state.queue[index]); }
+  };
   list.addEventListener('pointerup', end);
   list.addEventListener('pointercancel', end);
 }

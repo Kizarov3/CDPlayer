@@ -9,6 +9,9 @@ const fs = require('fs');
 const smokeArg = process.argv.find((a) => a.startsWith('--smoke-test='));
 const smokeDir = smokeArg ? path.resolve(smokeArg.slice('--smoke-test='.length)) : null;
 if (smokeDir) process.env.CDPLAYER_HOME = fs.mkdtempSync(path.join(require('os').tmpdir(), 'cdplayer-smoke-'));
+// An isolated data folder (tests) also gets its own Electron profile, so it's a separate single instance and never
+// hands off to — or shares browser storage with — a CDPlayer the user already has open.
+if (process.env.CDPLAYER_HOME) app.setPath('userData', path.join(process.env.CDPLAYER_HOME, 'electron-profile'));
 
 const store = require('./store');
 const metadata = require('./metadata');
