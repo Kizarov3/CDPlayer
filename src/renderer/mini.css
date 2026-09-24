@@ -1,0 +1,85 @@
+/* The mini player — laid out like Apple Music's mini player, colored by the active CDPlayer theme. */
+:root {
+  --bg: 17, 17, 19;
+  --card: 31, 31, 34;
+  --accent: 196, 20, 28;
+  --accent2: 180, 186, 194;
+  --text: 232, 233, 236;
+  --muted: 138, 142, 148;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Helvetica Neue", Ubuntu, "DejaVu Sans", Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+body {
+  font-family: var(--font);
+  color: rgb(var(--text));
+  user-select: none; -webkit-user-select: none;
+  cursor: default;
+}
+button { font-family: inherit; outline: none; }
+
+#panel {
+  position: relative;
+  height: 100vh;
+  padding: 14px 16px 10px;
+  display: flex; flex-direction: column;
+  border-radius: 12px;
+  overflow: hidden;
+  -webkit-app-region: drag;
+  /* On macOS the window itself is a frosted "HUD" material; this tints it with the theme. Elsewhere it's opaque. */
+  background: rgba(var(--bg), .62);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08);
+}
+body.opaque #panel { background: linear-gradient(to bottom, rgb(var(--card)), rgb(var(--bg))); }
+.no-drag { -webkit-app-region: no-drag; }
+
+/* Close/expand button: hidden until the pointer is over the player, like Apple Music's. */
+#close {
+  position: absolute; top: 7px; left: 7px; z-index: 2;
+  width: 16px; height: 16px; padding: 0; border: none; border-radius: 50%;
+  background: rgba(var(--text), .22); color: rgb(var(--bg));
+  display: grid; place-items: center; cursor: pointer;
+  opacity: 0; transition: opacity 120ms, background 120ms;
+}
+#close svg { width: 8px; height: 8px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+#panel:hover #close { opacity: 1; }
+#close:hover { background: rgba(var(--text), .45); }
+
+#top { display: flex; align-items: center; gap: 12px; height: 52px; }
+#disc-wrap { position: relative; width: 52px; height: 52px; flex: 0 0 52px; cursor: pointer; }
+#disc { position: absolute; inset: 0; width: 100%; height: 100%; }
+#meta { flex: 1 1 auto; min-width: 0; }
+.line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#title { font-size: 16px; font-weight: 600; letter-spacing: -.01em; line-height: 20px; }
+#subtitle { font-size: 13px; line-height: 17px; color: rgb(var(--muted)); margin-top: 1px; }
+#vis { width: 32px; height: 22px; flex: 0 0 32px; align-self: flex-start; margin-top: 4px; opacity: .9; }
+
+#bar { position: relative; height: 14px; margin-top: 10px; cursor: pointer; display: flex; align-items: center; }
+#track { position: relative; width: 100%; height: 4px; border-radius: 2px; background: rgba(var(--text), .16); overflow: hidden; transition: height 120ms; }
+#fill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(to right, rgb(var(--accent)), rgb(var(--accent2))); }
+#knob {
+  position: absolute; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%;
+  background: rgb(var(--text)); opacity: 0; transition: opacity 120ms; pointer-events: none;
+}
+#bar:hover #track, #bar.dragging #track { height: 6px; }
+#bar:hover #knob, #bar.dragging #knob { opacity: 1; }
+
+#times { display: flex; justify-content: space-between; margin-top: 2px; font-size: 11px; color: rgb(var(--muted)); font-variant-numeric: tabular-nums; }
+
+#controls { display: flex; align-items: center; justify-content: space-between; margin-top: 0; flex: 1 1 auto; }
+#center { display: flex; align-items: center; gap: 18px; }
+#controls button {
+  border: none; padding: 0; background: transparent; color: rgb(var(--text));
+  display: grid; place-items: center; cursor: pointer; border-radius: 50%;
+  transition: transform 90ms, background 120ms, color 120ms, opacity 120ms;
+}
+#controls button:active { transform: scale(.88); }
+#controls button svg { display: block; }
+#prev, #next { width: 36px; height: 30px; }
+#play { width: 40px; height: 40px; }
+#controls .mode { position: relative; width: 30px; height: 30px; color: rgb(var(--muted)); }
+#controls .mode:hover { color: rgb(var(--text)); }
+#controls .mode.on { background: rgba(var(--text), .15); color: rgb(var(--accent)); }
+#badge { position: absolute; right: 3px; bottom: 2px; font-size: 8px; font-weight: 700; line-height: 1; }
+
+body.no-anim *, body.no-anim *::before, body.no-anim *::after { transition: none !important; }

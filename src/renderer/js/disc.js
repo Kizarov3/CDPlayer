@@ -5,7 +5,7 @@ import { colors, rgb, FONT } from './theme.js';
 const SIZES = {
   normal: { cap: 380, margin: 40 },
   enlarged: { cap: 640, margin: 40 },
-  mini: { cap: 84, margin: 8 },
+  mini: { cap: 84, margin: 4 },
 };
 const EJECT_OUT = 300, EJECT_HOLD = 180, EJECT_BACK = 320;
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);

@@ -19,7 +19,7 @@ const media = require('./media-protocol');
 const APP_VERSION = app.getVersion();
 const MAIN_MIN = { width: 760, height: 785 };
 const MAIN_DEFAULT = { width: 1120, height: 820 };
-const MINI = { width: 400, height: 210 };
+const MINI = { width: 340, height: 152 };
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'cdp', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
@@ -53,7 +53,8 @@ let win = null;
 let settings = store.readSettings();
 let normalBounds = null;
 let miniMode = false;
-let preMiniBounds = null;
+let miniWin = null;
+let quitting = false;
 
 function boundsOnScreen(b) {
   if (!b || b.width < MAIN_MIN.width || b.height < MAIN_MIN.height) return false;
@@ -100,7 +101,7 @@ function createWindow() {
     try { win.webContents.send('app-closing'); } catch { /* already gone */ }
     persistSettings();
   });
-  win.on('closed', () => { win = null; });
+  win.on('closed', () => { win = null; if (miniWin && !miniWin.isDestroyed()) { quitting = true; miniWin.close(); } });
   win.once('ready-to-show', () => { if (!smokeDir) win.show(); });
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -235,29 +236,85 @@ handle('dialog:importLibrary', async () => {
   } catch { return { error: true }; }
 });
 
-handle('win:setMiniMode', (enabled) => {
+// ---- Mini player -------------------------------------------------------------------------------------------------
+// A separate small frameless window, like Apple Music's mini player. The main window keeps doing all the playing
+// (it's just hidden); the mini window is a remote control that mirrors its state over IPC.
+
+function miniPositionOnScreen(p) {
+  return p && screen.getAllDisplays().some(({ workArea: a }) => p.x >= a.x - MINI.width / 2 && p.x <= a.x + a.width - MINI.width / 2 && p.y >= a.y && p.y <= a.y + a.height - 40);
+}
+function readMiniPosition() {
+  const parts = (store.readText(store.FILES.miniPosition) || '').trim().split(',').map((v) => parseInt(v, 10));
+  const saved = parts.length === 2 && parts.every(Number.isFinite) ? { x: parts[0], y: parts[1] } : null;
+  if (miniPositionOnScreen(saved)) return saved;
+  // First time: top-right corner of whichever display the main window is on.
+  const { workArea: a } = screen.getDisplayMatching(win ? win.getBounds() : { x: 0, y: 0, width: 1, height: 1 });
+  return { x: a.x + a.width - MINI.width - 24, y: a.y + 24 };
+}
+
+function createMiniWindow() {
+  const mac = process.platform === 'darwin';
+  miniWin = new BrowserWindow({
+    ...MINI, ...readMiniPosition(),
+    frame: false,
+    resizable: false, maximizable: false, fullscreenable: false,
+    alwaysOnTop: true,
+    show: false,
+    hasShadow: true,
+    roundedCorners: true,
+    transparent: true,
+    backgroundColor: '#00000000',
+    // macOS: the frosted, translucent material Apple Music's mini player uses. Elsewhere the page paints its own panel.
+    vibrancy: mac ? 'hud' : undefined,
+    visualEffectState: 'active',
+    title: 'CDPlayer',
+    icon: process.platform === 'linux' ? path.join(__dirname, '..', 'renderer', 'icon.png') : undefined,
+    webPreferences: {
+      preload: path.join(__dirname, '..', 'preload.js'),
+      contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false, spellcheck: false,
+    },
+  });
+  miniWin.setAlwaysOnTop(true, 'floating');
+  miniWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  miniWin.on('moved', () => {
+    const [x, y] = miniWin.getPosition();
+    store.writeText(store.FILES.miniPosition, `${x},${y}`);
+  });
+  // Closing the mini player (Cmd+W, or from the taskbar) goes back to the full window rather than quitting.
+  miniWin.on('close', (e) => {
+    if (quitting) return;
+    e.preventDefault();
+    if (win) win.webContents.send('mini-command', { action: 'exit' });
+  });
+  miniWin.on('closed', () => { miniWin = null; });
+  miniWin.webContents.on('will-navigate', (e) => e.preventDefault());
+  miniWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  const ready = new Promise((resolve) => miniWin.webContents.once('did-finish-load', resolve));
+  miniWin.loadURL('cdp://app/mini.html');
+  return ready;
+}
+
+handle('win:setMiniMode', async (enabled) => {
   if (!win || enabled === miniMode) return;
+  miniMode = enabled;
   if (enabled) {
-    if (win.isFullScreen()) win.setFullScreen(false);
-    preMiniBounds = win.getBounds();
-    miniMode = true;
-    win.setMinimumSize(MINI.width, MINI.height);
-    win.setResizable(false);
-    win.setMaximizable(false);
-    win.setFullScreenable(false);
-    win.setAlwaysOnTop(true, 'floating');
-    win.setSize(MINI.width, MINI.height);
+    if (win.isFullScreen()) {
+      await new Promise((resolve) => { win.once('leave-full-screen', resolve); win.setFullScreen(false); setTimeout(resolve, 1500); });
+    }
+    if (!miniWin) await createMiniWindow();
+    miniWin.setPosition(...Object.values(readMiniPosition()));
+    miniWin.show();
+    win.hide();
   } else {
-    miniMode = false;
-    win.setAlwaysOnTop(false);
-    win.setResizable(true);
-    win.setMaximizable(true);
-    win.setFullScreenable(true);
-    win.setMinimumSize(MAIN_MIN.width, MAIN_MIN.height);
-    if (preMiniBounds) win.setBounds(preMiniBounds);
+    win.show();
+    win.focus();
+    if (miniWin) miniWin.hide();
   }
   persistSettings();
 });
+// Main window → mini player: the state to show. Mini player → main window: what the user pressed.
+ipcMain.on('mini:state', (_e, s) => { if (miniWin && !miniWin.isDestroyed()) miniWin.webContents.send('mini-state', s); });
+ipcMain.on('mini:command', (_e, c) => { if (win) win.webContents.send('mini-command', c); });
 handle('win:toggleFullscreen', () => { if (win && !miniMode) win.setFullScreen(!win.isFullScreen()); });
 handle('win:isFullscreen', () => !!(win && win.isFullScreen()));
 // Snapshot of the window's current pixels — the "before" frame the CD View / Visualizer / Mini Mode transitions
@@ -277,6 +334,11 @@ app.whenReady().then(() => {
   protocol.handle('cdp', media.handle);
   buildMenu();
   createWindow();
-  app.on('activate', () => { if (!win) createWindow(); });
+  app.on('activate', () => {
+    if (!win) createWindow();
+    else if (miniMode && miniWin) miniWin.show();
+    else win.show();
+  });
 });
+app.on('before-quit', () => { quitting = true; });
 app.on('window-all-closed', () => app.quit());

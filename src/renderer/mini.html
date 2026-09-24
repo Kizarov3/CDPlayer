@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>CDPlayer</title>
+  <link rel="stylesheet" href="mini.css">
+</head>
+<body>
+  <div id="panel">
+    <button id="close" class="no-drag" title="Back to the full player (M)">
+      <svg viewBox="0 0 10 10"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5"/></svg>
+    </button>
+
+    <div id="top">
+      <div id="disc-wrap" class="no-drag" title="Click to play or pause"><canvas id="disc"></canvas></div>
+      <div id="meta">
+        <div id="title" class="line">Pick a track to get started.</div>
+        <div id="subtitle" class="line"></div>
+      </div>
+      <canvas id="vis"></canvas>
+    </div>
+
+    <div id="bar" class="no-drag"><div id="track"><div id="fill"></div></div><div id="knob"></div></div>
+    <div id="times"><span id="elapsed">0:00</span><span id="remaining">-0:00</span></div>
+
+    <div id="controls">
+      <button id="shuffle" class="mode no-drag" title="Shuffle"></button>
+      <div id="center">
+        <button id="prev" class="no-drag" title="Previous track (J)"></button>
+        <button id="play" class="no-drag" title="Play/Pause (Space)"></button>
+        <button id="next" class="no-drag" title="Next track (L)"></button>
+      </div>
+      <button id="repeat" class="mode no-drag" title="Repeat"><span id="badge"></span></button>
+    </div>
+  </div>
+  <script type="module" src="js/mini.js"></script>
+</body>
+</html>

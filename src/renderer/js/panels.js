@@ -116,7 +116,7 @@ function buildSettings(app) {
     hint("Washes the window's background with a blurred glow of the current cover art. Turn off for the plain dark background instead."), gap(),
     row('ANIMATIONS', animations), gap(),
     row('MINI MODE', mini),
-    hint('Shrinks the window to a small always-on-top widget — just the disc, track info, and a seek bar. Click the disc to play/pause, or press M again to exit.'));
+    hint('Switches to a small always-on-top mini player — the spinning disc, track info, a seek bar and playback controls. Click the disc to play/pause; press M or Esc to come back.'));
   return [title('SETTINGS'), gap(20), body, closeRow(() => closePanel('settings')), github];
 }
 
@@ -425,6 +425,10 @@ export function showOnboarding(app) {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.1.0', changes: [
+    '<b>New mini player</b>, styled after Apple Music&rsquo;s: a compact frosted window with the spinning disc, title and artist, a full-width seek bar, and shuffle / back / play / forward / repeat. Press M (or use Settings) to switch; M or Esc brings the full player back, and it remembers where you put it',
+    'Keyboard shortcuts (J, K, L and the rest) now work whichever keyboard layout is active &mdash; including Russian and other non-Latin layouts',
+  ] },
   { version: '2.0.0', changes: [
     '<b>Rebuilt as a native desktop app for macOS, Windows and Linux</b> &mdash; download it, open it, and it plays. MP3, M4A (AAC and Apple Lossless), FLAC, WAV, AIFF, AU, OGG and Opus all work out of the box; FFmpeg and Java are no longer needed',
     'Your queue, history, settings, EQ presets and Spotify sign-in carry over automatically from the previous version',
@@ -436,8 +440,11 @@ export function showChangelogIfNeeded(app, lastVersion, existingInstall) {
   const version = app.state.version;
   if (lastVersion === version) return;
   if (!lastVersion && !existingInstall) { app.cdp.writeLastVersion(version); return; } // fresh install: nothing is "new"
-  const entry = CHANGELOG.find((c) => c.version === version);
-  if (!entry) { app.cdp.writeLastVersion(version); return; }
-  const p = openPanel('changelog', () => tipsCard("WHAT'S NEW", `CDPlayer ${entry.version}`, entry.changes, () => closePanel('changelog')));
+  // Everything released since the version this user last ran (so someone coming straight from the Java app, or
+  // skipping a release, still sees all of it), newest first.
+  const newer = (a, b) => { const x = a.split('.').map(Number), y = (b || '0').split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
+  const changes = CHANGELOG.filter((c) => newer(c.version, lastVersion) && !newer(c.version, version)).flatMap((c) => c.changes);
+  if (!changes.length) { app.cdp.writeLastVersion(version); return; }
+  const p = openPanel('changelog', () => tipsCard("WHAT'S NEW", `CDPlayer ${version}`, changes, () => closePanel('changelog')));
   p.onClose = () => app.cdp.writeLastVersion(version);
 }

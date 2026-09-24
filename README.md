@@ -67,10 +67,11 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - System media controls: macOS Control Center, the Windows media overlay and Linux desktop players show what's playing, and hardware media keys work
 
 **Mini Mode**
-- Press `M` (or flip the switch in Settings) to shrink the app to a small always-on-top widget — disc, title/artist, seek bar and play/pause/skip. Click the disc to play/pause; press `M` again (or ×) to return
+- Press `M` (or flip the switch in Settings) for a compact always-on-top mini player, styled after Apple Music's: the spinning disc, title and "Artist — Album", a full-width seek bar with elapsed/remaining time, and shuffle · back · play/pause · forward · repeat. On macOS it's frosted glass like a native mini player
+- Drag it anywhere (it remembers where); click the disc to play/pause; all the keyboard shortcuts work in it; `M`, `Esc` or the × that appears on hover brings the full player back
 
 <p align="center">
-  <img src="docs/screenshots/mini-mode.png" width="45%" alt="CDPlayer Mini Mode">
+  <img src="docs/screenshots/mini-mode.png" width="340" alt="CDPlayer mini player">
 </p>
 <p align="center">
   <img src="docs/screenshots/cd-view.png" width="70%" alt="CDPlayer CD view">

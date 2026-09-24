@@ -54,8 +54,28 @@ function repeat(w, h) {
     + `<line x1="${right}" y1="${bottom}" x2="${left}" y2="${bottom}"/>` + arrowSegment(left, bottom, left, mid, len, half) + '</g>';
 }
 
+// The mini player's larger, borderless glyphs, in the style of Apple Music's mini player.
+function solidPlay(w, h) {
+  const triW = w * 0.62, triH = h * 0.72, left = (w - triW) / 2 + w * 0.05, top = (h - triH) / 2;
+  return `<path d="M${left} ${top + 2} Q${left} ${top} ${left + 2} ${top + 1.2} L${left + triW - 1.5} ${h / 2 - 1} Q${left + triW} ${h / 2} ${left + triW - 1.5} ${h / 2 + 1} L${left + 2} ${top + triH - 1.2} Q${left} ${top + triH} ${left} ${top + triH - 2} Z"/>`;
+}
+function solidPause(w, h) {
+  const barW = w * 0.24, barH = h * 0.74, gap = w * 0.16, top = (h - barH) / 2, left = (w - 2 * barW - gap) / 2;
+  return `<rect x="${left}" y="${top}" width="${barW}" height="${barH}" rx="${barW * 0.28}"/>`
+    + `<rect x="${left + barW + gap}" y="${top}" width="${barW}" height="${barH}" rx="${barW * 0.28}"/>`;
+}
+function doubleTriangle(w, h, forward) {
+  const triW = w * 0.46, triH = h * 0.56, top = (h - triH) / 2, cy = h / 2, start = (w - 2 * triW) / 2;
+  const tri = (x) => (forward
+    ? `<polygon points="${pts([[x, top], [x + triW, cy], [x, top + triH]])}" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>`
+    : `<polygon points="${pts([[x + triW, top], [x, cy], [x + triW, top + triH]])}" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>`);
+  return tri(start) + tri(start + triW);
+}
+
 const DRAW = {
   PLAY: play, PAUSE: pause,
+  SOLID_PLAY: solidPlay, SOLID_PAUSE: solidPause,
+  REWIND: (w, h) => doubleTriangle(w, h, false), FAST_FORWARD: (w, h) => doubleTriangle(w, h, true),
   PREVIOUS_TRACK: (w, h) => trackSkip(w, h, false), NEXT_TRACK: (w, h) => trackSkip(w, h, true),
   SKIP_BACK_15: (w, h) => seek15(w, h, false), SKIP_FORWARD_15: (w, h) => seek15(w, h, true),
   SHUFFLE: shuffle, REPEAT: repeat,

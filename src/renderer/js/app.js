@@ -1,6 +1,6 @@
 // CDPlayer — main controller: playback, queue, themes, view modes (CD View, Visualizer Mode, Mini Mode,
 // fullscreen), keyboard shortcuts, persistence, and the per-frame render loop.
-import { THEMES, colors, setColors, deriveAutoTheme, visualizerModeFor, particleModeFor, rgb } from './theme.js';
+import { THEMES, colors, setColors, deriveAutoTheme, visualizerModeFor, particleModeFor, rgb, onColorsChanged } from './theme.js';
 import { AudioEngine } from './audio.js';
 import { Disc } from './disc.js';
 import { Visualizer, BeatDetector } from './visualizer.js';
@@ -66,15 +66,14 @@ function setTrackTitle(name, artist) {
   state.titleText = name; state.artistText = artist;
   fitText($('track-title'), name, 456, 34, 20, true);
   fitText($('cd-title'), name, 860, 30, 18, true);
-  fitText($('mini-title'), name, 220, 13, 10, true);
   const has = !!(artist && artist.trim());
   $('track-artist').hidden = !has; $('cd-artist').hidden = !has;
   if (has) {
     fitText($('track-artist'), artist, 456, 15, 12, false);
     fitText($('cd-artist'), artist, 860, 18, 13, false);
-    fitText($('mini-artist'), artist, 220, 10, 8, false);
-  } else { $('mini-artist').textContent = ''; }
+  }
   document.title = has ? `${artist} – ${name}` : (state.loadedPath ? name : 'CDPlayer');
+  pushMini(true);
 }
 function fadeInNowPlaying() {
   for (const id of ['track-title', 'track-artist', 'track-source']) pulseClass($(id), 'fade-in');
@@ -312,6 +311,7 @@ async function setCover(dataUrl) {
   state.cover = img;
   disc.setCover(img);
   onCoverChanged();
+  pushMini(true);
 }
 function onCoverChanged() {
   const backdrop = $('backdrop'), art = $('backdrop-art');
@@ -330,10 +330,10 @@ function onCoverChanged() {
 function setPlaying(playing) {
   disc.spinning = playing;
   playButton.setGlyph(playing ? 'PAUSE' : 'PLAY'); pulse(playButton, true);
-  miniPlayButton.setGlyph(playing ? 'PAUSE' : 'PLAY'); pulse(miniPlayButton, true);
   setStatus(playing ? 'NOW SPINNING' : state.loadedPath ? 'PAUSED' : 'READY TO PLAY');
   visualizer.setActive(playing); bigVisualizer.setActive(playing);
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = state.loadedPath ? (playing ? 'playing' : 'paused') : 'none';
+  pushMini(true);
 }
 async function toggle() {
   if (!engine.deck) { if (state.queue.length && state.index >= 0) load(state.queue[state.index]); else choose(); return; }
@@ -364,6 +364,7 @@ function seekTo(seconds) {
   engine.seek(seconds);
   updateProgressUi(true);
   updateMediaSessionPosition();
+  pushMini();
 }
 
 function recordHistory(p) {
@@ -513,21 +514,59 @@ function toggleVisualizerMode() {
   } else node.hidden = true;
 }
 
+// Mini Mode is a separate small window (see mini.js) — this window keeps playing, hidden, and just feeds it state.
 async function setMiniMode(enabled) {
   if (enabled === state.miniMode) return;
   if (enabled) {
     if (state.cdView) { state.cdView = false; applyCdViewState(); }
     if (state.visualizerMode) { state.visualizerMode = false; $('vis-mode').hidden = true; }
-    if (state.fullscreen) { await cdp.toggleFullscreen(); await waitForFullscreen(false); }
   }
   state.miniMode = enabled;
   panels.closeThemeMenu(app);
+  if (enabled) pushMini(true);
   await cdp.setMiniMode(enabled);
-  document.body.classList.toggle('mini', enabled);
-  (enabled ? $('mini-disc-slot') : $('disc-column')).append($('disc'));
-  disc.setMode(enabled ? 'mini' : state.cdView ? 'enlarged' : 'normal');
   panels.refreshSettingsIfOpen(app);
-  if (anim.enabled) (enabled ? $('mini') : $('main')).animate([{ opacity: 0 }, { opacity: 1 }], { duration: 140 });
+}
+
+// ---- Mini player sync ----------------------------------------------------------------------------------------
+
+let lastMiniCover = null, miniCoverKey = 0, sentMiniCoverKey = -1;
+function pushMini(full = false) {
+  if (!state.miniMode) return;
+  const msg = { playing: engine.playing, position: engine.position, duration: engine.duration };
+  if (full) {
+    const d = state.details;
+    const cover = state.cover ? state.cover.src : null;
+    if (cover !== lastMiniCover) { lastMiniCover = cover; miniCoverKey++; }
+    Object.assign(msg, {
+      colors, animations: anim.enabled, visMode: visualizerModeFor(THEMES[state.themeIndex].name),
+      shuffle: state.shuffle, repeat: state.repeat,
+      track: {
+        title: state.titleText || 'Pick a track to get started.', artist: state.artistText || null, album: d && d.album ? d.album : null,
+        lookingUp: disc.lookingUp, coverKey: miniCoverKey,
+        // The artwork is a large data URL — only send it when it actually changed.
+        cover: miniCoverKey !== sentMiniCoverKey ? cover : undefined,
+      },
+    });
+    sentMiniCoverKey = miniCoverKey;
+  }
+  cdp.sendMiniState(msg);
+}
+function onMiniCommand({ action, value }) {
+  switch (action) {
+    case 'sync': sentMiniCoverKey = -1; pushMini(true); break;
+    case 'toggle': toggle(); break;
+    case 'prev': previousTrack(); break;
+    case 'next': nextTrack(); break;
+    case 'seek': seekTo(value); break;
+    case 'seekBy': seek(value); break;
+    case 'volume': adjustVolume(value); break;
+    case 'mute': toggleMute(); break;
+    case 'shuffle': toggleShuffle(); break;
+    case 'repeat': cycleRepeat(); break;
+    case 'exit': setMiniMode(false); break;
+    default: break;
+  }
 }
 function waitForFullscreen(target) {
   return new Promise((resolve) => {
@@ -601,17 +640,20 @@ function escape() {
 // ---- Build the static UI ---------------------------------------------------------------------------------------
 
 const playButton = roundButton('PLAY', 68, { primary: true, title: 'Play/Pause', onClick: () => toggle() });
-const miniPlayButton = roundButton('PLAY', 34, { primary: true, title: 'Play/Pause', onClick: () => toggle() });
-const shuffleButton = modeButton('SHUFFLE', 'Shuffle', () => {
+function toggleShuffle() {
   state.shuffle = !state.shuffle; shuffleButton.setOn(state.shuffle); shuffleCache.index = NaN; renderQueue();
-});
-const repeatButton = modeButton('REPEAT', 'Repeat', () => {
+  pushMini(true);
+}
+function cycleRepeat() {
   state.repeat = state.repeat === 'OFF' ? 'ONE' : state.repeat === 'ONE' ? 'ALL' : 'OFF';
   repeatButton.setOn(state.repeat !== 'OFF');
   repeatButton.setBadge(state.repeat === 'ONE' ? '1' : null);
   repeatButton.title = state.repeat === 'OFF' ? 'Repeat' : state.repeat === 'ONE' ? 'Repeat: one track' : 'Repeat: whole queue';
   renderQueue();
-});
+  pushMini(true);
+}
+const shuffleButton = modeButton('SHUFFLE', 'Shuffle', toggleShuffle);
+const repeatButton = modeButton('REPEAT', 'Repeat', cycleRepeat);
 
 let seeking = false;
 const progress = new Slider({
@@ -619,11 +661,6 @@ const progress = new Slider({
   onInput: (v) => { seeking = true; $('elapsed').textContent = formatTime((engine.duration * v) / 1000); },
   onChange: (v) => { seeking = false; seekTo((engine.duration * v) / 1000); },
 }).mount($('progress-row'));
-const miniProgress = new Slider({
-  min: 0, max: 1000, trackHeight: 14,
-  onInput: (v) => { seeking = true; $('mini-elapsed').textContent = formatTime((engine.duration * v) / 1000); },
-  onChange: (v) => { seeking = false; seekTo((engine.duration * v) / 1000); },
-}).mount($('mini-progress'));
 const volumeSlider = new Slider({ min: 0, max: 100, value: 100, onInput: (v) => { state.volumeBeforeMute = -1; setVolume(v, { fromSlider: true }); } }).mount($('volume-slider'));
 
 function buildStaticUi() {
@@ -633,10 +670,6 @@ function buildStaticUi() {
     playButton, spacer(16),
     roundButton('NEXT_TRACK', 44, { title: 'Next track', onClick: () => nextTrack() }), spacer(10),
     roundButton('SKIP_FORWARD_15', 36, { title: 'Forward 15 seconds', onClick: () => seek(15) }));
-  $('mini-transport').append(
-    roundButton('PREVIOUS_TRACK', 26, { title: 'Previous track', onClick: () => previousTrack() }),
-    miniPlayButton,
-    roundButton('NEXT_TRACK', 26, { title: 'Next track', onClick: () => nextTrack() }));
   $('modes-cluster').append(shuffleButton, repeatButton);
   // Load a Track / Clear Queue anchor the right edge; the same width is mirrored on the left so the transport
   // and mode clusters center on the column's true middle, as in the Java layout.
@@ -654,10 +687,8 @@ function buildStaticUi() {
   $('cd-view-button').addEventListener('click', toggleCdView);
   $('visualizer-button').addEventListener('click', toggleVisualizerMode);
   $('sleep-indicator').addEventListener('click', () => { armSleepTimer(0); panels.refreshSettingsIfOpen(app); });
-  $('mini-exit').addEventListener('click', () => setMiniMode(false));
   $('vis-mode').addEventListener('mousedown', () => { if (state.visualizerMode) toggleVisualizerMode(); });
   disc.onEjectPeak = () => nextTrack();
-  disc.onMiniClick = () => toggle();
   engine.onEnded = trackFinished;
   engine.onCrossfadeDone = () => { if (engine.playing) setStatus('NOW SPINNING'); };
   setupQueueDrag();
@@ -725,13 +756,32 @@ function updateProgressUi(force = false) {
   if (seeking && !force) return;
   const dur = engine.duration, pos = engine.position;
   const v = dur ? Math.round((pos * 1000) / dur) : 0;
-  progress.setValue(v); miniProgress.setValue(v);
-  const e = formatTime(pos);
-  $('elapsed').textContent = e; $('mini-elapsed').textContent = e;
-  $('mini-length').textContent = $('length').textContent;
+  progress.setValue(v);
+  $('elapsed').textContent = formatTime(pos);
 }
 
-let last = performance.now(), idleCheck = 0, sessionTick = 0;
+// Playback logic that must keep running even while this window is hidden (Mini Mode) or minimized — where
+// requestAnimationFrame stops — so it runs on a plain timer instead of the frame loop.
+let sessionTick = 0, miniLevelsAt = 0;
+function playbackTick() {
+  if (!engine.deck || !engine.playing) return;
+  // Crossfade into the next track once we're within the crossfade window of the end.
+  const dur = engine.duration, pos = engine.position;
+  if (!state.crossfadeStarted && state.crossfade > 0 && dur > 0 && dur - pos <= state.crossfade) {
+    state.crossfadeStarted = true;
+    if (state.repeat === 'ONE' && state.loadedPath) load(state.loadedPath, { allowCrossfade: true });
+    else { const next = upcomingIndex(); if (next >= 0) { state.index = next; load(state.queue[next], { allowCrossfade: true }); } }
+  }
+  const now = performance.now();
+  if (now - sessionTick > 1000) { sessionTick = now; updateMediaSessionPosition(); }
+  if (state.miniMode) {
+    const msg = { playing: true, position: pos, duration: dur };
+    if (now - miniLevelsAt > 30) { miniLevelsAt = now; const raw = engine.levels(5, 90); if (raw) msg.levels = raw; }
+    cdp.sendMiniState(msg);
+  }
+}
+
+let last = performance.now(), idleCheck = 0;
 function frame(now) {
   const dt = Math.min(100, now - last); last = now;
   if (engine.deck && engine.playing) {
@@ -739,16 +789,8 @@ function frame(now) {
     const raw = engine.levels(5, 90);
     if (raw) { const lv = beats.update(raw, dt); visualizer.setLevels(lv); bigVisualizer.setLevels(lv); }
     panels.updateLyricsSync(app);
-    // Crossfade into the next track once we're within the crossfade window of the end.
-    const dur = engine.duration, pos = engine.position;
-    if (!state.crossfadeStarted && state.crossfade > 0 && dur > 0 && dur - pos <= state.crossfade) {
-      state.crossfadeStarted = true;
-      if (state.repeat === 'ONE' && state.loadedPath) load(state.loadedPath, { allowCrossfade: true });
-      else { const next = upcomingIndex(); if (next >= 0) { state.index = next; load(state.queue[next], { allowCrossfade: true }); } }
-    }
-    if (now - sessionTick > 1000) { sessionTick = now; updateMediaSessionPosition(); }
   }
-  if (!state.miniMode) visualizer.draw(now);
+  visualizer.draw(now);
   if (state.visualizerMode) bigVisualizer.draw(now);
   const discBounds = disc.frame(now, dt);
   const exclusions = [];
@@ -797,6 +839,8 @@ async function start() {
   cdp.onAppClosing(saveEverythingNow);
   cdp.onFullscreenChanged((fs) => { state.fullscreen = fs; particles.w = 0; });
   cdp.onOpenFiles((files) => addToQueue(files));
+  cdp.onMiniCommand(onMiniCommand);
+  onColorsChanged(() => pushMini(true));
   window.addEventListener('resize', () => { drawDivider(); if (state.titleText) setTrackTitle(state.titleText, state.artistText); });
 
   const saved = await cdp.loadState();
@@ -818,6 +862,7 @@ async function start() {
   setTrackTitle('Pick a track to get started.', null);
   renderQueue();
   requestAnimationFrame(frame);
+  setInterval(playbackTick, 40);
   if (s.miniMode) setMiniMode(true);
 
   if (saved.queue) {

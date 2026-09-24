@@ -42,4 +42,10 @@ contextBridge.exposeInMainWorld('cdp', {
   onOpenFiles: on('open-files'),
   onFullscreenChanged: on('fullscreen-changed'),
   onAppClosing: on('app-closing'),
+
+  // Mini player <-> main window
+  sendMiniState: (state) => ipcRenderer.send('mini:state', state),
+  onMiniState: on('mini-state'),
+  sendMiniCommand: (command) => ipcRenderer.send('mini:command', command),
+  onMiniCommand: on('mini-command'),
 });
