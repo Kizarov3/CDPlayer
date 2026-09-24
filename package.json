@@ -1,7 +1,7 @@
 {
   "name": "cdplayer",
   "productName": "CDPlayer",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "A desktop music player that recreates the tactile feel of a physical CD player. Plays MP3, M4A, FLAC, WAV, AIFF, OGG and more with nothing else to install.",
   "author": "Kizarov3",
   "license": "MIT",

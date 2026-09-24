@@ -427,6 +427,12 @@ export function showOnboarding(app) {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.3.0', changes: [
+    '<b>Full-size album art</b>: click the little cover in the jewel case&rsquo;s corner and it opens over the whole case, in place of the disc &mdash; click the art to put it back',
+    '<b>Smoother CD View</b>: the disc itself now glides and grows into place (and back), instead of the old warped snapshot',
+    'The row of triangles under the header now follows the theme&rsquo;s color instead of staying red',
+    'The VISUALIZER button is gone from the header to keep it tidy &mdash; Visualizer Mode is still on the V key, and still starts by itself after a few idle minutes',
+  ] },
   { version: '2.2.0', changes: [
     '<b>CUE sheet support</b>: an album ripped to one big file plus a .cue now shows up as its separate tracks, with their own titles &mdash; and plays through them gaplessly, like the CD',
     'Cleared the queue by accident? The button turns into <b>UNDO CLEAR</b> for a few seconds (or press &#8984;Z / Ctrl+Z)',
