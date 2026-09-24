@@ -3,7 +3,7 @@
 import { THEMES, colors, setColors, deriveAutoTheme, visualizerModeFor, particleModeFor, rgb, onColorsChanged } from './theme.js';
 import { AudioEngine } from './audio.js';
 import { Disc } from './disc.js';
-import { Visualizer, BeatDetector } from './visualizer.js';
+import { Visualizer } from './visualizer.js';
 import { Particles } from './particles.js';
 import { anim, el, pill, roundButton, modeButton, Slider, fitText, pulse } from './widgets.js';
 import { parseLrc, currentLineIndex } from './lyrics.js';
@@ -46,7 +46,6 @@ const engine = new AudioEngine();
 const disc = new Disc($('disc'));
 const visualizer = new Visualizer($('visualizer'));
 const bigVisualizer = new Visualizer($('big-visualizer'), { big: true });
-const beats = new BeatDetector();
 const particles = new Particles($('particles'));
 const detailsCache = new Map(); // path -> details without cover (queue labels, durations)
 
@@ -896,10 +895,12 @@ function frame(now) {
   const dt = Math.min(100, now - last); last = now;
   if (engine.deck && engine.playing) {
     updateProgressUi();
-    const raw = engine.levels(5, 90);
-    if (raw) { const lv = beats.update(raw, dt); visualizer.setLevels(lv); bigVisualizer.setLevels(lv); }
     panels.updateLyricsSync(app);
   }
+  // Both visualizers draw from the frequency spectrum (Visualizer Mode's only while it's showing); paused, they
+  // settle back down.
+  visualizer.setSpectrum(engine.playing ? engine.spectrum(visualizer.n) : null, dt);
+  if (state.visualizerMode) bigVisualizer.setSpectrum(engine.playing ? engine.spectrum(bigVisualizer.n) : null, dt);
   visualizer.draw(now);
   if (state.visualizerMode) bigVisualizer.draw(now);
   stepDiscMorph(now);

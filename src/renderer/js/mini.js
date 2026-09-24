@@ -16,7 +16,7 @@ if (!/Mac/.test(navigator.userAgent)) document.body.classList.add('opaque'); // 
 const disc = new Disc($('disc'));
 disc.setMode('mini');
 disc.onMiniClick = () => send('toggle');
-const vis = new Visualizer($('vis')); // always the plain bars here — a tiny live "now playing" indicator
+const vis = new Visualizer($('vis'), { spectrum: false }); // five plain bars — a tiny live "now playing" indicator
 
 $('prev').append(glyphSvg('REWIND', 30));
 $('next').append(glyphSvg('FAST_FORWARD', 30));

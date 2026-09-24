@@ -100,8 +100,7 @@ body.cd-view #cd-info { display: block !important; }
 #queue-card > #queue-list { flex-shrink: 1; }
 #now-row { display: flex; align-items: center; min-height: 32px; }
 #now-playing-label { color: rgb(var(--accent2)); font-size: 11px; margin-right: 12px; }
-#visualizer { width: 42px; height: 16px; }
-#visualizer.custom { width: 34px; height: 32px; }
+#visualizer { width: 56px; height: 22px; }
 #track-title { margin-top: 14px; height: 44px; line-height: 44px; font-size: 34px; color: rgb(var(--text)); }
 #track-artist { margin-top: 4px; height: 20px; line-height: 20px; font-size: 15px; font-weight: normal; color: rgb(var(--accent2)); }
 #track-source { margin-top: 6px; height: 16px; line-height: 16px; font-size: 12px; font-weight: normal; color: rgb(var(--muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

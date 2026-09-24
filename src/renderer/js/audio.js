@@ -202,6 +202,28 @@ export class AudioEngine {
     return out;
   }
 
+  /**
+   * Visualizer Mode's spectrum: `count` bands spaced evenly in pitch (log-spaced) from 40 Hz to 16 kHz, each 0–1.
+   * A band's loudness is its average power, tilted up 3 dB per octave above 1 kHz (music gets quieter towards the
+   * treble, so without it the right half would barely move), mapped from −78…−18 dB.
+   */
+  spectrum(count) {
+    if (!this.playing) return null;
+    const bins = this.analyser.frequencyBinCount;
+    if (!this.freq || this.freq.length !== bins) this.freq = new Float32Array(bins);
+    this.analyser.getFloatFrequencyData(this.freq);
+    const nyquist = this.ctx.sampleRate / 2, lo = 40, hi = 16000, out = new Array(count);
+    for (let b = 0; b < count; b++) {
+      const f0 = lo * Math.pow(hi / lo, b / count), f1 = lo * Math.pow(hi / lo, (b + 1) / count);
+      const i0 = Math.min(bins - 1, Math.floor((f0 / nyquist) * bins)), i1 = Math.min(bins, Math.max(i0 + 1, Math.ceil((f1 / nyquist) * bins)));
+      let power = 0;
+      for (let i = i0; i < i1; i++) power += Math.pow(10, this.freq[i] / 10);
+      const db = 10 * Math.log10(power / (i1 - i0) + 1e-20) + Math.max(0, 3 * Math.log2(Math.sqrt(f0 * f1) / 1000));
+      out[b] = Math.max(0, Math.min(1, (db + 78) / 60));
+    }
+    return out;
+  }
+
   /** The seek bar's waveform: 220 buckets of RMS amplitude, normalized to the loudest bucket. */
   async computeWaveform(url, buckets = 220) {
     const res = await fetch(url);
