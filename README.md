@@ -15,13 +15,9 @@ Grab the file for your system from the [**Releases**](https://github.com/Kizarov
 
 | System | File | How to run |
 | --- | --- | --- |
-| **macOS** (Apple Silicon — M1/M2/M3/M4) | `CDPlayer-x.y.z-arm64.dmg` | Open the `.dmg`, drag **CDPlayer** into **Applications** |
-| **macOS** (Intel) | `CDPlayer-x.y.z.dmg` | Same as above |
-| **Windows** 10 / 11 | `CDPlayer-x.y.z-windows-portable.exe` | Double-click it — no installation, runs straight from wherever you saved it |
-| **Linux** (any distro) | `CDPlayer-x.y.z.AppImage` | Make it executable (right-click → Properties → *Allow executing*, or `chmod +x`), then double-click |
-| **Linux** (Debian / Ubuntu / Mint) | `cdplayer_x.y.z_amd64.deb` | Double-click to install with your software center, or `sudo apt install ./cdplayer_x.y.z_amd64.deb` |
-
-ARM builds for Linux (`-arm64.AppImage`, `_arm64.deb`) are there too.
+| **macOS** (Apple Silicon and Intel) | `CDPlayer-x.y.z-mac.dmg` | Open the `.dmg`, drag **CDPlayer** into **Applications** |
+| **Windows** 10 / 11 | `CDPlayer-x.y.z-windows.exe` | Double-click it — no installation, runs straight from wherever you saved it |
+| **Linux** (any distro) | `CDPlayer-x.y.z-linux.AppImage` | Make it executable (right-click → Properties → *Allow executing*, or `chmod +x`), then double-click |
 
 ### First launch
 

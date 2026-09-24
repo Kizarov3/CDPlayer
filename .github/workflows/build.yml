@@ -21,7 +21,7 @@ jobs:
         include:
           - os: macos-latest
             dist: --mac
-            smoke: dist/mac-arm64/CDPlayer.app/Contents/MacOS/CDPlayer
+            smoke: dist/mac-universal/CDPlayer.app/Contents/MacOS/CDPlayer
           - os: windows-latest
             dist: --win
             smoke: dist/win-unpacked/CDPlayer.exe
@@ -52,10 +52,8 @@ jobs:
           name: CDPlayer-${{ runner.os }}
           path: |
             dist/*.dmg
-            dist/*-mac.zip
             dist/*.exe
             dist/*.AppImage
-            dist/*.deb
           if-no-files-found: error
 
   release:
