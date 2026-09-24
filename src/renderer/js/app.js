@@ -17,6 +17,7 @@ const IDLE_SECONDS_UNTIL_VISUALIZER = 180;
 const CD_VIEW_CURSOR_IDLE_SECONDS = 5;
 const HISTORY_LIMIT = 50;
 const UNDO_CLEAR_SECONDS = 8;
+const SKIP_SECONDS = 5; // ←/→, the round skip buttons and the system media controls' seek back/forward
 // The player can stay open for days; the main process only actually asks GitHub once a day.
 const UPDATE_RECHECK_MS = 6 * 60 * 60 * 1000;
 
@@ -461,8 +462,8 @@ function setupMediaSession() {
   set('nexttrack', () => nextTrack());
   set('previoustrack', () => previousTrack());
   set('seekto', (e) => seekTo(e.seekTime));
-  set('seekbackward', () => seek(-15));
-  set('seekforward', () => seek(15));
+  set('seekbackward', () => seek(-SKIP_SECONDS));
+  set('seekforward', () => seek(SKIP_SECONDS));
 }
 
 // ---- Themes --------------------------------------------------------------------------------------------------
@@ -765,11 +766,11 @@ const volumeSlider = new Slider({ min: 0, max: 100, value: 100, onInput: (v) => 
 
 function buildStaticUi() {
   $('transport').append(
-    roundButton('SKIP_BACK_15', 36, { title: 'Back 15 seconds', onClick: () => seek(-15) }), spacer(10),
+    roundButton('SKIP_BACK', 36, { title: `Back ${SKIP_SECONDS} seconds`, onClick: () => seek(-SKIP_SECONDS) }), spacer(10),
     roundButton('PREVIOUS_TRACK', 44, { title: 'Previous track', onClick: () => previousTrack() }), spacer(16),
     playButton, spacer(16),
     roundButton('NEXT_TRACK', 44, { title: 'Next track', onClick: () => nextTrack() }), spacer(10),
-    roundButton('SKIP_FORWARD_15', 36, { title: 'Forward 15 seconds', onClick: () => seek(15) }));
+    roundButton('SKIP_FORWARD', 36, { title: `Forward ${SKIP_SECONDS} seconds`, onClick: () => seek(SKIP_SECONDS) }));
   $('modes-cluster').append(shuffleButton, repeatButton);
   // Load a Track / Clear Queue anchor the right edge; the same width is mirrored on the left so the transport
   // and mode clusters center on the column's true middle, as in the Java layout.
@@ -826,7 +827,7 @@ function onKeyDown(e) {
   if (key === 'm') { e.preventDefault(); setMiniMode(!state.miniMode); return; }
   if (anyOverlayOpen()) return;
   const actions = {
-    ArrowLeft: () => seek(-15), ArrowRight: () => seek(15), ArrowUp: () => adjustVolume(5), ArrowDown: () => adjustVolume(-5),
+    ArrowLeft: () => seek(-SKIP_SECONDS), ArrowRight: () => seek(SKIP_SECONDS), ArrowUp: () => adjustVolume(5), ArrowDown: () => adjustVolume(-5),
     u: toggleMute, ' ': toggle, k: toggle, j: previousTrack, l: nextTrack, f: toggleFullscreen, c: toggleCdView, v: toggleVisualizerMode,
   };
   if (actions[key]) { e.preventDefault(); if (!e.repeat || key.startsWith('Arrow')) actions[key](); }

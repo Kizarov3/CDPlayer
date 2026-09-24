@@ -14,15 +14,17 @@ function pause(w, h) {
   return `<rect x="${cx - gap / 2 - barW}" y="${cy - barH / 2}" width="${barW}" height="${barH}" rx="1"/>`
     + `<rect x="${cx + gap / 2}" y="${cy - barH / 2}" width="${barW}" height="${barH}" rx="1"/>`;
 }
+// Previous / next track: a bar with a triangle pointing at it (|◀ and ▶|), the pair centered in the button.
 function trackSkip(w, h, forward) {
   const cx = w / 2, cy = h / 2, barW = Math.max(2, w * 0.09), barH = h * 0.42, triW = w * 0.26, triH = h * 0.42;
-  const dir = forward ? 1 : -1;
-  const barX = cx + dir * w * 0.2 - (forward ? 0 : barW);
-  const near = cx - dir * w * 0.06, far = near + dir * triW;
+  const left = cx - (barW + triW) / 2;
+  const barX = forward ? left + triW : left;
+  const tip = forward ? left + triW : left + barW, base = forward ? left : left + barW + triW;
   return `<rect x="${barX}" y="${cy - barH / 2}" width="${barW}" height="${barH}" rx="1"/>`
-    + `<polygon points="${pts([[far, cy], [near, cy - triH / 2], [near, cy + triH / 2]])}"/>`;
+    + `<polygon points="${pts([[tip, cy], [base, cy - triH / 2], [base, cy + triH / 2]])}"/>`;
 }
-function seek15(w, h, forward) {
+// The round skip-back / skip-forward glyph: a circular arrow with the number of seconds inside.
+function seekBy(w, h, forward, seconds) {
   const cx = w / 2, cy = h / 2, r = Math.min(w, h) * 0.3, gapHalf = 35, ring = Math.max(1.4, w * 0.045);
   const at = (deg) => [cx + r * Math.cos((deg * Math.PI) / 180), cy - r * Math.sin((deg * Math.PI) / 180)];
   const startDeg = forward ? 90 - gapHalf : 90 + gapHalf, endDeg = forward ? 90 + gapHalf : 90 - gapHalf;
@@ -31,10 +33,10 @@ function seek15(w, h, forward) {
   const dx = forward ? Math.sin(rad) : -Math.sin(rad), dy = forward ? Math.cos(rad) : -Math.cos(rad);
   const len = r * 0.45, half = r * 0.4, perpX = -dy, perpY = dx;
   const arrow = [[px + dx * len, py + dy * len], [px + perpX * half, py + perpY * half], [px - perpX * half, py - perpY * half]];
-  const font = Math.max(8, Math.floor(w * 0.3));
+  const font = Math.max(8, Math.floor(w * (String(seconds).length > 1 ? 0.3 : 0.36)));
   return `<path d="M${sx} ${sy} A${r} ${r} 0 1 ${forward ? 1 : 0} ${px} ${py}" fill="none" stroke="currentColor" stroke-width="${ring}" stroke-linecap="round"/>`
     + `<polygon points="${pts(arrow)}"/>`
-    + `<text x="${cx}" y="${cy + 0.5}" text-anchor="middle" dominant-baseline="central" font-size="${font}" font-weight="bold" style="font-family: var(--font)">15</text>`;
+    + `<text x="${cx}" y="${cy + 0.5}" text-anchor="middle" dominant-baseline="central" font-size="${font}" font-weight="bold" style="font-family: var(--font)">${seconds}</text>`;
 }
 function arrowSegment(x1, y1, x2, y2, len, half) {
   const dx = x2 - x1, dy = y2 - y1, l = Math.hypot(dx, dy), ux = dx / l, uy = dy / l;
@@ -77,7 +79,7 @@ const DRAW = {
   SOLID_PLAY: solidPlay, SOLID_PAUSE: solidPause,
   REWIND: (w, h) => doubleTriangle(w, h, false), FAST_FORWARD: (w, h) => doubleTriangle(w, h, true),
   PREVIOUS_TRACK: (w, h) => trackSkip(w, h, false), NEXT_TRACK: (w, h) => trackSkip(w, h, true),
-  SKIP_BACK_15: (w, h) => seek15(w, h, false), SKIP_FORWARD_15: (w, h) => seek15(w, h, true),
+  SKIP_BACK: (w, h) => seekBy(w, h, false, 5), SKIP_FORWARD: (w, h) => seekBy(w, h, true, 5),
   SHUFFLE: shuffle, REPEAT: repeat,
 };
 

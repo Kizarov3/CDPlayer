@@ -105,7 +105,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 | --- | --- |
 | `Space` or `K` | Play / Pause |
 | `J` / `L` | Previous / next track |
-| `←` / `→` | Skip back / forward 15 seconds |
+| `←` / `→` | Skip back / forward 5 seconds |
 | `↑` / `↓` | Volume up / down |
 | `U` | Mute / unmute |
 | `F` | Toggle fullscreen |

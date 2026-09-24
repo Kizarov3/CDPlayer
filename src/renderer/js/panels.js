@@ -416,7 +416,7 @@ export function showOnboarding(app) {
     const done = () => closePanel('onboarding');
     const p = openPanel('onboarding', () => tipsCard('WELCOME TO CDPLAYER', 'A few things worth knowing before you dive in', [
       'Drag &amp; drop audio files or a whole folder onto the window to build your queue',
-      'SPACE / K play or pause &middot; J / L previous / next &middot; &larr; / &rarr; skip 15 seconds &middot; F fullscreen',
+      'SPACE / K play or pause &middot; J / L previous / next &middot; &larr; / &rarr; skip 5 seconds &middot; F fullscreen',
       'Open SETTINGS &rarr; THEME to explore nine animated themes, each with its own audio visualizer',
       'MP3, M4A, FLAC, WAV, AIFF, OGG and Opus all play right away &mdash; there is nothing else to install',
       'Your queue is saved automatically and restored the next time you open the app',

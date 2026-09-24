@@ -115,7 +115,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { send('exit'); return; }
   const actions = {
     ' ': 'toggle', k: 'toggle', j: 'prev', l: 'next', u: 'mute', m: 'exit',
-    ArrowLeft: ['seekBy', -15], ArrowRight: ['seekBy', 15], ArrowUp: ['volume', 5], ArrowDown: ['volume', -5],
+    ArrowLeft: ['seekBy', -5], ArrowRight: ['seekBy', 5], ArrowUp: ['volume', 5], ArrowDown: ['volume', -5],
   };
   const key = shortcutKey(e);
   const action = actions[key];
