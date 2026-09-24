@@ -25,6 +25,7 @@ export class Disc {
     this.onEjectPeak = null;
     this.onMiniClick = null;
     this.suppressRebuild = false; // during a theme color transition, keep the old face instead of re-rendering every frame
+    this.morph = null;            // { from, to, t }: between two modes' sizes, while CD View opens or closes
     canvas.addEventListener('dblclick', () => { if (this.mode !== 'mini') this.startEject(); });
     canvas.addEventListener('click', () => { if (this.mode === 'mini' && this.onMiniClick) this.onMiniClick(); });
   }
@@ -92,7 +93,9 @@ export class Disc {
     g.clearRect(0, 0, r.width, r.height);
     if (this.spinning) this.angle += 0.045 * (dt / 16);
 
-    const { cap, margin } = SIZES[this.mode];
+    const a = SIZES[this.morph ? this.morph.from : this.mode], b = SIZES[this.morph ? this.morph.to : this.mode];
+    const t = this.morph ? this.morph.t : 0;
+    const cap = a.cap + (b.cap - a.cap) * t, margin = a.margin + (b.margin - a.margin) * t;
     const mini = this.mode === 'mini';
     const room = Math.min(r.width, r.height) - (mini ? margin : margin + 20);
     const side = Math.max(10, Math.floor(Math.min(cap, room)));

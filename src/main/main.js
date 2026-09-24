@@ -322,15 +322,6 @@ ipcMain.on('mini:state', (_e, s) => { if (miniWin && !miniWin.isDestroyed()) min
 ipcMain.on('mini:command', (_e, c) => { if (win) win.webContents.send('mini-command', c); });
 handle('win:toggleFullscreen', () => { if (win && !miniMode) win.setFullScreen(!win.isFullScreen()); });
 handle('win:isFullscreen', () => !!(win && win.isFullScreen()));
-// Snapshot of the window's current pixels — the "before" frame the CD View / Visualizer / Mini Mode transitions
-// warp or crossfade away from. Scaled to CSS pixels and JPEG-encoded to keep it quick.
-handle('win:capture', async () => {
-  if (!win) return null;
-  const img = await win.webContents.capturePage();
-  const [w] = win.getContentSize();
-  const scaled = img.getSize().width > w ? img.resize({ width: w, quality: 'good' }) : img;
-  return `data:image/jpeg;base64,${scaled.toJPEG(85).toString('base64')}`;
-});
 handle('updates:check', () => (smokeDir ? null : updates.checkForUpdate(APP_VERSION)));
 handle('updates:openReleases', () => shell.openExternal(updates.RELEASES_PAGE));
 handle('shell:openGitHub', (user) => { if (/^[A-Za-z0-9-]+$/.test(user)) shell.openExternal(`https://github.com/${user}`); });

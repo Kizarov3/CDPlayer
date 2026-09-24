@@ -33,7 +33,6 @@ contextBridge.exposeInMainWorld('cdp', {
   setMiniMode: invoke('win:setMiniMode'),
   toggleFullscreen: invoke('win:toggleFullscreen'),
   isFullscreen: invoke('win:isFullscreen'),
-  capture: invoke('win:capture'),
   openGitHub: invoke('shell:openGitHub'),
   checkForUpdate: invoke('updates:check'),
   openReleasesPage: invoke('updates:openReleases'),

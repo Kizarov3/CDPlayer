@@ -5,7 +5,6 @@ import { AudioEngine } from './audio.js';
 import { Disc } from './disc.js';
 import { Visualizer, BeatDetector } from './visualizer.js';
 import { Particles } from './particles.js';
-import { snapshotTransition } from './transitions.js';
 import { anim, el, pill, roundButton, modeButton, Slider, fitText, pulse } from './widgets.js';
 import { parseLrc, currentLineIndex } from './lyrics.js';
 import { shortcutKey } from './keys.js';
@@ -535,12 +534,6 @@ function updateSleepIndicator() {
 
 // ---- View modes --------------------------------------------------------------------------------------------------
 
-function discRectInViewport() {
-  const r = $('disc').getBoundingClientRect();
-  return { x: r.left, y: r.top, w: r.width, h: r.height };
-}
-const fullRect = () => ({ x: 0, y: 0, w: window.innerWidth, h: window.innerHeight });
-
 function applyCdViewState() {
   document.body.classList.toggle('cd-view', state.cdView);
   $('cd-info').hidden = !state.cdView;
@@ -549,21 +542,62 @@ function applyCdViewState() {
   state.lastCdMouse = Date.now();
   showCursor();
 }
-let cdTransitioning = false;
 async function toggleCdView() {
-  if (cdTransitioning) return; // a second press while the snapshot is being taken
+  if (discMorph) return; // already on its way in or out
   if (state.miniMode) await setMiniMode(false);
   if (state.visualizerMode) toggleVisualizerMode();
   const entering = !state.cdView;
-  const before = discRectInViewport();
-  const apply = () => { state.cdView = entering; applyCdViewState(); };
-  if (!anim.enabled || Math.max(window.innerWidth, window.innerHeight) > 3200) { apply(); return; }
-  cdTransitioning = true;
-  try {
-    // Entering: the whole window warps down into the enlarged disc. Exiting: the disc warps back out to the window.
-    await snapshotTransition($('transition'), cdp.capture, apply,
-      () => (entering ? { source: fullRect(), target: discRectInViewport() } : { source: before, target: fullRect() }));
-  } finally { cdTransitioning = false; }
+  if (!anim.enabled) { state.cdView = entering; applyCdViewState(); return; }
+  await morphCdView(entering);
+}
+
+// CD View opens and closes by moving the disc itself: its canvas floats from where it sits in one layout to where
+// it sits in the other, growing or shrinking on the way — redrawn at every in-between size, so it stays sharp and
+// keeps spinning — while the rest of the player fades out around it, or back in.
+const CD_MORPH_MS = 440;
+const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+let discMorph = null;
+function morphCdView(entering) {
+  const canvas = $('disc'), body = document.body;
+  // Where the disc sits in both layouts, measured without a paint in between.
+  const from = canvas.getBoundingClientRect();
+  body.classList.toggle('cd-view', entering);
+  const to = canvas.getBoundingClientRect();
+  body.classList.toggle('cd-view', !entering);
+  // The divider too: the header above it comes and goes, so it sits higher in CD View.
+  const chrome = ['header', 'divider', 'player', 'hint'].map($);
+  if (entering) {
+    for (const node of chrome) node.animate([{ opacity: 1 }, { opacity: 0 }], { duration: CD_MORPH_MS * 0.45, easing: 'ease-out', fill: 'forwards' });
+  } else {
+    state.cdView = false; applyCdViewState(); // the player is laid out again underneath, and fades in as the disc lands
+    for (const node of chrome) node.animate([{ opacity: 0 }, { opacity: 1 }], { duration: CD_MORPH_MS * 0.5, delay: CD_MORPH_MS * 0.5, easing: 'ease-in', fill: 'backwards' });
+  }
+  Object.assign(canvas.style, { position: 'fixed', right: 'auto', bottom: 'auto', zIndex: '5' });
+  disc.morph = { from: entering ? 'normal' : 'enlarged', to: entering ? 'enlarged' : 'normal', t: 0 };
+  return new Promise((resolve) => {
+    discMorph = { start: performance.now(), from, to, entering, chrome, resolve };
+    stepDiscMorph(performance.now());
+  });
+}
+// Runs from the frame loop, just before the disc is drawn, so each frame draws it at that frame's size.
+function stepDiscMorph(now, finish = false) {
+  const m = discMorph;
+  if (!m) return;
+  const p = finish ? 1 : Math.min(1, (now - m.start) / CD_MORPH_MS), t = easeOutCubic(p);
+  const lerp = (key) => `${m.from[key] + (m.to[key] - m.from[key]) * t}px`;
+  const style = $('disc').style;
+  Object.assign(style, { left: lerp('left'), top: lerp('top'), width: lerp('width'), height: lerp('height') });
+  disc.morph.t = t;
+  if (p < 1) return;
+  discMorph = null; disc.morph = null;
+  for (const key of ['position', 'left', 'top', 'right', 'bottom', 'width', 'height', 'zIndex']) style[key] = '';
+  if (m.entering) {
+    state.cdView = true; applyCdViewState();
+    for (const node of m.chrome) for (const a of node.getAnimations()) a.cancel();
+    $('cd-info').animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'ease-out' });
+    $('divider').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, easing: 'ease-out' });
+  }
+  m.resolve();
 }
 
 function toggleVisualizerMode() {
@@ -583,6 +617,7 @@ function toggleVisualizerMode() {
 async function setMiniMode(enabled) {
   if (enabled === state.miniMode) return;
   if (enabled) {
+    stepDiscMorph(0, true); // a CD View transition still running finishes first
     if (state.cdView) { state.cdView = false; applyCdViewState(); }
     if (state.visualizerMode) { state.visualizerMode = false; $('vis-mode').hidden = true; }
   }
@@ -864,6 +899,7 @@ function frame(now) {
   }
   visualizer.draw(now);
   if (state.visualizerMode) bigVisualizer.draw(now);
+  stepDiscMorph(now);
   const discBounds = disc.frame(now, dt);
   const exclusions = [];
   if (discBounds) { const r = $('disc').getBoundingClientRect(); exclusions.push({ x: r.left + discBounds.x, y: r.top + discBounds.y, w: discBounds.w, h: discBounds.h }); }
@@ -920,7 +956,7 @@ async function start() {
   cdp.onFullscreenChanged((fs) => { state.fullscreen = fs; particles.w = 0; });
   cdp.onOpenFiles((files) => addToQueue(files));
   cdp.onMiniCommand(onMiniCommand);
-  onColorsChanged(() => pushMini(true));
+  onColorsChanged(() => { drawDivider(); pushMini(true); });
   window.addEventListener('resize', () => { drawDivider(); if (state.titleText) setTrackTitle(state.titleText, state.artistText); });
 
   const saved = await cdp.loadState();
