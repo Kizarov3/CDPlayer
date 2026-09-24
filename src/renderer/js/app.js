@@ -8,6 +8,7 @@ import { Particles } from './particles.js';
 import { snapshotTransition } from './transitions.js';
 import { anim, el, pill, roundButton, modeButton, Slider, fitText, pulse } from './widgets.js';
 import { parseLrc, currentLineIndex } from './lyrics.js';
+import { shortcutKey } from './keys.js';
 import * as panels from './panels.js';
 
 const cdp = window.cdp;
@@ -689,7 +690,7 @@ function onKeyDown(e) {
   state.lastActivity = Date.now();
   if (e.key === 'Escape') { e.preventDefault(); escape(); return; }
   if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return;
-  const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  const key = shortcutKey(e);
   if (key === 'm') { e.preventDefault(); setMiniMode(!state.miniMode); return; }
   if (anyOverlayOpen()) return;
   const actions = {
@@ -788,6 +789,9 @@ async function start() {
   setupMediaSession();
   setupDragAndDrop();
   window.addEventListener('keydown', onKeyDown);
+  // Buttons never take keyboard focus (as in the Java app) — otherwise Space after clicking, say, LOAD A TRACK
+  // would press that button again as well as toggling playback.
+  document.addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
   for (const type of ['mousemove', 'mousedown', 'wheel']) window.addEventListener(type, onMouseActivity, { passive: true });
   window.addEventListener('beforeunload', saveEverythingNow);
   cdp.onAppClosing(saveEverythingNow);
