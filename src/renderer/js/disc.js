@@ -1,5 +1,7 @@
 // The spinning disc in its jewel case — the app's centerpiece. Normal view, CD view (enlarged) and Mini Mode
 // (no case) share one canvas; the disc face is pre-rendered once per cover/size/colors and just rotated per frame.
+// Clicking the little cover in the case's corner opens the album art full-size over the case, in place of the
+// disc; clicking the art puts it back in the corner.
 import { colors, rgb, FONT } from './theme.js';
 
 const SIZES = {
@@ -8,7 +10,9 @@ const SIZES = {
   mini: { cap: 84, margin: 4 },
 };
 const EJECT_OUT = 300, EJECT_HOLD = 180, EJECT_BACK = 320;
+const ART_MS = 340;
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
 export class Disc {
   constructor(canvas) {
@@ -26,11 +30,29 @@ export class Disc {
     this.onMiniClick = null;
     this.suppressRebuild = false; // during a theme color transition, keep the old face instead of re-rendering every frame
     this.morph = null;            // { from, to, t }: between two modes' sizes, while CD View opens or closes
-    canvas.addEventListener('dblclick', () => { if (this.mode !== 'mini') this.startEject(); });
-    canvas.addEventListener('click', () => { if (this.mode === 'mini' && this.onMiniClick) this.onMiniClick(); });
+    this.artOpen = false;         // the full-size album art is showing instead of the disc
+    this.artT = 0;                // 0 = disc with the little cover in the corner … 1 = full art (animated)
+    this.artRect = null;          // where the clickable cover is drawn right now (canvas CSS px)
+    canvas.addEventListener('dblclick', (e) => { if (this.mode !== 'mini' && !this.artOpen && !this.overArt(e)) this.startEject(); });
+    canvas.addEventListener('click', (e) => {
+      if (this.mode === 'mini') { if (this.onMiniClick) this.onMiniClick(); return; }
+      if (this.overArt(e)) this.artOpen = !this.artOpen;
+    });
+    canvas.addEventListener('mousemove', (e) => {
+      const over = this.mode !== 'mini' && this.overArt(e);
+      canvas.style.cursor = over ? 'pointer' : '';
+      canvas.title = over ? (this.artOpen ? 'Back to the disc' : 'Show the full album art') : '';
+    });
   }
   setMode(mode) { this.mode = mode; }
-  setCover(img) { this.cover = img; this.coverVersion = (this.coverVersion || 0) + 1; }
+  setCover(img) {
+    this.cover = img; this.coverVersion = (this.coverVersion || 0) + 1;
+    if (!img) { this.artOpen = false; this.artT = 0; } // nothing to show full-size
+  }
+  overArt(e) {
+    const r = this.artRect;
+    return !!(r && this.cover && e.offsetX >= r.x && e.offsetX <= r.x + r.w && e.offsetY >= r.y && e.offsetY <= r.y + r.h);
+  }
   startEject() { if (this.ejectStart < 0) { this.ejectStart = performance.now(); this.ejectPeakFired = false; } }
 
   ejectProgress(now) {
@@ -102,6 +124,10 @@ export class Disc {
     const x = (r.width - side) / 2, y = (r.height - side) / 2, cx = x + side / 2, cy = y + side / 2;
     let bounds = { x, y, w: side, h: side };
 
+    this.artT = Math.max(0, Math.min(1, this.artT + (this.artOpen ? 1 : -1) * (dt / ART_MS)));
+    const art = mini || !this.cover ? 0 : easeInOutCubic(this.artT);
+    this.artRect = null;
+    let drawArt = null;
     if (!mini) {
       const cs = side + 60, caseX = cx - cs / 2, caseY = cy - cs / 2;
       bounds = { x: caseX, y: caseY, w: cs, h: cs };
@@ -114,24 +140,36 @@ export class Disc {
       g.moveTo(caseX + 10, caseY + cs - 10.5); g.lineTo(caseX + cs - 10, caseY + cs - 10.5);
       g.stroke();
       if (this.cover) {
-        const thumb = Math.round(side * 0.193);
-        g.fillStyle = 'rgba(0,0,0,0.47)';
-        g.beginPath(); g.roundRect(caseX + 14, caseY + 14, thumb, thumb, 3); g.fill();
-        const inner = thumb - 6;
-        if (inner > 0) {
-          const iw = this.cover.naturalWidth, ih = this.cover.naturalHeight, s = Math.min(iw, ih);
-          g.imageSmoothingQuality = 'high';
-          g.drawImage(this.cover, (iw - s) / 2, (ih - s) / 2, s, s, caseX + 17, caseY + 17, inner, inner);
-        }
-        g.strokeStyle = rgb(colors.accent2); g.lineWidth = 1.2;
-        g.beginPath(); g.roundRect(caseX + 16, caseY + 16, thumb - 4, thumb - 4, 2.5); g.stroke();
+        // The little cover in the corner, grown towards filling the case as the art opens. Drawn after the disc,
+        // so it covers it on the way.
+        const thumb = Math.round(side * 0.193), full = cs - 28;
+        const size = thumb + (full - thumb) * art;
+        this.artRect = { x: caseX + 14, y: caseY + 14, w: size, h: size };
+        drawArt = (cover) => {
+          const x = caseX + 14, y = caseY + 14;
+          g.fillStyle = 'rgba(0,0,0,0.47)';
+          g.beginPath(); g.roundRect(x, y, size, size, 3 + 3 * art); g.fill();
+          const inner = size - 6;
+          if (inner > 0) {
+            const iw = cover.naturalWidth, ih = cover.naturalHeight, s = Math.min(iw, ih);
+            g.save();
+            g.beginPath(); g.roundRect(x + 3, y + 3, inner, inner, 1.5 + 3 * art); g.clip();
+            g.imageSmoothingQuality = 'high';
+            g.drawImage(cover, (iw - s) / 2, (ih - s) / 2, s, s, x + 3, y + 3, inner, inner);
+            g.restore();
+          }
+          g.strokeStyle = rgb(colors.accent2); g.lineWidth = 1.2;
+          g.beginPath(); g.roundRect(x + 2, y + 2, size - 4, size - 4, 2.5 + 3 * art); g.stroke();
+        };
       }
     }
 
     const eject = this.ejectProgress(now);
     g.save();
+    // As the full art opens, the disc sinks back a little and fades out underneath it.
+    g.globalAlpha = 1 - art;
     g.translate(cx + side * 0.14 * eject, cy - side * 0.42 * eject);
-    g.scale(1, 1 - 0.22 * eject);
+    g.scale(1 - 0.08 * art, (1 - 0.08 * art) * (1 - 0.22 * eject));
     g.translate(-cx, -cy);
     const pad = Math.max(4, side / 90);
     g.fillStyle = 'rgba(0,0,0,0.35)';
@@ -147,6 +185,7 @@ export class Disc {
       g.beginPath(); g.arc(cx, cy, side / 2, 0, Math.PI * 2); g.fill();
     }
     g.restore();
+    if (drawArt) drawArt(this.cover);
     return bounds;
   }
 

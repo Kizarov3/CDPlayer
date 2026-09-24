@@ -785,7 +785,6 @@ function buildStaticUi() {
   $('history-button').addEventListener('click', () => panels.showHistory(app));
   $('settings-button').addEventListener('click', () => panels.showSettings(app));
   $('cd-view-button').addEventListener('click', toggleCdView);
-  $('visualizer-button').addEventListener('click', toggleVisualizerMode);
   $('update-button').addEventListener('click', () => cdp.openReleasesPage());
   $('sleep-indicator').addEventListener('click', () => { armSleepTimer(0); panels.refreshSettingsIfOpen(app); });
   $('vis-mode').addEventListener('mousedown', () => { if (state.visualizerMode) toggleVisualizerMode(); });

@@ -56,6 +56,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 
 **Now playing**
 - Spinning disc in a jewel case, with your album art on the disc and the case thumbnail — double-click the disc for a little surprise
+- Click the little cover in the jewel case's corner to open the album art full-size in place of the disc; click the art to put it back
 - Live audio visualizer driven by the actual audio, pulsing on detected beats, with a shape that changes with the theme
 - Artist, title and album from the file's tags, with the filename as a fallback
 - The audio quality under the title: `FLAC · 24-BIT · 96 KHZ` for lossless files, `MP3 · 320 KBPS` for compressed ones
