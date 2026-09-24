@@ -5,7 +5,7 @@
   "description": "A desktop music player that recreates the tactile feel of a physical CD player. Plays MP3, M4A, FLAC, WAV, AIFF, OGG and more with nothing else to install.",
   "author": "Kizarov3",
   "license": "MIT",
-  "homepage": "https://github.com/Kizarov3/CDPlayer-Electron",
+  "homepage": "https://github.com/Kizarov3/CDPlayer",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
@@ -102,7 +102,7 @@
     "publish": {
       "provider": "github",
       "owner": "Kizarov3",
-      "repo": "CDPlayer-Electron"
+      "repo": "CDPlayer"
     },
     "asarUnpack": [
       "src/main/decoders/**"

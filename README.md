@@ -11,7 +11,7 @@ CDPlayer is a desktop music player that recreates the tactile feel of a physical
 
 ## Download
 
-Grab the file for your system from the [**Releases**](https://github.com/Kizarov3/CDPlayer-Electron/releases) page:
+Grab the file for your system from the [**Releases**](https://github.com/Kizarov3/CDPlayer/releases) page:
 
 | System | File | How to run |
 | --- | --- | --- |
@@ -111,7 +111,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 
 ## Coming from the Java version?
 
-The original Java app lives at [Kizarov3/CDPlayer](https://github.com/Kizarov3/CDPlayer). Your data carries over automatically: CDPlayer 2 reads and writes the same files in the same place (`~/.cdplayer` on macOS/Linux, `%LOCALAPPDATA%\CDPlayer` on Windows) — queue and position, history, settings, EQ presets, last folder and Spotify sign-in. You can uninstall Java and FFmpeg if nothing else needs them.
+The original Java app lives on at [Kizarov3/CDPlayer-Legacy](https://github.com/Kizarov3/CDPlayer-Legacy). Your data carries over automatically: CDPlayer 2 reads and writes the same files in the same place (`~/.cdplayer` on macOS/Linux, `%LOCALAPPDATA%\CDPlayer` on Windows) — queue and position, history, settings, EQ presets, last folder and Spotify sign-in. You can uninstall Java and FFmpeg if nothing else needs them.
 
 ## Spotify (optional)
 
