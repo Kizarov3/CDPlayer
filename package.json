@@ -1,0 +1,132 @@
+{
+  "name": "cdplayer",
+  "productName": "CDPlayer",
+  "version": "2.0.0",
+  "description": "A desktop music player that recreates the tactile feel of a physical CD player. Plays MP3, M4A, FLAC, WAV, AIFF, OGG and more with nothing else to install.",
+  "author": "Kizarov3",
+  "license": "MIT",
+  "homepage": "https://github.com/Kizarov3/CDPlayer-Electron",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js test/*.test.mjs",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux"
+  },
+  "dependencies": {
+    "music-metadata": "^11.16.1"
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.kizarov3.cdplayer",
+    "productName": "CDPlayer",
+    "copyright": "Copyright © 2026 Kizarov3",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "fileAssociations": [
+      {
+        "ext": [
+          "mp3",
+          "m4a",
+          "aac",
+          "flac",
+          "wav",
+          "aif",
+          "aiff",
+          "au",
+          "ogg",
+          "oga",
+          "opus"
+        ],
+        "name": "Audio",
+        "role": "Viewer"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.music",
+      "icon": "build/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "identity": "-",
+      "hardenedRuntime": false
+    },
+    "dmg": {
+      "title": "CDPlayer ${version}"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-windows-portable.${ext}"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "AudioVideo;Audio;Player",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "maintainer": "Kizarov3",
+      "syncDesktopName": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Kizarov3",
+      "repo": "CDPlayer-Electron"
+    },
+    "asarUnpack": [
+      "src/main/decoders/**"
+    ],
+    "electronLanguages": [
+      "en",
+      "en-US",
+      "en_GB"
+    ]
+  },
+  "desktopName": "cdplayer.desktop"
+}

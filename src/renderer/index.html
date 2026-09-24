@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'">
+  <title>CDPlayer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="backdrop"><canvas id="backdrop-art"></canvas></div>
+
+  <main id="main">
+    <div id="header-block">
+      <header id="header">
+        <div id="header-west"></div>
+        <div id="status-pill"><span id="status">●&nbsp;&nbsp;READY TO PLAY</span></div>
+        <div id="header-east">
+          <span id="sleep-indicator" title="Click to cancel the sleep timer"></span>
+          <button class="pill" id="history-button">HISTORY</button>
+          <button class="pill" id="cd-view-button" title="Distraction-free view: just the disc">CD VIEW</button>
+          <button class="pill" id="visualizer-button" title="Fullscreen audio-reactive visualizer — also kicks in on its own after a few minutes idle">VISUALIZER</button>
+          <button class="pill" id="settings-button">SETTINGS</button>
+        </div>
+      </header>
+      <canvas id="divider"></canvas>
+    </div>
+
+    <div id="body">
+      <div id="disc-column"><canvas id="disc"></canvas></div>
+      <section id="player">
+        <div id="now-row">
+          <span id="now-playing-label">NOW PLAYING</span>
+          <canvas id="visualizer"></canvas>
+          <span class="grow"></span>
+          <button class="pill" id="lyrics-button" hidden>LYRICS</button>
+        </div>
+        <div id="track-title" class="fit">Pick a track to get started.</div>
+        <div id="track-artist" class="fit" hidden></div>
+        <div id="track-source">YOUR MUSIC LIBRARY</div>
+        <div id="progress-row"></div>
+        <div id="times"><span id="elapsed">0:00</span><span id="length">0:00</span></div>
+        <div id="controls" class="row-controls">
+          <span></span><span></span>
+          <div id="transport"></div>
+          <span></span><span></span>
+          <div class="trail"><button class="pill" id="load-button">LOAD A TRACK&nbsp;&nbsp;+</button></div>
+        </div>
+        <div id="playlist-row">
+          <span class="trail-spacer"></span>
+          <span class="mini-label">PLAYLIST</span>
+          <button class="pill" id="save-playlist-button" title="Save the current queue as a .m3u playlist file">SAVE</button>
+          <button class="pill" id="load-playlist-button" title="Add every track from a .m3u playlist file to the queue">LOAD</button>
+          <button class="pill" id="search-button" title="Search your music folder, or paste a Spotify track/playlist link">SEARCH</button>
+        </div>
+        <div id="modes" class="row-modes">
+          <span></span><span></span>
+          <div id="modes-cluster"></div>
+          <span></span>
+          <div class="trail"><button class="pill" id="clear-queue-button">CLEAR QUEUE</button></div>
+        </div>
+        <div id="volume-row" class="slider-row">
+          <span class="row-label">VOLUME</span>
+          <div id="volume-slider"></div>
+          <span class="row-value" id="volume-value">100%</span>
+        </div>
+        <div id="queue-card">
+          <div id="queue-info">QUEUE EMPTY</div>
+          <div id="queue-next">DROP SONGS OR A FOLDER TO BUILD A QUEUE</div>
+          <div id="queue-list" class="scroll"></div>
+        </div>
+      </section>
+    </div>
+
+    <footer id="south">
+      <div id="hint">DROP MP3 · M4A · FLAC · WAV · AIFF · OGG — SPACE/K PLAY · J/L PREV/NEXT · ←/→ SKIP 15S · ↑/↓ VOLUME · U MUTE · C CD VIEW · M MINI MODE · V VISUALIZER · F FULLSCREEN · ESC EXIT</div>
+      <div id="cd-info" hidden>
+        <div id="cd-title" class="fit"></div>
+        <div id="cd-artist" class="fit" hidden></div>
+      </div>
+    </footer>
+  </main>
+
+  <div id="mini" hidden>
+    <div id="mini-disc-slot"></div>
+    <div id="mini-right">
+      <div id="mini-title-row">
+        <div id="mini-title" class="fit"></div>
+        <button id="mini-exit" class="glyph-x" title="Exit Mini Mode">×</button>
+      </div>
+      <div id="mini-artist" class="fit"></div>
+      <div class="grow"></div>
+      <div id="mini-transport"></div>
+      <div id="mini-progress-row">
+        <span id="mini-elapsed">0:00</span>
+        <div id="mini-progress"></div>
+        <span id="mini-length">0:00</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="vis-mode" hidden>
+    <canvas id="big-visualizer"></canvas>
+    <div class="vis-hint">MOVE THE MOUSE, OR PRESS V / ESC, TO EXIT</div>
+  </div>
+
+  <div id="overlays"></div>
+  <canvas id="particles"></canvas>
+  <canvas id="transition"></canvas>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+name: Build
+
+# Every push/PR: unit tests + a packaged build on macOS, Windows and Linux, each smoke-tested by launching the
+# real packaged app and decoding every test file. Pushing a tag like v2.0.0 also publishes a GitHub Release with
+# the downloads attached.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            dist: --mac
+            smoke: dist/mac-arm64/CDPlayer.app/Contents/MacOS/CDPlayer
+          - os: windows-latest
+            dist: --win
+            smoke: dist/win-unpacked/CDPlayer.exe
+          - os: ubuntu-latest
+            dist: --linux
+            smoke: xvfb-run -a dist/linux-unpacked/cdplayer --no-sandbox --disable-gpu
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Virtual display for the Linux smoke test
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Package
+        run: npx electron-builder ${{ matrix.dist }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - name: Smoke-test the packaged app (decode every format, read tags)
+        shell: bash
+        run: ${{ matrix.smoke }} --smoke-test=test/fixtures
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CDPlayer-${{ runner.os }}
+          path: |
+            dist/*.dmg
+            dist/*-mac.zip
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.deb
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

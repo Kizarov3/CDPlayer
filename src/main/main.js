@@ -1,0 +1,282 @@
+'use strict';
+const { app, BrowserWindow, ipcMain, dialog, protocol, screen, shell, Menu } = require('electron');
+const path = require('path');
+const fs = require('fs');
+
+// `--smoke-test=<folder>`: used by CI on macOS, Windows and Linux to prove the *packaged* app can decode every
+// audio file in <folder> and read its tags, then exit 0/1. Runs against a throwaway data folder — set before
+// ./store is loaded, so a real user's ~/.cdplayer is never read or written.
+const smokeArg = process.argv.find((a) => a.startsWith('--smoke-test='));
+const smokeDir = smokeArg ? path.resolve(smokeArg.slice('--smoke-test='.length)) : null;
+if (smokeDir) process.env.CDPLAYER_HOME = fs.mkdtempSync(path.join(require('os').tmpdir(), 'cdplayer-smoke-'));
+
+const store = require('./store');
+const metadata = require('./metadata');
+const online = require('./online');
+const library = require('./library');
+const media = require('./media-protocol');
+
+const APP_VERSION = app.getVersion();
+const MAIN_MIN = { width: 760, height: 785 };
+const MAIN_DEFAULT = { width: 1120, height: 820 };
+const MINI = { width: 400, height: 210 };
+
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'cdp', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
+]);
+
+// Launched with audio files (double-click / "Open with" / drag onto the dock icon): queue them. Also keeps a
+// single window — a second launch hands its files to the running instance instead of opening another player.
+const pendingOpenFiles = [];
+function audioArgs(argv) {
+  return argv.slice(1).filter((a) => !a.startsWith('-') && library.isSupportedAudio(a) && store.isFile(a));
+}
+if (!smokeDir && !app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', (_e, argv) => {
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.focus();
+    const files = audioArgs(argv);
+    if (files.length) win.webContents.send('open-files', files);
+  });
+  pendingOpenFiles.push(...audioArgs(process.argv));
+}
+app.on('open-file', (event, filePath) => {
+  event.preventDefault();
+  if (win && win.webContents && !win.webContents.isLoading()) win.webContents.send('open-files', [filePath]);
+  else pendingOpenFiles.push(filePath);
+});
+
+let win = null;
+let settings = store.readSettings();
+let normalBounds = null;
+let miniMode = false;
+let preMiniBounds = null;
+
+function boundsOnScreen(b) {
+  if (!b || b.width < MAIN_MIN.width || b.height < MAIN_MIN.height) return false;
+  return screen.getAllDisplays().some(({ bounds: d }) => b.x < d.x + d.width && b.x + b.width > d.x && b.y < d.y + d.height && b.y + b.height > d.y);
+}
+
+function captureNormalBounds() {
+  if (!win || miniMode || win.isFullScreen() || win.isMaximized() || win.isMinimized()) return;
+  normalBounds = win.getBounds();
+}
+
+function persistSettings() {
+  store.writeSettings({ ...settings, bounds: normalBounds || settings.bounds, miniMode });
+}
+
+function createWindow() {
+  const saved = boundsOnScreen(settings.bounds) ? settings.bounds : null;
+  win = new BrowserWindow({
+    ...(saved || MAIN_DEFAULT),
+    minWidth: MAIN_MIN.width,
+    minHeight: MAIN_MIN.height,
+    title: 'CDPlayer',
+    backgroundColor: '#111113',
+    show: false,
+    autoHideMenuBar: true,
+    icon: process.platform === 'linux' ? path.join(__dirname, '..', 'renderer', 'icon.png') : undefined,
+    webPreferences: {
+      preload: path.join(__dirname, '..', 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      // Playback must keep advancing (track ends, crossfades, the sleep timer) while the window is hidden/minimized.
+      backgroundThrottling: false,
+      autoplayPolicy: 'no-user-gesture-required',
+      spellcheck: false,
+    },
+  });
+  if (saved) normalBounds = saved;
+  win.on('resize', captureNormalBounds);
+  win.on('move', captureNormalBounds);
+  win.on('enter-full-screen', () => win.webContents.send('fullscreen-changed', true));
+  win.on('leave-full-screen', () => win.webContents.send('fullscreen-changed', false));
+  win.on('close', () => {
+    try { win.webContents.send('app-closing'); } catch { /* already gone */ }
+    persistSettings();
+  });
+  win.on('closed', () => { win = null; });
+  win.once('ready-to-show', () => { if (!smokeDir) win.show(); });
+  win.webContents.on('will-navigate', (e) => e.preventDefault());
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('did-finish-load', () => {
+    if (smokeDir) { runSmokeTest(); return; }
+    if (pendingOpenFiles.length) { win.webContents.send('open-files', pendingOpenFiles.splice(0)); }
+  });
+  win.loadURL('cdp://app/index.html');
+}
+
+async function runSmokeTest() {
+  const files = library.collectAudio([smokeDir]);
+  const paths = (await files).sort(library.byName);
+  const results = [];
+  for (const p of paths) {
+    const details = await metadata.getDetails(p, { withCover: true });
+    // Decode through the exact same cdp:// media path the player uses (so AIFF/AU/ALAC go through the fallback
+    // decoders), and also make sure an <audio> element accepts the stream.
+    const probe = await win.webContents.executeJavaScript(`(async () => {
+      const url = window.cdp.mediaUrl(${JSON.stringify(p)});
+      const buf = await (await fetch(url)).arrayBuffer();
+      const audio = await new OfflineAudioContext(2, 1, 44100).decodeAudioData(buf);
+      const el = new Audio(url);
+      const elementDuration = await new Promise((ok, fail) => { el.onloadedmetadata = () => ok(el.duration); el.onerror = () => fail(new Error('media element error')); });
+      return { decoded: audio.duration, element: elementDuration };
+    })()`).catch((e) => ({ error: String(e.message || e) }));
+    const ok = !probe.error && probe.decoded > 0.3 && probe.element > 0.3 && !!details.title;
+    results.push({ file: path.basename(p), ok, title: details.title, ...probe });
+  }
+  const allOk = results.length > 0 && results.every((r) => r.ok);
+  process.stdout.write(`${JSON.stringify({ platform: process.platform, arch: process.arch, allOk, results }, null, 2)}\n`);
+  app.exit(allOk ? 0 : 1);
+}
+
+function buildMenu() {
+  if (process.platform !== 'darwin') { Menu.setApplicationMenu(null); return; }
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { role: 'appMenu' },
+    { role: 'editMenu' },
+    { label: 'Window', submenu: [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }] },
+  ]));
+}
+
+// ---- IPC ------------------------------------------------------------------------------------------------------
+
+const handle = (channel, fn) => ipcMain.handle(channel, (_e, ...args) => fn(...args));
+
+handle('state:load', () => ({
+  settings,
+  queue: store.readQueue(),
+  history: store.readHistory(),
+  eqPresets: store.readEqPresets(),
+  lastPath: store.readLastPath(),
+  onboarded: store.isOnboarded(),
+  lastVersion: store.readLastVersion(),
+  version: APP_VERSION,
+  platform: process.platform,
+}));
+handle('state:saveSettings', (s) => { settings = { ...settings, ...s }; persistSettings(); });
+handle('state:saveQueue', (q) => store.writeQueue(q));
+handle('state:saveHistory', (paths) => store.writeHistory(paths));
+handle('state:saveEqPresets', (presets) => store.writeEqPresets(presets));
+handle('state:markOnboarded', () => store.markOnboarded());
+handle('state:writeLastVersion', (v) => store.writeLastVersion(v));
+// Synchronous on purpose: called from the renderer's beforeunload, where async IPC may never be delivered.
+ipcMain.on('state:saveQueueSync', (e, q) => { e.returnValue = store.writeQueue(q); });
+
+handle('fs:exists', (p) => store.isFile(p));
+handle('meta:details', (p, opts) => metadata.getDetails(p, opts));
+handle('online:cover', (query) => online.findCover(query));
+handle('online:lyrics', (details) => online.findLyrics(details));
+handle('spotify:classify', (text) => online.classifySpotifyLink(text));
+handle('spotify:resolve', async (text) => {
+  try { return await online.resolveSpotifyLink(text); } catch (e) { return { error: (e.message || 'LOOKUP FAILED').toUpperCase() }; }
+});
+handle('spotify:signIn', () => online.spotifySignIn());
+
+handle('library:collect', async (items) => (await library.collectAudio(items)).sort(library.byName));
+handle('library:scan', async () => {
+  const folder = store.readLastPath();
+  if (!folder || !store.isDir(folder)) return { folder: null, files: [] };
+  return { folder, name: path.basename(folder), files: await library.scanLibrary(folder) };
+});
+
+function dialogDefaultPath() {
+  const last = store.readLastPath();
+  return last && store.isDir(last) ? last : app.getPath('music');
+}
+const AUDIO_FILTER = { name: 'Audio files (MP3, M4A, FLAC, WAV, AIFF, AU, OGG, Opus)', extensions: [...library.AUDIO_EXTENSIONS] };
+
+handle('dialog:openTracks', async () => {
+  // macOS can pick files and folders in one dialog; Windows/Linux dialogs are one or the other, so pick files there
+  // (folders can still be dragged onto the window).
+  const properties = ['openFile', 'multiSelections'];
+  if (process.platform === 'darwin') properties.push('openDirectory');
+  const r = await dialog.showOpenDialog(win, { title: 'Load a Track', defaultPath: dialogDefaultPath(), properties, filters: [AUDIO_FILTER] });
+  if (r.canceled || !r.filePaths.length) return [];
+  const first = r.filePaths[0];
+  store.writeLastPath(store.isDir(first) && r.filePaths.length === 1 ? first : path.dirname(first));
+  return r.filePaths;
+});
+handle('dialog:savePlaylist', async (entries) => {
+  const r = await dialog.showSaveDialog(win, { title: 'Save Playlist', defaultPath: path.join(dialogDefaultPath(), 'playlist.m3u'), filters: [{ name: 'Playlist (M3U)', extensions: ['m3u', 'm3u8'] }] });
+  if (r.canceled || !r.filePath) return { ok: false, canceled: true };
+  let target = r.filePath;
+  if (!/\.m3u8?$/i.test(target)) target += '.m3u';
+  try {
+    fs.writeFileSync(target, library.formatM3u(entries), 'utf8');
+    store.writeLastPath(path.dirname(target));
+    return { ok: true, name: path.basename(target) };
+  } catch { return { ok: false }; }
+});
+handle('dialog:loadPlaylist', async () => {
+  const r = await dialog.showOpenDialog(win, { title: 'Load Playlist', defaultPath: dialogDefaultPath(), properties: ['openFile'], filters: [{ name: 'Playlist (M3U)', extensions: ['m3u', 'm3u8'] }] });
+  if (r.canceled || !r.filePaths.length) return { canceled: true };
+  const source = r.filePaths[0];
+  store.writeLastPath(path.dirname(source));
+  try { return { tracks: library.parseM3u(fs.readFileSync(source, 'utf8'), source) }; } catch { return { error: true }; }
+});
+handle('dialog:importLibrary', async () => {
+  const r = await dialog.showOpenDialog(win, {
+    title: 'Import Library', defaultPath: dialogDefaultPath(), properties: ['openFile'],
+    filters: [{ name: 'Library export (iTunes XML, Spotify CSV/JSON)', extensions: ['xml', 'csv', 'json'] }],
+  });
+  if (r.canceled || !r.filePaths.length) return { canceled: true };
+  const source = r.filePaths[0];
+  try {
+    const text = fs.readFileSync(source, 'utf8');
+    const ext = path.extname(source).toLowerCase();
+    if (ext === '.xml') return { kind: 'itunes', tracks: library.parseItunesLibrary(text) };
+    return { kind: 'spotify', tracks: ext === '.json' ? library.parseSpotifyJson(text) : library.parseSpotifyCsv(text) };
+  } catch { return { error: true }; }
+});
+
+handle('win:setMiniMode', (enabled) => {
+  if (!win || enabled === miniMode) return;
+  if (enabled) {
+    if (win.isFullScreen()) win.setFullScreen(false);
+    preMiniBounds = win.getBounds();
+    miniMode = true;
+    win.setMinimumSize(MINI.width, MINI.height);
+    win.setResizable(false);
+    win.setMaximizable(false);
+    win.setFullScreenable(false);
+    win.setAlwaysOnTop(true, 'floating');
+    win.setSize(MINI.width, MINI.height);
+  } else {
+    miniMode = false;
+    win.setAlwaysOnTop(false);
+    win.setResizable(true);
+    win.setMaximizable(true);
+    win.setFullScreenable(true);
+    win.setMinimumSize(MAIN_MIN.width, MAIN_MIN.height);
+    if (preMiniBounds) win.setBounds(preMiniBounds);
+  }
+  persistSettings();
+});
+handle('win:toggleFullscreen', () => { if (win && !miniMode) win.setFullScreen(!win.isFullScreen()); });
+handle('win:isFullscreen', () => !!(win && win.isFullScreen()));
+// Snapshot of the window's current pixels — the "before" frame the CD View / Visualizer / Mini Mode transitions
+// warp or crossfade away from. Scaled to CSS pixels and JPEG-encoded to keep it quick.
+handle('win:capture', async () => {
+  if (!win) return null;
+  const img = await win.webContents.capturePage();
+  const [w] = win.getContentSize();
+  const scaled = img.getSize().width > w ? img.resize({ width: w, quality: 'good' }) : img;
+  return `data:image/jpeg;base64,${scaled.toJPEG(85).toString('base64')}`;
+});
+handle('shell:openGitHub', (user) => { if (/^[A-Za-z0-9-]+$/.test(user)) shell.openExternal(`https://github.com/${user}`); });
+
+// ---- Lifecycle --------------------------------------------------------------------------------------------------
+
+app.whenReady().then(() => {
+  protocol.handle('cdp', media.handle);
+  buildMenu();
+  createWindow();
+  app.on('activate', () => { if (!win) createWindow(); });
+});
+app.on('window-all-closed', () => app.quit());
