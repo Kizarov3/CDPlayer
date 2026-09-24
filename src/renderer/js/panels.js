@@ -429,7 +429,7 @@ export function showOnboarding(app) {
 const CHANGELOG = [
   { version: '2.3.1', changes: [
     '<b>New visualizers</b>: Visualizer Mode (V) now follows the actual music &mdash; bass to treble &mdash; with a full-screen scene for every theme, and the one next to NOW PLAYING is a clean, minimal version of it',
-    'Covers and lyrics are found for downloaded songs with messy names, like &ldquo;Korn - Got The Life (mp3.pm)&rdquo; &mdash; untagged files are read as Artist &ndash; Title, and website tags come off the name',
+    'Better cover art and lyrics for downloaded songs: files without tags are read as Artist &ndash; Title from their name, and website tags and extras are cleaned out of song names',
     'The skip buttons and &larr; / &rarr; now jump 5 seconds instead of 15, and the previous / next track arrows sit centered in their buttons',
     'Leaving CD View, the disc now lands smoothly in place instead of dropping at the end',
     'On Windows, the media controls show CDPlayer instead of &ldquo;Unknown app&rdquo;, and the title bar is dark to match the player',
