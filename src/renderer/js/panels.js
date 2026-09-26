@@ -461,6 +461,11 @@ export function showOnboarding(app) {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.5.1', changes: [
+    '<b>Discord shows the album cover</b> for every song it can find online &mdash; also for songs whose cover is inside the file',
+    '<b>Covers and lyrics for badly named songs</b>: names like &ldquo;Unknown Artist&rdquo;, &ldquo;01. Title&rdquo;, &ldquo;Title - Remastered 2011&rdquo; or &ldquo;feat.&rdquo; credits no longer get in the way',
+    'Files named &ldquo;Title - Artist&rdquo; are recognised and shown the right way round',
+  ] },
   { version: '2.5.0', changes: [
     '<b>Discord status</b>: while a song plays, your Discord profile shows &ldquo;Listening to&rdquo; the artist, with the song, a progress bar and the cover &mdash; turn it off any time in Settings &rsaquo; Sharing',
     'It clears when you pause, and works whenever the Discord app is open on this computer &mdash; no sign-in needed',
