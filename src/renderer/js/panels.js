@@ -457,6 +457,12 @@ export function showOnboarding(app) {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.4.0', changes: [
+    '<b>Tidier player</b>: shuffle and repeat now sit beside the playback buttons, LOAD A TRACK is next to the volume, and SEARCH, SAVE, LOAD and CLEAR are in the queue&rsquo;s header',
+    'The queue shows more than twice as many tracks, with the one playing highlighted',
+    '<b>Settings</b> is grouped into Sound, Look and Playback, and shows the equalizer preset you&rsquo;re on &mdash; click it to switch presets without opening the EQ',
+    'Small windows fit: the player no longer runs off the right edge when the window is at its narrowest',
+  ] },
   { version: '2.3.1', changes: [
     '<b>New visualizers</b>: Visualizer Mode (V) now follows the actual music &mdash; bass to treble &mdash; with a full-screen scene for every theme, and the one next to NOW PLAYING is a clean, minimal version of it',
     'Better cover art and lyrics for downloaded songs: files without tags are read as Artist &ndash; Title from their name, and website tags and extras are cleaned out of song names',
