@@ -18,8 +18,9 @@ const CD_VIEW_CURSOR_IDLE_SECONDS = 5;
 const HISTORY_LIMIT = 50;
 const UNDO_CLEAR_SECONDS = 8;
 const SKIP_SECONDS = 5; // ←/→, the round skip buttons and the system media controls' seek back/forward
-// The player can stay open for days, so it looks for a newer release again every hour (as well as at launch).
-const UPDATE_RECHECK_MS = 60 * 60 * 1000;
+// The player can stay open for days, so it asks GitHub about the newest release again every 15 minutes (as well as at
+// launch) — the "x.y.z AVAILABLE" pill follows new releases while it's open.
+const UPDATE_RECHECK_MS = 15 * 60 * 1000;
 
 export const BUILTIN_EQ_PRESETS = [
   { name: 'Flat', gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
@@ -937,8 +938,10 @@ export const app = {
 // ---- Startup ---------------------------------------------------------------------------------------------------
 
 // A newer release on GitHub shows a pill in the header; clicking it opens the download page. Nothing is installed.
+// When GitHub can't be reached, the pill is left as it was.
 async function checkForUpdate() {
-  const update = await cdp.checkForUpdate().catch(() => null);
+  const update = await cdp.checkForUpdate().catch(() => ({ offline: true }));
+  if (update && update.offline) return;
   const button = $('update-button');
   button.hidden = !update;
   if (update) button.textContent = `${update.version} AVAILABLE`;

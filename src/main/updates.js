@@ -1,15 +1,12 @@
 'use strict';
 /**
- * "A newer CDPlayer is out" check. Asks GitHub for the latest published release at most once every 10 minutes (the
- * answer is cached in update-check.txt) and never downloads or installs anything — the renderer just shows a pill that
- * opens the Releases page. Offline or rate-limited simply means no pill. The cache is kept short on purpose: releases
- * can come out an hour apart, and a day-long cache kept announcing the older one.
+ * The "x.y.z AVAILABLE" check. Every check asks GitHub for the latest published release and compares it with the
+ * running version — nothing is remembered between checks, so the pill always names the newest release there is right
+ * now (the renderer asks at launch and every 15 minutes). It never downloads or installs anything: the pill just
+ * opens the Releases page. When GitHub can't be reached the result says so, and the pill stays as it was.
  */
-const store = require('./store');
-
 const LATEST_RELEASE_API = 'https://api.github.com/repos/Kizarov3/CDPlayer/releases/latest';
 const RELEASES_PAGE = 'https://github.com/Kizarov3/CDPlayer/releases/latest';
-const CHECK_INTERVAL_MS = 10 * 60 * 1000;
 const TIMEOUT_MS = 8000;
 
 function parseVersion(v) {
@@ -21,13 +18,6 @@ function isNewer(a, b) {
   if (!x || !y) return false;
   for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i];
   return false;
-}
-
-// update-check.txt — "checkedAtMillis" then the latest released version seen (empty line if there was none).
-function readCache() {
-  const [at, version] = (store.readText(store.FILES.updateCheck) || '').split(/\r?\n/);
-  const checkedAt = parseInt(at, 10);
-  return Number.isFinite(checkedAt) ? { checkedAt, version: parseVersion(version) ? version.trim() : null } : null;
 }
 
 async function fetchLatestVersion(currentVersion) {
@@ -43,21 +33,16 @@ async function fetchLatestVersion(currentVersion) {
   return parseVersion(json.tag_name) ? json.tag_name.trim().replace(/^v/, '') : null;
 }
 
-// → { version } when a newer release than currentVersion is out, otherwise null.
-async function checkForUpdate(currentVersion, { now = Date.now(), fetchLatest = fetchLatestVersion } = {}) {
-  const cache = readCache();
+// → { version } when a newer release than currentVersion is out, null when currentVersion is the newest, and
+//   { offline: true } when GitHub couldn't be reached (offline, rate-limited).
+async function checkForUpdate(currentVersion, { fetchLatest = fetchLatestVersion } = {}) {
   let latest;
-  if (cache && now >= cache.checkedAt && now - cache.checkedAt < CHECK_INTERVAL_MS) {
-    latest = cache.version;
-  } else {
-    try {
-      latest = await fetchLatest(currentVersion);
-      store.writeText(store.FILES.updateCheck, `${now}\n${latest || ''}\n`);
-    } catch {
-      latest = cache && cache.version; // offline: go by what we last knew, and try again next time
-    }
+  try {
+    latest = await fetchLatest(currentVersion);
+  } catch {
+    return { offline: true };
   }
   return latest && isNewer(latest, currentVersion) ? { version: latest } : null;
 }
 
-module.exports = { checkForUpdate, isNewer, RELEASES_PAGE, CHECK_INTERVAL_MS };
+module.exports = { checkForUpdate, isNewer, RELEASES_PAGE };

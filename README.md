@@ -19,7 +19,7 @@ Grab the file for your system from the [**Releases**](https://github.com/Kizarov
 | **Windows** 10 / 11 | `CDPlayer-x.y.z-windows.exe` | Double-click it — no installation, runs straight from wherever you saved it |
 | **Linux** (any distro) | `CDPlayer-x.y.z-linux.AppImage` | Make it executable (right-click → Properties → *Allow executing*, or `chmod +x`), then double-click |
 
-When a newer version is released, a small **x.y.z AVAILABLE** button appears in the top-left corner of the player — click it to open this page. CDPlayer checks when it starts and every hour while it's open, and never downloads or installs anything by itself.
+When a newer version is released, a small **x.y.z AVAILABLE** button appears in the top-left corner of the player — click it to open this page. CDPlayer asks GitHub when it starts and every 15 minutes while it's open, so the button always shows the newest version, and it never downloads or installs anything by itself.
 
 ### First launch
 
