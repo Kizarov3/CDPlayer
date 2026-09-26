@@ -6,6 +6,7 @@ import { Disc } from './disc.js';
 import { Visualizer } from './visualizer.js';
 import { Particles } from './particles.js';
 import { anim, el, pill, roundButton, modeButton, Slider, fitText, pulse } from './widgets.js';
+import { openBooklet, closeBooklet } from './booklet.js';
 import { parseLrc, currentLineIndex } from './lyrics.js';
 import { shortcutKey } from './keys.js';
 import * as panels from './panels.js';
@@ -455,6 +456,7 @@ function seekTo(seconds) {
 
 function recordHistory(p) {
   state.history = [p, ...state.history.filter((h) => h !== p)].slice(0, HISTORY_LIMIT);
+  cdp.addPlay(p).catch(() => {});
   cdp.saveHistory(state.history);
   panels.refreshHistoryIfOpen(app);
 }
@@ -670,6 +672,7 @@ async function setMiniMode(enabled) {
   }
   state.miniMode = enabled;
   panels.closeMenu();
+  closeBooklet();
   if (enabled) pushMini(true);
   await cdp.setMiniMode(enabled);
   panels.refreshSettingsIfOpen(app);
@@ -833,6 +836,7 @@ function buildStaticUi() {
   $('sleep-indicator').addEventListener('click', () => { armSleepTimer(0); panels.refreshSettingsIfOpen(app); });
   $('vis-mode').addEventListener('mousedown', () => { if (state.visualizerMode) toggleVisualizerMode(); });
   disc.onEjectPeak = () => nextTrack();
+  disc.onArtClick = (from) => openBooklet(app, from);
   engine.onEnded = trackFinished;
   engine.onCrossfadeDone = () => { if (engine.playing) setStatus('NOW SPINNING'); };
   setupQueueDrag();
@@ -969,6 +973,9 @@ function frame(now) {
 export const app = {
   state, engine, disc, THEMES, BUILTIN_EQ_PRESETS, cdp,
   setStatus, queueDisplay, displayName, formatTime, load, addToQueue, appendAndPlay, seekTo,
+  detailsFor: (p) => detailsCache.get(p),
+  playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) { state.index = i; load(state.queue[i]); } },
+  coverSource: () => { const s = $('track-source').textContent; return /COVER ART|ALBUM ART/.test(s) ? s.split(' · ')[0].replace(/ COVER ART$/, '').replace('EMBEDDED ALBUM ART', 'In the file') : null; },
   switchTheme, setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord,
   saveEq: () => cdp.saveEqPresets(state.customPresets),
   lyricsLines: () => (state.lyrics ? parseLrc(state.lyrics) : []),

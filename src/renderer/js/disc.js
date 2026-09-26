@@ -28,6 +28,7 @@ export class Disc {
     this.ejectPeakFired = false;
     this.onEjectPeak = null;
     this.onMiniClick = null;
+    this.onArtClick = null;       // (art's rectangle on screen) → open the booklet
     this.suppressRebuild = false; // during a theme color transition, keep the old face instead of re-rendering every frame
     this.morph = null;            // { from, to, t }: between two modes' sizes, while CD View opens or closes
     this.artOpen = false;         // the full-size album art is showing instead of the disc
@@ -36,12 +37,18 @@ export class Disc {
     canvas.addEventListener('dblclick', (e) => { if (this.mode !== 'mini' && !this.artOpen && !this.overArt(e)) this.startEject(); });
     canvas.addEventListener('click', (e) => {
       if (this.mode === 'mini') { if (this.onMiniClick) this.onMiniClick(); return; }
-      if (this.overArt(e)) this.artOpen = !this.artOpen;
+      if (!this.overArt(e)) return;
+      // The full-size art is the booklet's front cover: clicking it opens the booklet (booklet.js), which puts the
+      // art back in the corner when it closes. Without a booklet handler it just goes back, as before.
+      if (this.artOpen && this.artT >= 1 && this.onArtClick) {
+        const c = this.canvas.getBoundingClientRect(), r = this.artRect;
+        this.onArtClick({ left: c.left + r.x, top: c.top + r.y, width: r.w, height: r.h });
+      } else this.artOpen = !this.artOpen;
     });
     canvas.addEventListener('mousemove', (e) => {
       const over = this.mode !== 'mini' && this.overArt(e);
       canvas.style.cursor = over ? 'pointer' : '';
-      canvas.title = over ? (this.artOpen ? 'Back to the disc' : 'Show the full album art') : '';
+      canvas.title = over ? (this.artOpen ? (this.onArtClick ? 'Open the booklet' : 'Back to the disc') : 'Show the full album art') : '';
     });
   }
   setMode(mode) { this.mode = mode; }

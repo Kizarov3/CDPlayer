@@ -184,6 +184,16 @@ ipcMain.on('state:saveQueueSync', (e, q) => { e.returnValue = store.writeQueue(q
 
 handle('fs:exists', (p) => cue.entryExists(p));
 handle('meta:details', (p, opts) => metadata.getDetails(p, opts));
+// Play counts, kept in memory and written a moment after the last change.
+let playCounts = null, playsTimer = null;
+const plays = () => (playCounts = playCounts || store.readPlayCounts());
+handle('plays:add', (p) => {
+  const counts = plays(), n = (counts.get(p) || 0) + 1;
+  counts.delete(p); counts.set(p, n); // most recently played last, so the oldest drop off first
+  clearTimeout(playsTimer); playsTimer = setTimeout(() => store.writePlayCounts(counts), 1000);
+  return n;
+});
+handle('plays:count', (p) => plays().get(p) || 0);
 handle('online:cover', (query) => online.findCover(query));
 handle('online:coverUrl', (query) => online.findCoverUrl(query));
 handle('online:lyrics', (details) => online.findLyrics(details));
@@ -366,5 +376,8 @@ app.whenReady().then(() => {
     else win.show();
   });
 });
-app.on('before-quit', () => { quitting = true; });
+app.on('before-quit', () => {
+  quitting = true;
+  if (playsTimer) { clearTimeout(playsTimer); playsTimer = null; store.writePlayCounts(playCounts); }
+});
 app.on('window-all-closed', () => app.quit());

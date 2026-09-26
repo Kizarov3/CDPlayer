@@ -5,11 +5,12 @@ import { THEMES } from './theme.js';
 import { EQ_FREQUENCIES } from './audio.js';
 import { el, pill, toggle, setToggle, Slider, anim } from './widgets.js';
 import { catSvg } from './glyphs.js';
+import { isBookletOpen, closeBooklet } from './booklet.js';
 
 const layer = () => document.getElementById('overlays');
 const panels = new Map(); // name -> { overlay, card, build }
 // Escape closes the closest thing first, in this order.
-const ESC_ORDER = ['onboarding', 'changelog', 'menu', 'lyrics', 'eq', 'history', 'search', 'settings'];
+const ESC_ORDER = ['onboarding', 'changelog', 'booklet', 'menu', 'lyrics', 'eq', 'history', 'search', 'settings'];
 
 function openPanel(name, build, { width } = {}) {
   let p = panels.get(name);
@@ -48,10 +49,11 @@ function refreshPanel(name) {
   p.card.querySelectorAll('.scroll').forEach((s, i) => { s.scrollTop = scrollers[i] || 0; });
 }
 export const isOpen = (name) => panels.has(name);
-export const anyOpen = () => panels.size > 0 || !!menuLayer;
+export const anyOpen = () => panels.size > 0 || !!menuLayer || isBookletOpen();
 export function closeTopmost() {
   for (const name of ESC_ORDER) {
     if (name === 'menu') { if (menuLayer) { closeMenu(); return true; } continue; }
+    if (name === 'booklet') { if (isBookletOpen()) { closeBooklet(); return true; } continue; }
     if (panels.has(name)) { closePanel(name); return true; }
   }
   return false;

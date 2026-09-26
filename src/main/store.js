@@ -30,7 +30,7 @@ const file = (name) => path.join(dataDir(), name);
 const FILES = {
   queue: 'queue.txt', onboarded: 'onboarded', lastVersion: 'lastversion.txt', lastPath: 'lastpath.txt',
   settings: 'settings.txt', eqPresets: 'eq-presets.txt', history: 'history.txt', spotify: 'spotify.txt',
-  miniPosition: 'mini-position.txt',
+  miniPosition: 'mini-position.txt', plays: 'plays.txt',
 };
 
 function readText(name) {
@@ -119,6 +119,21 @@ function writeQueue({ paths, index, positionMicros }) {
   return writeText(FILES.queue, `${index},${Math.max(0, Math.round(positionMicros || 0))}\n${body}${body ? '\n' : ''}`);
 }
 
+// plays.txt — "count<TAB>path" per line: how many times each track was played (for the booklet). CDPlayer 2 only.
+const PLAYS_LIMIT = 5000;
+function readPlayCounts() {
+  const counts = new Map();
+  for (const line of lines(readText(FILES.plays))) {
+    const tab = line.indexOf('\t'), n = parseInt(line.slice(0, tab), 10), p = line.slice(tab + 1).trim();
+    if (tab > 0 && n > 0 && p) counts.set(p, n);
+  }
+  return counts;
+}
+function writePlayCounts(counts) {
+  const entries = [...counts].filter(([p]) => safePath(p)).slice(-PLAYS_LIMIT); // the most recently played are last
+  return writeText(FILES.plays, entries.map(([p, n]) => `${n}\t${p}`).join('\n') + (entries.length ? '\n' : ''));
+}
+
 const HISTORY_LIMIT = 50;
 function readHistory() {
   return lines(readText(FILES.history)).map((p) => p.trim()).filter((p) => p && entryExists(p)).slice(0, HISTORY_LIMIT);
@@ -158,5 +173,6 @@ const writeLastVersion = (v) => writeText(FILES.lastVersion, v);
 module.exports = {
   dataDir, file, FILES, readText, writeText, isFile, isDir,
   readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, writeQueue, readHistory, writeHistory, HISTORY_LIMIT,
+  readPlayCounts, writePlayCounts,
   readEqPresets, writeEqPresets, readLastPath, writeLastPath, isOnboarded, markOnboarded, readLastVersion, writeLastVersion,
 };

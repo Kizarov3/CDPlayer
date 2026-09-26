@@ -325,3 +325,76 @@ body.cd-view #cd-info { display: block !important; }
 .drop-target #main::after {
   content: ""; position: absolute; inset: 12px; border: 2px dashed rgba(var(--accent), .6); border-radius: 12px; pointer-events: none;
 }
+
+/* ---- The CD booklet (booklet.js): a two-page spread of real text over the dimmed player ---- */
+.booklet-layer {
+  position: absolute; inset: 0; pointer-events: auto; perspective: 2200px;
+  background: rgba(0, 0, 0, .62); transition: background 300ms ease;
+}
+.booklet-layer.entering, .booklet-layer.leaving { background: rgba(0, 0, 0, 0); }
+.booklet { position: absolute; transform-style: preserve-3d; cursor: pointer; }
+.booklet-layer.leaving .booklet { transition: transform 420ms cubic-bezier(.5, 0, .75, 0) !important; }
+.booklet .leaf {
+  position: absolute; left: var(--page); top: 0; width: var(--page); height: var(--page);
+  transform-origin: left center; transform-style: preserve-3d;
+  transition: transform 650ms cubic-bezier(.45, .05, .25, 1);
+}
+.booklet .leaf.turned { transform: rotateY(-180deg); }
+.booklet .face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; overflow: hidden; }
+.booklet .face.back { transform: rotateY(180deg); }
+/* Paper: the album's colours, a faint grain, and the fold's shadow along the spine. Type is sized from the page, like
+   print, so a big booklet isn't a small one with extra margin. */
+.booklet .page {
+  position: absolute; inset: 0; box-sizing: border-box; padding: 7% 7% 6%;
+  font-size: calc(var(--page) / 34);
+  background:
+    linear-gradient(to right, rgba(0, 0, 0, .28), rgba(0, 0, 0, 0) 7%),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, .012) 0 1px, transparent 1px 3px),
+    var(--b-paper);
+  color: var(--b-ink); display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .55);
+}
+.booklet .face.back .page { background:
+    linear-gradient(to left, rgba(0, 0, 0, .28), rgba(0, 0, 0, 0) 7%),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, .012) 0 1px, transparent 1px 3px),
+    var(--b-paper); }
+.booklet .page.measuring { position: absolute; left: -9999px; visibility: hidden; }
+.booklet .page.cover { padding: 0; background: #111; }
+.booklet .page.cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.booklet .page.cover::after { /* a little gloss, like the printed card behind the case's plastic */
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(125deg, rgba(255, 255, 255, .14), rgba(255, 255, 255, 0) 38%), linear-gradient(to right, rgba(0, 0, 0, .25), rgba(0, 0, 0, 0) 5%);
+}
+.booklet .page.cdr { background: radial-gradient(circle at 50% 50%, #e9eaec 0, #cfd2d6 70%); color: #1a1a2a; justify-content: center; align-items: center; text-align: center; gap: .6em; }
+.booklet .marker { font: 2.3em "Marker Felt", "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive; transform: rotate(-4deg); max-width: 85%; }
+.booklet .marker.small { font-size: 1.5em; }
+.booklet .page-head { flex: none; margin-bottom: 1.2em; }
+.booklet .page-title { font-size: 1.15em; letter-spacing: .06em; color: var(--b-accent2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.booklet .page-title.small { font-size: .85em; margin: 1.6em 0 .7em; }
+.booklet .page-sub { margin-top: .3em; font-size: .9em; font-weight: normal; color: var(--b-muted); }
+.booklet .page-body { flex: 1 1 auto; min-height: 0; }
+.booklet .track { display: flex; align-items: baseline; gap: .8em; padding: .4em .5em; margin: 0 -.5em; border-radius: 4px; }
+.booklet .track:hover { background: rgba(255, 255, 255, .06); }
+.booklet .track .no { flex: none; width: 1.7em; color: var(--b-muted); font-size: .8em; }
+.booklet .track .name { flex: 1 1 auto; min-width: 0; font-weight: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.booklet .track .time { flex: none; font-size: .82em; color: var(--b-muted); font-weight: normal; }
+.booklet .track.current .name, .booklet .track.current .no { color: var(--b-accent2); font-weight: bold; }
+.booklet .lyric { font-size: 1.05em; font-weight: normal; line-height: 1.5; color: var(--b-ink); transition: color 200ms; }
+.booklet .lyric.gap { height: .7em; }
+.booklet .lyric.now { color: var(--b-accent2); font-weight: bold; }
+.booklet dl.credits { display: grid; grid-template-columns: auto 1fr; gap: .5em 1.1em; margin: 0; font-size: .92em; }
+.booklet dl.credits dt { color: var(--b-muted); font-size: .82em; padding-top: .1em; }
+.booklet dl.credits dd { margin: 0; font-weight: normal; overflow-wrap: anywhere; }
+.booklet .none { font-size: .9em; font-weight: normal; color: var(--b-muted); }
+.booklet .back-title { font-size: 1.3em; color: var(--b-accent2); }
+.booklet .back-artist { margin-top: .25em; font-size: .9em; font-weight: normal; color: var(--b-muted); }
+.booklet .back-tracks { margin: 1.2em 0 0; padding: 0; list-style: decimal inside; columns: 2; column-gap: 1.5em; font-size: .85em; font-weight: normal; line-height: 1.6; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.booklet .back-tracks li { break-inside: avoid; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.booklet .back-tracks li::marker { color: var(--b-muted); }
+.booklet .back-total { margin-top: .7em; font-size: .85em; color: var(--b-accent); }
+.booklet .small-print { margin-top: .8em; display: flex; flex-direction: column; gap: .25em; font-size: .72em; font-weight: normal; color: var(--b-muted); }
+.booklet .barcode-box { margin-top: .5em; align-self: flex-end; width: 32%; padding: .5em .6em .25em; background: #fff; border-radius: 2px; }
+.booklet .barcode { display: block; width: 100%; height: 3.2em; fill: #000; }
+.booklet .barcode-digits { font: 1em "SF Mono", Menlo, Consolas, monospace; color: #000; text-align: center; letter-spacing: .12em; }
+.booklet .made-with { margin-top: .3em; font-size: .85em; letter-spacing: .12em; }
+.booklet .page.blank { background: var(--b-paper); }

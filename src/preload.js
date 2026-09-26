@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('cdp', {
 
   exists: invoke('fs:exists'),
   details: invoke('meta:details'),
+  addPlay: invoke('plays:add'),
+  playCount: invoke('plays:count'),
   findCover: invoke('online:cover'),
   findCoverUrl: invoke('online:coverUrl'),
   findLyrics: invoke('online:lyrics'),

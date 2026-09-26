@@ -9,6 +9,20 @@ const cue = require('./cue');
 const { describeFormat } = require('./audio-format');
 const { cleanTrackName, tidyNames } = require('./track-names');
 
+// The small print for the booklet's credits page and back cover — only the tags a file actually has.
+function creditsFrom(c) {
+  const first = (v) => (Array.isArray(v) ? v.filter(Boolean).join(', ') : v) || null;
+  const out = {
+    albumArtist: first(c.albumartist), released: first(c.date) || (c.year ? String(c.year) : null),
+    genre: first(c.genre), composer: first(c.composer), lyricist: first(c.lyricist), producer: first(c.producer),
+    conductor: first(c.conductor), label: first(c.label), catalog: first(c.catalognumber), barcode: first(c.barcode),
+    copyright: first(c.copyright), bpm: c.bpm ? Math.round(c.bpm) : null,
+    track: c.track && c.track.no ? c.track : null, disc: c.disk && c.disk.no && c.disk.of > 1 ? c.disk : null,
+  };
+  for (const k of Object.keys(out)) if (out[k] == null || out[k] === '') delete out[k];
+  return out;
+}
+
 let mmPromise = null;
 const mm = () => (mmPromise ||= import('music-metadata'));
 
@@ -109,7 +123,7 @@ async function getDetails(filePath, { withCover = true } = {}) {
   const key = `${filePath}\0${withCover}`;
   if (inflight.has(key)) return inflight.get(key);
   const job = (async () => {
-    let title = null, artist = null, album = null, lyrics = null, duration = 0, cover = null, format = null;
+    let title = null, artist = null, album = null, lyrics = null, duration = 0, cover = null, format = null, credits = {};
     try {
       const meta = await parse(filePath, { covers: withCover });
       const c = meta.common;
@@ -117,6 +131,7 @@ async function getDetails(filePath, { withCover = true } = {}) {
       artist = c.artist || (c.artists && c.artists[0]) || null;
       album = c.album || null;
       lyrics = extractLyrics(c);
+      credits = creditsFrom(c);
       duration = meta.format.duration || 0;
       format = meta.format;
       if (withCover && c.picture && c.picture.length) {
@@ -133,6 +148,7 @@ async function getDetails(filePath, { withCover = true } = {}) {
       title: names.title || fallbackTitle(filePath),
       artist: names.artist,
       nameGuessed: names.guessed,
+      credits,
       album: cleanTrackName(album && album.trim() ? album.trim() : null) || null,
       lyrics,
       duration,
