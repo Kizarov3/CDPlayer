@@ -332,11 +332,26 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   }
 }
 
+const lookupName = (d) => ({ artist: d.artist, title: d.title, guessed: !!d.nameGuessed });
+// An artist that was only guessed from "A - B" may be the wrong way round ("Title - Artist.mp3"). When a lookup finds
+// the song under the other reading, show it that way — in the player and in the queue.
+function useFoundName(details, path, name) {
+  if (!name || !name.artist || !details.nameGuessed || state.details !== details) return;
+  details.nameGuessed = false;
+  if (name.artist === details.artist && name.title === details.title) return;
+  details.artist = name.artist; details.title = name.title;
+  const cached = detailsCache.get(path);
+  if (cached) detailsCache.set(path, { ...cached, artist: name.artist, title: name.title });
+  setTrackTitle(details.title, details.artist);
+  updateMediaSession();
+  renderQueue();
+}
+
 async function lookUpCover(details, path, token) {
-  const query = `${details.artist ? `${details.artist} ` : ''}${details.title}`;
-  const result = await cdp.findCover(query).catch(() => ({ cover: null, networkError: true }));
+  const result = await cdp.findCover(lookupName(details)).catch(() => ({ cover: null, networkError: true }));
   if (token !== state.loadToken || state.loadedPath !== path) return;
   disc.lookingUp = false;
+  useFoundName(details, path, result.name);
   const ext = details.quality || details.ext || extension(path);
   if (result.cover) {
     await setCover(result.cover);
@@ -349,9 +364,11 @@ async function lookUpCover(details, path, token) {
   }
 }
 async function lookUpLyrics(details, token) {
-  const found = await cdp.findLyrics({ title: details.title, artist: details.artist, album: details.album }).catch(() => null);
+  const found = await cdp.findLyrics({ ...lookupName(details), album: details.album, duration: details.duration || engine.duration }).catch(() => null);
   if (!found || token !== state.loadToken) return;
-  state.lyrics = found;
+  // (lrclib's entries are user-submitted and some have artist and title swapped, so unlike a cover, the name lyrics
+  // were found under never corrects the displayed name.)
+  state.lyrics = found.lyrics;
   $('lyrics-button').hidden = false;
   panels.refreshLyricsIfOpen(app);
 }
@@ -473,7 +490,7 @@ function pushDiscord() {
 function findDiscordCover(d) {
   if (!d.cover || d.coverUrl || d.discordLookup || !d.title) return;
   d.discordLookup = true;
-  cdp.findCoverUrl({ artist: d.artist, title: d.title })
+  cdp.findCoverUrl(lookupName(d))
     .then((url) => { if (url && state.details === d) { d.coverUrl = url; pushDiscord(); } })
     .catch(() => {});
 }

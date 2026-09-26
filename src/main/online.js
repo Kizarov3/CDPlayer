@@ -7,7 +7,7 @@ const http = require('http');
 const crypto = require('crypto');
 const { shell, nativeImage } = require('electron');
 const store = require('./store');
-const { searchVariants } = require('./track-names');
+const { searchVariants, nameVariants, bareTitle } = require('./track-names');
 
 const USER_AGENT = 'CDPlayer/2.0 (open cover lookup)';
 const TIMEOUT_MS = 8000;
@@ -16,11 +16,6 @@ async function fetchJson(url, init = {}) {
   const res = await fetch(url, { ...init, headers: { 'User-Agent': USER_AGENT, ...(init.headers || {}) }, signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!res.ok) { const err = new Error(`HTTP ${res.status}`); err.status = res.status; throw err; }
   return res.json();
-}
-// → { cover (data URL), url (where it came from — Discord shows covers by web address) }, or null.
-async function fetchCover(url) {
-  const cover = await fetchImageDataUrl(url);
-  return cover ? { cover, url } : null;
 }
 async function fetchImageDataUrl(url) {
   const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -45,7 +40,7 @@ function wordOverlapRatio(query, result) {
 
 // ---- Cover art ------------------------------------------------------------------------------------------------
 
-// The top hit's cover address, plus what that hit is (song, artist, album) so a caller can check it's the right one.
+// Each source's top hit: its cover address and what the hit is (title, artist), so it can be checked against the name.
 async function itunesArt(query) {
   const json = await fetchJson(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=1`);
   const hit = json.results && json.results[0];
@@ -59,55 +54,65 @@ async function deezerArt(query) {
   if (!url) return null;
   return { url, title: hit.title || '', artist: hit.artist ? hit.artist.name : '' };
 }
-async function searchItunesCover(query) { const art = await itunesArt(query); return art ? fetchCover(art.url) : null; }
-async function searchDeezerCover(query) { const art = await deezerArt(query); return art ? fetchCover(art.url) : null; }
-async function searchSpotifyCover(query) {
+async function spotifyArt(query) {
   const token = await getSpotifyAppToken();
   if (!token) return null;
   const json = await fetchJson(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=1`, { headers: { Authorization: `Bearer ${token}` } });
   const item = json.tracks && json.tracks.items && json.tracks.items[0];
-  if (!item) return null;
-  // Spotify's search is fuzzy enough to return an unrelated "closest" hit rather than nothing — only accept it when
-  // enough of the query's words actually show up in the result.
-  const described = `${item.name} ${(item.artists || []).map((a) => a.name).join(' ')} ${item.album ? item.album.name : ''}`;
-  if (wordOverlapRatio(query, described) < 0.3) return null;
-  const image = item.album && item.album.images && item.album.images[0];
-  return image ? fetchCover(image.url) : null;
+  const image = item && item.album && item.album.images && item.album.images[0];
+  if (!image) return null;
+  return { url: image.url, title: item.name || '', artist: (item.artists || []).map((a) => a.name).join(' ') };
+}
+const COVER_SOURCES = [['ITUNES', itunesArt], ['DEEZER', deezerArt], ['SPOTIFY', spotifyArt]];
+const searchText = (v) => `${v.artist ? `${v.artist} ` : ''}${v.title}`;
+const variantsOf = (name) => (typeof name === 'string' ? searchVariants(name).map((title) => ({ artist: null, title })) : nameVariants(name));
+
+// A hit is this song when its title matches the title and its artist the artist (when there is one).
+function sameSong(hit, artist, title) {
+  return wordOverlapRatio(bareTitle(title), hit.title) >= 0.5 && (!artist || wordOverlapRatio(artist, hit.artist) >= 0.5);
 }
 
-// Each source with the full cleaned name first; if none has it, all of them again with the plainer variant.
-async function findCover(query) {
-  let networkError = false;
-  for (const q of searchVariants(query)) {
-    for (const [label, search] of [['ITUNES', searchItunesCover], ['DEEZER', searchDeezerCover], ['SPOTIFY', searchSpotifyCover]]) {
-      try {
-        const found = await search(q);
-        if (found) return { cover: found.cover, url: found.url, source: label };
-      } catch { networkError = true; }
+/**
+ * The cover for { artist, title, guessed } (or a plain name string): every guess from nameVariants() on iTunes, Deezer
+ * and Spotify, trusting a hit whose title and artist match that guess — and reporting the guess (`name`), so a file
+ * named "Title - Artist" can be shown the right way round. If nothing matches, the first iTunes/Deezer hit for the
+ * name as given is used, as before (no `name` then).
+ */
+async function findCover(name) {
+  let networkError = false, fallback = null;
+  for (const v of variantsOf(name)) {
+    for (const [label, art] of COVER_SOURCES) {
+      let hit = null;
+      try { hit = await art(searchText(v)); } catch { networkError = true; }
+      if (!hit) continue;
+      if (sameSong(hit, v.artist, v.title)) {
+        const cover = await fetchImageDataUrl(hit.url).catch(() => null);
+        if (cover) return { cover, url: hit.url, source: label, name: v };
+      } else if (!fallback && label !== 'SPOTIFY') fallback = { hit, label };
     }
+  }
+  if (fallback) {
+    const cover = await fetchImageDataUrl(fallback.hit.url).catch(() => null);
+    if (cover) return { cover, url: fallback.hit.url, source: fallback.label };
   }
   return { cover: null, source: null, networkError };
 }
 
 // Just the web address of a song's cover, for Discord (which only shows pictures by address) when the cover is inside
-// the file. Stricter than findCover: the hit's title must match the song's title and its artist the song's artist, so
-// someone else's album never shows up on the user's profile (iTunes happily answers "Nova Drift – Solar Flare" with a
-// different band's Solar Flare). Answers are remembered for the session, but not after a network error. → url or null.
+// the file. Stricter than findCover: only a hit matching a guess that has an artist, never a fallback — iTunes happily
+// answers "Nova Drift – Solar Flare" with another band's Solar Flare, and that must not show on someone's profile.
+// Answers are remembered for the session, but not after a network error. → url or null.
 const coverUrls = new Map();
-const bareTitle = (t) => String(t).replace(/\s*[([][^)\]]*[)\]]/g, ' ').replace(/\s+(?:feat\.?|ft\.?|featuring)\s.*$/i, '');
-function sameSong(hit, artist, title) {
-  return wordOverlapRatio(bareTitle(title), hit.title) >= 0.5 && (!artist || wordOverlapRatio(artist, hit.artist) >= 0.5);
-}
-async function findCoverUrl({ artist, title }) {
-  const key = `${artist || ''}\n${title || ''}`;
-  if (!title) return null;
+async function findCoverUrl(name) {
+  const key = `${name.artist || ''}\n${name.title || ''}\n${!!name.guessed}`;
+  if (!name.title) return null;
   if (coverUrls.has(key)) return coverUrls.get(key);
   let url = null, networkError = false;
-  search: for (const q of searchVariants(`${artist ? `${artist} ` : ''}${title}`)) {
-    for (const art of [itunesArt, deezerArt]) {
+  search: for (const v of nameVariants(name).filter((x) => x.artist)) {
+    for (const [, art] of COVER_SOURCES.slice(0, 2)) {
       try {
-        const hit = await art(q);
-        if (hit && sameSong(hit, artist, title)) { url = hit.url; break search; }
+        const hit = await art(searchText(v));
+        if (hit && sameSong(hit, v.artist, v.title)) { url = hit.url; break search; }
       } catch { networkError = true; }
     }
   }
@@ -120,26 +125,47 @@ async function findCoverUrl({ artist, title }) {
 
 // ---- Lyrics ---------------------------------------------------------------------------------------------------
 
-function pickLrclib(json) {
-  const entry = Array.isArray(json) ? json.find((e) => e.syncedLyrics || e.plainLyrics) : json;
-  if (!entry) return null;
-  return entry.syncedLyrics || entry.plainLyrics || null;
+// The entry with lyrics whose length is closest to the file's (a radio edit and an extended mix have different
+// timings), among those that are this song. → { lyrics, entry } or null.
+function pickLrclib(json, { artist, title, duration }) {
+  const entries = (Array.isArray(json) ? json : [json]).filter((e) => e && (e.syncedLyrics || e.plainLyrics)
+    && sameSong({ title: e.trackName || e.name || '', artist: e.artistName || '' }, artist, title));
+  if (!entries.length) return null;
+  if (duration > 0) entries.sort((x, y) => Math.abs((x.duration || 0) - duration) - Math.abs((y.duration || 0) - duration));
+  return entries[0].syncedLyrics || entries[0].plainLyrics;
 }
-async function findLyrics({ title, artist, album }) {
-  if (!title) return null;
-  // Exact match first (title + artist + album), then a broader title-only search.
-  let url = `https://lrclib.net/api/get?track_name=${encodeURIComponent(title)}`;
-  if (artist) url += `&artist_name=${encodeURIComponent(artist)}`;
-  if (album) url += `&album_name=${encodeURIComponent(album)}`;
+
+/**
+ * Lyrics from lrclib.net for { title, artist, album, duration, guessed }: the exact entry for the name as given (with
+ * album and length), then a search for every guess from nameVariants(), then a free-text search. Only entries that
+ * are this song count. → { lyrics, name } (name = the guess that found them) or null.
+ */
+async function findLyrics({ title, artist, album, duration, guessed }) {
+  const variants = nameVariants({ artist, title, guessed });
+  if (!variants.length) return null;
+  const first = variants[0];
+  if (first.artist) {
+    let url = `https://lrclib.net/api/get?track_name=${encodeURIComponent(first.title)}&artist_name=${encodeURIComponent(first.artist)}`;
+    if (album) url += `&album_name=${encodeURIComponent(album)}`;
+    if (duration > 0) url += `&duration=${Math.round(duration)}`;
+    try {
+      const lyrics = pickLrclib(await fetchJson(url), { ...first, duration });
+      if (lyrics) return { lyrics, name: first };
+    } catch { /* 404 = no exact match; search below */ }
+  }
+  for (const v of variants) {
+    try {
+      let url = `https://lrclib.net/api/search?track_name=${encodeURIComponent(v.title)}`;
+      if (v.artist) url += `&artist_name=${encodeURIComponent(v.artist)}`;
+      const lyrics = pickLrclib(await fetchJson(url), { ...v, duration });
+      if (lyrics) return { lyrics, name: v };
+    } catch { /* try the next guess */ }
+  }
   try {
-    const exact = pickLrclib(await fetchJson(url));
-    if (exact) return exact;
-  } catch { /* 404 = no exact match; fall through */ }
-  try {
-    let search = `https://lrclib.net/api/search?track_name=${encodeURIComponent(title)}`;
-    if (artist) search += `&artist_name=${encodeURIComponent(artist)}`;
-    return pickLrclib(await fetchJson(search));
-  } catch { return null; }
+    const lyrics = pickLrclib(await fetchJson(`https://lrclib.net/api/search?q=${encodeURIComponent(searchText(first))}`), { ...first, duration });
+    if (lyrics) return { lyrics, name: first };
+  } catch { /* nothing */ }
+  return null;
 }
 
 // ---- Spotify ----------------------------------------------------------------------------------------------------
