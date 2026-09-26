@@ -463,6 +463,10 @@ export function showOnboarding(app) {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.6.0', changes: [
+    '<b>The CD booklet</b>: open the album art (click the little cover in the case), then click it again &mdash; the booklet lifts out and opens, printed in the album&rsquo;s colours, with the tracklist, lyrics, credits and a back cover with the small print. &larr; / &rarr; turn the pages',
+    '<b>The disc catches the light</b> like a real CD: rainbow reflections that follow your mouse, as if you were tilting it under a lamp',
+  ] },
   { version: '2.5.1', changes: [
     '<b>Discord shows the album cover</b> for every song it can find online &mdash; also for songs whose cover is inside the file',
     '<b>Covers and lyrics for badly named songs</b>: names like &ldquo;Unknown Artist&rdquo;, &ldquo;01. Title&rdquo;, &ldquo;Title - Remastered 2011&rdquo; or &ldquo;feat.&rdquo; credits no longer get in the way',
