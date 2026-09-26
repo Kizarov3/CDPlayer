@@ -457,6 +457,14 @@ export function showOnboarding(app) {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  // 2.4.1 came out right after 2.4.0, so it repeats 2.4.0's changes for everyone updating straight from 2.3.
+  { version: '2.4.1', changes: [
+    '<b>Tidier player</b>: shuffle and repeat now sit beside the playback buttons, LOAD A TRACK is next to the volume, and SEARCH, SAVE, LOAD and CLEAR are in the queue&rsquo;s header',
+    'The queue shows more than twice as many tracks, with the one playing highlighted',
+    '<b>Settings</b> is grouped into Sound, Look and Playback, and shows the equalizer preset you&rsquo;re on &mdash; click it to switch presets without opening the EQ',
+    'Small windows fit: the player no longer runs off the right edge when the window is at its narrowest',
+    'The update button always names the newest release, even when two come out close together',
+  ] },
   { version: '2.4.0', changes: [
     '<b>Tidier player</b>: shuffle and repeat now sit beside the playback buttons, LOAD A TRACK is next to the volume, and SEARCH, SAVE, LOAD and CLEAR are in the queue&rsquo;s header',
     'The queue shows more than twice as many tracks, with the one playing highlighted',
