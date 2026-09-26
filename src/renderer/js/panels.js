@@ -1,6 +1,6 @@
-// In-window panels (Settings, Equalizer, Lyrics, History, Search, the theme picker, the welcome and What's New
-// dialogs). Each is a dimmed full-window layer that blocks clicks/drops/shortcuts to the player behind it, with a
-// centered card that grows and fades in, and shrinks and fades out.
+// In-window panels (Settings, Equalizer, Lyrics, History, Search, the theme and EQ preset menus, the welcome and
+// What's New dialogs). Each is a dimmed full-window layer that blocks clicks/drops/shortcuts to the player behind it,
+// with a centered card that grows and fades in, and shrinks and fades out.
 import { THEMES } from './theme.js';
 import { EQ_FREQUENCIES } from './audio.js';
 import { el, pill, toggle, setToggle, Slider, anim } from './widgets.js';
@@ -9,7 +9,7 @@ import { catSvg } from './glyphs.js';
 const layer = () => document.getElementById('overlays');
 const panels = new Map(); // name -> { overlay, card, build }
 // Escape closes the closest thing first, in this order.
-const ESC_ORDER = ['onboarding', 'changelog', 'theme-menu', 'lyrics', 'eq', 'history', 'search', 'settings'];
+const ESC_ORDER = ['onboarding', 'changelog', 'menu', 'lyrics', 'eq', 'history', 'search', 'settings'];
 
 function openPanel(name, build, { width } = {}) {
   let p = panels.get(name);
@@ -48,10 +48,10 @@ function refreshPanel(name) {
   p.card.querySelectorAll('.scroll').forEach((s, i) => { s.scrollTop = scrollers[i] || 0; });
 }
 export const isOpen = (name) => panels.has(name);
-export const anyOpen = () => panels.size > 0 || !!themeMenu;
-export function closeTopmost(app) {
+export const anyOpen = () => panels.size > 0 || !!menuLayer;
+export function closeTopmost() {
   for (const name of ESC_ORDER) {
-    if (name === 'theme-menu') { if (themeMenu) { closeThemeMenu(app); return true; } continue; }
+    if (name === 'menu') { if (menuLayer) { closeMenu(); return true; } continue; }
     if (panels.has(name)) { closePanel(name); return true; }
   }
   return false;
@@ -71,18 +71,29 @@ function sliderRow(label, slider, valueLabel) {
 
 // ---- Settings ----------------------------------------------------------------------------------------------------
 
-let themeButton = null;
-export function updateThemeButton(app, name) { if (themeButton) themeButton.textContent = name; }
+let themeButton = null, presetButton = null;
+export function updateThemeButton(app, name) { if (themeButton) themeButton.lastChild.textContent = name; }
 
 export function showSettings(app) {
-  openPanel('settings', () => buildSettings(app));
+  openPanel('settings', () => buildSettings(app), { width: 420 });
 }
 export function refreshSettingsIfOpen(app) { if (isOpen('settings')) refreshPanel('settings'); }
 
+const section = (text) => el('div', { class: 'settings-section' }, text);
+// The preset the current EQ gains match (built-in or saved), or CUSTOM once a band has been moved off every preset.
+function presetName(app) {
+  const gains = app.state.eq, same = (p) => p.gains.every((g, i) => Math.round(g) === Math.round(gains[i]));
+  const match = [...app.BUILTIN_EQ_PRESETS, ...app.state.customPresets].find(same);
+  return match ? match.name.toUpperCase() : 'CUSTOM';
+}
+
 function buildSettings(app) {
   const s = app.state;
-  themeButton = pill(THEMES[s.themeIndex].name, () => showThemeMenu(app));
-  const eqButton = pill('EQ', () => showEq(app));
+  // The swatch follows the live colors (CSS variables), so it stays right for AUTO and during a theme transition.
+  themeButton = el('button', { class: 'pill theme-pill', title: 'Pick a theme', onClick: () => showThemeMenu(app) },
+    el('span', { class: 'swatch' }), el('span', {}, THEMES[s.themeIndex].name));
+  presetButton = pill(presetName(app), () => showPresetMenu(app), 'Switch to another equalizer preset');
+  const eqButton = pill('EQ', () => showEq(app), 'Adjust the 10 bands, or save your own preset');
 
   const crossfadeValue = el('span', { class: 'row-value' }, s.crossfade ? `${s.crossfade}S` : 'OFF');
   const crossfade = new Slider({ min: 0, max: 15, value: s.crossfade, onInput: (v) => { crossfadeValue.textContent = v ? `${v}S` : 'OFF'; app.setCrossfade(v); } });
@@ -104,48 +115,67 @@ function buildSettings(app) {
   const mini = toggle(s.miniMode, () => app.setMiniMode(!s.miniMode));
 
   const github = el('div', { class: 'github-link', title: 'Open GitHub profile', onClick: () => app.cdp.openGitHub('Kizarov3') }, catSvg(), el('span', {}, 'Kizarov3'));
-  const body = el('div', { class: 'scroll' },
-    row('THEME', themeButton), gap(),
-    row('EQUALIZER', eqButton), gap(),
-    sliderRow('CROSSFADE', crossfade, crossfadeValue), gap(),
-    sliderRow('SLEEP TIMER', sleep, sleepValue), gap(),
+  const body = el('div', { class: 'scroll settings-body' },
+    section('SOUND'),
+    row('EQUALIZER', el('div', { class: 'row-pills' }, presetButton, eqButton)),
+    sliderRow('CROSSFADE', crossfade, crossfadeValue),
     row('MONO AUDIO', mono),
-    hint("Sums the left and right channels together — useful if you're listening through a single speaker or one earbud."), gap(),
-    row('WAVEFORM', waveform), gap(),
+    hint('Sums the left and right channels together — for a single speaker or one earbud.'), gap(18),
+    section('LOOK'),
+    row('THEME', themeButton),
+    row('WAVEFORM', waveform),
     row('AMBIENT BACKGROUND', ambient),
-    hint("Washes the window's background with a blurred glow of the current cover art. Turn off for the plain dark background instead."), gap(),
-    row('ANIMATIONS', animations), gap(),
-    row('MINI MODE', mini),
-    hint('Switches to a small always-on-top mini player — the spinning disc, track info, a seek bar and playback controls. Click the disc to play/pause; press M or Esc to come back.'));
-  return [title('SETTINGS'), gap(20), body, closeRow(() => closePanel('settings')), github];
+    row('ANIMATIONS', animations), gap(18),
+    section('PLAYBACK'),
+    sliderRow('SLEEP TIMER', sleep, sleepValue),
+    row('MINI MODE', mini));
+  return [title('SETTINGS'), gap(18), body, el('div', { class: 'settings-foot' }, github, pill('CLOSE', () => closePanel('settings')))];
 }
 
-// ---- Theme picker --------------------------------------------------------------------------------------------------
+// ---- Drop-down menus (theme picker, EQ presets) ------------------------------------------------------------------
 
-let themeMenu = null;
-function showThemeMenu(app) {
-  closeThemeMenu(app);
-  const anchor = themeButton.getBoundingClientRect();
-  const menu = el('div', { class: 'theme-menu' }, THEMES.map((t, i) => {
-    const swatch = el('span', { class: 'swatch' });
-    swatch.style.background = `linear-gradient(135deg, rgb(${t.accent}), rgb(${t.accent2}))`;
-    return el('div', { class: `theme-item${i === app.state.themeIndex ? ' current' : ''}`, onClick: () => { app.switchTheme(i); closeThemeMenu(app); } }, swatch, t.name);
+let menuLayer = null;
+/** A small menu under `anchor`; items are { label, swatch (CSS background, optional), current, pick }. */
+function showMenu(anchor, items) {
+  closeMenu();
+  const box = anchor.getBoundingClientRect();
+  const menu = el('div', { class: 'theme-menu' }, items.map((item) => {
+    const swatch = item.swatch ? el('span', { class: 'swatch' }) : null;
+    if (swatch) swatch.style.background = item.swatch;
+    return el('div', { class: `theme-item${item.current ? ' current' : ''}`, onClick: () => { item.pick(); closeMenu(); } }, swatch, item.label);
   }));
-  const menuLayer = el('div', { class: 'theme-menu-layer', onMousedown: (e) => { if (e.target === menuLayer) closeThemeMenu(app); } }, menu);
-  layer().append(menuLayer);
+  const layerNode = el('div', { class: 'theme-menu-layer', onMousedown: (e) => { if (e.target === layerNode) closeMenu(); } }, menu);
+  layer().append(layerNode);
   const m = menu.getBoundingClientRect();
-  menu.style.left = `${Math.max(4, Math.min(anchor.left, window.innerWidth - m.width - 4))}px`;
-  menu.style.top = `${Math.max(4, Math.min(anchor.bottom + 6, window.innerHeight - m.height - 4))}px`;
-  themeMenu = menuLayer;
+  menu.style.left = `${Math.max(4, Math.min(box.left, window.innerWidth - m.width - 4))}px`;
+  menu.style.top = `${Math.max(4, Math.min(box.bottom + 6, window.innerHeight - m.height - 4))}px`;
+  menuLayer = layerNode;
 }
-export function closeThemeMenu() { if (themeMenu) { themeMenu.remove(); themeMenu = null; } }
+export function closeMenu() { if (menuLayer) { menuLayer.remove(); menuLayer = null; } }
+
+function showThemeMenu(app) {
+  showMenu(themeButton, THEMES.map((t, i) => ({
+    label: t.name, swatch: `linear-gradient(135deg, rgb(${t.accent}), rgb(${t.accent2}))`,
+    current: i === app.state.themeIndex, pick: () => app.switchTheme(i),
+  })));
+}
+function showPresetMenu(app) {
+  const current = presetName(app);
+  showMenu(presetButton, [...app.BUILTIN_EQ_PRESETS, ...app.state.customPresets].map((p) => ({
+    label: p.name.toUpperCase(), current: p.name.toUpperCase() === current,
+    pick: () => { app.setEq(p.gains); presetButton.textContent = p.name.toUpperCase(); },
+  })));
+}
 
 // ---- Equalizer -------------------------------------------------------------------------------------------------
 
 const formatDb = (db) => `${Math.round(db) > 0 ? '+' : ''}${Math.round(db)}dB`;
 const formatFreq = (f) => (f >= 1000 ? `${f / 1000}K` : String(f));
 
-export function showEq(app) { openPanel('eq', () => buildEq(app)); }
+export function showEq(app) {
+  const p = openPanel('eq', () => buildEq(app));
+  p.onClose = () => refreshSettingsIfOpen(app); // the preset shown in Settings may have changed
+}
 function buildEq(app) {
   const s = app.state;
   const sliders = EQ_FREQUENCIES.map((f, i) => {

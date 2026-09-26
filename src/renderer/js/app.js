@@ -143,8 +143,8 @@ function renderQueue() {
   const list = $('queue-list');
   if (undoClear && state.queue.length) { clearTimeout(undoClear.timer); undoClear = null; } // new songs since: keep them
   const clearButton = $('clear-queue-button');
-  clearButton.textContent = undoClear ? 'UNDO CLEAR' : 'CLEAR QUEUE';
-  clearButton.title = undoClear ? 'Bring the cleared queue back (⌘Z / Ctrl+Z)' : '';
+  clearButton.textContent = undoClear ? 'UNDO CLEAR' : 'CLEAR';
+  clearButton.title = undoClear ? 'Bring the cleared queue back (⌘Z / Ctrl+Z)' : 'Clear the queue';
   clearButton.classList.toggle('on', !!undoClear);
   clearButton.disabled = !state.queue.length && !undoClear;
   if (!state.queue.length || state.index < 0) {
@@ -163,7 +163,8 @@ function renderQueue() {
     const d = detailsCache.get(p);
     const remove = el('button', { class: 'glyph-x', title: 'Remove from queue', onClick: (e) => { e.stopPropagation(); removeFromQueue(i); } }, '×');
     const row = el('div', { class: `queue-row${i === state.index ? ' active' : ''}${i === drag.index ? ' dragging' : ''}`, title: `Play ${queueDisplay(p)}` },
-      el('span', { class: 'entry' }, `${i + 1}. ${queueDisplay(p)}`),
+      el('span', { class: 'num' }, `${i + 1}.`),
+      el('span', { class: 'entry' }, queueDisplay(p)),
       el('span', { class: 'east' }, el('span', { class: 'duration' }, formatDuration(d ? d.duration : 0)), remove));
     row.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || e.target === remove) return;
@@ -181,7 +182,7 @@ function setupQueueDrag() {
     if (drag.index < 0) return;
     drag.accumulated += e.clientY - drag.lastY;
     drag.lastY = e.clientY;
-    const step = 21; // 18px row + 3px gap
+    const step = 28; // 26px row + 2px gap
     let changed = false;
     while (Math.abs(drag.accumulated) >= step && state.queue.length > 1) {
       const dir = drag.accumulated > 0 ? 1 : -1, target = drag.index + dir;
@@ -625,7 +626,7 @@ async function setMiniMode(enabled) {
     if (state.visualizerMode) { state.visualizerMode = false; $('vis-mode').hidden = true; }
   }
   state.miniMode = enabled;
-  panels.closeThemeMenu(app);
+  panels.closeMenu();
   if (enabled) pushMini(true);
   await cdp.setMiniMode(enabled);
   panels.refreshSettingsIfOpen(app);
@@ -768,16 +769,13 @@ const volumeSlider = new Slider({ min: 0, max: 100, value: 100, onInput: (v) => 
 
 function buildStaticUi() {
   $('transport').append(
+    shuffleButton, spacer(22),
     roundButton('SKIP_BACK', 36, { title: `Back ${SKIP_SECONDS} seconds`, onClick: () => seek(-SKIP_SECONDS) }), spacer(10),
     roundButton('PREVIOUS_TRACK', 44, { title: 'Previous track', onClick: () => previousTrack() }), spacer(16),
     playButton, spacer(16),
     roundButton('NEXT_TRACK', 44, { title: 'Next track', onClick: () => nextTrack() }), spacer(10),
-    roundButton('SKIP_FORWARD', 36, { title: `Forward ${SKIP_SECONDS} seconds`, onClick: () => seek(SKIP_SECONDS) }));
-  $('modes-cluster').append(shuffleButton, repeatButton);
-  // Load a Track / Clear Queue anchor the right edge; the same width is mirrored on the left so the transport
-  // and mode clusters center on the column's true middle, as in the Java layout.
-  const trail = Math.max($('load-button').offsetWidth, $('clear-queue-button').offsetWidth) + 6;
-  document.documentElement.style.setProperty('--trail', `${trail}px`);
+    roundButton('SKIP_FORWARD', 36, { title: `Forward ${SKIP_SECONDS} seconds`, onClick: () => seek(SKIP_SECONDS) }), spacer(22),
+    repeatButton);
 
   $('load-button').addEventListener('click', choose);
   $('save-playlist-button').addEventListener('click', savePlaylist);

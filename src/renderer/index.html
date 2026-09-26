@@ -38,40 +38,34 @@
         <div id="track-source">YOUR MUSIC LIBRARY</div>
         <div id="progress-row"></div>
         <div id="times"><span id="elapsed">0:00</span><span id="length">0:00</span></div>
-        <div id="controls" class="row-controls">
-          <span></span><span></span>
-          <div id="transport"></div>
-          <span></span><span></span>
-          <div class="trail"><button class="pill" id="load-button">LOAD A TRACK&nbsp;&nbsp;+</button></div>
-        </div>
-        <div id="playlist-row">
-          <span class="trail-spacer"></span>
-          <span class="mini-label">PLAYLIST</span>
-          <button class="pill" id="save-playlist-button" title="Save the current queue as a .m3u playlist file">SAVE</button>
-          <button class="pill" id="load-playlist-button" title="Add every track from a .m3u playlist file to the queue">LOAD</button>
-          <button class="pill" id="search-button" title="Search your music folder, or paste a Spotify track/playlist link">SEARCH</button>
-        </div>
-        <div id="modes" class="row-modes">
-          <span></span><span></span>
-          <div id="modes-cluster"></div>
-          <span></span>
-          <div class="trail"><button class="pill" id="clear-queue-button">CLEAR QUEUE</button></div>
-        </div>
+        <div id="controls"><div id="transport"></div></div>
         <div id="volume-row" class="slider-row">
           <span class="row-label">VOLUME</span>
           <div id="volume-slider"></div>
           <span class="row-value" id="volume-value">100%</span>
+          <span class="grow"></span>
+          <button class="pill" id="load-button">LOAD A TRACK&nbsp;&nbsp;+</button>
         </div>
         <div id="queue-card">
-          <div id="queue-info">QUEUE EMPTY</div>
-          <div id="queue-next">DROP SONGS OR A FOLDER TO BUILD A QUEUE</div>
+          <div id="queue-head">
+            <div id="queue-text">
+              <div id="queue-info">QUEUE EMPTY</div>
+              <div id="queue-next">DROP SONGS OR A FOLDER TO BUILD A QUEUE</div>
+            </div>
+            <div id="queue-actions">
+              <button class="pill small" id="search-button" title="Search your music folder, or paste a Spotify track/playlist link">SEARCH</button>
+              <button class="pill small" id="save-playlist-button" title="Save the current queue as a .m3u playlist file">SAVE</button>
+              <button class="pill small" id="load-playlist-button" title="Add every track from a .m3u playlist file to the queue">LOAD</button>
+              <button class="pill small" id="clear-queue-button">CLEAR</button>
+            </div>
+          </div>
           <div id="queue-list" class="scroll"></div>
         </div>
       </section>
     </div>
 
     <footer id="south">
-      <div id="hint">DROP MP3 · M4A · FLAC · WAV · AIFF · OGG — SPACE/K PLAY · J/L PREV/NEXT · ←/→ SKIP 5S · ↑/↓ VOLUME · U MUTE · C CD VIEW · M MINI MODE · V VISUALIZER · F FULLSCREEN · ESC EXIT</div>
+      <div id="hint">SPACE PLAY · J/L PREV/NEXT · ←/→ SKIP 5S · ↑/↓ VOLUME · U MUTE · C CD VIEW · M MINI · V VISUALIZER · F FULLSCREEN</div>
       <div id="cd-info" hidden>
         <div id="cd-title" class="fit"></div>
         <div id="cd-artist" class="fit" hidden></div>
