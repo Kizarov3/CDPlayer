@@ -19,7 +19,7 @@ test('reads a settings.txt written by the Java version', () => {
   const s = store.readSettings();
   assert.deepStrictEqual(s, {
     volume: 70, crossfade: 5, mono: true, animations: false, theme: 'OCEAN', eq: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
-    waveform: false, miniMode: false, bounds: { x: 10, y: 20, width: 1200, height: 900 }, ambient: false,
+    waveform: false, miniMode: false, bounds: { x: 10, y: 20, width: 1200, height: 900 }, ambient: false, discord: true,
   });
 });
 
@@ -30,7 +30,16 @@ test('old, shorter settings files keep defaults for the newer lines', () => {
   assert.strictEqual(s.animations, true);
   assert.strictEqual(s.waveform, true);
   assert.strictEqual(s.ambient, true);
+  assert.strictEqual(s.discord, true);
   assert.strictEqual(s.theme, 'RED');
+});
+
+test('Discord status is the 11th settings line', () => {
+  store.writeSettings({ ...store.DEFAULT_SETTINGS, discord: false });
+  assert.strictEqual(fs.readFileSync(path.join(home, 'settings.txt'), 'utf8').split('\n')[10], '0');
+  assert.strictEqual(store.readSettings().discord, false);
+  store.writeSettings({ ...store.DEFAULT_SETTINGS });
+  assert.strictEqual(store.readSettings().discord, true);
 });
 
 test('settings round-trip in the Java line format', () => {

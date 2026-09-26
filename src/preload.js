@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('cdp', {
   openGitHub: invoke('shell:openGitHub'),
   checkForUpdate: invoke('updates:check'),
   openReleasesPage: invoke('updates:openReleases'),
+  setDiscordTrack: (track) => ipcRenderer.send('discord:track', track),
 
   pathForFile: (file) => webUtils.getPathForFile(file),
   mediaUrl: (p) => `cdp://app/media?p=${encodeURIComponent(p)}`,

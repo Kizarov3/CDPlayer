@@ -19,6 +19,7 @@ const online = require('./online');
 const library = require('./library');
 const media = require('./media-protocol');
 const updates = require('./updates');
+const discord = require('./discord');
 const cue = require('./cue');
 
 const APP_VERSION = app.getVersion();
@@ -327,6 +328,7 @@ handle('win:setMiniMode', async (enabled) => {
 // Main window → mini player: the state to show. Mini player → main window: what the user pressed.
 ipcMain.on('mini:state', (_e, s) => { if (miniWin && !miniWin.isDestroyed()) miniWin.webContents.send('mini-state', s); });
 ipcMain.on('mini:command', (_e, c) => { if (win) win.webContents.send('mini-command', c); });
+ipcMain.on('discord:track', (_e, track) => { if (!smokeDir) discord.setTrack(track); });
 handle('win:toggleFullscreen', () => { if (win && !miniMode) win.setFullScreen(!win.isFullScreen()); });
 handle('win:isFullscreen', () => !!(win && win.isFullScreen()));
 handle('updates:check', () => (smokeDir ? null : updates.checkForUpdate(APP_VERSION)));

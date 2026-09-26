@@ -66,6 +66,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - **CD view** (`C`) — just the enlarged spinning disc with the title and artist underneath, with a genie-style transition
 - **Visualizer Mode** (`V`) — the whole window becomes the theme's audio-reactive visualizer; also kicks in on its own after a few idle minutes while playing, like a screensaver
 - System media controls: macOS Control Center, the Windows media overlay and Linux desktop players show what's playing, and hardware media keys work
+- **Discord status**: while a song plays, your Discord profile shows *Listening to* the artist, with the song, a progress bar and the cover (when CDPlayer found it online). It talks only to the Discord app on your computer, clears when you pause, and can be turned off in Settings
 
 **Mini Mode**
 - Press `M` (or flip the switch in Settings) for a compact always-on-top mini player, styled after Apple Music's: the spinning disc, title and "Artist — Album", a full-width seek bar with elapsed/remaining time, and shuffle · back · play/pause · forward · repeat. On macOS it's frosted glass like a native mini player
@@ -79,7 +80,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 </p>
 
 **Settings**
-- Theme, Equalizer, Crossfade, Sleep Timer, Mono Audio, Waveform, Ambient Background, Animations and Mini Mode in one dialog
+- Theme, Equalizer, Crossfade, Sleep Timer, Mono Audio, Waveform, Ambient Background, Animations, Mini Mode and Discord Status in one dialog
 - **Ambient Background** washes the window with a blurred glow of the current cover art
 - **Sleep Timer** pauses playback after up to 120 minutes, with a live countdown in the header (click it to cancel)
 - Everything — volume, crossfade, mono, EQ, theme, waveform, animations, window size and position — persists across launches

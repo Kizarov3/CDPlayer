@@ -17,6 +17,11 @@ async function fetchJson(url, init = {}) {
   if (!res.ok) { const err = new Error(`HTTP ${res.status}`); err.status = res.status; throw err; }
   return res.json();
 }
+// → { cover (data URL), url (where it came from — Discord shows covers by web address) }, or null.
+async function fetchCover(url) {
+  const cover = await fetchImageDataUrl(url);
+  return cover ? { cover, url } : null;
+}
 async function fetchImageDataUrl(url) {
   const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!res.ok) return null;
@@ -42,13 +47,13 @@ function wordOverlapRatio(query, result) {
 async function searchItunesCover(query) {
   const json = await fetchJson(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=1`);
   const art = json.results && json.results[0] && json.results[0].artworkUrl100;
-  return art ? fetchImageDataUrl(art.replace('100x100bb', '600x600bb')) : null;
+  return art ? fetchCover(art.replace('100x100bb', '600x600bb')) : null;
 }
 async function searchDeezerCover(query) {
   const json = await fetchJson(`https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=1`);
   const hit = json.data && json.data[0];
   const art = hit && ((hit.album && hit.album.cover_xl) || hit.cover_xl);
-  return art ? fetchImageDataUrl(art) : null;
+  return art ? fetchCover(art) : null;
 }
 async function searchSpotifyCover(query) {
   const token = await getSpotifyAppToken();
@@ -61,7 +66,7 @@ async function searchSpotifyCover(query) {
   const described = `${item.name} ${(item.artists || []).map((a) => a.name).join(' ')} ${item.album ? item.album.name : ''}`;
   if (wordOverlapRatio(query, described) < 0.3) return null;
   const image = item.album && item.album.images && item.album.images[0];
-  return image ? fetchImageDataUrl(image.url) : null;
+  return image ? fetchCover(image.url) : null;
 }
 
 // Each source with the full cleaned name first; if none has it, all of them again with the plainer variant.
@@ -70,8 +75,8 @@ async function findCover(query) {
   for (const q of searchVariants(query)) {
     for (const [label, search] of [['ITUNES', searchItunesCover], ['DEEZER', searchDeezerCover], ['SPOTIFY', searchSpotifyCover]]) {
       try {
-        const cover = await search(q);
-        if (cover) return { cover, source: label };
+        const found = await search(q);
+        if (found) return { cover: found.cover, url: found.url, source: label };
       } catch { networkError = true; }
     }
   }

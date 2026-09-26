@@ -113,6 +113,7 @@ function buildSettings(app) {
   const ambient = toggle(s.ambient, () => { app.setAmbient(!s.ambient); setToggle(ambient, s.ambient); });
   const animations = toggle(anim.enabled, () => { app.setAnimations(!anim.enabled); setToggle(animations, anim.enabled); });
   const mini = toggle(s.miniMode, () => app.setMiniMode(!s.miniMode));
+  const discord = toggle(s.discord, () => { app.setDiscord(!s.discord); setToggle(discord, s.discord); });
 
   const github = el('div', { class: 'github-link', title: 'Open GitHub profile', onClick: () => app.cdp.openGitHub('Kizarov3') }, catSvg(), el('span', {}, 'Kizarov3'));
   const body = el('div', { class: 'scroll settings-body' },
@@ -128,7 +129,10 @@ function buildSettings(app) {
     row('ANIMATIONS', animations), gap(18),
     section('PLAYBACK'),
     sliderRow('SLEEP TIMER', sleep, sleepValue),
-    row('MINI MODE', mini));
+    row('MINI MODE', mini), gap(18),
+    section('SHARING'),
+    row('DISCORD STATUS', discord),
+    hint('Shows the song you’re playing on your Discord profile, while the Discord app is open.'));
   return [title('SETTINGS'), gap(18), body, el('div', { class: 'settings-foot' }, github, pill('CLOSE', () => closePanel('settings')))];
 }
 
@@ -457,6 +461,10 @@ export function showOnboarding(app) {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.5.0', changes: [
+    '<b>Discord status</b>: while a song plays, your Discord profile shows &ldquo;Listening to&rdquo; the artist, with the song, a progress bar and the cover &mdash; turn it off any time in Settings &rsaquo; Sharing',
+    'It clears when you pause, and works whenever the Discord app is open on this computer &mdash; no sign-in needed',
+  ] },
   // 2.4.1 came out right after 2.4.0, so it repeats 2.4.0's changes for everyone updating straight from 2.3.
   { version: '2.4.1', changes: [
     '<b>Tidier player</b>: shuffle and repeat now sit beside the playback buttons, LOAD A TRACK is next to the volume, and SEARCH, SAVE, LOAD and CLEAR are in the queue&rsquo;s header',

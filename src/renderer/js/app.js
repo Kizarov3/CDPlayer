@@ -35,9 +35,9 @@ export const BUILTIN_EQ_PRESETS = [
 
 const state = {
   queue: [], index: -1, shuffle: false, repeat: 'OFF',
-  volume: 100, volumeBeforeMute: -1, crossfade: 0, mono: false, waveform: true, ambient: true, miniMode: false,
+  volume: 100, volumeBeforeMute: -1, crossfade: 0, mono: false, waveform: true, ambient: true, miniMode: false, discord: true,
   themeIndex: 0, eq: new Array(10).fill(0), customPresets: [], history: [],
-  loadedPath: null, details: null, lyrics: null, cover: null, loadToken: 0, crossfadeStarted: false,
+  loadedPath: null, details: null, detailsPath: null, lyrics: null, cover: null, loadToken: 0, crossfadeStarted: false,
   cdView: false, visualizerMode: false, fullscreen: false,
   sleepRemaining: 0, sleepMinutes: 0,
   lastActivity: Date.now(), lastCdMouse: Date.now(), cursorHidden: false, visualizerEnteredAt: 0,
@@ -309,7 +309,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
 
   const details = (await detailsPromise) || { title: displayName(path), artist: null, album: null, lyrics: null, cover: null, ext: extension(path), duration: engine.duration };
   if (token !== state.loadToken) return;
-  state.details = details;
+  state.details = details; state.detailsPath = path;
   detailsCache.set(path, { ...details, cover: undefined, duration: details.duration || engine.duration });
   setTrackTitle(details.title, details.artist);
   fadeInNowPlaying();
@@ -342,6 +342,7 @@ async function lookUpCover(details, path, token) {
     await setCover(result.cover);
     $('track-source').textContent = `${result.source} COVER ART · ${ext}`;
     state.details.cover = result.cover;
+    state.details.coverUrl = result.url || null;
     updateMediaSession();
   } else {
     $('track-source').textContent = `${result.networkError ? 'COVER LOOKUP UNAVAILABLE' : 'COVER NOT FOUND'} · ${ext}`;
@@ -388,6 +389,7 @@ function setPlaying(playing) {
   visualizer.setActive(playing); bigVisualizer.setActive(playing);
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = state.loadedPath ? (playing ? 'playing' : 'paused') : 'none';
   pushMini(true);
+  pushDiscord();
 }
 async function toggle() {
   if (!engine.deck) { if (state.queue.length && state.index >= 0) load(state.queue[state.index]); else choose(); return; }
@@ -431,6 +433,7 @@ function seekTo(seconds) {
   updateProgressUi(true);
   updateMediaSessionPosition();
   pushMini();
+  pushDiscord();
 }
 
 function recordHistory(p) {
@@ -449,11 +452,23 @@ function updateMediaSession() {
     artwork: d.cover ? [{ src: d.cover, sizes: '512x512', type: 'image/jpeg' }] : [],
   });
   updateMediaSessionPosition();
+  pushDiscord();
 }
 function updateMediaSessionPosition() {
   if (!('mediaSession' in navigator) || !engine.duration) return;
   try { navigator.mediaSession.setPositionState({ duration: engine.duration, position: Math.min(engine.position, engine.duration), playbackRate: 1 }); } catch { /* ignore */ }
 }
+// Discord status (main/discord.js): the song while it plays, nothing while paused or stopped, or with the setting off.
+function pushDiscord() {
+  const d = state.details;
+  const current = d && state.detailsPath === state.loadedPath;
+  cdp.setDiscordTrack(state.discord && current && engine.playing ? {
+    title: d.title, artist: d.artist, album: d.album, coverUrl: d.coverUrl || null,
+    position: engine.position, duration: engine.duration,
+  } : null);
+}
+function setDiscord(on) { state.discord = on; pushDiscord(); saveSettingsSoon(); }
+
 function setupMediaSession() {
   if (!('mediaSession' in navigator)) return;
   const ms = navigator.mediaSession;
@@ -718,7 +733,7 @@ function appendAndPlay(p) {
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient };
+  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -927,7 +942,7 @@ function frame(now) {
 export const app = {
   state, engine, disc, THEMES, BUILTIN_EQ_PRESETS, cdp,
   setStatus, queueDisplay, displayName, formatTime, load, addToQueue, appendAndPlay, seekTo,
-  switchTheme, setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode,
+  switchTheme, setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord,
   saveEq: () => cdp.saveEqPresets(state.customPresets),
   lyricsLines: () => (state.lyrics ? parseLrc(state.lyrics) : []),
   currentLineIndex,
@@ -976,6 +991,7 @@ async function start() {
   setMono(s.mono);
   setWaveform(s.waveform);
   state.ambient = s.ambient;
+  state.discord = s.discord !== false;
   setEq(s.eq);
   const themeIndex = Math.max(0, THEMES.findIndex((t) => t.name === s.theme));
   state.themeIndex = -1;
