@@ -31,7 +31,8 @@ async function fetchImageDataUrl(url) {
 }
 
 function significantWords(text) {
-  return new Set(String(text).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3));
+  // Letters and digits of any script, so a Cyrillic or Japanese title is compared too rather than waved through.
+  return new Set(String(text).toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3));
 }
 function wordOverlapRatio(query, result) {
   const q = significantWords(query);
@@ -44,17 +45,22 @@ function wordOverlapRatio(query, result) {
 
 // ---- Cover art ------------------------------------------------------------------------------------------------
 
-async function searchItunesCover(query) {
+// The top hit's cover address, plus what that hit is (song, artist, album) so a caller can check it's the right one.
+async function itunesArt(query) {
   const json = await fetchJson(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=1`);
-  const art = json.results && json.results[0] && json.results[0].artworkUrl100;
-  return art ? fetchCover(art.replace('100x100bb', '600x600bb')) : null;
+  const hit = json.results && json.results[0];
+  if (!hit || !hit.artworkUrl100) return null;
+  return { url: hit.artworkUrl100.replace('100x100bb', '600x600bb'), title: hit.trackName || '', artist: hit.artistName || '' };
 }
-async function searchDeezerCover(query) {
+async function deezerArt(query) {
   const json = await fetchJson(`https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=1`);
   const hit = json.data && json.data[0];
-  const art = hit && ((hit.album && hit.album.cover_xl) || hit.cover_xl);
-  return art ? fetchCover(art) : null;
+  const url = hit && ((hit.album && hit.album.cover_xl) || hit.cover_xl);
+  if (!url) return null;
+  return { url, title: hit.title || '', artist: hit.artist ? hit.artist.name : '' };
 }
+async function searchItunesCover(query) { const art = await itunesArt(query); return art ? fetchCover(art.url) : null; }
+async function searchDeezerCover(query) { const art = await deezerArt(query); return art ? fetchCover(art.url) : null; }
 async function searchSpotifyCover(query) {
   const token = await getSpotifyAppToken();
   if (!token) return null;
@@ -81,6 +87,35 @@ async function findCover(query) {
     }
   }
   return { cover: null, source: null, networkError };
+}
+
+// Just the web address of a song's cover, for Discord (which only shows pictures by address) when the cover is inside
+// the file. Stricter than findCover: the hit's title must match the song's title and its artist the song's artist, so
+// someone else's album never shows up on the user's profile (iTunes happily answers "Nova Drift – Solar Flare" with a
+// different band's Solar Flare). Answers are remembered for the session, but not after a network error. → url or null.
+const coverUrls = new Map();
+const bareTitle = (t) => String(t).replace(/\s*[([][^)\]]*[)\]]/g, ' ').replace(/\s+(?:feat\.?|ft\.?|featuring)\s.*$/i, '');
+function sameSong(hit, artist, title) {
+  return wordOverlapRatio(bareTitle(title), hit.title) >= 0.5 && (!artist || wordOverlapRatio(artist, hit.artist) >= 0.5);
+}
+async function findCoverUrl({ artist, title }) {
+  const key = `${artist || ''}\n${title || ''}`;
+  if (!title) return null;
+  if (coverUrls.has(key)) return coverUrls.get(key);
+  let url = null, networkError = false;
+  search: for (const q of searchVariants(`${artist ? `${artist} ` : ''}${title}`)) {
+    for (const art of [itunesArt, deezerArt]) {
+      try {
+        const hit = await art(q);
+        if (hit && sameSong(hit, artist, title)) { url = hit.url; break search; }
+      } catch { networkError = true; }
+    }
+  }
+  if (url || !networkError) {
+    if (coverUrls.size >= 500) coverUrls.delete(coverUrls.keys().next().value);
+    coverUrls.set(key, url);
+  }
+  return url;
 }
 
 // ---- Lyrics ---------------------------------------------------------------------------------------------------
@@ -230,4 +265,4 @@ function spotifySignIn() {
   return signInInProgress;
 }
 
-module.exports = { findCover, findLyrics, resolveSpotifyLink, spotifySignIn, classifySpotifyLink, wordOverlapRatio };
+module.exports = { findCover, findCoverUrl, findLyrics, resolveSpotifyLink, spotifySignIn, classifySpotifyLink, wordOverlapRatio };

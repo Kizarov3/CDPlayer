@@ -185,6 +185,7 @@ ipcMain.on('state:saveQueueSync', (e, q) => { e.returnValue = store.writeQueue(q
 handle('fs:exists', (p) => cue.entryExists(p));
 handle('meta:details', (p, opts) => metadata.getDetails(p, opts));
 handle('online:cover', (query) => online.findCover(query));
+handle('online:coverUrl', (query) => online.findCoverUrl(query));
 handle('online:lyrics', (details) => online.findLyrics(details));
 handle('spotify:classify', (text) => online.classifySpotifyLink(text));
 handle('spotify:resolve', async (text) => {

@@ -462,10 +462,20 @@ function updateMediaSessionPosition() {
 function pushDiscord() {
   const d = state.details;
   const current = d && state.detailsPath === state.loadedPath;
+  if (state.discord && current && engine.playing) findDiscordCover(d);
   cdp.setDiscordTrack(state.discord && current && engine.playing ? {
     title: d.title, artist: d.artist, album: d.album, coverUrl: d.coverUrl || null,
     position: engine.position, duration: engine.duration,
   } : null);
+}
+// Discord only shows covers by web address. A cover found online already has one; a cover inside the file doesn't, so
+// the same song's cover is looked up online (once per track, and only while Discord status is on and it's playing).
+function findDiscordCover(d) {
+  if (!d.cover || d.coverUrl || d.discordLookup || !d.title) return;
+  d.discordLookup = true;
+  cdp.findCoverUrl({ artist: d.artist, title: d.title })
+    .then((url) => { if (url && state.details === d) { d.coverUrl = url; pushDiscord(); } })
+    .catch(() => {});
 }
 function setDiscord(on) { state.discord = on; pushDiscord(); saveSettingsSoon(); }
 

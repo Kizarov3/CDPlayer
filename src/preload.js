@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('cdp', {
   exists: invoke('fs:exists'),
   details: invoke('meta:details'),
   findCover: invoke('online:cover'),
+  findCoverUrl: invoke('online:coverUrl'),
   findLyrics: invoke('online:lyrics'),
   classifySpotifyLink: invoke('spotify:classify'),
   resolveSpotifyLink: invoke('spotify:resolve'),
