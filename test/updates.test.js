@@ -37,7 +37,8 @@ test('reports a newer release, and not the one already running', async () => {
   assert.strictEqual(await checkForUpdate('2.1.0', releasing(null)), null);
 });
 
-test('asks GitHub at most once a day', async () => {
+test('asks GitHub at most once every 10 minutes', async () => {
+  assert.strictEqual(CHECK_INTERVAL_MS, 10 * 60 * 1000);
   const now = 1_800_000_000_000;
   const first = releasing('2.2.0');
   await checkForUpdate('2.1.0', { now, ...first });
@@ -47,9 +48,17 @@ test('asks GitHub at most once a day', async () => {
   assert.deepStrictEqual(await checkForUpdate('2.1.0', { now: now + CHECK_INTERVAL_MS - 1, ...soon }), { version: '2.2.0' });
   assert.strictEqual(soon.calls.length, 0);
 
-  const nextDay = releasing('2.3.0');
-  assert.deepStrictEqual(await checkForUpdate('2.1.0', { now: now + CHECK_INTERVAL_MS, ...nextDay }), { version: '2.3.0' });
-  assert.strictEqual(nextDay.calls.length, 1);
+  const later = releasing('2.3.0');
+  assert.deepStrictEqual(await checkForUpdate('2.1.0', { now: now + CHECK_INTERVAL_MS, ...later }), { version: '2.3.0' });
+  assert.strictEqual(later.calls.length, 1);
+});
+
+test('a release that comes out an hour later is the one announced (not the one seen first)', async () => {
+  // 2.3.0 and 2.3.1 were published an hour apart; a day-long cache kept showing "2.3.0 AVAILABLE" to someone on 2.2.0.
+  const now = 1_800_000_000_000;
+  assert.deepStrictEqual(await checkForUpdate('2.2.0', { now, ...releasing('2.3.0') }), { version: '2.3.0' });
+  const hourLater = now + 60 * 60 * 1000; // the app's hourly re-check
+  assert.deepStrictEqual(await checkForUpdate('2.2.0', { now: hourLater, ...releasing('2.3.1') }), { version: '2.3.1' });
 });
 
 test('once updated, the cached release no longer shows', async () => {

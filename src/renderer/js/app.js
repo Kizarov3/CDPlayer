@@ -18,8 +18,8 @@ const CD_VIEW_CURSOR_IDLE_SECONDS = 5;
 const HISTORY_LIMIT = 50;
 const UNDO_CLEAR_SECONDS = 8;
 const SKIP_SECONDS = 5; // ←/→, the round skip buttons and the system media controls' seek back/forward
-// The player can stay open for days; the main process only actually asks GitHub once a day.
-const UPDATE_RECHECK_MS = 6 * 60 * 60 * 1000;
+// The player can stay open for days, so it looks for a newer release again every hour (as well as at launch).
+const UPDATE_RECHECK_MS = 60 * 60 * 1000;
 
 export const BUILTIN_EQ_PRESETS = [
   { name: 'Flat', gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },

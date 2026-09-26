@@ -1,14 +1,15 @@
 'use strict';
 /**
- * "A newer CDPlayer is out" check. Asks GitHub for the latest published release at most once a day (the answer is
- * cached in update-check.txt) and never downloads or installs anything — the renderer just shows a pill that opens
- * the Releases page. Offline or rate-limited simply means no pill.
+ * "A newer CDPlayer is out" check. Asks GitHub for the latest published release at most once every 10 minutes (the
+ * answer is cached in update-check.txt) and never downloads or installs anything — the renderer just shows a pill that
+ * opens the Releases page. Offline or rate-limited simply means no pill. The cache is kept short on purpose: releases
+ * can come out an hour apart, and a day-long cache kept announcing the older one.
  */
 const store = require('./store');
 
 const LATEST_RELEASE_API = 'https://api.github.com/repos/Kizarov3/CDPlayer/releases/latest';
 const RELEASES_PAGE = 'https://github.com/Kizarov3/CDPlayer/releases/latest';
-const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const CHECK_INTERVAL_MS = 10 * 60 * 1000;
 const TIMEOUT_MS = 8000;
 
 function parseVersion(v) {
