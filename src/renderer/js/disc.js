@@ -34,6 +34,10 @@ export class Disc {
     this.artOpen = false;         // the full-size album art is showing instead of the disc
     this.artT = 0;                // 0 = disc with the little cover in the corner … 1 = full art (animated)
     this.artRect = null;          // where the clickable cover is drawn right now (canvas CSS px)
+    // The light the disc reflects: it follows the mouse anywhere in the window, like tilting a CD under a lamp.
+    this.light = { angle: -Math.PI * 0.75, target: -Math.PI * 0.75, strength: 0.6, targetStrength: 0.6, movedAt: 0 };
+    this.center = null; // the disc's center and radius on screen, from the last frame
+    window.addEventListener('mousemove', (e) => this.aimLight(e.clientX, e.clientY));
     canvas.addEventListener('dblclick', (e) => { if (this.mode !== 'mini' && !this.artOpen && !this.overArt(e)) this.startEject(); });
     canvas.addEventListener('click', (e) => {
       if (this.mode === 'mini') { if (this.onMiniClick) this.onMiniClick(); return; }
@@ -60,6 +64,72 @@ export class Disc {
     const r = this.artRect;
     return !!(r && this.cover && e.offsetX >= r.x && e.offsetX <= r.x + r.w && e.offsetY >= r.y && e.offsetY <= r.y + r.h);
   }
+  aimLight(x, y) {
+    const c = this.center;
+    if (!c) return;
+    const dx = x - c.x, dy = y - c.y;
+    this.light.target = Math.atan2(dy, dx);
+    // Brighter the closer the light is: strongest over the disc, still a glint from across the window.
+    this.light.targetStrength = Math.max(0.35, Math.min(1, 1.25 - Math.hypot(dx, dy) / (c.r * 4)));
+    this.light.movedAt = performance.now();
+  }
+  // Eases the reflection toward the mouse (the short way round); left alone for a few seconds, it drifts slowly, so a
+  // spinning disc in CD View or Visualizer's idle still catches the light.
+  stepLight(now, dt) {
+    const l = this.light;
+    if (now - l.movedAt > 4000) l.target += 0.00012 * dt;
+    let delta = l.target - l.angle;
+    delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+    const k = 1 - Math.exp(-dt / 140);
+    l.angle += delta * k;
+    l.strength += (l.targetStrength - l.strength) * k;
+  }
+
+  /**
+   * The tilt shine: how a CD's surface splits light into two rainbow fans on opposite sides of the hole, lined up with
+   * the light, plus a soft glare. Drawn over the disc face but not turned with it — reflections stay put while a disc
+   * spins. Rendered on its own canvas so the fans can fade out toward the hub and the rim.
+   */
+  drawShine(g, cx, cy, side, dpr) {
+    const px = Math.max(1, Math.round(side * dpr));
+    if (!this.shine || this.shine.width !== px) { this.shine = new OffscreenCanvas(px, px); }
+    const s = this.shine.getContext('2d'), c = px / 2, { angle, strength } = this.light;
+    s.setTransform(1, 0, 0, 1, 0, 0);
+    s.globalCompositeOperation = 'source-over';
+    s.clearRect(0, 0, px, px);
+    const cone = s.createConicGradient(angle - Math.PI / 2, c, c);
+    const RAINBOW = ['255,70,70', '255,190,60', '120,255,120', '70,220,255', '110,120,255', '220,110,255'];
+    for (const mid of [0.25, 0.75]) { // the fan on the light's side, and its twin opposite
+      const w = 0.075;
+      cone.addColorStop(mid - w * 1.6, 'rgba(255,255,255,0)');
+      RAINBOW.forEach((rgbText, i) => cone.addColorStop(mid - w + (2 * w * i) / (RAINBOW.length - 1), `rgba(${rgbText},0.9)`));
+      cone.addColorStop(mid + w * 1.6, 'rgba(255,255,255,0)');
+    }
+    s.fillStyle = cone;
+    s.fillRect(0, 0, px, px);
+    // Fans are brightest across the middle of the disc, gone at the hub and fading at the rim.
+    const ring = s.createRadialGradient(c, c, 0, c, c, c);
+    ring.addColorStop(0, 'rgba(0,0,0,0)'); ring.addColorStop(0.22, 'rgba(0,0,0,0)');
+    ring.addColorStop(0.45, 'rgba(0,0,0,1)'); ring.addColorStop(0.85, 'rgba(0,0,0,0.8)'); ring.addColorStop(1, 'rgba(0,0,0,0)');
+    s.globalCompositeOperation = 'destination-in';
+    s.fillStyle = ring;
+    s.fillRect(0, 0, px, px);
+    // A soft glare on the light's side.
+    s.globalCompositeOperation = 'lighter';
+    const gx = c + Math.cos(angle) * c * 0.5, gy = c + Math.sin(angle) * c * 0.5;
+    const glare = s.createRadialGradient(gx, gy, 0, gx, gy, c * 0.7);
+    glare.addColorStop(0, 'rgba(255,255,255,0.35)'); glare.addColorStop(1, 'rgba(255,255,255,0)');
+    s.fillStyle = glare;
+    s.fillRect(0, 0, px, px);
+
+    g.save();
+    g.beginPath(); g.arc(cx, cy, side / 2, 0, Math.PI * 2); g.clip();
+    g.globalCompositeOperation = 'screen';
+    g.globalAlpha *= 0.22 + 0.2 * strength;
+    g.drawImage(this.shine, cx - side / 2, cy - side / 2, side, side);
+    g.restore();
+  }
+
   startEject() { if (this.ejectStart < 0) { this.ejectStart = performance.now(); this.ejectPeakFired = false; } }
 
   ejectProgress(now) {
@@ -129,6 +199,7 @@ export class Disc {
     const room = Math.min(r.width, r.height) - (mini ? margin : margin + 20);
     const side = Math.max(10, Math.floor(Math.min(cap, room)));
     const x = (r.width - side) / 2, y = (r.height - side) / 2, cx = x + side / 2, cy = y + side / 2;
+    this.center = { x: r.left + cx, y: r.top + cy, r: side / 2 };
     let bounds = { x, y, w: side, h: side };
 
     this.artT = Math.max(0, Math.min(1, this.artT + (this.artOpen ? 1 : -1) * (dt / ART_MS)));
@@ -187,6 +258,8 @@ export class Disc {
     g.imageSmoothingQuality = 'high';
     g.drawImage(face.canvas, x, y, side, side);
     g.restore();
+    this.stepLight(now, dt);
+    this.drawShine(g, cx, cy, side, dpr);
     if (!this.spinning) {
       g.fillStyle = 'rgba(10,11,16,0.35)';
       g.beginPath(); g.arc(cx, cy, side / 2, 0, Math.PI * 2); g.fill();
