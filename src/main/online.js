@@ -1,7 +1,7 @@
 'use strict';
 /**
  * Everything that talks to the network: cover-art lookup (iTunes → Deezer → Spotify → MusicBrainz), lyrics lookup
- * (Unison when word-timed → lrclib.net → Unison), and Spotify link/playlist resolution with the one-time browser sign-in. All optional — the player works offline.
+ * (word-timed from Unison or NetEase → lrclib.net → Unison), and Spotify link/playlist resolution with the one-time browser sign-in. All optional — the player works offline.
  */
 const http = require('http');
 const crypto = require('crypto');
@@ -358,8 +358,8 @@ async function unisonLyrics({ artist, title, album, duration }) {
 const wordTimed = (lrc) => /<\d{1,3}:\d{2}/.test(lrc);
 
 /**
- * Lyrics for { title, artist, album, duration, guessed }: Unison's first when they time every word (only Unison
- * does — Karaoke fills them word by word). Otherwise lrclib.net's exact entry for the name as given (with album and
+ * Lyrics for { title, artist, album, duration, guessed }: word-timed first — Karaoke fills them word by word —
+ * Unison's (timed by hand, with duets and backing vocals), then NetEase Music's. Otherwise lrclib.net's exact entry for the name as given (with album and
  * length), then a search for every guess from nameVariants(), then Unison's line-timed lyrics, then a free-text
  * lrclib search. Only entries that are this song count. → { lyrics, name, source } (name = the guess that found
  * them) or null.
@@ -374,6 +374,12 @@ async function findLyrics({ title, artist, album, duration, guessed }) {
     if (lyrics === UNREACHABLE) break;
     if (lyrics && wordTimed(lyrics)) return { lyrics, name: v, source: 'Unison' };
     if (lyrics && !unisonLines) unisonLines = { lyrics, name: v, source: 'Unison' };
+  }
+  const { neteaseLyrics } = require('./netease');
+  for (const v of variants.filter((x) => x.artist)) {
+    const lyrics = await neteaseLyrics({ ...v, duration });
+    if (lyrics === neteaseLyrics.UNREACHABLE) break;
+    if (lyrics) return { lyrics, name: v, source: 'NetEase' };
   }
   if (first.artist) {
     let url = `https://lrclib.net/api/get?track_name=${encodeURIComponent(first.title)}&artist_name=${encodeURIComponent(first.artist)}`;
@@ -523,4 +529,4 @@ function spotifySignIn() {
   return signInInProgress;
 }
 
-module.exports = { findCover, findCoverUrl, findAlbumCover, findAlbumCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, resolveSpotifyLink, spotifySignIn, classifySpotifyLink, wordOverlapRatio };
+module.exports = { sameSong, findCover, findCoverUrl, findAlbumCover, findAlbumCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, resolveSpotifyLink, spotifySignIn, classifySpotifyLink, wordOverlapRatio };

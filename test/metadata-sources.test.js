@@ -179,6 +179,17 @@ test('Unison with line timing only: lrclib still comes first, and Unison is not 
   assert.strictEqual(asked.filter((u) => /unison/.test(u)).length, 1);
 });
 
+test('NetEase word-timed lyrics when Unison has none, before lrclib', async () => {
+  const yrc = '[19160,7770](19160,210,0)I (19370,1920,0)want (21290,1440,0)you (22730,120,0)to (22850,4080,0)know';
+  answer([[/music\.163\.com\/api\/search/, { result: { songs: [{ id: 7, name: 'Knives Out', artists: [{ name: 'Radiohead' }], duration: 254900 }] } }],
+    [/music\.163\.com\/api\/song\/lyric/, { code: 200, yrc: { lyric: yrc } }],
+    [/lrclib\.net\/api\/get/, { trackName: 'Knives Out', artistName: 'Radiohead', duration: 255, syncedLyrics: '[00:19.16]I want you to know' }]]);
+  const found = await findLyrics({ artist: 'Radiohead', title: 'Knives Out', duration: 254.9 });
+  assert.strictEqual(found.source, 'NetEase');
+  assert.match(found.lyrics, /<00:19\.37>want /);
+  assert.ok(!asked.some((u) => /lrclib/.test(u)), 'lrclib not asked');
+});
+
 test('Unison unreachable (a timeout, not a 404): asked once, then lrclib', async () => {
   asked = [];
   global.fetch = async (url) => {

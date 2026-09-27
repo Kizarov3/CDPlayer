@@ -109,7 +109,12 @@ test('online lyrics are looked for when the file has none, or only times its lin
   assert.strictEqual(looksOnlineFor(null), true);
   assert.strictEqual(looksOnlineFor('[00:01.00]A line'), true);
   assert.strictEqual(looksOnlineFor('[00:01.00]<00:01.00>Word <00:01.50>timed'), false);
-  assert.strictEqual(looksOnlineFor('Plain words, no times'), false);
+  assert.strictEqual(looksOnlineFor('Plain words, no times'), true); // no karaoke without times
+});
+
+test('a file\'s untimed lyrics give way to timed ones, but not to more untimed ones', () => {
+  assert.strictEqual(takesOnline('Plain words, no times', '[00:01.00]A line'), true);
+  assert.strictEqual(takesOnline('Plain words, no times', 'Other plain words'), false);
 });
 
 test('found lyrics replace the file\'s only when the file has none, or when they time every word', () => {

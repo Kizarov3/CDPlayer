@@ -107,13 +107,17 @@ export function currentLineIndex(lines, position) {
 }
 
 const wordTimed = (raw) => /<\d{1,3}:\d{2}/.test(String(raw || ''));
+const timed = (raw) => parseLrc(raw).length > 0;
 /**
- * Whether to look for lyrics online for a file with these lyrics: when it has none, or times only its lines (then
- * word-timed ones from online are better for karaoke). A file's own word-timed or untimed lyrics are kept.
+ * Whether to look for lyrics online for a file with these lyrics: unless they time every word already. Untimed ones
+ * can't follow the song at all, and line-timed ones can't fill word by word.
  */
-export const looksOnlineFor = (fileLyrics) => !fileLyrics || (parseLrc(fileLyrics).length > 0 && !wordTimed(fileLyrics));
-/** Whether lyrics found online replace the file's: when it has none, or when the found ones time every word. */
-export const takesOnline = (fileLyrics, found) => !!found && (!fileLyrics || wordTimed(found));
+export const looksOnlineFor = (fileLyrics) => !fileLyrics || !wordTimed(fileLyrics);
+/**
+ * Whether lyrics found online replace the file's: when it has none, when the found ones time every word, or when
+ * the file's aren't timed and the found ones are.
+ */
+export const takesOnline = (fileLyrics, found) => !!found && (!fileLyrics || wordTimed(found) || (!timed(fileLyrics) && timed(found)));
 
 /**
  * Where the song is for the ears: `position` less the audio output's latency (large over Bluetooth), and moved by the
