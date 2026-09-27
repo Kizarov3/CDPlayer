@@ -121,6 +121,7 @@ function start() {
     if (!job) return;
     pending.delete(header.id);
     clearTimeout(job.timer);
+    if (!pending.size) hold(false);
     if (header.ok) job.resolve({ header, payload }); else job.reject(new Error(header.error || 'failed'));
   });
   child.stdout.on('data', (c) => parser.push(c));
@@ -135,16 +136,22 @@ function start() {
   child.on('error', died);
   child.stdin.on('error', () => {});
   helper = child;
+  hold(false);
   return child;
+}
+// An idle helper doesn't keep Node running; one with a request in flight does (until it answers or times out).
+function hold(on) {
+  if (!helper) return;
+  for (const h of [helper, helper.stdout, helper.stdin]) if (h) (on ? h.ref : h.unref).call(h);
 }
 function send(op, fields = {}) {
   const child = start();
   if (!child) return Promise.reject(new Error('no CD helper'));
   const id = nextId++;
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { if (pending.delete(id)) reject(new Error(`the CD helper didn't answer ${op}`)); }, TIMEOUT_MS);
-    timer.unref();
+    const timer = setTimeout(() => { if (pending.delete(id)) { if (!pending.size) hold(false); reject(new Error(`the CD helper didn't answer ${op}`)); } }, TIMEOUT_MS);
     pending.set(id, { resolve, reject, timer });
+    hold(true);
     child.stdin.write(`${JSON.stringify({ id, op, ...fields })}\n`);
   });
 }

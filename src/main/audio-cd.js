@@ -5,13 +5,15 @@
  * other file. What the tracks are called comes from MusicBrainz: the table of contents gives the disc's MusicBrainz
  * disc ID, which names the release — how Apple Music and every ripper name a CD. (CD-TEXT, names stored on the disc
  * itself, can't be read without talking to the drive directly; few discs carry it anyway.) Windows only shows an audio
- * CD as .cda shortcuts, with no audio to play, so it isn't supported there.
+ * CD as .cda shortcuts with no audio behind them, so there the drive is read directly (win-cd.js), its tracks
+ * cdda:// paths.
  */
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const crypto = require('crypto');
 const { execFile } = require('child_process');
+const winCd = require('./win-cd');
 
 const LEAD_IN = 150; // sectors before track 1's address 0 (2 seconds): MusicBrainz offsets count from the very start
 
@@ -150,10 +152,29 @@ async function readDisc({ kind, mount, name }) {
   } catch { return null; }
 }
 
+// Windows: the discs in the drives, read through the CD helper — their tracks are cdda://F/1… paths. A drive whose
+// disc is gone is forgotten, so its tracks stop playing.
+async function findWinDiscs() {
+  let drives = [];
+  try { drives = await winCd.drives(); } catch { drives = []; }
+  const discs = [], seen = new Set();
+  for (const drive of drives) {
+    let toc = null;
+    try { toc = await winCd.readToc(drive); } catch { toc = null; }
+    if (!toc) continue;
+    seen.add(drive);
+    winCd.remember(drive, toc);
+    discs.push({ mount: drive, name: 'Audio CD', tracks: toc.tracks.map((n) => winCd.trackPath(drive, n)), toc, id: discId(toc) });
+  }
+  winCd.keepOnly(seen);
+  return discs;
+}
+
 // A disc is read once, when it turns up; after that it's only checked for still being there.
 const known = new Map(); // mount -> disc
 /** Every audio CD in a drive right now: [{ mount, name, tracks: [paths in order], toc, id }]. */
 async function findDiscs() {
+  if (process.platform === 'win32') return findWinDiscs();
   const candidates = await candidateMounts();
   for (const mount of known.keys()) if (!candidates.some((c) => c.mount === mount)) known.delete(mount);
   const discs = [];

@@ -412,6 +412,7 @@ handle('cd:eject', (mount) => {
   if (!discs.has(mount)) return false;
   if (process.platform === 'darwin') execFile('diskutil', ['eject', mount], () => {});
   else if (process.platform === 'linux') execFile('gio', ['mount', '-e', mount], () => {});
+  else if (process.platform === 'win32') require('./win-cd').eject(mount).catch(() => {});
   return true;
 });
 
@@ -439,7 +440,7 @@ app.whenReady().then(() => {
   registerWindowsShortcut();
   buildMenu();
   createWindow();
-  if (!smokeDir && (process.platform === 'darwin' || process.platform === 'linux' || process.env.CDPLAYER_CD_ROOT)) {
+  if (!smokeDir && (process.platform === 'darwin' || process.platform === 'linux' || process.platform === 'win32' || process.env.CDPLAYER_CD_ROOT)) {
     setTimeout(pollDiscs, 1500);
     setInterval(pollDiscs, 3000);
   }

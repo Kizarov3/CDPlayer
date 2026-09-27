@@ -89,3 +89,25 @@ test('a disc MusicBrainz doesn\'t know keeps its tracks\' own names', async () =
   assert.strictEqual(await cd.nameDisc(disc, { fetchMb: async () => ({ releases: [] }), fetchCover: async () => null }), null);
   assert.strictEqual(cd.detailsFor('/v/1 Audio Track.aiff'), null);
 });
+test('Windows: the disc in a drive, read through the CD helper, with its cdda:// tracks — and forgotten when it\'s taken out', async () => {
+  const realPlatform = process.platform;
+  Object.defineProperty(process, 'platform', { value: 'win32' });
+  process.env.CDPLAYER_WIN_CD_HELPER = `${process.execPath} ${path.join(__dirname, 'fixtures', 'fake-cd-helper.js')}`;
+  try {
+    const winCd = require('../src/main/win-cd');
+    const { findDiscs } = require('../src/main/audio-cd');
+    const [disc, ...others] = await findDiscs();
+    assert.strictEqual(others.length, 0);
+    assert.strictEqual(disc.mount, 'F:');
+    assert.strictEqual(disc.id, '6u6SZ6TRjV_O9VDaKMAucGeZEOY-');
+    assert.strictEqual(disc.tracks.length, 13);
+    assert.strictEqual(disc.tracks[2], 'cdda://F/3');
+    assert.ok(winCd.trackInfo('cdda://F/3'));
+    winCd.drives = async () => []; // the disc taken out
+    assert.deepStrictEqual(await findDiscs(), []);
+    assert.strictEqual(winCd.trackInfo('cdda://F/3'), null);
+  } finally {
+    Object.defineProperty(process, 'platform', { value: realPlatform });
+    delete process.env.CDPLAYER_WIN_CD_HELPER;
+  }
+});
