@@ -4,9 +4,11 @@ CDPlayer is a desktop music player that recreates the tactile feel of a physical
 
 **Download it, open it, and it plays.** MP3, M4A (AAC *and* Apple Lossless), FLAC, WAV, AIFF, AU, OGG and Opus all work out of the box on macOS, Windows and Linux. There is nothing else to install — no FFmpeg, no Java.
 
+Put a real CD in the drive and play it, or **rip it to FLAC** in one click. Browse your albums spine-out on **the CD shelf**, open an album's **booklet**, and sing along with **karaoke** that lights up each word as it's sung.
+
 <p align="center">
-  <img src="docs/screenshots/main-red.png" width="49%" alt="CDPlayer main window, RED theme, playing a track">
-  <img src="docs/screenshots/main-snow.png" width="49%" alt="CDPlayer main window, SNOW theme with falling snow">
+  <img src="docs/screenshots/main-red.jpg" width="49%" alt="CDPlayer main window, RED theme, playing a ripped OK Computer">
+  <img src="docs/screenshots/main-snow.jpg" width="49%" alt="CDPlayer main window, SNOW theme with falling snow">
 </p>
 
 ## Download
@@ -50,6 +52,10 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - Works with the drive macOS mounts, and GNOME's on Linux. On Windows, which only shows an audio CD as shortcuts with no audio behind them, CDPlayer reads the drive itself (a small helper in Windows PowerShell, nothing to install). Names stored on the disc itself (CD-TEXT) aren't read — MusicBrainz knows far more discs anyway
 - **RIP** saves the disc into your music folder as lossless **FLAC** — `Artist/Album (Year)/01 Title.flac`, tagged from MusicBrainz with the cover inside and a `cover.jpg` beside them — so it's on the shelf and plays without the disc. Every file is decoded back and compared with the disc's audio before it's kept. Keep listening while it rips; click **RIPPING** for the list of tracks (done, being read, still to come) and **CANCEL RIP**. The FLAC encoder is CDPlayer's own, in JavaScript: nothing to install
 
+<p align="center">
+  <img src="docs/screenshots/rip.jpg" width="70%" alt="Ripping a CD: the list of tracks, done, being encoded and still to come">
+</p>
+
 **The CD shelf**
 - **SHELF** (`S`) stands every album in your music folder on a shelf, spine out — each spine in the colours of its cover, a double album in a double-width case — sorted by artist and year, with a box to find one
 - Albums come from the tags (album artist and album, so a set split into `CD1`/`CD2` folders is one album), or the folder for untagged music; covers from a `cover.jpg`/`folder.jpg` beside the files or the art inside them
@@ -57,6 +63,14 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - Click the case's cover and the album's **booklet** lifts out: its whole tracklist, every song's lyrics (found online as you read), the credits and the back cover
 - An album with no art of its own (a Music.app library keeps its artwork to itself) gets its cover found online; album names that differ only in punctuation are one album
 - What's on the shelf is remembered, so only new or changed files are read the next time
+
+<p align="center">
+  <img src="docs/screenshots/shelf.jpg" width="49%" alt="The CD shelf: every album spine-out, in the colours of its cover">
+  <img src="docs/screenshots/shelf-case.jpg" width="49%" alt="A case pulled out of the shelf: the cover, the tracklist, PLAY and ADD TO QUEUE">
+</p>
+<p align="center">
+  <img src="docs/screenshots/booklet.jpg" width="70%" alt="An album's booklet: the tracklist and the first song's lyrics">
+</p>
 
 **Queue**
 - Full queue list with per-track duration, click-to-play, and a hover-to-reveal remove (×) button
@@ -90,6 +104,10 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - System media controls: macOS Control Center, the Windows media overlay and Linux desktop players show what's playing, and hardware media keys work
 - **Discord status**: while a song plays, your Discord profile shows *Listening to* the artist, with the song, a progress bar and the cover (when CDPlayer found it online). It talks only to the Discord app on your computer, clears when you pause, and can be turned off in Settings
 
+<p align="center">
+  <img src="docs/screenshots/karaoke.jpg" width="70%" alt="Karaoke Mode: the line being sung, filling in word by word, a duet's singers on either side">
+</p>
+
 **Mini Mode**
 - Press `M` (or flip the switch in Settings) for a compact always-on-top mini player, styled after Apple Music's: the spinning disc, title and "Artist — Album", a full-width seek bar with elapsed/remaining time, and shuffle · back · play/pause · forward · repeat. On macOS it's frosted glass like a native mini player
 - Drag it anywhere (it remembers where); click the disc to play/pause; all the keyboard shortcuts work in it; `M`, `Esc` or the × that appears on hover brings the full player back
@@ -98,7 +116,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
   <img src="docs/screenshots/mini-mode.png" width="340" alt="CDPlayer mini player">
 </p>
 <p align="center">
-  <img src="docs/screenshots/cd-view.png" width="70%" alt="CDPlayer CD view">
+  <img src="docs/screenshots/cd-view.jpg" width="70%" alt="CDPlayer CD view, GALAXY theme">
 </p>
 
 **Settings**
@@ -109,7 +127,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - **Animations** toggle turns every hover fade, pulse and transition off at once
 
 <p align="center">
-  <img src="docs/screenshots/settings.png" width="55%" alt="CDPlayer Settings dialog">
+  <img src="docs/screenshots/settings.jpg" width="55%" alt="CDPlayer Settings dialog">
 </p>
 
 **Themes**
