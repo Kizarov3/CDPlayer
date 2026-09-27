@@ -99,19 +99,22 @@ async function ripDisc({ tracks, album, musicFolder, signal, onProgress = () => 
     const m = /^data:[^;]+;base64,(.*)$/s.exec(album.cover);
     if (m) await fsp.writeFile(path.join(folder, 'cover.jpg'), Buffer.from(m[1], 'base64'));
   }
-  const report = (done) => onProgress({ done, total: tracks.length, percent: Math.round((done / tracks.length) * 100) });
+  // Progress: tracks done of all, and which track is at which stage (reading from the disc, encoding, done + its size).
+  const report = (done, track) => onProgress({ done, total: tracks.length, percent: Math.round((done / tracks.length) * 100), ...track });
   report(0);
   for (let i = 0; i < tracks.length; i++) {
     if (signal && signal.aborted) throw stop('cancelled');
     const t = tracks[i], final = path.join(folder, names[i]), temp = path.join(folder, `.cdplayer-rip-${i + 1}.flac`);
     try {
       let pcm;
+      report(i, { current: i, stage: 'reading' });
       try { pcm = await readPcm(t.path, signal); } catch (e) {
         if (e.reason) throw e;
         throw signal && signal.aborted ? stop('cancelled') : e.code === 'ENOENT' ? stop('disc-removed') : stop('failed', e.message);
       }
       if (signal && signal.aborted) throw stop('cancelled');
       let flac;
+      report(i, { current: i, stage: 'encoding' });
       try { flac = await encode(pcm, signal); } catch (e) { throw e.reason ? e : stop('failed', `${e.message} (${t.title || `track ${t.number}`})`); }
       if (signal && signal.aborted) throw stop('cancelled');
       await fsp.writeFile(temp, flac);
@@ -124,7 +127,7 @@ async function ripDisc({ tracks, album, musicFolder, signal, onProgress = () => 
       if (!tagged.ok) throw stop('failed', tagged.error);
       await fsp.rename(temp, final);
       files.push(final);
-      report(i + 1);
+      report(i + 1, { current: i, stage: 'done', size: (await fsp.stat(final)).size });
     } catch (e) {
       await fsp.rm(temp, { force: true }).catch(() => {});
       throw e.reason ? e : stop('failed', e.message);

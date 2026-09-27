@@ -545,3 +545,15 @@ body.cd-view #cd-info { display: block !important; }
 .booklet .barcode-digits { font: 1em "SF Mono", Menlo, Consolas, monospace; color: #000; text-align: center; letter-spacing: .12em; }
 .booklet .made-with { margin-top: .3em; font-size: .85em; letter-spacing: .12em; }
 .booklet .page.blank { background: var(--b-paper); }
+
+/* ---- The rip panel (panels.js showRip): the disc's tracks as they're ripped ---- */
+.rip-head { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; margin-top: 6px; font-size: 11px; color: rgb(var(--muted)); }
+.rip-count { color: rgb(var(--accent)); font-variant-numeric: tabular-nums; }
+.rip-folder { grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rip-row .rip-mark { width: 14px; text-align: center; }
+.rip-row .rip-time, .rip-row .rip-note { font-variant-numeric: tabular-nums; }
+.rip-row .rip-note { width: 150px; text-align: right; }
+.rip-row.done { color: rgb(var(--text)); }
+.rip-row.done .rip-mark { color: rgb(var(--accent)); }
+.rip-row.reading, .rip-row.encoding { color: rgb(var(--accent)); }
+.rip-result { font-size: 11px; color: rgb(var(--muted)); align-self: center; }

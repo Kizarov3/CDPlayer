@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('cdp', {
   ejectAudioCd: invoke('cd:eject'),
   startRip: invoke('rip:start'),
   cancelRip: invoke('rip:cancel'),
+  showRipFolder: invoke('rip:showFolder'),
   onRipProgress: on('rip-progress'),
   onAudioCd: on('audio-cd'),
   onAudioCdGone: on('audio-cd-gone'),

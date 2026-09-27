@@ -11,7 +11,7 @@ import { formatLyricsForDisplay } from './lyrics.js';
 const layer = () => document.getElementById('overlays');
 const panels = new Map(); // name -> { overlay, card, build }
 // Escape closes the closest thing first, in this order.
-const ESC_ORDER = ['onboarding', 'changelog', 'booklet', 'menu', 'lyrics', 'tags', 'eq', 'history', 'search', 'settings'];
+const ESC_ORDER = ['onboarding', 'changelog', 'booklet', 'menu', 'lyrics', 'tags', 'eq', 'rip', 'history', 'search', 'settings'];
 
 function openPanel(name, build, { width } = {}) {
   let p = panels.get(name);
@@ -430,6 +430,41 @@ function buildHistory(app) {
   if (h.length) { body.style.height = '380px'; body.style.marginTop = '16px'; }
   else body.style.marginTop = '16px';
   return [title('RECENTLY PLAYED'), body, closeRow(() => closePanel('history'))];
+}
+
+// ---- The rip ----------------------------------------------------------------------------------------------------
+// RIP clicked while it rips: the disc's tracks — done (with the file's size), the one being read or encoded, and the
+// ones to come — with CANCEL RIP. Closing it leaves the rip going; when it's finished, SHOW IN FOLDER.
+
+export function showRip(app) { openPanel('rip', () => buildRip(app), { width: 520 }); }
+export function refreshRipIfOpen(app) { if (isOpen('rip')) refreshPanel('rip'); }
+const STAGE = { reading: 'reading from the disc…', encoding: 'encoding…' };
+function buildRip(app) {
+  const r = app.state.rip;
+  if (!r) return [title('RIP'), el('div', { class: 'empty-note' }, 'NOTHING BEING RIPPED'), closeRow(() => closePanel('rip'))];
+  const heading = r.finished ? (r.ok ? 'RIPPED' : 'RIP STOPPED') : 'RIPPING';
+  const head = el('div', { class: 'rip-head' },
+    el('div', { class: 'rip-album' }, [r.artist, r.year].filter(Boolean).join(' · ') || 'Audio CD'),
+    el('div', { class: 'rip-count' }, `${r.done} / ${r.tracks.length} · ${r.percent}%`),
+    r.folder ? el('div', { class: 'rip-folder', title: r.folder }, `→ ${r.folder}`) : null);
+  const rows = r.tracks.map((t, i) => {
+    const stage = r.stages[i];
+    const mark = stage === 'done' ? '✓' : stage ? '●' : '·';
+    const note = stage === 'done' ? `${(r.sizes[i] / 1048576).toFixed(1)} MB` : STAGE[stage] || '';
+    return el('div', { class: `list-row plain rip-row ${stage || 'waiting'}` },
+      el('span', { class: 'rip-mark' }, mark),
+      el('span', { class: 'entry' }, `${String(i + 1).padStart(2, '0')} ${t.title}`),
+      el('span', { class: 'rip-time' }, t.duration ? app.formatTime(t.duration) : ''),
+      el('span', { class: 'rip-note' }, note));
+  });
+  const list = el('div', { class: 'scroll rip-list' }, rows);
+  list.style.height = '340px'; list.style.marginTop = '12px';
+  const buttons = el('div', { class: 'close-row split' },
+    r.finished
+      ? (r.ok ? pill('SHOW IN FOLDER', () => app.cdp.showRipFolder(), 'Open the album\'s folder') : el('span', { class: 'rip-result' }, r.message || ''))
+      : pill('CANCEL RIP', () => app.cdp.cancelRip(), 'Stop ripping; the tracks already done are kept'),
+    pill('CLOSE', () => closePanel('rip')));
+  return [title(`${heading} · ${(r.album || 'AUDIO CD').toUpperCase()}`), head, list, buttons];
 }
 
 // ---- Search ------------------------------------------------------------------------------------------------------

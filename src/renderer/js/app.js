@@ -45,6 +45,7 @@ const state = {
   lyricsOffset: 0,  // ms the lyrics are moved by (+ later), on top of the output latency
   audioCd: null,    // the audio CD in the drive: { mount, tracks, name, album, artist, year }
   ripping: false,   // RIP is saving the disc into the music folder
+  rip: null,        // the rip for its panel: { album, artist, year, folder, tracks, stages, sizes, done, percent, finished, ok, message }
   themeIndex: 0, eq: new Array(10).fill(0), customPresets: [], history: [],
   loadedPath: null, details: null, detailsPath: null, lyrics: null, cover: null, loadToken: 0, crossfadeStarted: false,
   cdView: false, visualizerMode: false, fullscreen: false,
@@ -623,8 +624,13 @@ async function playAudioCd() {
 const RIP_STATUS = { cancelled: 'RIP CANCELLED', 'disc-removed': 'DISC REMOVED', busy: 'ALREADY RIPPING', naming: 'STILL NAMING THE DISC — A MOMENT' };
 async function ripAudioCd() {
   const cd = state.audioCd, button = $('rip-button');
-  if (state.ripping) { cdp.cancelRip(); return; }
+  if (state.ripping) { panels.showRip(app); return; } // the list of tracks being ripped (CANCEL RIP is there)
   if (!cd) return;
+  state.rip = {
+    album: cd.album, artist: cd.artist, year: cd.year, folder: null, done: 0, percent: 0, finished: false, ok: false, message: null,
+    tracks: cd.tracks.map((p, i) => { const d = detailsCache.get(p); return { title: (d && d.title) || `Track ${i + 1}`, duration: d && d.duration }; }),
+    stages: [], sizes: [],
+  };
   state.ripping = true;
   button.classList.add('ripping');
   button.textContent = `RIPPING 0/${cd.tracks.length} · 0%`;
@@ -633,6 +639,9 @@ async function ripAudioCd() {
   button.classList.remove('ripping');
   button.textContent = 'RIP';
   button.hidden = !state.audioCd || !state.audioCd.ready;
+  Object.assign(state.rip, { finished: true, ok: !!result.ok, folder: result.folder || state.rip.folder,
+    message: result.ok ? null : RIP_STATUS[result.reason] || `RIP FAILED · ${String(result.message || 'unknown').toUpperCase()}` });
+  panels.refreshRipIfOpen(app);
   if (result.ok) setStatus(`RIPPED TO ${(result.album || 'YOUR MUSIC FOLDER').toUpperCase()} · ${result.folder}`);
   else setStatus(RIP_STATUS[result.reason] || `RIP FAILED · ${String(result.message || 'unknown').toUpperCase()}`);
 }
@@ -1066,7 +1075,15 @@ function buildStaticUi() {
   $('tray-button').addEventListener('click', toggleTray);
   $('cd-button').addEventListener('click', playAudioCd);
   $('rip-button').addEventListener('click', () => ripAudioCd());
-  cdp.onRipProgress(({ done, total, percent }) => { if (state.ripping) $('rip-button').textContent = `RIPPING ${done}/${total} · ${percent}%`; });
+  cdp.onRipProgress(({ done, total, percent, current, stage, size, folder }) => {
+    if (!state.ripping) return;
+    $('rip-button').textContent = `RIPPING ${done}/${total} · ${percent}%`;
+    const r = state.rip;
+    if (!r) return;
+    Object.assign(r, { done, percent, folder: folder || r.folder });
+    if (current !== undefined) { r.stages[current] = stage; if (size) r.sizes[current] = size; }
+    panels.refreshRipIfOpen(app);
+  });
   cdp.onAudioCd(onAudioCd);
   cdp.onAudioCdGone(onAudioCdGone);
   $('tags-button').addEventListener('click', () => panels.showTags(app));

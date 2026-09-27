@@ -468,8 +468,9 @@ handle('rip:start', async (mount) => {
   try {
     const result = await rip.ripDisc({
       tracks, album, musicFolder, signal: controller.signal,
-      onProgress: (p) => { if (win) win.webContents.send('rip-progress', p); },
+      onProgress: (p) => { if (win) win.webContents.send('rip-progress', { ...p, folder }); },
     });
+    lastRipFolder = result.folder;
     return { ok: true, folder: result.folder, album: album.album };
   } catch (e) {
     const reason = current.gone ? 'disc-removed' : e.reason || 'failed';
@@ -477,6 +478,9 @@ handle('rip:start', async (mount) => {
   } finally { ripping = null; }
 });
 handle('rip:cancel', () => { if (ripping) ripping.controller.abort(); return true; });
+// The rip panel's SHOW IN FOLDER: the folder the last rip wrote (and nothing else).
+let lastRipFolder = null;
+handle('rip:showFolder', () => (lastRipFolder ? shell.openPath(lastRipFolder) : null));
 
 // ---- Windows Start menu shortcut ----------------------------------------------------------------------------------
 // Without a Start menu shortcut carrying the app's ID, Windows can't tell whose media session it is and shows

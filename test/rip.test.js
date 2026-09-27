@@ -39,7 +39,8 @@ test('a disc ripped: tagged FLAC files and cover.jpg in artist / album (year)', 
   assert.strictEqual(m.common.year, 1997);
   assert.ok(m.common.picture && m.common.picture.length, 'the cover is inside');
   assert.strictEqual(Math.round(m.format.duration), 1);
-  assert.deepStrictEqual(progress[progress.length - 1], { done: 3, total: 3, percent: 100 });
+  const last = progress[progress.length - 1];
+  assert.deepStrictEqual([last.done, last.total, last.percent], [3, 3, 100]);
   fs.rmSync(music, { recursive: true, force: true });
 });
 
@@ -90,5 +91,17 @@ test('"already there" means one of this rip\'s own files exists — not disc 1 o
   assert.deepStrictEqual(existingTargets(music, album, disc2), []);
   const disc1 = [{ number: 1, title: 'Mellon Collie', disc: 1, discs: 2 }];
   assert.deepStrictEqual(existingTargets(music, album, disc1), [path.join(folder, '1-01 Mellon Collie.flac')]);
+  fs.rmSync(music, { recursive: true, force: true });
+});
+
+test('progress says which track, and what it\'s doing: reading, encoding, done (with its size)', async () => {
+  const music = fs.mkdtempSync(path.join(os.tmpdir(), 'rip-music-'));
+  const seen = [];
+  await ripDisc({ ...disc(2), musicFolder: music, readPcm: async () => tone(0.3, 0.03), onProgress: (p) => seen.push(p) });
+  const stages = seen.filter((p) => p.current !== undefined).map((p) => `${p.current}:${p.stage}`);
+  assert.deepStrictEqual(stages, ['0:reading', '0:encoding', '0:done', '1:reading', '1:encoding', '1:done']);
+  const done = seen.find((p) => p.current === 1 && p.stage === 'done');
+  assert.ok(done.size > 1000, 'the file\'s size');
+  assert.deepStrictEqual([done.done, done.total, done.percent], [2, 2, 100]);
   fs.rmSync(music, { recursive: true, force: true });
 });
