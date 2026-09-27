@@ -1,8 +1,10 @@
 // Karaoke Mode (Y): the whole window becomes the song's lyrics, the line being sung big in the middle and filling in
-// word by word as it's sung — per word where the lyrics have word timings (enhanced LRC, e.g. from Unison), a
-// smooth sweep across the line where they only time whole lines. Click a line to jump there.
+// word by word as it's sung, like Apple Music's — each word over its own time where the lyrics have word timings
+// (from Unison), shared by syllables where they only time whole lines. A word lifts as it's sung and one held long
+// glows; backing vocals fill under their line; a duet's singers sit left and right; and in a long break the line
+// settles while three dots breathe until the next. Click a line to jump there.
 import { el, anim } from './widgets.js';
-import { parseLrc, currentLineIndex, wordProgress } from './lyrics.js';
+import { parseLrc, lineState, lineWords, wordProgress } from './lyrics.js';
 
 const $ = (id) => document.getElementById(id);
 let view = null; // { lines, nodes, words: [[span]], current, lyrics }
@@ -36,39 +38,57 @@ export function refreshKaraoke() {
   if (view.lyrics !== view.app.state.lyrics) rebuild();
 }
 
+const HELD = 1; // seconds: a word sung longer than this glows
+const REST = 3; // seconds: a break longer than this between lines shows the breathing dots
+
+// Where line i stops: its own end, else when the next line starts (at most 6 s on).
+const endOf = (lines, i) => (lines[i].end !== undefined ? lines[i].end : i + 1 < lines.length ? lines[i + 1].time : lines[i].time + 6);
+
 function rebuild() {
   const { app } = view;
   const d = app.state.details;
   view.lyrics = app.state.lyrics;
   view.lines = parseLrc(view.lyrics);
-  view.words = [];
+  const duet = new Set(view.lines.map((l) => l.agent).filter(Boolean)).size > 1;
+  view.words = []; view.bgWords = [];
   // (An empty timed line is an instrumental break: shown as a note.)
-  view.nodes = view.lines.map((line) => {
-    const words = (line.words && line.words.length ? line.words : [{ text: line.text }]).map((w) => el('span', { class: 'k-word' }, w.text));
+  view.nodes = view.lines.map((line, i) => {
+    const words = lineWords(line, endOf(view.lines, i))
+      .map((w) => el('span', { class: `k-word${w.end !== undefined && w.end - w.time > HELD ? ' held' : ''}` }, w.text));
     view.words.push(words);
-    return el('div', { class: `k-line${line.text ? '' : ' gap'}`, onClick: () => app.seekTo(line.time) }, line.text ? words : '♪');
+    const bg = line.bg ? line.bg.map((w) => el('span', { class: 'k-word' }, w.text)) : [];
+    view.bgWords.push(bg);
+    const cls = ['k-line', line.text ? '' : 'gap', duet && line.agent ? `k-${line.agent}` : ''].filter(Boolean).join(' ');
+    return el('div', { class: cls, onClick: () => app.seekTo(line.time) },
+      line.text ? el('div', { class: 'k-main' }, words) : '♪',
+      bg.length ? el('div', { class: 'k-bg' }, bg) : null,
+      el('div', { class: 'k-dots' }, el('i'), el('i'), el('i')));
   });
   view.current = -2;
   $('karaoke-lines').replaceChildren(...view.nodes);
+  $('karaoke').classList.toggle('calm', !anim.enabled);
   $('karaoke-title').textContent = d ? [d.title, d.artist].filter(Boolean).join(' · ') : '';
   updateKaraoke(app.lyricsPosition(), true);
 }
 
-/** Every frame while open: the current line centered, and its words filled up to `position`. */
+const fill = (spans, progress) => progress.forEach((p, i) => {
+  const s = spans[i];
+  if (!s) return;
+  s.style.setProperty('--p', p.toFixed(3));
+  s.classList.toggle('singing', p > 0 && p < 1);
+});
+
+/** Every frame while open: the current line centered, its words (and backing vocals) filled up to `position`. */
 export function updateKaraoke(position, force = false) {
   if (!view) return;
-  const { lines, nodes, words } = view;
-  const index = currentLineIndex(lines, position);
+  const { lines, nodes, words, bgWords } = view;
+  const { index, singing } = lineState(lines, position);
   if (index !== view.current || force) {
-    if (view.current >= 0 && nodes[view.current]) {
-      nodes[view.current].classList.remove('current');
-      nodes[view.current].classList.add('sung');
-      for (const w of words[view.current]) w.style.setProperty('--p', 1);
-    }
     for (let i = 0; i < nodes.length; i++) {
       nodes[i].classList.toggle('sung', i < index);
       nodes[i].classList.toggle('current', i === index);
-      if (i !== index) for (const w of words[i]) w.style.setProperty('--p', i < index ? 1 : 0);
+      nodes[i].style.setProperty('--d', String(Math.min(4, Math.abs(i - Math.max(0, index)))));
+      if (i !== index) { fill(words[i], words[i].map(() => (i < index ? 1 : 0))); fill(bgWords[i], bgWords[i].map(() => (i < index ? 1 : 0))); }
     }
     view.current = index;
     const box = $('karaoke-lines'), target = nodes[Math.max(0, index)];
@@ -80,7 +100,11 @@ export function updateKaraoke(position, force = false) {
     }
   }
   if (index >= 0) {
-    const end = index + 1 < lines.length ? lines[index + 1].time : lines[index].time + 6;
-    wordProgress(lines[index], end, position).forEach((p, i) => { if (words[index][i]) words[index][i].style.setProperty('--p', p.toFixed(3)); });
+    const end = endOf(lines, index);
+    fill(words[index], wordProgress(lines[index], end, position));
+    if (lines[index].bg) fill(bgWords[index], wordProgress({ time: lines[index].bg[0].time, text: '', words: lines[index].bg }, end, position));
+    // A long break after the line: it settles, and the dots breathe until the next one.
+    const next = index + 1 < lines.length ? lines[index + 1].time : Infinity;
+    nodes[index].classList.toggle('resting', !singing && next - position > 0.6 && next - (lines[index].end ?? next) > REST);
   }
 }
