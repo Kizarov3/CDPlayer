@@ -211,14 +211,23 @@ async function coverFromUrl(url) {
 }
 
 /**
- * The cover for { artist, title, album, guessed } (or a plain name string): every guess from nameVariants() on
- * iTunes, Deezer and Spotify, trusting a hit whose title and artist match that guess — and reporting the guess
- * (`name`), so a file named "Title - Artist" can be shown the right way round. Then MusicBrainz, for every guess that
- * has an artist. If nothing matches, the first iTunes/Deezer hit for the name as given is used, as before (no `name`
- * then).
+ * The cover for { artist, title, album, guessed } (or a plain name string). A song whose tags name its album gets
+ * that album's cover first — searching for the song finds it on remix albums and best-ofs too, and those can come
+ * first. Otherwise every guess from nameVariants() on iTunes, Deezer and Spotify, trusting a hit whose title and
+ * artist match that guess — and reporting the guess (`name`), so a file named "Title - Artist" can be shown the right
+ * way round. Then MusicBrainz, for every guess that has an artist. If nothing matches, the first iTunes/Deezer hit for
+ * the name as given is used, as before (no `name` then).
  */
 async function findCover(name) {
   let networkError = false, fallback = null;
+  if (name && typeof name === 'object' && name.artist && name.album && !name.guessed) {
+    const album = await findAlbumCoverUrl({ artist: name.artist, album: name.album }).catch(() => ({ networkError: true }));
+    if (album && album.url) {
+      const cover = await fetchImageDataUrl(album.url).catch(() => null);
+      if (cover) return { cover, url: album.url, source: album.source, name: { artist: name.artist, title: name.title } };
+    }
+    if (album && album.networkError) networkError = true;
+  }
   const variants = variantsOf(name);
   for (const v of variants) {
     for (const [label, art] of COVER_SOURCES) {
@@ -243,6 +252,51 @@ async function findCover(name) {
     if (cover) return { cover, url: fallback.hit.url, source: fallback.label };
   }
   return { cover: null, source: null, networkError };
+}
+
+// ---- Album covers, for the shelf ------------------------------------------------------------------------------------
+
+// A hit is this album when its title and this one share most of their words both ways (an edition in brackets
+// aside), and it's by this artist — so a song's other album, or another band's album of the same name, never is.
+function sameAlbum(hit, artist, album) {
+  const a = bareTitle(album), b = bareTitle(hit.title);
+  return wordOverlapRatio(a, b) >= 0.5 && wordOverlapRatio(b, a) >= 0.5 && wordOverlapRatio(artist, hit.artist) >= 0.5;
+}
+async function itunesAlbums(query) {
+  const json = await fetchJson(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=album&limit=10`);
+  return (json.results || []).filter((r) => r.artworkUrl100)
+    .map((r) => ({ url: r.artworkUrl100.replace('100x100bb', '600x600bb'), title: r.collectionName || '', artist: r.artistName || '' }));
+}
+async function deezerAlbums(query) {
+  const json = await fetchJson(`https://api.deezer.com/search/album?q=${encodeURIComponent(query)}&limit=10`);
+  return (json.data || []).filter((r) => r.cover_xl).map((r) => ({ url: r.cover_xl, title: r.title || '', artist: r.artist ? r.artist.name : '' }));
+}
+async function musicBrainzAlbums({ artist, album }) {
+  const json = await musicBrainz('release-group', `releasegroup:${phrase(album)} AND artist:${phrase(artist)}`);
+  return (json['release-groups'] || []).filter((g) => g.score >= 90)
+    .map((g) => ({ url: `https://coverartarchive.org/release-group/${g.id}/front-500`, title: g.title || '', artist: credited(g) }));
+}
+const ALBUM_SOURCES = [['ITUNES', (q) => itunesAlbums(`${q.artist} ${q.album}`)], ['DEEZER', (q) => deezerAlbums(`${q.artist} ${q.album}`)], ['MUSICBRAINZ', musicBrainzAlbums]];
+
+/**
+ * Where the cover of the album { artist, album } is: the first hit on iTunes, Deezer, then MusicBrainz that is this
+ * album. → { url, source }, null when none of them has it, or { networkError: true } when one couldn't be asked.
+ */
+async function findAlbumCoverUrl({ artist, album }) {
+  let networkError = false;
+  for (const [source, search] of ALBUM_SOURCES) {
+    let hits = [];
+    try { hits = await search({ artist, album }); } catch { networkError = true; }
+    const hit = hits.find((h) => sameAlbum(h, artist, album));
+    if (hit) return { url: hit.url, source };
+  }
+  return networkError ? { networkError: true } : null;
+}
+/** The album's cover itself, for the shelf. → { cover (data URL) } / { cover: null, networkError? }. */
+async function findAlbumCover(query) {
+  const found = await findAlbumCoverUrl(query);
+  if (!found || found.networkError) return { cover: null, networkError: !!(found && found.networkError) };
+  try { return { cover: await fetchImageDataUrl(found.url), source: found.source }; } catch { return { cover: null, networkError: true }; }
 }
 
 // Just the web address of a song's cover, for Discord (which only shows pictures by address) when the cover is inside
@@ -461,4 +515,4 @@ function spotifySignIn() {
   return signInInProgress;
 }
 
-module.exports = { findCover, findCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, resolveSpotifyLink, spotifySignIn, classifySpotifyLink, wordOverlapRatio };
+module.exports = { findCover, findCoverUrl, findAlbumCover, findAlbumCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, resolveSpotifyLink, spotifySignIn, classifySpotifyLink, wordOverlapRatio };

@@ -99,6 +99,25 @@ test('no MusicBrainz cover: falls back to the first store hit as before', async 
   assert.strictEqual(found.name, undefined);
 });
 
+test('a song with an album tag gets that album\'s cover, not a remix album the song search finds first', async () => {
+  // What iTunes really answers for "Limp Bizkit Counterfeit": a guitar mix on New Old Songs before the album itself.
+  answer([
+    [/itunes.*entity=album/, { results: [{ collectionName: 'Three Dollar Bill, Y\'all', artistName: 'Limp Bizkit', artworkUrl100: 'https://tdb/100x100bb.jpg' }] }],
+    [/itunes/, { results: [{ trackName: 'Counterfeit (Lethal Dose Extreme Guitar Mix)', artistName: 'Limp Bizkit', collectionName: 'New Old Songs', artworkUrl100: 'https://nos/100x100bb.jpg' }] }],
+    [/deezer/, { data: [] }], [/musicbrainz/, { recordings: [], 'release-groups': [] }], [/https:\/\/(tdb|nos)\//, 'JPEG']]);
+  const found = await findCover({ artist: 'Limp Bizkit', title: 'Counterfeit', album: 'Three Dollar Bill Y\'All$' });
+  assert.strictEqual(found.url, 'https://tdb/600x600bb.jpg');
+  assert.strictEqual(found.source, 'ITUNES');
+});
+
+test('no album tag, or an album nobody has: the song search as before', async () => {
+  answer([[/itunes.*entity=album/, { results: [] }],
+    [/itunes/, { results: [{ trackName: 'Afterglow', artistName: 'Nova Drift', artworkUrl100: 'https://song/100x100bb.jpg' }] }],
+    [/deezer/, { data: [] }], [/musicbrainz/, { recordings: [], 'release-groups': [] }], [/https:\/\/song\//, 'JPEG']]);
+  assert.strictEqual((await findCover({ artist: 'Nova Drift', title: 'Afterglow', album: 'Some Demo' })).url, 'https://song/600x600bb.jpg');
+  assert.strictEqual((await findCover({ artist: 'Nova Drift', title: 'Afterglow' })).url, 'https://song/600x600bb.jpg');
+});
+
 const unison = (data) => [/unison\.boidu\.dev/, { success: true, data }];
 
 test('Unison lyrics when lrclib has none, as LRC', async () => {

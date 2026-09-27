@@ -53,12 +53,22 @@ async function trackInfo(p) {
  * or its tracks' artist when they share one, or "Various Artists". Its tracks are in disc, then track, then file
  * order; `discs` counts the discs (a double album gets a double-width case on the shelf).
  */
+// A name as the shelf compares it: "Three Dollar Bill, Yall$" and "THREE DOLLAR BILL Y'ALL$" are the same album.
+const sameName = (s) => { const low = String(s || '').toLowerCase(); return low.replace(/[^\p{L}\p{N}]+/gu, '') || low.trim(); };
+
 function groupAlbums(tracks) {
+  // A song with no album artist belongs with the same-named album in its folder that has one (a song whose tags were
+  // fixed from MusicBrainz, next to ones that weren't yet).
+  const artistHere = new Map();
+  for (const t of tracks) {
+    if (t.info.album && t.info.albumArtist) artistHere.set(`${albumFolder(t.path)}\n${sameName(t.info.album)}`, t.info.albumArtist);
+  }
   const groups = new Map();
   for (const t of tracks) {
     const i = t.info, folder = albumFolder(t.path);
+    const albumArtist = i.albumArtist || (i.album && artistHere.get(`${folder}\n${sameName(i.album)}`)) || null;
     const key = i.album
-      ? `${(i.albumArtist || '').toLowerCase()}\n${i.album.toLowerCase()}\n${i.albumArtist ? '' : folder}`
+      ? `${sameName(albumArtist)}\n${sameName(i.album)}\n${albumArtist ? '' : folder}`
       : `\n\n${folder}`;
     if (!groups.has(key)) groups.set(key, { id: key, title: i.album || path.basename(folder), folder, items: [] });
     groups.get(key).items.push(t);
@@ -127,13 +137,49 @@ function scanAlbums(onProgress) {
 // ---- Covers ---------------------------------------------------------------------------------------------------
 
 const thumbs = new metadata.Lru(400);
+const ONLINE_FILE = 'shelf-covers.json';
+const RETRY_AFTER_MS = 7 * 86400e3; // an album nobody had a cover for is asked about again after a week
 function toThumb(img) {
   if (!img || img.isEmpty()) return null;
   const { width, height } = img.getSize();
   const small = Math.max(width, height) > THUMB ? img.resize(width >= height ? { width: THUMB, quality: 'best' } : { height: THUMB, quality: 'best' }) : img;
   return `data:image/jpeg;base64,${small.toJPEG(85).toString('base64')}`;
 }
-/** An album's cover, small: a cover/folder image beside its files, or else the art inside its first track. */
+// Covers found online for albums with no art of their own (a Music.app library keeps its artwork to itself), kept in
+// the data folder so the shelf doesn't search again every time it opens: album -> { cover } or { none: when }.
+// (Version 1 searched for an album's first song, which could be on another album: those answers are dropped.)
+const ONLINE_VERSION = 2;
+let online = null;
+function readOnline() {
+  if (!online) {
+    try { const c = JSON.parse(store.readText(ONLINE_FILE) || '{}'); online = c && c.version === ONLINE_VERSION && c.albums ? c.albums : {}; } catch { online = {}; }
+  }
+  return online;
+}
+const onlineKey = ({ artist, album }) => `${String(artist).toLowerCase()}\n${String(album).toLowerCase()}`;
+
+/**
+ * The cover found online for the album { artist, album } (`find`: online.findAlbumCover — the album itself, not one
+ * of its songs, which can be on another album too), made small by `shrink` before it's kept. → data URL or null.
+ * Untagged music isn't searched for.
+ */
+async function onlineCover(query, { find = (q) => require('./online').findAlbumCover(q), shrink = (c) => c, now = Date.now() } = {}) {
+  if (!query.artist || !query.album) return null;
+  const known = readOnline(), key = onlineKey(query), entry = known[key];
+  if (entry && (entry.cover || now - entry.none < RETRY_AFTER_MS)) return entry.cover || null;
+  let found = null;
+  try { found = await find(query); } catch { return null; }
+  if (!found || (!found.cover && found.networkError)) return null; // offline: ask again next time
+  const cover = found.cover ? shrink(found.cover) : null;
+  known[key] = cover ? { cover } : { none: now };
+  store.writeText(ONLINE_FILE, JSON.stringify({ version: ONLINE_VERSION, albums: known }));
+  return cover;
+}
+
+/**
+ * An album's cover, small: a cover/folder image beside its files, or else the art inside its first track, or else
+ * the cover found online for it.
+ */
 async function albumCover(firstTrack) {
   if (thumbs.get(firstTrack) !== undefined) return thumbs.get(firstTrack);
   let thumb = null;
@@ -148,6 +194,10 @@ async function albumCover(firstTrack) {
     try {
       const d = await metadata.getDetails(firstTrack, { withCover: true });
       if (d.cover) thumb = toThumb(nativeImage.createFromDataURL(d.cover));
+      else {
+        const query = { artist: (d.credits && d.credits.albumArtist) || d.artist, album: d.album };
+        thumb = await onlineCover(query, { shrink: (c) => toThumb(nativeImage.createFromDataURL(c)) });
+      }
     } catch { /* no art */ }
   }
   thumbs.set(firstTrack, thumb);
@@ -157,4 +207,4 @@ async function albumCover(firstTrack) {
 /** A file's tags changed: its album's cover thumbnail is made again next time. */
 function forget(filePath) { thumbs.delete(filePath); }
 
-module.exports = { scanAlbums, albumCover, groupAlbums, albumFolder, forget };
+module.exports = { scanAlbums, albumCover, onlineCover, groupAlbums, albumFolder, forget };
