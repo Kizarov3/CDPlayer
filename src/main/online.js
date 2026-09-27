@@ -1,7 +1,7 @@
 'use strict';
 /**
  * Everything that talks to the network: cover-art lookup (iTunes → Deezer → Spotify → MusicBrainz), lyrics lookup
- * (lrclib.net → Unison), and Spotify link/playlist resolution with the one-time browser sign-in. All optional — the player works offline.
+ * (Unison when word-timed → lrclib.net → Unison), and Spotify link/playlist resolution with the one-time browser sign-in. All optional — the player works offline.
  */
 const http = require('http');
 const crypto = require('crypto');
@@ -354,16 +354,25 @@ async function unisonLyrics({ artist, title, album, duration }) {
   return ttmlToLrc(data.lyrics) || null;
 }
 
+const wordTimed = (lrc) => /<\d{1,3}:\d{2}/.test(lrc);
+
 /**
- * Lyrics for { title, artist, album, duration, guessed }: lrclib.net's exact entry for the name as given (with album
- * and length), then a search for every guess from nameVariants(), then Unison for every guess with an artist, then a
- * free-text lrclib search. Only entries that are this song count. → { lyrics, name, source } (name = the guess that
- * found them) or null.
+ * Lyrics for { title, artist, album, duration, guessed }: Unison's first when they time every word (only Unison
+ * does — Karaoke fills them word by word). Otherwise lrclib.net's exact entry for the name as given (with album and
+ * length), then a search for every guess from nameVariants(), then Unison's line-timed lyrics, then a free-text
+ * lrclib search. Only entries that are this song count. → { lyrics, name, source } (name = the guess that found
+ * them) or null.
  */
 async function findLyrics({ title, artist, album, duration, guessed }) {
   const variants = nameVariants({ artist, title, guessed });
   if (!variants.length) return null;
   const first = variants[0];
+  let unisonLines = null;
+  for (const v of variants.filter((x) => x.artist)) {
+    const lyrics = await unisonLyrics({ ...v, album: v.artist === artist ? album : null, duration });
+    if (lyrics && wordTimed(lyrics)) return { lyrics, name: v, source: 'Unison' };
+    if (lyrics && !unisonLines) unisonLines = { lyrics, name: v, source: 'Unison' };
+  }
   if (first.artist) {
     let url = `https://lrclib.net/api/get?track_name=${encodeURIComponent(first.title)}&artist_name=${encodeURIComponent(first.artist)}`;
     if (album) url += `&album_name=${encodeURIComponent(album)}`;
@@ -381,10 +390,7 @@ async function findLyrics({ title, artist, album, duration, guessed }) {
       if (lyrics) return { lyrics, name: v, source: 'lrclib.net' };
     } catch { /* try the next guess */ }
   }
-  for (const v of variants.filter((x) => x.artist)) {
-    const lyrics = await unisonLyrics({ ...v, album: v.artist === artist ? album : null, duration });
-    if (lyrics) return { lyrics, name: v, source: 'Unison' };
-  }
+  if (unisonLines) return unisonLines;
   try {
     const lyrics = pickLrclib(await fetchJson(`https://lrclib.net/api/search?q=${encodeURIComponent(searchText(first))}`), { ...first, duration });
     if (lyrics) return { lyrics, name: first, source: 'lrclib.net' };

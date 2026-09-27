@@ -154,13 +154,24 @@ test('Unison lyrics for another recording length or another song are not used', 
   assert.strictEqual(await findLyrics({ artist: 'Nova Drift', title: 'Solar Flare', duration: 186 }), null);
 });
 
-test('lrclib still comes first', async () => {
-  answer([[/lrclib\.net\/api\/get/, { trackName: 'Espresso', artistName: 'Sabrina Carpenter', duration: 175, syncedLyrics: '[00:01.00]From lrclib' }],
+test('word-timed Unison lyrics come before lrclib, which only times lines', async () => {
+  answer([[/lrclib\.net\/api\/get/, { trackName: 'Espresso', artistName: 'Sabrina Carpenter', duration: 186, syncedLyrics: '[00:01.00]From lrclib' }],
     unison({ song: 'Espresso', artist: 'Sabrina Carpenter', format: 'ttml', lyrics: TTML })]);
+  const found = await findLyrics({ artist: 'Sabrina Carpenter', title: 'Espresso', duration: 186 });
+  assert.strictEqual(found.source, 'Unison');
+  assert.strictEqual(found.lyrics, ttmlToLrc(TTML));
+  assert.ok(!asked.some((u) => /lrclib/.test(u)), 'lrclib not asked');
+});
+
+test('Unison with line timing only: lrclib still comes first, and Unison is not asked twice', async () => {
+  answer([[/lrclib\.net\/api\/get/, { trackName: 'Espresso', artistName: 'Sabrina Carpenter', duration: 175, syncedLyrics: '[00:01.00]From lrclib' }],
+    unison({ song: 'Espresso', artist: 'Sabrina Carpenter', format: 'lrc', lyrics: '[00:01.00]From Unison' })]);
   const found = await findLyrics({ artist: 'Sabrina Carpenter', title: 'Espresso', duration: 175 });
   assert.strictEqual(found.lyrics, '[00:01.00]From lrclib');
-  assert.strictEqual(found.source, 'lrclib.net');
-  assert.ok(!asked.some((u) => /unison/.test(u)));
+  answer([...NO_STORE_HITS, unison({ song: 'Espresso', artist: 'Sabrina Carpenter', format: 'lrc', lyrics: '[00:01.00]From Unison' })]);
+  const fallback = await findLyrics({ artist: 'Sabrina Carpenter', title: 'Espresso', duration: 175 });
+  assert.strictEqual(fallback.lyrics, '[00:01.00]From Unison');
+  assert.strictEqual(asked.filter((u) => /unison/.test(u)).length, 1);
 });
 
 // ---- Picking the recording and release for the Tags panel ----
