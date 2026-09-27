@@ -124,3 +124,30 @@ test('lrclib still comes first', async () => {
   assert.strictEqual(found.source, 'lrclib.net');
   assert.ok(!asked.some((u) => /unison/.test(u)));
 });
+
+// ---- Picking the recording and release for the Tags panel ----
+const { pickRecording } = require('../src/main/online');
+const rel = (title, date, extra = {}, group = {}) => ({ title, date, status: 'Official', count: 1, media: [{ position: 1, 'track-count': 12, track: [{ number: '3' }] }], 'release-group': { 'primary-type': 'Album', ...group }, ...extra });
+const rec = (extra) => ({ score: 100, title: 'Solar Flare', 'artist-credit': [{ name: 'Nova Drift' }], length: 200000, releases: [], ...extra });
+
+test('tags: the studio recording as long as the file, on its earliest dated album', () => {
+  const found = pickRecording([
+    rec({ disambiguation: 'live, 2019-05-01: Berlin', releases: [rel('Live in Berlin', '2019')] }),
+    rec({ length: 260000, releases: [rel('Extended', '2018')] }),
+    rec({ releases: [rel('Neon Skies', '2019'), rel('Neon Skies', '2019-03-01'), rel('Hits', '2015', {}, { 'secondary-types': ['Compilation'] }), rel('Solar Flare', '2018-12-01', {}, { 'primary-type': 'Single' })] }),
+  ], { artist: 'Nova Drift', title: 'Solar Flare', duration: 201 });
+  assert.strictEqual(found.release.title, 'Neon Skies');
+  assert.strictEqual(found.release.date, '2019-03-01', 'a full date before a year-only one');
+});
+
+test('tags: the album the file names wins, and a box set loses to an album', () => {
+  const recs = [rec({ releases: [rel('Neon Skies', '2019-03-01'), rel('Deluxe Box', '2010-01-01', { count: 5 }), rel('Summer Mix', '2021-06-01', {}, { 'secondary-types': ['Compilation'] })] })];
+  assert.strictEqual(pickRecording(recs, { artist: 'Nova Drift', title: 'Solar Flare', duration: 200 }).release.title, 'Neon Skies');
+  assert.strictEqual(pickRecording(recs, { artist: 'Nova Drift', title: 'Solar Flare', album: 'Summer Mix', duration: 200 }).release.title, 'Summer Mix');
+});
+
+test('tags: another artist\'s song, or a live take, is never picked', () => {
+  assert.strictEqual(pickRecording([rec({ 'artist-credit': [{ name: 'Timmy Littlefield' }], releases: [rel('Other', '2019')] })], { artist: 'Nova Drift', title: 'Solar Flare', duration: 200 }), null);
+  assert.strictEqual(pickRecording([rec({ disambiguation: 'live', releases: [rel('Live', '2019')] })], { artist: 'Nova Drift', title: 'Solar Flare', duration: 200 }), null);
+  assert.ok(pickRecording([rec({ title: 'Solar Flare (Live)', disambiguation: 'live', releases: [rel('Live', '2019')] })], { artist: 'Nova Drift', title: 'Solar Flare (Live)', duration: 200 }));
+});

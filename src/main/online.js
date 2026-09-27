@@ -77,12 +77,14 @@ function sameSong(hit, artist, title) {
 // stores don't carry. MusicBrainz asks for a User-Agent that says who is calling and at most one request a second.
 const MB_USER_AGENT = 'CDPlayer/2 ( https://github.com/Kizarov3/CDPlayer )';
 let mbNextSlot = 0;
-async function musicBrainz(entity, query) {
+async function mbFetch(pathAndQuery) {
   const wait = mbNextSlot - Date.now();
   mbNextSlot = Math.max(Date.now(), mbNextSlot) + 1100;
   if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
-  return fetchJson(`https://musicbrainz.org/ws/2/${entity}?query=${encodeURIComponent(query)}&fmt=json&limit=25`, { headers: { 'User-Agent': MB_USER_AGENT } });
+  return fetchJson(`https://musicbrainz.org/ws/2/${pathAndQuery}`, { headers: { 'User-Agent': MB_USER_AGENT } });
 }
+const musicBrainz = (entity, query) => mbFetch(`${entity}?query=${encodeURIComponent(query)}&fmt=json&limit=25`);
+const musicBrainzGet = (what, inc) => mbFetch(`${what}?inc=${inc}&fmt=json`);
 const phrase = (text) => `"${String(text).replace(/[\\"]/g, '\\$&')}"`;
 const credited = (entry) => (entry['artist-credit'] || []).map((c) => c.name).join(' ');
 const MB_TYPE_RANK = { Album: 0, EP: 1, Single: 2 };
@@ -116,6 +118,96 @@ async function musicBrainzArt(v) {
   const url = `https://coverartarchive.org/release-group/${group.id}/front-500`;
   const cover = await fetchImageDataUrl(url);
   return cover ? { cover, url } : null;
+}
+
+// ---- Tags from MusicBrainz ------------------------------------------------------------------------------------------
+
+const creditText = (credit) => (credit || []).map((c) => `${c.name}${c.joinphrase || ''}`).join('').trim();
+// [a, b, …] sorts before [c, d, …]: compared item by item, the first difference decides.
+function rankBefore(a, b) {
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i];
+  return false;
+}
+const VERSION_WORDS = /\b(live|demo|remix|mix|instrumental|acoustic|karaoke|a cappella|acapella|edit|version|session|rehearsal)\b/i;
+
+/**
+ * The recording and release a file most likely is, from a MusicBrainz recording search: the same song by the same
+ * artist, as long as the file (when its length is known), and not a live or demo take unless the title says it is.
+ * Its release is the album the file's tag names, when one matches; otherwise the earliest official studio release,
+ * albums before EPs before singles, not a box set. → { recording, release, medium, track } or null.
+ */
+function pickRecording(recordings, { artist, title, album, duration }) {
+  let best = null;
+  for (const rec of recordings || []) {
+    if (rec.score < 85 || !sameSong({ title: rec.title, artist: creditText(rec['artist-credit']) }, artist, title)) continue;
+    if (duration > 0 && rec.length && Math.abs(rec.length / 1000 - duration) > 5) continue;
+    if (VERSION_WORDS.test(rec.disambiguation || '') && !VERSION_WORDS.test(title)) continue;
+    for (const release of rec.releases || []) {
+      const group = release['release-group'] || {};
+      const albumMatch = !!album && wordOverlapRatio(bareTitle(album), release.title) >= 0.75 && wordOverlapRatio(release.title, album) >= 0.75;
+      if (!albumMatch && (release.status !== 'Official' || (group['secondary-types'] || []).length || !(group['primary-type'] in MB_TYPE_RANK))) continue;
+      const medium = (release.media || [])[0], track = medium && (medium.track || [])[0];
+      // A release dated only by its year sorts after the dated ones of that year (it's usually an obscure pressing), and
+      // a box set after an album on one or two discs.
+      const date = /^\d{4}$/.test(release.date || '') ? `${release.date}-99` : release.date || '9999';
+      const rank = [albumMatch ? 0 : 1, MB_TYPE_RANK[group['primary-type']] ?? 3, (release.count || 1) > 2 ? 1 : 0, date, -(rec.score || 0)];
+      if (!best || rankBefore(rank, best.rank)) best = { rank, recording: rec, release, medium, track };
+    }
+  }
+  return best;
+}
+
+/**
+ * What MusicBrainz says a song's tags should be, for the Tags panel: { title, artist, album, albumArtist, year, track,
+ * trackCount, disc, discCount, genre, label, musicBrainzTrackId, musicBrainzReleaseId, coverUrl } — or null when it
+ * doesn't know the song. { networkError: true } when it couldn't be asked.
+ */
+async function lookupTags({ artist, title, album, duration, guessed }) {
+  let networkError = false;
+  for (const v of nameVariants({ artist, title, guessed }).filter((x) => x.artist)) {
+    // A famous song has hundreds of recordings (mostly live), in no useful order: when the file's length is known, ask
+    // only for official releases of a recording that long first — that's every candidate on one page.
+    const base = `recording:${phrase(bareTitle(v.title))} AND artist:${phrase(v.artist)}`;
+    const queries = duration > 0 ? [`${base} AND status:official AND dur:[${Math.round(duration - 5) * 1000} TO ${Math.round(duration + 5) * 1000}]`, base] : [base];
+    let found = null;
+    for (const query of queries) {
+      try {
+        const json = await mbFetch(`recording?query=${encodeURIComponent(query)}&fmt=json&limit=100`);
+        found = pickRecording(json.recordings, { ...v, album: v.artist === artist ? album : null, duration });
+      } catch { networkError = true; }
+      if (found) break;
+    }
+    if (!found) continue;
+    let release = found.release;
+    try {
+      release = await musicBrainzGet(`release/${found.release.id}`, 'artist-credits+labels+release-groups+genres');
+    } catch { /* the search's own summary of the release will do */ }
+    const genres = [...(release.genres || []), ...((release['release-group'] || {}).genres || [])].sort((a, b) => b.count - a.count);
+    const label = (release['label-info'] || []).map((l) => l.label && l.label.name).find(Boolean);
+    const year = /\d{4}/.exec(release.date || found.release.date || '');
+    const genre = genres[0] ? genres[0].name.replace(/\b\w/g, (ch) => ch.toUpperCase()) : null;
+    return {
+      title: found.recording.title,
+      artist: creditText(found.recording['artist-credit']),
+      album: release.title,
+      albumArtist: creditText(release['artist-credit'] || found.release['artist-credit']) || null,
+      year: year ? parseInt(year[0], 10) : null,
+      track: found.track ? parseInt(found.track.number, 10) || found.medium['track-offset'] + 1 : null,
+      trackCount: found.medium ? found.medium['track-count'] : null,
+      disc: found.medium ? found.medium.position : null,
+      discCount: (release.media || []).length || found.release.count || null,
+      genre, label: label || null,
+      musicBrainzTrackId: found.recording.id, musicBrainzReleaseId: release.id,
+      coverUrl: `https://coverartarchive.org/release/${release.id}/front-500`,
+      name: v,
+    };
+  }
+  return networkError ? { networkError: true } : null;
+}
+/** A cover for the Tags panel, by address (the Cover Art Archive's, from lookupTags). → data URL or null. */
+async function coverFromUrl(url) {
+  if (!/^https:\/\/coverartarchive\.org\//.test(url)) return null;
+  return fetchImageDataUrl(url).catch(() => null);
 }
 
 /**
@@ -369,4 +461,4 @@ function spotifySignIn() {
   return signInInProgress;
 }
 
-module.exports = { findCover, findCoverUrl, findLyrics, resolveSpotifyLink, spotifySignIn, classifySpotifyLink, wordOverlapRatio };
+module.exports = { findCover, findCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, resolveSpotifyLink, spotifySignIn, classifySpotifyLink, wordOverlapRatio };

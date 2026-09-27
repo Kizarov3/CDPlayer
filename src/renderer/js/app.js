@@ -41,6 +41,7 @@ const state = {
   queue: [], index: -1, shuffle: false, repeat: 'OFF',
   volume: 100, volumeBeforeMute: -1, crossfade: 0, mono: false, waveform: true, ambient: true, miniMode: false, discord: true, discNoise: false,
   trayBusy: false, // the tray is moving or the disc is being read: transport presses wait
+  saveFound: false, // covers and lyrics found online are written into the song's file
   themeIndex: 0, eq: new Array(10).fill(0), customPresets: [], history: [],
   loadedPath: null, details: null, detailsPath: null, lyrics: null, cover: null, loadToken: 0, crossfadeStarted: false,
   cdView: false, visualizerMode: false, fullscreen: false,
@@ -272,18 +273,22 @@ function resetToIdle(message) {
   disc.discPresent = false;
   setPlaying(false);
   lyricsChanged();
+  $('tags-button').hidden = true;
+  flushFoundSoon();
   setStatus(message);
   if ('mediaSession' in navigator) navigator.mediaSession.metadata = null;
 }
 
 // ---- Loading & playback ----------------------------------------------------------------------------------------
 
-async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0 } = {}) {
+async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0, reload = false } = {}) {
   const token = ++state.loadToken;
   disc.discPresent = true;
   const fade = allowCrossfade && engine.playing && state.crossfade > 0 ? state.crossfade : 0;
   state.crossfadeStarted = false;
+  if (state.loadedPath !== path) flushFoundSoon();
   state.loadedPath = path;
+  $('tags-button').hidden = false;
   progress.setWaveform(null);
   const detailsPromise = cdp.details(path, { withCover: true }).catch(() => null);
   // A cue sheet track is a stretch of an album-length file, so which file and where it starts must be known first.
@@ -309,7 +314,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
     }
     if (startAt > 0) engine.seek(Math.min(startAt, engine.duration));
   }
-  if (autoPlay) { recordHistory(path); await engine.play(); }
+  if (autoPlay) { if (!reload) recordHistory(path); await engine.play(); }
   if (token !== state.loadToken) return;
   setPlaying(autoPlay);
   if (fade) setStatus('CROSSFADING');
@@ -370,6 +375,7 @@ async function lookUpCover(details, path, token) {
     $('track-source').textContent = `${result.source} COVER ART · ${ext}`;
     state.details.cover = result.cover;
     state.details.coverUrl = result.url || null;
+    if (state.saveFound) saveFoundLater(path, { cover: result.cover });
     updateMediaSession();
   } else {
     $('track-source').textContent = `${result.networkError ? 'COVER LOOKUP UNAVAILABLE' : 'COVER NOT FOUND'} · ${ext}`;
@@ -382,7 +388,45 @@ async function lookUpLyrics(details, token) {
   // were found under never corrects the displayed name.)
   state.lyrics = found.lyrics; state.lyricsSource = found.source || null;
   lyricsChanged();
+  if (state.saveFound) saveFoundLater(state.loadedPath, { lyrics: found.lyrics });
 }
+
+// ---- Writing tags into files -----------------------------------------------------------------------------------
+
+/**
+ * The Tags panel's SAVE: writes `changes` into the file. The song that's playing is reloaded at the same moment
+ * afterwards — its file just changed under it — so it carries on with the new tags (and cover) showing.
+ */
+async function saveTags(path, changes) {
+  const current = path === state.loadedPath, playing = engine.playing, position = engine.position;
+  const result = await cdp.writeTags(path, changes);
+  if (!result.ok) return result;
+  detailsCache.delete(path);
+  pendingFound.delete(path);
+  if (current && state.loadedPath === path) await load(path, { autoPlay: playing, startAt: position, reload: true });
+  renderQueue();
+  return result;
+}
+// SAVE FOUND ART & LYRICS: what was found online for a song is written into its file — but only once the song isn't
+// playing any more, so the file never changes under the player (a crossfade's outgoing song included).
+const pendingFound = new Map(); // path -> changes
+let flushTimer = null;
+function saveFoundLater(path, changes) {
+  if (!path || /\.cue#\d+$/i.test(path)) return;
+  pendingFound.set(path, { ...(pendingFound.get(path) || {}), ...changes });
+}
+function flushFoundSoon() {
+  clearTimeout(flushTimer);
+  flushTimer = setTimeout(async () => {
+    for (const [path, changes] of [...pendingFound]) {
+      if (path === state.loadedPath) continue;
+      pendingFound.delete(path);
+      const r = await cdp.writeTags(path, changes).catch(() => null);
+      if (r && r.ok) detailsCache.delete(path);
+    }
+  }, (state.crossfade + 2) * 1000);
+}
+function setSaveFound(on) { state.saveFound = on; if (!on) pendingFound.clear(); saveSettingsSoon(); }
 // The lyrics for the loaded song arrived or went: the LYRICS and KARAOKE buttons, and anything showing them, follow.
 function lyricsChanged() {
   $('lyrics-button').hidden = !state.lyrics;
@@ -868,7 +912,7 @@ function appendAndPlay(p) {
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise };
+  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, saveFound: state.saveFound };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -938,6 +982,7 @@ function buildStaticUi() {
   $('lyrics-button').addEventListener('click', () => panels.showLyrics(app));
   $('karaoke-button').addEventListener('click', toggleKaraoke);
   $('tray-button').addEventListener('click', toggleTray);
+  $('tags-button').addEventListener('click', () => panels.showTags(app));
   $('shelf-button').addEventListener('click', toggleShelf);
   setupShelf(app);
   $('history-button').addEventListener('click', () => panels.showHistory(app));
@@ -1090,7 +1135,7 @@ export const app = {
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) { state.index = i; load(state.queue[i]); } },
   coverSource: () => { const s = $('track-source').textContent; return /COVER ART|ALBUM ART/.test(s) ? s.split(' · ')[0].replace(/ COVER ART$/, '').replace('EMBEDDED ALBUM ART', 'In the file') : null; },
   switchTheme, setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise,
-  insertDisc,
+  insertDisc, saveTags, setSaveFound,
   saveEq: () => cdp.saveEqPresets(state.customPresets),
   lyricsLines: () => (state.lyrics ? parseLrc(state.lyrics) : []),
   openKaraoke: () => toggleKaraoke(),
@@ -1142,6 +1187,7 @@ async function start() {
   state.ambient = s.ambient;
   state.discord = s.discord !== false;
   setDiscNoise(!!s.discNoise);
+  state.saveFound = !!s.saveFound;
   setEq(s.eq);
   const themeIndex = Math.max(0, THEMES.findIndex((t) => t.name === s.theme));
   state.themeIndex = -1;

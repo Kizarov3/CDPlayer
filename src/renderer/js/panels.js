@@ -11,7 +11,7 @@ import { formatLyricsForDisplay } from './lyrics.js';
 const layer = () => document.getElementById('overlays');
 const panels = new Map(); // name -> { overlay, card, build }
 // Escape closes the closest thing first, in this order.
-const ESC_ORDER = ['onboarding', 'changelog', 'booklet', 'menu', 'lyrics', 'eq', 'history', 'search', 'settings'];
+const ESC_ORDER = ['onboarding', 'changelog', 'booklet', 'menu', 'lyrics', 'tags', 'eq', 'history', 'search', 'settings'];
 
 function openPanel(name, build, { width } = {}) {
   let p = panels.get(name);
@@ -118,6 +118,7 @@ function buildSettings(app) {
   const mini = toggle(s.miniMode, () => app.setMiniMode(!s.miniMode));
   const discord = toggle(s.discord, () => { app.setDiscord(!s.discord); setToggle(discord, s.discord); });
   const discNoise = toggle(s.discNoise, () => { app.setDiscNoise(!s.discNoise); setToggle(discNoise, s.discNoise); });
+  const saveFound = toggle(s.saveFound, () => { app.setSaveFound(!s.saveFound); setToggle(saveFound, s.saveFound); });
 
   const github = el('div', { class: 'github-link', title: 'Open GitHub profile', onClick: () => app.cdp.openGitHub('Kizarov3') }, catSvg(), el('span', {}, 'Kizarov3'));
   const body = el('div', { class: 'scroll settings-body' },
@@ -136,6 +137,9 @@ function buildSettings(app) {
     section('PLAYBACK'),
     sliderRow('SLEEP TIMER', sleep, sleepValue),
     row('MINI MODE', mini), gap(18),
+    section('LIBRARY'),
+    row('SAVE FOUND ART & LYRICS', saveFound),
+    hint('Covers and lyrics found online are written into the song’s file (once it’s finished playing), so they’re there offline and in other players too.'), gap(18),
     section('SHARING'),
     row('DISCORD STATUS', discord),
     hint('Shows the song you’re playing on your Discord profile, while the Discord app is open.'));
@@ -276,6 +280,128 @@ export function updateLyricsSync(app, force = false) {
     const sc = lyricsView.scroller;
     sc.scrollTo({ top: Math.max(0, node.offsetTop - sc.offsetTop - sc.clientHeight / 2 + node.offsetHeight / 2), behavior: anim.enabled && !force ? 'smooth' : 'auto' });
   }
+}
+
+// ---- Tags: what the file says, what MusicBrainz says, and writing it in ---------------------------------------------
+
+const TAG_ROWS = [
+  ['TITLE', 'title'], ['ARTIST', 'artist'], ['ALBUM', 'album'], ['ALBUM ARTIST', 'albumArtist'], ['YEAR', 'year'],
+  ['TRACK', 'track', 'trackCount'], ['DISC', 'disc', 'discCount'], ['GENRE', 'genre'], ['LABEL', 'label'],
+];
+let tagsView = null; // { path, name, canWrite, current, found, foundCover, values, picked: Set, status, busy }
+
+export function showTags(app) {
+  const path = app.state.loadedPath;
+  if (!path) return;
+  tagsView = { path, name: app.displayName(path), canWrite: true, current: null, found: null, foundCover: null, values: {}, picked: new Set(), status: 'READING THE FILE…', busy: true };
+  const p = openPanel('tags', () => buildTags(app), { width: 660 });
+  p.onClose = () => { tagsView = null; };
+  loadTags(app, tagsView);
+}
+const tagsCurrent = (view) => tagsView === view && isOpen('tags');
+
+async function loadTags(app, view) {
+  const r = await app.cdp.readTags(view.path).catch(() => ({ canWrite: false }));
+  if (!tagsCurrent(view)) return;
+  view.canWrite = r.canWrite;
+  view.current = r.tags || {};
+  for (const [, ...keys] of TAG_ROWS) for (const k of keys) view.values[k] = view.current[k] ?? '';
+  if (!r.canWrite) { view.status = 'TAGS CAN’T BE WRITTEN TO THIS FILE (A CUE SHEET TRACK, OR A FORMAT WITHOUT TAGS)'; view.busy = false; refreshPanel('tags'); return; }
+  // Lyrics found online (not the file's own) are offered too.
+  view.lyricsOffer = app.state.lyrics && !(app.state.details && app.state.details.lyrics) ? app.state.lyrics : null;
+  if (view.lyricsOffer) view.picked.add('lyrics');
+  view.status = 'LOOKING THE SONG UP ON MUSICBRAINZ…';
+  refreshPanel('tags');
+  await lookUpTags(app, view);
+}
+
+async function lookUpTags(app, view) {
+  const d = app.state.details || {};
+  view.busy = true;
+  const found = await app.cdp.lookupTags({ artist: d.artist, title: d.title, album: d.album, duration: d.duration || app.engine.duration, guessed: !!d.nameGuessed }).catch(() => ({ networkError: true }));
+  if (!tagsCurrent(view)) return;
+  view.busy = false;
+  if (!found || found.networkError) {
+    view.status = found ? 'MUSICBRAINZ COULDN’T BE REACHED — YOU CAN STILL EDIT THE TAGS BY HAND' : 'MUSICBRAINZ DOESN’T KNOW THIS SONG — YOU CAN STILL EDIT THE TAGS BY HAND';
+    refreshPanel('tags');
+    return;
+  }
+  view.found = found;
+  // Every field MusicBrainz knows and the file has differently is filled in and ticked; the rest stay as they are.
+  for (const [, ...keys] of TAG_ROWS) for (const k of keys) {
+    if (found[k] == null || found[k] === '') continue;
+    view.values[k] = found[k];
+    if (String(found[k]) !== String(view.current[k] ?? '')) view.picked.add(k);
+  }
+  view.status = `FOUND ON MUSICBRAINZ · ${[found.album, found.year].filter(Boolean).join(' · ')}`.toUpperCase();
+  refreshPanel('tags');
+  if (!view.current.hasCover && found.coverUrl) {
+    const cover = await app.cdp.coverFromUrl(found.coverUrl).catch(() => null);
+    if (!tagsCurrent(view) || !cover) return;
+    view.foundCover = cover;
+    view.picked.add('cover');
+    refreshPanel('tags');
+  }
+}
+
+function buildTags(app) {
+  const v = tagsView;
+  const pick = (key) => {
+    const b = el('button', { class: `tag-pick${v.picked.has(key) ? ' on' : ''}`, title: 'Write this into the file', disabled: !v.canWrite }, '✓');
+    b.addEventListener('click', () => { v.picked.has(key) ? v.picked.delete(key) : v.picked.add(key); b.classList.toggle('on', v.picked.has(key)); save.disabled = !v.picked.size || v.busy; });
+    return b;
+  };
+  // Typing in a field ticks it (a track or disc number and its "of" share one tick).
+  const input = (key, narrow, pair) => {
+    const i = el('input', { class: `text-input tag-input${narrow ? ' narrow' : ''}`, value: v.values[key] ?? '', spellcheck: 'false', disabled: !v.canWrite });
+    i.addEventListener('input', () => {
+      v.values[key] = i.value;
+      for (const k of [key, pair].filter(Boolean)) { v.picked.add(k); if (picks.get(k)) picks.get(k).classList.add('on'); }
+      save.disabled = false;
+    });
+    return i;
+  };
+  const picks = new Map();
+  const shown = (x) => (x == null || x === '' ? '—' : String(x));
+  const rows = TAG_ROWS.map(([label, key, of]) => {
+    const now = of ? `${shown(v.current && v.current[key])}${v.current && v.current[of] ? ` of ${v.current[of]}` : ''}` : shown(v.current && v.current[key]);
+    const b = pick(key); picks.set(key, b);
+    if (of) { const b2 = pick(of); b2.hidden = true; picks.set(of, b2); }
+    const edit = of ? el('div', { class: 'tag-pair' }, input(key, true, of), el('span', {}, 'OF'), input(of, true, key)) : input(key);
+    if (of) b.addEventListener('click', () => { if (v.picked.has(key)) v.picked.add(of); else v.picked.delete(of); });
+    return el('div', { class: 'tag-row' }, el('span', { class: 'tag-label' }, label), el('span', { class: 'tag-now', title: now }, now), edit, b);
+  });
+  const thumb = (src) => (src ? el('img', { class: 'tag-thumb', src, alt: '' }) : el('span', { class: 'tag-now' }, '—'));
+  const coverNow = v.current && v.current.hasCover ? el('span', { class: 'tag-now' }, 'In the file') : el('span', { class: 'tag-now' }, 'None');
+  if (v.foundCover) rows.push(el('div', { class: 'tag-row' }, el('span', { class: 'tag-label' }, 'COVER'), coverNow, el('div', {}, thumb(v.foundCover), el('span', { class: 'tag-source' }, 'Cover Art Archive')), pick('cover')));
+  if (v.lyricsOffer) rows.push(el('div', { class: 'tag-row' }, el('span', { class: 'tag-label' }, 'LYRICS'), el('span', { class: 'tag-now' }, 'None'),
+    el('span', { class: 'tag-source' }, `${/^\[\d/m.test(v.lyricsOffer) ? 'Timed' : 'Plain'}, from ${app.state.lyricsSource || 'online'}`), pick('lyrics')));
+  const save = el('button', { class: 'pill on', disabled: !v.picked.size || v.busy || !v.canWrite }, 'SAVE TO FILE');
+  save.addEventListener('click', async () => {
+    const changes = {};
+    for (const k of v.picked) {
+      if (k === 'cover') changes.cover = v.foundCover;
+      else if (k === 'lyrics') changes.lyrics = v.lyricsOffer;
+      else changes[k] = v.values[k] === '' ? null : v.values[k];
+    }
+    if (v.found && Object.keys(changes).some((k) => k !== 'lyrics' && k !== 'cover')) {
+      changes.musicBrainzTrackId = v.found.musicBrainzTrackId; changes.musicBrainzReleaseId = v.found.musicBrainzReleaseId;
+    }
+    v.busy = true; v.status = 'WRITING…'; refreshPanel('tags');
+    const r = await app.saveTags(v.path, changes);
+    if (!tagsCurrent(v)) return;
+    if (r.ok) { closePanel('tags'); app.setStatus('TAGS SAVED INTO THE FILE'); return; }
+    v.busy = false; v.status = `COULDN’T SAVE · ${r.error || 'UNKNOWN ERROR'}`; refreshPanel('tags');
+  });
+  const again = pill('LOOK UP AGAIN', () => { if (!v.busy && v.canWrite) { v.status = 'LOOKING THE SONG UP ON MUSICBRAINZ…'; refreshPanel('tags'); lookUpTags(app, v); } }, 'Ask MusicBrainz again');
+  again.disabled = v.busy || !v.canWrite;
+  return [
+    title('TAGS'), el('div', { class: 'subtitle' }, v.name),
+    el('div', { class: `tag-status${v.busy ? ' busy' : ''}` }, v.status),
+    el('div', { class: 'tag-head' }, el('span', {}, ''), el('span', {}, 'IN THE FILE'), el('span', {}, 'SAVE AS'), el('span', {}, '')),
+    el('div', { class: 'scroll tag-rows' }, rows),
+    el('div', { class: 'close-row split' }, again, el('div', { class: 'row-pills' }, pill('CLOSE', () => closePanel('tags')), save)),
+  ];
 }
 
 // ---- History -----------------------------------------------------------------------------------------------------

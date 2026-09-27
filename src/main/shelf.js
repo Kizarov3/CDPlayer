@@ -154,4 +154,7 @@ async function albumCover(firstTrack) {
   return thumb;
 }
 
-module.exports = { scanAlbums, albumCover, groupAlbums, albumFolder };
+/** A file's tags changed: its album's cover thumbnail is made again next time. */
+function forget(filePath) { thumbs.delete(filePath); }
+
+module.exports = { scanAlbums, albumCover, groupAlbums, albumFolder, forget };

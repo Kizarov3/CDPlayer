@@ -74,6 +74,8 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - Embedded album art, with automatic iTunes → Deezer → Spotify → [MusicBrainz](https://musicbrainz.org) / [Cover Art Archive](https://coverartarchive.org) cover lookup when a file has none
 - **Lyrics** — embedded lyrics, or an automatic [lrclib.net](https://lrclib.net) lookup, then [Unison](https://unison.boidu.dev) (the hand-timed lyrics from Better Lyrics). Timed (LRC) lyrics highlight and auto-scroll karaoke-style, and clicking a line jumps playback to it
 - **Karaoke Mode** (`Y`) — the lyrics fill the window, the line being sung big in the middle and filling in word by word as it's sung (per word where the lyrics are word-timed, as Unison's are; a sweep across the line otherwise)
+- **Tags** — see what a song's file says and fix it: MusicBrainz fills in the album, album artist, year, track and disc numbers, genre and label (the right recording, as long as the file, on its original album — not a live take or a compilation), with its cover from the Cover Art Archive and the lyrics found online. Tick what to keep, or type your own, and **SAVE TO FILE**. MP3, M4A, FLAC, OGG/Opus, WAV and AIFF; the file is edited as a copy and checked before it replaces the original, and a song that's playing carries on without a hitch
+- **Save found art & lyrics** (Settings, off by default) — covers and lyrics found online are written into the song's file once it's finished playing, so they're there offline and in other players too
 - **History** — your last 50 tracks, one click away from playing again or adding back to the queue
 - **CD view** (`C`) — just the enlarged spinning disc with the title and artist underneath, with a genie-style transition
 - **Visualizer Mode** (`V`) — the whole window becomes the theme's audio-reactive visualizer; also kicks in on its own after a few idle minutes while playing, like a screensaver
@@ -161,3 +163,5 @@ npm run dist         # build installers for the current OS into dist/
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+Tags are written with [node-taglib-sharp](https://github.com/benrr101/node-taglib-sharp) (LGPL-2.1-or-later), used unmodified; its source and license are in the app's `node_modules/node-taglib-sharp`.

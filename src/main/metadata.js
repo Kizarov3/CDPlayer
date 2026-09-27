@@ -36,6 +36,7 @@ class Lru {
     this.map.delete(key); this.map.set(key, value);
     while (this.map.size > this.limit) this.map.delete(this.map.keys().next().value);
   }
+  delete(key) { this.map.delete(key); }
 }
 
 // Details (small) are cached generously; decoded cover images (large) are cached separately and more tightly —
@@ -163,4 +164,7 @@ async function getDetails(filePath, { withCover = true } = {}) {
   try { return await job; } finally { inflight.delete(key); }
 }
 
-module.exports = { getDetails, displayName, fallbackTitle, extractLyrics, Lru };
+/** The file's tags changed (they were just written): read them again next time. */
+function forget(filePath) { detailsCache.delete(filePath); coverCache.delete(filePath); }
+
+module.exports = { getDetails, forget, displayName, fallbackTitle, extractLyrics, Lru };

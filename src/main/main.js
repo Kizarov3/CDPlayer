@@ -22,6 +22,7 @@ const updates = require('./updates');
 const discord = require('./discord');
 const cue = require('./cue');
 const shelf = require('./shelf');
+const tagWriter = require('./tag-writer');
 
 const APP_VERSION = app.getVersion();
 const APP_ID = 'com.kizarov3.cdplayer'; // = build.appId in package.json
@@ -211,6 +212,18 @@ handle('library:scan', async () => {
   return { folder, name: path.basename(folder), ...(await library.scanLibrary(folder)) };
 });
 
+// Tags: what's in the file, what MusicBrainz says, and writing changes (and found covers and lyrics) into it.
+handle('tags:read', (p) => {
+  if (!tagWriter.canWrite(p)) return { canWrite: false };
+  try { return { canWrite: true, tags: tagWriter.readTags(p) }; } catch { return { canWrite: false }; }
+});
+handle('tags:lookup', (details) => online.lookupTags(details));
+handle('tags:coverFromUrl', (url) => online.coverFromUrl(url));
+handle('tags:write', async (p, changes) => {
+  const result = await tagWriter.writeTags(p, changes);
+  if (result.ok) { metadata.forget(p); shelf.forget(p); }
+  return result;
+});
 handle('shelf:albums', () => shelf.scanAlbums((done, total) => { if (win) win.webContents.send('shelf-progress', { done, total }); }));
 handle('shelf:cover', (firstTrack) => shelf.albumCover(firstTrack));
 handle('dialog:pickMusicFolder', async () => {

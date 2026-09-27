@@ -104,7 +104,7 @@ body.cd-view #cd-info { display: block !important; }
 #player > #queue-card { flex-shrink: 1; }
 #queue-card > * { flex-shrink: 0; }
 #queue-card > #queue-list { flex-shrink: 1; }
-#now-row { display: flex; align-items: center; min-height: 32px; }
+#now-row { display: flex; align-items: center; gap: 6px; min-height: 32px; }
 #now-playing-label { color: rgb(var(--accent2)); font-size: 11px; margin-right: 12px; }
 #visualizer { width: 56px; height: 22px; }
 #track-title { margin-top: 12px; height: 44px; line-height: 44px; font-size: 34px; color: rgb(var(--text)); }
@@ -299,6 +299,28 @@ body.cd-view #cd-info { display: block !important; }
 .tip-row .dot { color: rgb(var(--accent2)); font-size: 9px; padding-top: 3px; }
 .tip-row .tip { font-size: 12px; font-weight: normal; color: rgb(var(--text)); line-height: 1.35; }
 .tip-row .tip b { font-weight: bold; }
+
+/* ---- Tags panel ---- */
+.tag-status { margin-top: 12px; font-size: 10px; color: rgb(var(--accent2)); min-height: 14px; }
+.tag-status.busy { color: rgb(var(--muted)); animation: tagBusy 1.2s ease-in-out infinite; }
+@keyframes tagBusy { 50% { opacity: .45; } }
+.tag-head, .tag-row { display: grid; grid-template-columns: 96px 170px 1fr 28px; gap: 10px; align-items: center; }
+.tag-head { margin-top: 14px; font-size: 9px; color: rgb(var(--muted)); }
+.tag-rows { max-height: 420px; margin-top: 6px; }
+.tag-row { min-height: 34px; }
+.tag-label { font-size: 10px; color: rgb(var(--muted)); }
+.tag-now { font-size: 11px; font-weight: normal; color: rgb(var(--text)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .8; }
+.tag-input { width: 100%; box-sizing: border-box; }
+.tag-pair { display: flex; align-items: center; gap: 8px; font-size: 9px; color: rgb(var(--muted)); }
+.tag-input.narrow { width: 64px; }
+.tag-thumb { width: 56px; height: 56px; object-fit: cover; vertical-align: middle; margin-right: 10px; box-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
+.tag-source { font-size: 10px; font-weight: normal; color: rgb(var(--muted)); }
+.tag-pick {
+  width: 24px; height: 24px; border-radius: 4px; border: none; cursor: pointer; font: bold 12px var(--font);
+  color: transparent; background: rgba(255, 255, 255, .06); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16);
+}
+.tag-pick.on { color: rgb(var(--bg)); background: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent2))); box-shadow: none; }
+.tag-pick:disabled { opacity: .3; cursor: default; }
 
 /* ---- Theme picker menu ---- */
 .theme-menu-layer { position: absolute; inset: 0; pointer-events: auto; }
