@@ -18,8 +18,9 @@ const TTML = `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org
 <p begin="1:02.5" end="1:05"><span begin="1:02.5">Rock</span> <span begin="1:03">&amp; roll</span><span ttm:role="x-bg"><span begin="1:04">(ooh)</span></span></p>
 </div></body></tt>`;
 
-test('TTML becomes line-synced LRC: syllables joined, background vocals and head left out', () => {
-  assert.strictEqual(ttmlToLrc(TTML), "[00:08.84]Now he's espresso\n[01:02.50]Rock & roll");
+test('TTML becomes enhanced LRC: a stamp per word, syllables joined, background vocals and head left out', () => {
+  assert.strictEqual(ttmlToLrc(TTML), "[00:08.84]<00:08.84>Now <00:09.15>he's <00:10.00>es<00:10.20>press<00:10.40>o\n[01:02.50]<01:02.50>Rock <01:03.00>& roll");
+  assert.strictEqual(ttmlToLrc(TTML, { words: false }), "[00:08.84]Now he's espresso\n[01:02.50]Rock & roll");
   assert.strictEqual(ttmlDuration(TTML), 185.5);
 });
 
@@ -103,7 +104,8 @@ const unison = (data) => [/unison\.boidu\.dev/, { success: true, data }];
 test('Unison lyrics when lrclib has none, as LRC', async () => {
   answer([...NO_STORE_HITS, unison({ song: 'Espresso', artist: 'Sabrina Carpenter', format: 'ttml', lyrics: TTML })]);
   const found = await findLyrics({ artist: 'Sabrina Carpenter', title: 'Espresso', album: 'Espresso', duration: 186 });
-  assert.strictEqual(found.lyrics, "[00:08.84]Now he's espresso\n[01:02.50]Rock & roll");
+  assert.strictEqual(found.lyrics, ttmlToLrc(TTML));
+  assert.strictEqual(found.source, 'Unison');
   assert.ok(asked.some((u) => /unison\.boidu\.dev\/lyrics\?song=Espresso&artist=Sabrina%20Carpenter&album=Espresso&duration=186/.test(u)));
 });
 
@@ -119,5 +121,6 @@ test('lrclib still comes first', async () => {
     unison({ song: 'Espresso', artist: 'Sabrina Carpenter', format: 'ttml', lyrics: TTML })]);
   const found = await findLyrics({ artist: 'Sabrina Carpenter', title: 'Espresso', duration: 175 });
   assert.strictEqual(found.lyrics, '[00:01.00]From lrclib');
+  assert.strictEqual(found.source, 'lrclib.net');
   assert.ok(!asked.some((u) => /unison/.test(u)));
 });

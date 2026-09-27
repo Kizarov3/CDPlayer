@@ -10,6 +10,7 @@ import { openBooklet, closeBooklet } from './booklet.js';
 import { parseLrc, currentLineIndex } from './lyrics.js';
 import { shortcutKey } from './keys.js';
 import * as panels from './panels.js';
+import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
 
 const cdp = window.cdp;
 const $ = (id) => document.getElementById(id);
@@ -261,8 +262,7 @@ function resetToIdle(message) {
   progress.setValue(0); progress.setWaveform(null);
   setCover(null); disc.lookingUp = false;
   setPlaying(false);
-  $('lyrics-button').hidden = true;
-  panels.refreshLyricsIfOpen(app);
+  lyricsChanged();
   setStatus(message);
   if ('mediaSession' in navigator) navigator.mediaSession.metadata = null;
 }
@@ -321,10 +321,9 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   $('track-source').textContent = details.cover ? `EMBEDDED ALBUM ART · ${ext}` : canLookUp ? `LOCAL AUDIO FILE · ${ext}` : 'NO EMBEDDED COVER · ADD SONG METADATA';
   updateMediaSession();
   if (canLookUp) lookUpCover(details, path, token);
-  state.lyrics = details.lyrics || null;
-  $('lyrics-button').hidden = !state.lyrics;
+  state.lyrics = details.lyrics || null; state.lyricsSource = null;
   if (!state.lyrics && details.title) lookUpLyrics(details, token);
-  panels.refreshLyricsIfOpen(app);
+  lyricsChanged();
   renderQueue();
   // Waveform last — it decodes the whole file, so it shouldn't hold up anything the user sees first. (Not for a cue
   // track: that would mean decoding the entire album file for one song's outline.)
@@ -369,9 +368,21 @@ async function lookUpLyrics(details, token) {
   if (!found || token !== state.loadToken) return;
   // (lrclib's entries are user-submitted and some have artist and title swapped, so unlike a cover, the name lyrics
   // were found under never corrects the displayed name.)
-  state.lyrics = found.lyrics;
-  $('lyrics-button').hidden = false;
+  state.lyrics = found.lyrics; state.lyricsSource = found.source || null;
+  lyricsChanged();
+}
+// The lyrics for the loaded song arrived or went: the LYRICS and KARAOKE buttons, and anything showing them, follow.
+function lyricsChanged() {
+  $('lyrics-button').hidden = !state.lyrics;
+  $('karaoke-button').hidden = !canKaraoke(state.lyrics);
   panels.refreshLyricsIfOpen(app);
+  refreshKaraoke();
+}
+function toggleKaraoke() {
+  if (isKaraokeOpen()) { closeKaraoke(); return; }
+  if (state.miniMode) return;
+  if (state.visualizerMode) toggleVisualizerMode();
+  if (!openKaraoke(app)) setStatus(state.lyrics ? 'THESE LYRICS AREN’T TIMED' : 'NO LYRICS FOR THIS SONG');
 }
 
 async function setCover(dataUrl) {
@@ -650,7 +661,7 @@ function stepDiscMorph(now, finish = false) {
 }
 
 function toggleVisualizerMode() {
-  if (!state.visualizerMode && (state.miniMode || state.cdView)) return;
+  if (!state.visualizerMode && (state.miniMode || state.cdView || isKaraokeOpen())) return;
   state.visualizerMode = !state.visualizerMode;
   const node = $('vis-mode');
   if (state.visualizerMode) {
@@ -673,6 +684,7 @@ async function setMiniMode(enabled) {
   state.miniMode = enabled;
   panels.closeMenu();
   closeBooklet();
+  if (enabled) closeKaraoke();
   if (enabled) pushMini(true);
   await cdp.setMiniMode(enabled);
   panels.refreshSettingsIfOpen(app);
@@ -782,7 +794,8 @@ function anyOverlayOpen() { return !state.miniMode && panels.anyOpen(); }
 function escape() {
   if (state.miniMode) { setMiniMode(false); return; }
   if (panels.closeTopmost(app)) return;
-  if (state.visualizerMode) toggleVisualizerMode();
+  if (isKaraokeOpen()) closeKaraoke();
+  else if (state.visualizerMode) toggleVisualizerMode();
   else if (state.cdView) toggleCdView();
   else if (state.fullscreen) toggleFullscreen();
 }
@@ -829,6 +842,7 @@ function buildStaticUi() {
   $('search-button').addEventListener('click', () => panels.showSearch(app));
   $('clear-queue-button').addEventListener('click', () => (undoClear ? undoClearQueue() : clearQueue()));
   $('lyrics-button').addEventListener('click', () => panels.showLyrics(app));
+  $('karaoke-button').addEventListener('click', toggleKaraoke);
   $('history-button').addEventListener('click', () => panels.showHistory(app));
   $('settings-button').addEventListener('click', () => panels.showSettings(app));
   $('cd-view-button').addEventListener('click', toggleCdView);
@@ -875,7 +889,7 @@ function onKeyDown(e) {
   if (anyOverlayOpen()) return;
   const actions = {
     ArrowLeft: () => seek(-SKIP_SECONDS), ArrowRight: () => seek(SKIP_SECONDS), ArrowUp: () => adjustVolume(5), ArrowDown: () => adjustVolume(-5),
-    u: toggleMute, ' ': toggle, k: toggle, j: previousTrack, l: nextTrack, f: toggleFullscreen, c: toggleCdView, v: toggleVisualizerMode,
+    u: toggleMute, ' ': toggle, k: toggle, j: previousTrack, l: nextTrack, f: toggleFullscreen, c: toggleCdView, v: toggleVisualizerMode, y: toggleKaraoke,
   };
   if (actions[key]) { e.preventDefault(); if (!e.repeat || key.startsWith('Arrow')) actions[key](); }
 }
@@ -948,6 +962,7 @@ function frame(now) {
   if (state.visualizerMode) bigVisualizer.setSpectrum(engine.playing ? engine.spectrum(bigVisualizer.n) : null, dt);
   visualizer.draw(now);
   if (state.visualizerMode) bigVisualizer.draw(now);
+  if (isKaraokeOpen()) updateKaraoke(engine.position);
   stepDiscMorph(now);
   const discBounds = disc.frame(now, dt);
   const exclusions = [];
@@ -959,7 +974,7 @@ function frame(now) {
 
   if (now - idleCheck > 500) {
     idleCheck = now;
-    if (!state.visualizerMode && !state.miniMode && !state.cdView && !anyOverlayOpen() && engine.playing
+    if (!state.visualizerMode && !state.miniMode && !state.cdView && !isKaraokeOpen() && !anyOverlayOpen() && engine.playing
       && Date.now() - state.lastActivity >= IDLE_SECONDS_UNTIL_VISUALIZER * 1000) toggleVisualizerMode();
     if (state.cdView && !state.cursorHidden && Date.now() - state.lastCdMouse >= CD_VIEW_CURSOR_IDLE_SECONDS * 1000) {
       document.body.classList.add('cursor-hidden'); state.cursorHidden = true;
@@ -979,6 +994,7 @@ export const app = {
   switchTheme, setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord,
   saveEq: () => cdp.saveEqPresets(state.customPresets),
   lyricsLines: () => (state.lyrics ? parseLrc(state.lyrics) : []),
+  openKaraoke: () => toggleKaraoke(),
   currentLineIndex,
   anyOverlayOpen, rememberFocus: () => document.activeElement && document.activeElement.blur(),
   loadHistoryFromDisk: async () => { const s = await cdp.loadState(); state.history = s.history; },

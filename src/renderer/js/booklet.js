@@ -204,7 +204,7 @@ async function insidePages(app, spread, size) {
   ].filter(([, v]) => v);
   const disc = [
     ['FORMAT', d.quality || d.ext], ['LENGTH', app.formatTime(d.duration || app.engine.duration)],
-    ['COVER', app.coverSource()], ['LYRICS', state.lyrics ? (d.lyrics ? 'In the file' : 'lrclib.net') : null],
+    ['COVER', app.coverSource()], ['LYRICS', state.lyrics ? (d.lyrics ? 'In the file' : state.lyricsSource || 'Online') : null],
     ['PLAYED', plays ? `${plays} ${plays === 1 ? 'time' : 'times'}` : null],
   ].filter(([, v]) => v);
   const dl = (list) => el('dl', { class: 'credits' }, list.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, String(v))]));

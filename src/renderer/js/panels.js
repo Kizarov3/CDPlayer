@@ -6,6 +6,7 @@ import { EQ_FREQUENCIES } from './audio.js';
 import { el, pill, toggle, setToggle, Slider, anim } from './widgets.js';
 import { catSvg } from './glyphs.js';
 import { isBookletOpen, closeBooklet } from './booklet.js';
+import { formatLyricsForDisplay } from './lyrics.js';
 
 const layer = () => document.getElementById('overlays');
 const panels = new Map(); // name -> { overlay, card, build }
@@ -247,7 +248,7 @@ function buildLyrics(app) {
   const lines = app.lyricsLines();
   let body;
   if (!lines.length) {
-    body = el('div', { class: 'scroll' }, el('div', { class: 'lyrics-plain' }, formatPlain(app.state.lyrics)));
+    body = el('div', { class: 'scroll' }, el('div', { class: 'lyrics-plain' }, formatLyricsForDisplay(app.state.lyrics)));
     lyricsView = null;
   } else {
     const nodes = lines.map((l) => el('div', { class: 'lyrics-line', onClick: () => app.seekTo(l.time) }, l.text || ' '));
@@ -256,11 +257,8 @@ function buildLyrics(app) {
   }
   body.style.height = '380px';
   body.style.marginTop = '16px';
-  return [title('LYRICS'), body, closeRow(() => closePanel('lyrics'))];
-}
-function formatPlain(raw) {
-  return String(raw).split(/\r\n|\r|\n/).map((l) => l.replace(/^\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]\s*/, ''))
-    .filter((l) => !/^\[(ti|ar|al|by|offset|length|re|ve):[^\]]*\]\s*$/.test(l)).join('\n').trim();
+  const karaoke = lines.length ? pill('KARAOKE', () => { closePanel('lyrics'); app.openKaraoke(); }, 'The lyrics full-window, filling in word by word as they are sung (Y)') : null;
+  return [title('LYRICS'), body, el('div', { class: 'close-row split' }, karaoke || el('span'), pill('CLOSE', () => closePanel('lyrics')))];
 }
 /** Karaoke-style: highlight the line at the current playback position and keep it centered. */
 export function updateLyricsSync(app, force = false) {

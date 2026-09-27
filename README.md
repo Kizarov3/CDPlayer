@@ -64,6 +64,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - The audio quality under the title: `FLAC · 24-BIT · 96 KHZ` for lossless files, `MP3 · 320 KBPS` for compressed ones
 - Embedded album art, with automatic iTunes → Deezer → Spotify → [MusicBrainz](https://musicbrainz.org) / [Cover Art Archive](https://coverartarchive.org) cover lookup when a file has none
 - **Lyrics** — embedded lyrics, or an automatic [lrclib.net](https://lrclib.net) lookup, then [Unison](https://unison.boidu.dev) (the hand-timed lyrics from Better Lyrics). Timed (LRC) lyrics highlight and auto-scroll karaoke-style, and clicking a line jumps playback to it
+- **Karaoke Mode** (`Y`) — the lyrics fill the window, the line being sung big in the middle and filling in word by word as it's sung (per word where the lyrics are word-timed, as Unison's are; a sweep across the line otherwise)
 - **History** — your last 50 tracks, one click away from playing again or adding back to the queue
 - **CD view** (`C`) — just the enlarged spinning disc with the title and artist underneath, with a genie-style transition
 - **Visualizer Mode** (`V`) — the whole window becomes the theme's audio-reactive visualizer; also kicks in on its own after a few idle minutes while playing, like a screensaver
@@ -115,6 +116,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 | `C` | Toggle CD view |
 | `M` | Toggle Mini Mode |
 | `V` | Toggle Visualizer Mode |
+| `Y` | Toggle Karaoke Mode |
 | `Esc` | Close whatever's open, or leave fullscreen / CD view / Visualizer Mode / Mini Mode |
 
 ## Coming from the Java version?

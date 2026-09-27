@@ -31,6 +31,7 @@
           <span id="now-playing-label">NOW PLAYING</span>
           <canvas id="visualizer"></canvas>
           <span class="grow"></span>
+          <button class="pill" id="karaoke-button" title="Karaoke: the lyrics fill in word by word as they're sung (Y)" hidden>KARAOKE</button>
           <button class="pill" id="lyrics-button" hidden>LYRICS</button>
         </div>
         <div id="track-title" class="fit">Pick a track to get started.</div>
@@ -65,7 +66,7 @@
     </div>
 
     <footer id="south">
-      <div id="hint">SPACE PLAY · J/L PREV/NEXT · ←/→ SKIP 5S · ↑/↓ VOLUME · U MUTE · C CD VIEW · M MINI · V VISUALIZER · F FULLSCREEN</div>
+      <div id="hint">SPACE PLAY · J/L PREV/NEXT · ←/→ SKIP 5S · ↑/↓ VOLUME · U MUTE · C CD VIEW · M MINI · V VISUALIZER · Y KARAOKE · F FULLSCREEN</div>
       <div id="cd-info" hidden>
         <div id="cd-title" class="fit"></div>
         <div id="cd-artist" class="fit" hidden></div>
@@ -76,6 +77,12 @@
   <div id="vis-mode" hidden>
     <canvas id="big-visualizer"></canvas>
     <div class="vis-hint">MOVE THE MOUSE, OR PRESS V / ESC, TO EXIT</div>
+  </div>
+
+  <div id="karaoke" hidden>
+    <div id="karaoke-title"></div>
+    <div id="karaoke-stage"><div id="karaoke-lines"></div></div>
+    <div class="vis-hint">CLICK A LINE TO JUMP TO IT · PRESS Y OR ESC TO EXIT</div>
   </div>
 
   <div id="overlays"></div>

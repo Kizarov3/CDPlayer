@@ -247,6 +247,7 @@ body.cd-view #cd-info { display: block !important; }
 .card h1 { margin: 0; font-size: 16px; color: rgb(var(--accent)); font-weight: bold; }
 .card .subtitle { margin-top: 6px; font-size: 11px; color: rgb(var(--muted)); }
 .card .close-row { display: flex; justify-content: flex-end; margin-top: 16px; }
+.card .close-row.split { justify-content: space-between; }
 .card .scroll { min-height: 0; }
 .setting-row { display: flex; align-items: center; justify-content: space-between; min-height: 30px; font-size: 10px; color: rgb(var(--muted)); }
 .setting-row.slider-row { justify-content: flex-start; }
@@ -318,6 +319,34 @@ body.cd-view #cd-info { display: block !important; }
 }
 #big-visualizer { flex: 1 1 auto; min-height: 0; width: 100%; margin-bottom: 20px; }
 .vis-hint { text-align: center; font-size: 10px; color: rgb(var(--hint)); }
+
+/* ---- Karaoke Mode (karaoke.js): the lyrics, the current line filling in word by word ---- */
+#karaoke {
+  position: fixed; inset: 0; z-index: 11;
+  background: radial-gradient(ellipse at 50% 40%, rgba(var(--accent), .16), rgba(0, 0, 0, 0) 60%), rgb(var(--bg));
+  display: flex; flex-direction: column; padding: 34px 50px 40px;
+}
+#karaoke-title { text-align: center; font-size: 11px; color: rgb(var(--accent2)); letter-spacing: .08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#karaoke-stage {
+  flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; margin: 14px 0 20px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 78%, transparent 100%);
+}
+#karaoke-lines { position: absolute; left: 0; right: 0; top: 0; transition: transform 420ms cubic-bezier(.22, .8, .3, 1); }
+.k-line {
+  max-width: 900px; margin: 0 auto; padding: 10px 0; text-align: center;
+  font-size: 26px; line-height: 1.25; color: rgba(var(--text), .28); cursor: pointer;
+  transition: font-size 260ms ease, color 260ms ease;
+}
+.k-line:hover { color: rgba(var(--text), .55); }
+.k-line.gap { font-size: 20px; }
+.k-line.sung { color: rgba(var(--text), .42); }
+.k-line.current { font-size: 44px; color: rgba(var(--text), .38); }
+/* The fill: each word's text is painted in the accent up to --p (0…1) of its width, the rest in the unsung grey. */
+.k-line.current .k-word {
+  --p: 0;
+  background: linear-gradient(to right, rgb(var(--accent)) calc(var(--p) * 100%), rgba(var(--text), .38) calc(var(--p) * 100%));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
 
 /* ---- Canvases layered over everything ---- */
 #particles { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 30; pointer-events: none; }

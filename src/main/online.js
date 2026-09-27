@@ -211,8 +211,8 @@ async function unisonLyrics({ artist, title, album, duration }) {
 /**
  * Lyrics for { title, artist, album, duration, guessed }: lrclib.net's exact entry for the name as given (with album
  * and length), then a search for every guess from nameVariants(), then Unison for every guess with an artist, then a
- * free-text lrclib search. Only entries that are this song count. → { lyrics, name } (name = the guess that found
- * them) or null.
+ * free-text lrclib search. Only entries that are this song count. → { lyrics, name, source } (name = the guess that
+ * found them) or null.
  */
 async function findLyrics({ title, artist, album, duration, guessed }) {
   const variants = nameVariants({ artist, title, guessed });
@@ -224,7 +224,7 @@ async function findLyrics({ title, artist, album, duration, guessed }) {
     if (duration > 0) url += `&duration=${Math.round(duration)}`;
     try {
       const lyrics = pickLrclib(await fetchJson(url), { ...first, duration });
-      if (lyrics) return { lyrics, name: first };
+      if (lyrics) return { lyrics, name: first, source: 'lrclib.net' };
     } catch { /* 404 = no exact match; search below */ }
   }
   for (const v of variants) {
@@ -232,16 +232,16 @@ async function findLyrics({ title, artist, album, duration, guessed }) {
       let url = `https://lrclib.net/api/search?track_name=${encodeURIComponent(v.title)}`;
       if (v.artist) url += `&artist_name=${encodeURIComponent(v.artist)}`;
       const lyrics = pickLrclib(await fetchJson(url), { ...v, duration });
-      if (lyrics) return { lyrics, name: v };
+      if (lyrics) return { lyrics, name: v, source: 'lrclib.net' };
     } catch { /* try the next guess */ }
   }
   for (const v of variants.filter((x) => x.artist)) {
     const lyrics = await unisonLyrics({ ...v, album: v.artist === artist ? album : null, duration });
-    if (lyrics) return { lyrics, name: v };
+    if (lyrics) return { lyrics, name: v, source: 'Unison' };
   }
   try {
     const lyrics = pickLrclib(await fetchJson(`https://lrclib.net/api/search?q=${encodeURIComponent(searchText(first))}`), { ...first, duration });
-    if (lyrics) return { lyrics, name: first };
+    if (lyrics) return { lyrics, name: first, source: 'lrclib.net' };
   } catch { /* nothing */ }
   return null;
 }
