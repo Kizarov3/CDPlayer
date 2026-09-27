@@ -28,6 +28,10 @@ contextBridge.exposeInMainWorld('cdp', {
 
   collectAudio: invoke('library:collect'),
   scanLibrary: invoke('library:scan'),
+  shelfAlbums: invoke('shelf:albums'),
+  shelfCover: invoke('shelf:cover'),
+  onShelfProgress: on('shelf-progress'),
+  pickMusicFolder: invoke('dialog:pickMusicFolder'),
   openTracksDialog: invoke('dialog:openTracks'),
   savePlaylistDialog: invoke('dialog:savePlaylist'),
   loadPlaylistDialog: invoke('dialog:loadPlaylist'),

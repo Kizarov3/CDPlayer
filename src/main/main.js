@@ -21,6 +21,7 @@ const media = require('./media-protocol');
 const updates = require('./updates');
 const discord = require('./discord');
 const cue = require('./cue');
+const shelf = require('./shelf');
 
 const APP_VERSION = app.getVersion();
 const APP_ID = 'com.kizarov3.cdplayer'; // = build.appId in package.json
@@ -208,6 +209,15 @@ handle('library:scan', async () => {
   const folder = store.readLastPath();
   if (!folder || !store.isDir(folder)) return { folder: null, files: [] };
   return { folder, name: path.basename(folder), ...(await library.scanLibrary(folder)) };
+});
+
+handle('shelf:albums', () => shelf.scanAlbums((done, total) => { if (win) win.webContents.send('shelf-progress', { done, total }); }));
+handle('shelf:cover', (firstTrack) => shelf.albumCover(firstTrack));
+handle('dialog:pickMusicFolder', async () => {
+  const r = await dialog.showOpenDialog(win, { title: 'Your Music Folder', defaultPath: dialogDefaultPath(), properties: ['openDirectory'] });
+  if (r.canceled || !r.filePaths.length) return null;
+  store.writeLastPath(r.filePaths[0]);
+  return r.filePaths[0];
 });
 
 function dialogDefaultPath() {

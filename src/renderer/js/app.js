@@ -11,6 +11,7 @@ import { parseLrc, currentLineIndex } from './lyrics.js';
 import { shortcutKey } from './keys.js';
 import * as panels from './panels.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
+import { openShelf, closeShelf, isShelfOpen, escapeShelf, setupShelf } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
 
 const cdp = window.cdp;
@@ -520,28 +521,34 @@ async function closeTray({ play = true } = {}) {
   if (play || resume.playing) { await engine.play(); setPlaying(true); } else setPlaying(false);
 }
 function toggleTray() { if (disc.trayOpen) closeTray(); else openTray(); }
+function toggleShelf() {
+  if (isShelfOpen()) { closeShelf(); return; }
+  if (state.miniMode) return;
+  if (state.visualizerMode) toggleVisualizerMode();
+  if (isKaraokeOpen()) closeKaraoke();
+  openShelf(app);
+}
 /**
  * A whole new disc: the tray comes out, `paths` go in as the queue (its first track loaded, so its cover is on the
  * disc in the tray), and the tray closes, reads and plays from the first track. For the shelf and real audio CDs.
  */
-async function insertDisc(paths, { status } = {}) {
+async function insertDisc(paths, { status, start = 0 } = {}) {
   if (!paths.length || state.miniMode) return;
   if (!disc.trayOpen) await openTray();
   if (state.trayBusy) return;
-  putDiscOnTray(paths);
-  if (status) setStatus(status);
+  putDiscOnTray(paths, start, status);
   await new Promise((r) => setTimeout(r, 450));
   await closeTray();
 }
 // Music dropped (or picked) while the tray is out: that's the new disc — it replaces the queue, loaded but not playing.
-function putDiscOnTray(paths) {
+function putDiscOnTray(paths, start = 0, status = 'DISC ON THE TRAY · PRESS E OR PLAY TO CLOSE') {
   state.queue = paths.slice();
-  state.index = 0;
+  state.index = Math.max(0, Math.min(start, paths.length - 1));
   shuffleCache.index = NaN;
   disc.discPresent = true;
   renderQueue(); saveQueueSoon();
   trayResume = { playing: false };
-  load(paths[0], { autoPlay: false }).then(() => { if (disc.trayOpen && !state.trayBusy) setStatus('DISC ON THE TRAY · PRESS E OR PLAY TO CLOSE'); });
+  load(paths[state.index], { autoPlay: false }).then(() => { if (disc.trayOpen && !state.trayBusy) setStatus(status); });
 }
 
 // Disc noise's skip: shaking the window jolts the pickup, and the song stutters.
@@ -747,7 +754,7 @@ function stepDiscMorph(now, finish = false) {
 }
 
 function toggleVisualizerMode() {
-  if (!state.visualizerMode && (state.miniMode || state.cdView || isKaraokeOpen())) return;
+  if (!state.visualizerMode && (state.miniMode || state.cdView || isKaraokeOpen() || isShelfOpen())) return;
   state.visualizerMode = !state.visualizerMode;
   const node = $('vis-mode');
   if (state.visualizerMode) {
@@ -770,7 +777,7 @@ async function setMiniMode(enabled) {
   state.miniMode = enabled;
   panels.closeMenu();
   closeBooklet();
-  if (enabled) closeKaraoke();
+  if (enabled) { closeKaraoke(); closeShelf(); }
   if (enabled) pushMini(true);
   await cdp.setMiniMode(enabled);
   panels.refreshSettingsIfOpen(app);
@@ -880,6 +887,7 @@ function anyOverlayOpen() { return !state.miniMode && panels.anyOpen(); }
 function escape() {
   if (state.miniMode) { setMiniMode(false); return; }
   if (panels.closeTopmost(app)) return;
+  if (escapeShelf()) return;
   if (isKaraokeOpen()) closeKaraoke();
   else if (state.visualizerMode) toggleVisualizerMode();
   else if (state.cdView) toggleCdView();
@@ -930,6 +938,8 @@ function buildStaticUi() {
   $('lyrics-button').addEventListener('click', () => panels.showLyrics(app));
   $('karaoke-button').addEventListener('click', toggleKaraoke);
   $('tray-button').addEventListener('click', toggleTray);
+  $('shelf-button').addEventListener('click', toggleShelf);
+  setupShelf(app);
   $('history-button').addEventListener('click', () => panels.showHistory(app));
   $('settings-button').addEventListener('click', () => panels.showSettings(app));
   $('cd-view-button').addEventListener('click', toggleCdView);
@@ -976,7 +986,7 @@ function onKeyDown(e) {
   if (anyOverlayOpen()) return;
   const actions = {
     ArrowLeft: () => seek(-SKIP_SECONDS), ArrowRight: () => seek(SKIP_SECONDS), ArrowUp: () => adjustVolume(5), ArrowDown: () => adjustVolume(-5),
-    u: toggleMute, ' ': toggle, k: toggle, j: previousTrack, l: nextTrack, f: toggleFullscreen, c: toggleCdView, v: toggleVisualizerMode, y: toggleKaraoke, e: toggleTray,
+    u: toggleMute, ' ': toggle, k: toggle, j: previousTrack, l: nextTrack, f: toggleFullscreen, c: toggleCdView, v: toggleVisualizerMode, y: toggleKaraoke, e: toggleTray, s: toggleShelf,
   };
   if (actions[key]) { e.preventDefault(); if (!e.repeat || key.startsWith('Arrow')) actions[key](); }
 }
@@ -1062,7 +1072,7 @@ function frame(now) {
 
   if (now - idleCheck > 500) {
     idleCheck = now;
-    if (!state.visualizerMode && !state.miniMode && !state.cdView && !isKaraokeOpen() && !anyOverlayOpen() && engine.playing
+    if (!state.visualizerMode && !state.miniMode && !state.cdView && !isKaraokeOpen() && !isShelfOpen() && !anyOverlayOpen() && engine.playing
       && Date.now() - state.lastActivity >= IDLE_SECONDS_UNTIL_VISUALIZER * 1000) toggleVisualizerMode();
     if (state.cdView && !state.cursorHidden && Date.now() - state.lastCdMouse >= CD_VIEW_CURSOR_IDLE_SECONDS * 1000) {
       document.body.classList.add('cursor-hidden'); state.cursorHidden = true;

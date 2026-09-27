@@ -44,6 +44,12 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - The seek bar can show the track's real amplitude shape instead of a plain line
 - True fullscreen (`F`), and keyboard shortcuts for everything (see below)
 
+**The CD shelf**
+- **SHELF** (`S`) stands every album in your music folder on a shelf, spine out — each spine in the colours of its cover, a double album in a double-width case — sorted by artist and year, with a box to find one
+- Albums come from the tags (album artist and album, so a set split into `CD1`/`CD2` folders is one album), or the folder for untagged music; covers from a `cover.jpg`/`folder.jpg` beside the files or the art inside them
+- Click a spine and the case slides out and turns to its front: the cover and tracklist, **PLAY** (the tray comes out, the disc goes in, the tray closes and it plays — or click a track to start there) and **ADD TO QUEUE**
+- What's on the shelf is remembered, so only new or changed files are read the next time
+
 **Queue**
 - Full queue list with per-track duration, click-to-play, and a hover-to-reveal remove (×) button
 - Drag any row up or down to reorder the queue, even the one currently playing
@@ -121,6 +127,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 | `V` | Toggle Visualizer Mode |
 | `Y` | Toggle Karaoke Mode |
 | `E` | Open / close the disc tray |
+| `S` | The CD shelf |
 | `Esc` | Close whatever's open, or leave fullscreen / CD view / Visualizer Mode / Mini Mode |
 
 ## Coming from the Java version?

@@ -200,7 +200,7 @@ async function insidePages(app, spread, size) {
     ['PRODUCED BY', c.producer], ['CONDUCTED BY', c.conductor], ['ALBUM ARTIST', c.albumArtist !== d.artist ? c.albumArtist : null],
     ['RELEASED', c.released], ['GENRE', c.genre], ['LABEL', c.label], ['CATALOG NO.', c.catalog],
     ['TRACK', c.track ? `${c.track.no}${c.track.of ? ` of ${c.track.of}` : ''}` : null],
-    ['DISC', c.disc ? `${c.disc.no} of ${c.disc.of}` : null], ['BPM', c.bpm],
+    ['DISC', c.disc ? `${c.disc.no}${c.disc.of ? ` of ${c.disc.of}` : ''}` : null], ['BPM', c.bpm],
   ].filter(([, v]) => v);
   const disc = [
     ['FORMAT', d.quality || d.ext], ['LENGTH', app.formatTime(d.duration || app.engine.duration)],

@@ -349,6 +349,73 @@ body.cd-view #cd-info { display: block !important; }
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 
+/* ---- The CD shelf (shelf.js): jewel cases spine-out on shelves, and the case pulled out to its front ---- */
+#shelf {
+  position: fixed; inset: 0; z-index: 12;
+  background: linear-gradient(to bottom, rgb(24, 22, 22), rgb(12, 11, 11));
+  display: flex; flex-direction: column; padding: 28px 44px 0;
+}
+#shelf-head { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; padding-bottom: 16px; }
+#shelf-title { font-size: 16px; color: rgb(var(--accent)); }
+#shelf-count { font-size: 10px; color: rgb(var(--muted)); white-space: nowrap; }
+#shelf-filter { width: 220px; }
+#shelf-body { flex: 1 1 auto; min-height: 0; padding: 18px 6px 40px; }
+/* Rows of cases 196px tall; every 224px a wooden board runs under them (the rows' own background, so it lines up
+   however many rows the window wraps them into). */
+.shelf-rows {
+  display: flex; flex-wrap: wrap; align-content: flex-start; row-gap: 28px; column-gap: 3px; padding: 0 18px 28px;
+  background: repeating-linear-gradient(to bottom,
+    transparent 0 196px,
+    rgb(92, 64, 44) 196px 199px, rgb(70, 47, 32) 199px 212px, rgba(0, 0, 0, .55) 212px 216px, transparent 216px 224px);
+}
+.spine {
+  position: relative; width: 30px; height: 196px; padding: 0; border: none; cursor: pointer; border-radius: 1px;
+  background:
+    linear-gradient(to right, rgba(255, 255, 255, .28) 0 1px, rgba(255, 255, 255, .06) 1px 4px, transparent 4px calc(100% - 4px), rgba(0, 0, 0, .25) calc(100% - 4px) calc(100% - 1px), rgba(0, 0, 0, .5) calc(100% - 1px)),
+    linear-gradient(to bottom, rgba(255, 255, 255, .12), transparent 18%, transparent 85%, rgba(0, 0, 0, .3)),
+    rgb(var(--spine));
+  color: rgb(var(--ink)); box-shadow: 0 2px 6px rgba(0, 0, 0, .5);
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+.spine.double { width: 52px; }
+.spine:hover { transform: translateY(-8px); box-shadow: 0 10px 16px rgba(0, 0, 0, .55); }
+.spine.out { transform: translateY(-40px); opacity: .25; }
+.spine-text {
+  position: absolute; inset: 10px 0; display: block; text-align: start;
+  writing-mode: vertical-rl; font-size: 10px; font-weight: normal; letter-spacing: .02em; line-height: 30px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.spine.double .spine-text { line-height: 52px; }
+.spine-text b { font-weight: bold; }
+.shelf-empty { display: flex; flex-direction: column; align-items: center; gap: 16px; padding-top: 18vh; font-size: 14px; color: rgb(var(--muted)); }
+.case-layer { position: absolute; inset: 0; background: rgba(0, 0, 0, .6); display: grid; place-items: center; perspective: 1400px; }
+.case-card {
+  display: flex; gap: 28px; padding: 24px; width: min(880px, calc(100vw - 80px)); height: min(430px, calc(100vh - 80px));
+  background: rgb(var(--card)); border: 1px solid rgba(255, 255, 255, .16); box-shadow: 0 30px 80px rgba(0, 0, 0, .6);
+}
+.case-front { flex: 0 0 auto; height: 100%; aspect-ratio: 1; position: relative; }
+.case-cover { width: 100%; height: 100%; object-fit: cover; display: block; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
+.case-cover.cdr { background: radial-gradient(circle at 50% 50%, #e9eaec 0, #cfd2d6 70%); color: #1a1a4e; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; text-align: center; }
+.case-cover .marker { font: 26px "Marker Felt", "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive; transform: rotate(-4deg); max-width: 85%; }
+.case-cover .marker.small { font-size: 18px; }
+/* The jewel case's hinge and glossy plastic, over the cover. */
+.case-front::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(to right, rgba(0, 0, 0, .35) 0 10px, rgba(255, 255, 255, .15) 10px 12px, transparent 12px), linear-gradient(125deg, rgba(255, 255, 255, .16), transparent 40%);
+}
+.case-info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.case-title { font-size: 22px; color: rgb(var(--text)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.case-artist { margin-top: 4px; font-size: 13px; font-weight: normal; color: rgb(var(--accent2)); }
+.case-meta { margin-top: 8px; font-size: 10px; color: rgb(var(--muted)); }
+.case-tracks { flex: 1 1 auto; margin: 14px 0; }
+.case-track { display: flex; gap: 10px; align-items: baseline; padding: 5px 6px; border-radius: 3px; font-size: 11px; font-weight: normal; color: rgb(var(--text)); cursor: pointer; }
+.case-track:hover { background: rgba(255, 255, 255, .06); }
+.case-track .no { flex: 0 0 20px; color: rgb(var(--muted)); font-size: 10px; }
+.case-track .name { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.case-track .by { color: rgb(var(--muted)); }
+.case-track .time { color: rgb(var(--muted)); font-size: 10px; }
+.case-actions { display: flex; gap: 8px; align-items: center; }
+
 /* ---- Canvases layered over everything ---- */
 #particles { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 30; pointer-events: none; }
 

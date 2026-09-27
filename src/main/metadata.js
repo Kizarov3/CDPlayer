@@ -17,7 +17,7 @@ function creditsFrom(c) {
     genre: first(c.genre), composer: first(c.composer), lyricist: first(c.lyricist), producer: first(c.producer),
     conductor: first(c.conductor), label: first(c.label), catalog: first(c.catalognumber), barcode: first(c.barcode),
     copyright: first(c.copyright), bpm: c.bpm ? Math.round(c.bpm) : null,
-    track: c.track && c.track.no ? c.track : null, disc: c.disk && c.disk.no && c.disk.of > 1 ? c.disk : null,
+    track: c.track && c.track.no ? c.track : null, disc: c.disk && c.disk.no && (c.disk.of > 1 || c.disk.no > 1) ? c.disk : null,
   };
   for (const k of Object.keys(out)) if (out[k] == null || out[k] === '') delete out[k];
   return out;

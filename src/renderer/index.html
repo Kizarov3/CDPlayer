@@ -16,6 +16,7 @@
         <div id="status-pill"><span id="status">●&nbsp;&nbsp;READY TO PLAY</span></div>
         <div id="header-east">
           <span id="sleep-indicator" title="Click to cancel the sleep timer"></span>
+          <button class="pill" id="shelf-button" title="Your albums on a shelf (S)">SHELF</button>
           <button class="pill" id="history-button">HISTORY</button>
           <button class="pill" id="cd-view-button" title="Distraction-free view: just the disc">CD VIEW</button>
           <button class="pill" id="settings-button">SETTINGS</button>
@@ -67,7 +68,7 @@
     </div>
 
     <footer id="south">
-      <div id="hint">SPACE PLAY · J/L PREV/NEXT · ←/→ SKIP 5S · ↑/↓ VOLUME · U MUTE · C CD VIEW · M MINI · V VISUALIZER · Y KARAOKE · E TRAY · F FULLSCREEN</div>
+      <div id="hint">SPACE PLAY · J/L PREV/NEXT · ←/→ SKIP 5S · ↑/↓ VOLUME · U MUTE · C CD VIEW · M MINI · V VISUALIZER · Y KARAOKE · S SHELF · E TRAY · F FULLSCREEN</div>
       <div id="cd-info" hidden>
         <div id="cd-title" class="fit"></div>
         <div id="cd-artist" class="fit" hidden></div>
@@ -84,6 +85,18 @@
     <div id="karaoke-title"></div>
     <div id="karaoke-stage"><div id="karaoke-lines"></div></div>
     <div class="vis-hint">CLICK A LINE TO JUMP TO IT · PRESS Y OR ESC TO EXIT</div>
+  </div>
+
+  <div id="shelf" hidden>
+    <div id="shelf-head">
+      <div id="shelf-title">THE SHELF</div>
+      <div id="shelf-count"></div>
+      <span class="grow"></span>
+      <input id="shelf-filter" class="text-input" placeholder="Find an album or artist" spellcheck="false">
+      <button class="pill small" id="shelf-folder" title="Choose the folder your music is in">FOLDER…</button>
+      <button class="pill small" id="shelf-close">CLOSE</button>
+    </div>
+    <div id="shelf-body" class="scroll"></div>
   </div>
 
   <div id="overlays"></div>
