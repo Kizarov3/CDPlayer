@@ -1,13 +1,14 @@
 'use strict';
 /**
- * Everything that talks to the network: cover-art lookup (iTunes → Deezer → Spotify), lyrics lookup (lrclib.net),
- * and Spotify link/playlist resolution with the one-time browser sign-in. All optional — the player works offline.
+ * Everything that talks to the network: cover-art lookup (iTunes → Deezer → Spotify → MusicBrainz), lyrics lookup
+ * (lrclib.net → Unison), and Spotify link/playlist resolution with the one-time browser sign-in. All optional — the player works offline.
  */
 const http = require('http');
 const crypto = require('crypto');
 const { shell, nativeImage } = require('electron');
 const store = require('./store');
 const { searchVariants, nameVariants, bareTitle } = require('./track-names');
+const { ttmlToLrc, ttmlDuration } = require('./ttml');
 
 const USER_AGENT = 'CDPlayer/2.0 (open cover lookup)';
 const TIMEOUT_MS = 8000;
@@ -72,15 +73,62 @@ function sameSong(hit, artist, title) {
   return wordOverlapRatio(bareTitle(title), hit.title) >= 0.5 && (!artist || wordOverlapRatio(artist, hit.artist) >= 0.5);
 }
 
+// MusicBrainz + Cover Art Archive: the open, community-run catalogue, for the indie, local and older releases the
+// stores don't carry. MusicBrainz asks for a User-Agent that says who is calling and at most one request a second.
+const MB_USER_AGENT = 'CDPlayer/2 ( https://github.com/Kizarov3/CDPlayer )';
+let mbNextSlot = 0;
+async function musicBrainz(entity, query) {
+  const wait = mbNextSlot - Date.now();
+  mbNextSlot = Math.max(Date.now(), mbNextSlot) + 1100;
+  if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+  return fetchJson(`https://musicbrainz.org/ws/2/${entity}?query=${encodeURIComponent(query)}&fmt=json&limit=25`, { headers: { 'User-Agent': MB_USER_AGENT } });
+}
+const phrase = (text) => `"${String(text).replace(/[\\"]/g, '\\$&')}"`;
+const credited = (entry) => (entry['artist-credit'] || []).map((c) => c.name).join(' ');
+const MB_TYPE_RANK = { Album: 0, EP: 1, Single: 2 };
+
+// The album a song is on, as a MusicBrainz release group: the one named by the album tag when there is one, otherwise
+// the earliest official studio release (albums before EPs before singles) with a recording of this song by this
+// artist — so a song gets its album's cover, not a compilation's or a live bootleg's. → { id, title } or null.
+async function musicBrainzAlbum({ artist, title, album }) {
+  if (album) {
+    const json = await musicBrainz('release-group', `releasegroup:${phrase(album)} AND artist:${phrase(artist)}`);
+    const group = (json['release-groups'] || []).find((g) => g.score >= 90 && sameSong({ title: g.title, artist: credited(g) }, artist, album));
+    if (group) return { id: group.id, title: group.title };
+  }
+  const json = await musicBrainz('recording', `recording:${phrase(bareTitle(title))} AND artist:${phrase(artist)}`);
+  let best = null;
+  for (const rec of json.recordings || []) {
+    if (rec.score < 90 || !sameSong({ title: rec.title, artist: credited(rec) }, artist, title)) continue;
+    for (const release of rec.releases || []) {
+      const group = release['release-group'] || {};
+      if (release.status !== 'Official' || (group['secondary-types'] || []).length || !(group['primary-type'] in MB_TYPE_RANK)) continue;
+      const rank = [MB_TYPE_RANK[group['primary-type']], release.date || '9999'];
+      if (!best || rank[0] < best.rank[0] || (rank[0] === best.rank[0] && rank[1] < best.rank[1])) best = { rank, id: group.id, title: group.title };
+    }
+  }
+  return best;
+}
+// The album's front cover from the Cover Art Archive (a 404 when nobody has uploaded one). → data URL + address, or null.
+async function musicBrainzArt(v) {
+  const group = await musicBrainzAlbum(v);
+  if (!group) return null;
+  const url = `https://coverartarchive.org/release-group/${group.id}/front-500`;
+  const cover = await fetchImageDataUrl(url);
+  return cover ? { cover, url } : null;
+}
+
 /**
- * The cover for { artist, title, guessed } (or a plain name string): every guess from nameVariants() on iTunes, Deezer
- * and Spotify, trusting a hit whose title and artist match that guess — and reporting the guess (`name`), so a file
- * named "Title - Artist" can be shown the right way round. If nothing matches, the first iTunes/Deezer hit for the
- * name as given is used, as before (no `name` then).
+ * The cover for { artist, title, album, guessed } (or a plain name string): every guess from nameVariants() on
+ * iTunes, Deezer and Spotify, trusting a hit whose title and artist match that guess — and reporting the guess
+ * (`name`), so a file named "Title - Artist" can be shown the right way round. Then MusicBrainz, for every guess that
+ * has an artist. If nothing matches, the first iTunes/Deezer hit for the name as given is used, as before (no `name`
+ * then).
  */
 async function findCover(name) {
   let networkError = false, fallback = null;
-  for (const v of variantsOf(name)) {
+  const variants = variantsOf(name);
+  for (const v of variants) {
     for (const [label, art] of COVER_SOURCES) {
       let hit = null;
       try { hit = await art(searchText(v)); } catch { networkError = true; }
@@ -90,6 +138,13 @@ async function findCover(name) {
         if (cover) return { cover, url: hit.url, source: label, name: v };
       } else if (!fallback && label !== 'SPOTIFY') fallback = { hit, label };
     }
+  }
+  const album = typeof name === 'object' && name ? name.album : null;
+  for (const v of variants.filter((x) => x.artist)) {
+    try {
+      const found = await musicBrainzArt({ ...v, album: v.artist === name.artist ? album : null });
+      if (found) return { ...found, source: 'MUSICBRAINZ', name: v };
+    } catch { networkError = true; }
   }
   if (fallback) {
     const cover = await fetchImageDataUrl(fallback.hit.url).catch(() => null);
@@ -135,10 +190,29 @@ function pickLrclib(json, { artist, title, duration }) {
   return entries[0].syncedLyrics || entries[0].plainLyrics;
 }
 
+// Unison (the lyrics Better Lyrics users time by hand, as TTML): only when its song is this one and, when both lengths
+// are known, its recording is within a few seconds of the file — so the lines land on the right beat. → LRC or null.
+async function unisonLyrics({ artist, title, album, duration }) {
+  if (!artist) return null;
+  let url = `https://unison.boidu.dev/lyrics?song=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`;
+  if (album) url += `&album=${encodeURIComponent(album)}`;
+  if (duration > 0) url += `&duration=${Math.round(duration)}`;
+  let json;
+  try { json = await fetchJson(url); } catch { return null; } // 404 = nobody has written them yet
+  const data = json && json.data;
+  if (!data || typeof data.lyrics !== 'string' || !sameSong({ title: data.song || '', artist: data.artist || '' }, artist, title)) return null;
+  if (data.format === 'lrc') return data.lyrics.trim() || null;
+  if (data.format !== 'ttml') return null;
+  const length = ttmlDuration(data.lyrics) || data.duration;
+  if (duration > 0 && length > 0 && Math.abs(length - duration) > 4) return null;
+  return ttmlToLrc(data.lyrics) || null;
+}
+
 /**
- * Lyrics from lrclib.net for { title, artist, album, duration, guessed }: the exact entry for the name as given (with
- * album and length), then a search for every guess from nameVariants(), then a free-text search. Only entries that
- * are this song count. → { lyrics, name } (name = the guess that found them) or null.
+ * Lyrics for { title, artist, album, duration, guessed }: lrclib.net's exact entry for the name as given (with album
+ * and length), then a search for every guess from nameVariants(), then Unison for every guess with an artist, then a
+ * free-text lrclib search. Only entries that are this song count. → { lyrics, name } (name = the guess that found
+ * them) or null.
  */
 async function findLyrics({ title, artist, album, duration, guessed }) {
   const variants = nameVariants({ artist, title, guessed });
@@ -160,6 +234,10 @@ async function findLyrics({ title, artist, album, duration, guessed }) {
       const lyrics = pickLrclib(await fetchJson(url), { ...v, duration });
       if (lyrics) return { lyrics, name: v };
     } catch { /* try the next guess */ }
+  }
+  for (const v of variants.filter((x) => x.artist)) {
+    const lyrics = await unisonLyrics({ ...v, album: v.artist === artist ? album : null, duration });
+    if (lyrics) return { lyrics, name: v };
   }
   try {
     const lyrics = pickLrclib(await fetchJson(`https://lrclib.net/api/search?q=${encodeURIComponent(searchText(first))}`), { ...first, duration });

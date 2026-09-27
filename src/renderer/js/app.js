@@ -349,7 +349,7 @@ function useFoundName(details, path, name) {
 }
 
 async function lookUpCover(details, path, token) {
-  const result = await cdp.findCover(lookupName(details)).catch(() => ({ cover: null, networkError: true }));
+  const result = await cdp.findCover({ ...lookupName(details), album: details.album }).catch(() => ({ cover: null, networkError: true }));
   if (token !== state.loadToken || state.loadedPath !== path) return;
   disc.lookingUp = false;
   useFoundName(details, path, result.name);

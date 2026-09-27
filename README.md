@@ -62,8 +62,8 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - Live audio visualizer driven by the actual audio, pulsing on detected beats, with a shape that changes with the theme
 - Artist, title and album from the file's tags, with the filename as a fallback
 - The audio quality under the title: `FLAC · 24-BIT · 96 KHZ` for lossless files, `MP3 · 320 KBPS` for compressed ones
-- Embedded album art, with automatic iTunes → Deezer → Spotify cover lookup when a file has none
-- **Lyrics** — embedded lyrics, or an automatic [lrclib.net](https://lrclib.net) lookup. Timed (LRC) lyrics highlight and auto-scroll karaoke-style, and clicking a line jumps playback to it
+- Embedded album art, with automatic iTunes → Deezer → Spotify → [MusicBrainz](https://musicbrainz.org) / [Cover Art Archive](https://coverartarchive.org) cover lookup when a file has none
+- **Lyrics** — embedded lyrics, or an automatic [lrclib.net](https://lrclib.net) lookup, then [Unison](https://unison.boidu.dev) (the hand-timed lyrics from Better Lyrics). Timed (LRC) lyrics highlight and auto-scroll karaoke-style, and clicking a line jumps playback to it
 - **History** — your last 50 tracks, one click away from playing again or adding back to the queue
 - **CD view** (`C`) — just the enlarged spinning disc with the title and artist underneath, with a genie-style transition
 - **Visualizer Mode** (`V`) — the whole window becomes the theme's audio-reactive visualizer; also kicks in on its own after a few idle minutes while playing, like a screensaver
