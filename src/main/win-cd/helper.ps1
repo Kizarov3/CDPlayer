@@ -63,15 +63,14 @@ function Send($header, [byte[]]$payload) {
   if ($payload.Length) { $out.Write($payload, 0, $payload.Length) }
   $out.Flush()
 }
-# CD drives with a disc whose table of contents reads (an empty drive answers error 21 and is left out).
+# CD drives with a disc whose table of contents reads (an empty drive answers error 21 and is left out), one per
+# line of output — collected with @() by the caller, so the list stays flat.
 function Get-Drives {
-  $list = @()
   foreach ($d in [IO.DriveInfo]::GetDrives()) {
     if ($d.DriveType -ne 'CDRom') { continue }
     $name = $d.Name.TrimEnd('\')
-    try { [void][CdIo]::Toc($name); $list += $name } catch { }
+    try { [void][CdIo]::Toc($name); $name } catch { }
   }
-  return ,$list
 }
 
 while ($null -ne ($line = [Console]::In.ReadLine())) {

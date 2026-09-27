@@ -157,11 +157,13 @@ function send(op, fields = {}) {
 }
 
 const available = () => deaths < 2;
+// The helper's drive list, flat whatever shape PowerShell gave it (Windows PowerShell 5.1 wraps it: [["F:"]]).
+const driveList = (d) => [].concat(d == null ? [] : d).flat(Infinity).filter((x) => typeof x === 'string');
 /** The CD drives with a disc in them right now: ['F:'…]. */
-async function drives() { return (await send('drives')).header.drives || []; }
+async function drives() { return driveList((await send('drives')).header.drives); }
 async function readToc(drive) { return parseToc((await send('toc', { drive })).payload); }
 /** `count` raw sectors from `lba`: count × 2352 bytes (a sector that won't read comes back silent). */
 async function readSectors(drive, lba, count) { return (await send('read', { drive, lba, count })).payload; }
 async function eject(drive) { await send('eject', { drive }); }
 
-module.exports = { SECTOR, HEADER, parseToc, FrameParser, trackPath, parseTrackPath, remember, keepOnly, trackInfo, wavHeader, sectorSpan, drives, readToc, readSectors, eject, available, _send: send };
+module.exports = { SECTOR, HEADER, parseToc, FrameParser, trackPath, parseTrackPath, remember, keepOnly, trackInfo, wavHeader, sectorSpan, driveList, drives, readToc, readSectors, eject, available, _send: send };

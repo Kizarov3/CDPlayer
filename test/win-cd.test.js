@@ -85,3 +85,11 @@ test('the helper dying: what was asked fails instead of hanging; twice, and CDs 
   assert.strictEqual(winCd.available(), false);
   await assert.rejects(winCd.drives(), /no CD helper/);
 });
+
+test('the drive list however PowerShell wraps it (Windows PowerShell 5.1 sent [["F:"]])', () => {
+  assert.deepStrictEqual(winCd.driveList([['F:']]), ['F:']);
+  assert.deepStrictEqual(winCd.driveList([['E:', 'F:']]), ['E:', 'F:']);
+  assert.deepStrictEqual(winCd.driveList(['F:']), ['F:']);
+  assert.deepStrictEqual(winCd.driveList('F:'), ['F:']);
+  assert.deepStrictEqual(winCd.driveList(null), []);
+});
