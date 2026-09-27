@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('cdp', {
   scanLibrary: invoke('library:scan'),
   shelfAlbums: invoke('shelf:albums'),
   shelfCover: invoke('shelf:cover'),
+  shelfCoverFull: invoke('shelf:coverFull'),
   onShelfProgress: on('shelf-progress'),
   pickMusicFolder: invoke('dialog:pickMusicFolder'),
   listAudioCds: invoke('cd:list'),

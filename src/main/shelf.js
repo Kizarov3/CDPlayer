@@ -204,7 +204,29 @@ async function albumCover(firstTrack) {
   return thumb;
 }
 
+/**
+ * An album's cover at full size, for its booklet: the same places as albumCover() — a cover image beside its files,
+ * the art inside its first track, or the album found online. → data URL or null.
+ */
+async function albumCoverFull(firstTrack) {
+  for (const dir of [...new Set([path.dirname(sourceOf(firstTrack)), albumFolder(firstTrack)])]) {
+    try {
+      const name = (await fsp.readdir(dir)).find((n) => COVER_FILE.test(n));
+      const img = name ? nativeImage.createFromPath(path.join(dir, name)) : null;
+      if (img && !img.isEmpty()) return `data:image/jpeg;base64,${img.toJPEG(90).toString('base64')}`;
+    } catch { /* unreadable folder */ }
+  }
+  try {
+    const d = await metadata.getDetails(firstTrack, { withCover: true });
+    if (d.cover) return d.cover;
+    const artist = (d.credits && d.credits.albumArtist) || d.artist;
+    if (!artist || !d.album) return null;
+    const found = await require('./online').findAlbumCover({ artist, album: d.album });
+    return found.cover || null;
+  } catch { return null; }
+}
+
 /** A file's tags changed: its album's cover thumbnail is made again next time. */
 function forget(filePath) { thumbs.delete(filePath); }
 
-module.exports = { scanAlbums, albumCover, onlineCover, groupAlbums, albumFolder, forget };
+module.exports = { scanAlbums, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };

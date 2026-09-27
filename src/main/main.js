@@ -228,6 +228,7 @@ handle('tags:write', async (p, changes) => {
 });
 handle('shelf:albums', () => shelf.scanAlbums((done, total) => { if (win) win.webContents.send('shelf-progress', { done, total }); }));
 handle('shelf:cover', (firstTrack) => shelf.albumCover(firstTrack));
+handle('shelf:coverFull', (firstTrack) => shelf.albumCoverFull(firstTrack));
 handle('dialog:pickMusicFolder', async () => {
   const r = await dialog.showOpenDialog(win, { title: 'Your Music Folder', defaultPath: dialogDefaultPath(), properties: ['openDirectory'] });
   if (r.canceled || !r.filePaths.length) return null;

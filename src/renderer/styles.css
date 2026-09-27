@@ -418,6 +418,8 @@ body.cd-view #cd-info { display: block !important; }
 }
 .case-front { flex: 0 0 auto; height: 100%; aspect-ratio: 1; position: relative; }
 .case-cover { width: 100%; height: 100%; object-fit: cover; display: block; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
+.case-front .case-cover { cursor: pointer; }
+.case-front .case-cover.opening { cursor: progress; }
 .case-cover.cdr { background: radial-gradient(circle at 50% 50%, #e9eaec 0, #cfd2d6 70%); color: #1a1a4e; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; text-align: center; }
 .case-cover .marker { font: 26px "Marker Felt", "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive; transform: rotate(-4deg); max-width: 85%; }
 .case-cover .marker.small { font-size: 18px; }

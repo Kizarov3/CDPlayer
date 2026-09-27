@@ -2,23 +2,30 @@
 // case and opens it into a two-page spread: the front cover, the album's tracklist, the song's lyrics, the credits and
 // the back cover with its small print — printed in the album's own colours. ← / → or clicking a page turns it; Esc or
 // clicking outside puts it back in the case. Pages are HTML (real text), laid over the canvas-drawn case.
+// The shelf opens an album's booklet the same way (albumBooklet): its whole tracklist, every song's lyrics (found
+// online while it's open, slotting in without moving the page being read), and the album's credits.
 import { el, anim } from './widgets.js';
 import { deriveAutoTheme, rgb } from './theme.js';
 import { parseLrc, formatLyricsForDisplay, currentLineIndex } from './lyrics.js';
 import { paginate, leavesFor, ean13 } from './booklet-layout.js';
+import { albumCredits, albumSummary, albumSmallPrint, sameAlbum } from './booklet-content.js';
 
 const LIFT_MS = 420, TURN_MS = 650;
 const layer = () => document.getElementById('overlays');
-let book = null; // the open booklet: { root, leaves, turned, from, lyricsTimer, closing }
+let book = null; // the open booklet: { root, spread, leaves, turned, from, app, content, lyricsTimer, closing }
 
 export const isBookletOpen = () => !!book;
 const wait = (ms) => new Promise((r) => setTimeout(r, anim.enabled ? ms : 0));
 
 // ---- Opening, turning, closing ------------------------------------------------------------------------------------
 
-/** Opens the booklet for the current track, rising out of `from` (the art's rectangle on screen). */
-export async function openBooklet(app, from) {
-  if (book || !app.state.details) return;
+/**
+ * Opens a booklet rising out of `from` (the art's rectangle on screen): the current track's, or `content` (what
+ * albumBooklet() gives).
+ */
+export async function openBooklet(app, from, content = null) {
+  if (book || (!content && !app.state.details)) return;
+  content = content || await songContent(app);
   const size = pageSize();
   const root = el('div', { class: 'booklet-layer' });
   const spread = el('div', { class: 'booklet' });
@@ -27,18 +34,12 @@ export async function openBooklet(app, from) {
     left: `${Math.round((window.innerWidth - size * 2) / 2)}px`, top: `${Math.round((window.innerHeight - size) / 2)}px`,
   });
   spread.style.setProperty('--page', `${size}px`);
-  applyColors(spread, app.state.cover);
+  applyColors(spread, content.cover);
   root.append(spread);
   layer().append(root);
 
-  const leaves = leavesFor(frontCover(app), await insidePages(app, spread, size), backCover(app), blankPage)
-    .map((pages, i) => {
-      const leaf = el('div', { class: 'leaf' }, face(pages.front, 'front'), face(pages.back, 'back'));
-      leaf.dataset.index = i;
-      spread.append(leaf);
-      return leaf;
-    });
-  book = { root, spread, leaves, turned: 0, from, app };
+  book = { root, spread, leaves: [], turned: 0, from, app, content };
+  buildLeaves();
   stack();
 
   // Clicks: the right page turns forward, the left page back, anything outside the booklet closes it.
@@ -50,6 +51,7 @@ export async function openBooklet(app, from) {
   });
   window.addEventListener('keydown', onKey, true);
   startLyricsHighlight(app);
+  if (content.start) content.start();
 
   // Rise out of the case: start as the art (the cover sits in the right half), grow to the middle, then open.
   const target = spread.getBoundingClientRect();
@@ -115,7 +117,61 @@ export async function closeBooklet() {
   await wait(LIFT_MS);
   b.root.remove();
   book = null;
-  b.app.disc.artOpen = false; // the art shrinks back into the corner of the case
+  b.content.onClose();
+}
+
+/** An album booklet whose content changed (more lyrics found): its pages again, open at the page being read. */
+export function refreshBooklet(content) {
+  if (!book || book.closing || book.content !== content) return;
+  const key = readingKey();
+  book.leaves.forEach((leaf) => leaf.remove());
+  buildLeaves();
+  const found = spreadWith(key);
+  const turned = found >= 0 ? found : Math.min(book.turned, book.leaves.length);
+  book.turned = turned;
+  keepReading(turned, key);
+  book.leaves.forEach((leaf, i) => {
+    leaf.style.transition = 'none';
+    leaf.classList.toggle('turned', i < turned);
+    void leaf.offsetWidth;
+    leaf.style.transition = '';
+  });
+  book.lastLine = -2; // the new pages get the line being sung highlighted again
+  stack();
+}
+
+// The page being read: the one the reader last turned to (the left page of the spread, or the right one at the front
+// cover). Remembered at each turn — not worked out again from what's showing after pages were put in before it, when
+// the page beside it can be one the reader never turned to.
+const pageOn = (leaf, side) => { const page = leaf && leaf.querySelector(`.face.${side} .page`); return page ? page.dataset.key : null; };
+function readingKey() {
+  if (book.reading === undefined || book.reading.turned !== book.turned) {
+    book.reading = { turned: book.turned, key: pageOn(book.leaves[book.turned - 1], 'back') || pageOn(book.leaves[book.turned], 'front') };
+  }
+  return book.reading.key;
+}
+// The spread (how many leaves turned) that shows the page with this key, on whichever side it has landed. → -1 if none.
+function spreadWith(key) {
+  if (!key) return -1;
+  for (let i = 0; i < book.leaves.length; i++) {
+    if (pageOn(book.leaves[i], 'back') === key) return i + 1;
+    if (pageOn(book.leaves[i], 'front') === key) return i;
+  }
+  return -1;
+}
+// After a rebuild the reader is still on the page they turned to, even though it may now be the right-hand page.
+function keepReading(turned, key) { book.reading = { turned, key }; }
+
+function buildLeaves() {
+  const { spread, content } = book;
+  const size = spread.offsetHeight;
+  book.leaves = leavesFor(frontCover(content), insidePages(content, spread, size), backCover(content), blankPage)
+    .map((pages, i) => {
+      const leaf = el('div', { class: 'leaf' }, face(pages.front, 'front'), face(pages.back, 'back'));
+      leaf.dataset.index = i;
+      spread.append(leaf);
+      return leaf;
+    });
 }
 
 // ---- Pages ---------------------------------------------------------------------------------------------------------
@@ -141,97 +197,191 @@ function applyColors(node, cover) {
   s.setProperty('--b-accent2', rgb(t.accent2));
 }
 
-function frontCover(app) {
-  const d = app.state.details;
-  if (app.state.cover) return el('div', { class: 'page cover' }, el('img', { src: app.state.cover.src, alt: '' }));
-  // No art at all: a blank CD-R with the title written on in marker.
-  return el('div', { class: 'page cover cdr' }, el('div', { class: 'marker' }, d.title), d.artist ? el('div', { class: 'marker small' }, d.artist) : null);
-}
+// ---- What's printed ------------------------------------------------------------------------------------------------
+// A booklet's content: { cover (an <img>, or null), marker: { title, artist } for a CD-R without one, tracks: {
+// title, sub, rows: [{ name, time, current, tip, play() }] }, lyrics: [{ key, title, raw, live }] (live: the song
+// playing, whose line being sung is highlighted), credits: { sub, rows, none, summaryTitle, summary }, back: { title,
+// artist, names, count, total, copyright, label, catalog, barcode }, liveLyrics(): the playing song's lyrics or null,
+// start(), onClose() }.
 
 // This album's tracks from the queue (same album tag), or the whole queue when the song has no album.
 function albumTracks(app) {
   const { state } = app, d = state.details;
   const all = state.queue.map((p, i) => ({ p, i, d: app.detailsFor(p) }));
-  const same = d.album ? all.filter((t) => t.d && t.d.album === d.album) : [];
+  const same = d.album ? all.filter((t) => t.d && sameAlbum(t.d.album, d.album)) : [];
   return same.length ? same : all;
 }
 
-async function insidePages(app, spread, size) {
-  const { state } = app, d = state.details;
+/** The current track's booklet. */
+async function songContent(app) {
+  const { state } = app, d = state.details, c = d.credits || {};
+  const tracks = albumTracks(app);
+  const total = tracks.reduce((s, t) => s + ((t.d && t.d.duration) || 0), 0);
+  const plays = await app.cdp.playCount(state.loadedPath).catch(() => 0);
+  return {
+    cover: state.cover, marker: { title: d.title, artist: d.artist },
+    tracks: {
+      title: d.album || 'IN THE QUEUE', sub: d.artist,
+      rows: tracks.map((t) => ({
+        name: t.d ? t.d.title : app.displayName(t.p), time: t.d && t.d.duration ? app.formatTime(t.d.duration) : '',
+        current: t.i === state.index, tip: `Play ${app.queueDisplay(t.p)}`, play: () => app.playQueueIndex(t.i),
+      })),
+    },
+    lyrics: state.lyrics ? [{ key: 'lyrics', title: 'LYRICS', sub: d.title, raw: state.lyrics, live: true }] : [],
+    credits: {
+      sub: d.title, none: 'No credits in this file’s tags.', summaryTitle: 'THIS DISC',
+      rows: [
+        ['WRITTEN BY', [c.composer, c.lyricist && c.lyricist !== c.composer ? c.lyricist : null].filter(Boolean).join(' · ')],
+        ['PRODUCED BY', c.producer], ['CONDUCTED BY', c.conductor], ['ALBUM ARTIST', c.albumArtist !== d.artist ? c.albumArtist : null],
+        ['RELEASED', c.released], ['GENRE', c.genre], ['LABEL', c.label], ['CATALOG NO.', c.catalog],
+        ['TRACK', c.track ? `${c.track.no}${c.track.of ? ` of ${c.track.of}` : ''}` : null],
+        ['DISC', c.disc ? `${c.disc.no}${c.disc.of ? ` of ${c.disc.of}` : ''}` : null], ['BPM', c.bpm],
+      ].filter(([, v]) => v),
+      summary: [
+        ['FORMAT', d.quality || d.ext], ['LENGTH', app.formatTime(d.duration || app.engine.duration)],
+        ['COVER', app.coverSource()], ['LYRICS', state.lyrics ? (d.lyrics ? 'In the file' : state.lyricsSource || 'Online') : null],
+        ['PLAYED', plays ? `${plays} ${plays === 1 ? 'time' : 'times'}` : null],
+      ].filter(([, v]) => v),
+    },
+    back: {
+      title: d.album || d.title, artist: d.artist ? c.albumArtist || d.artist : null,
+      names: tracks.map((t) => (t.d ? t.d.title : app.displayName(t.p))), count: tracks.length, total,
+      copyright: c.copyright, label: c.label, catalog: c.catalog, barcode: c.barcode,
+    },
+    liveLyrics: () => app.state.lyrics,
+    onClose: () => { app.disc.artOpen = false; }, // the art shrinks back into the corner of the case
+  };
+}
+
+/**
+ * The booklet of a shelf album ({ title, artist, year, discs, tracks: [{ path, title, duration }] }), with its cover
+ * (an <img>, or null). `play(i)` plays the album from track i. Lyrics inside the files are there at once; the rest
+ * are looked up online once it's open, a few at a time, and slot in as they're found.
+ */
+export async function albumBooklet(app, album, cover, { play, onClose = () => {} }) {
+  const details = await Promise.all(album.tracks.map((t) => app.cdp.details(t.path, { withCover: false }).catch(() => null)));
+  const plays = await Promise.all(album.tracks.map((t) => app.cdp.playCount(t.path).catch(() => 0)));
+  const small = albumSmallPrint(details);
+  const playing = () => album.tracks.findIndex((t) => t.path === app.state.loadedPath);
+  const found = album.tracks.map((t, i) => (details[i] && details[i].lyrics) || null);
+  const content = {
+    cover, marker: { title: album.title, artist: album.artist },
+    tracks: {
+      title: album.title, sub: [album.artist, album.year].filter(Boolean).join(' · '),
+      rows: album.tracks.map((t, i) => ({
+        name: t.title, time: t.duration ? app.formatTime(t.duration) : '', current: i === playing(), tip: `Play ${t.title}`, play: () => play(i),
+      })),
+    },
+    lyrics: [],
+    credits: { sub: album.title, none: 'No credits in these files’ tags.', rows: albumCredits(details), summaryTitle: 'THIS ALBUM', summary: albumSummary({ details, plays, discs: album.discs }) },
+    back: {
+      title: album.title, artist: album.artist, names: album.tracks.map((t) => t.title), count: album.tracks.length,
+      total: album.tracks.reduce((s, t) => s + (t.duration || 0), 0), ...small,
+    },
+    // The playing song's lines are highlighted as they're sung — with the lyrics the player has for it.
+    liveLyrics: () => { const i = playing(); return i >= 0 ? app.state.lyrics || found[i] : null; },
+    onClose,
+  };
+  const setLyrics = () => {
+    const live = playing();
+    content.lyrics = album.tracks.map((t, i) => {
+      const raw = i === live && app.state.lyrics ? app.state.lyrics : found[i];
+      return raw ? { key: `lyrics:${i}`, title: t.title.toUpperCase(), sub: t.artist && t.artist !== album.artist ? t.artist : null, raw, live: i === live } : null;
+    }).filter(Boolean);
+  };
+  setLyrics();
+  content.start = () => {
+    const missing = album.tracks.map((t, i) => i).filter((i) => !found[i] && details[i]);
+    let next = 0;
+    const worker = async () => {
+      while (next < missing.length && book && book.content === content) {
+        const i = missing[next++], d = details[i];
+        const got = await app.cdp.findLyrics({ artist: d.artist || album.artist, title: d.title || album.tracks[i].title, album: d.album || album.title, duration: d.duration }).catch(() => null);
+        if (got && got.lyrics) { found[i] = got.lyrics; setLyrics(); refreshBooklet(content); }
+      }
+    };
+    for (let k = 0; k < 3; k++) worker();
+  };
+  return content;
+}
+
+function frontCover(content) {
+  const { cover, marker } = content;
+  const page = cover ? el('div', { class: 'page cover' }, el('img', { src: cover.src, alt: '' }))
+    // No art at all: a blank CD-R with the title written on in marker.
+    : el('div', { class: 'page cover cdr' }, el('div', { class: 'marker' }, marker.title), marker.artist ? el('div', { class: 'marker small' }, marker.artist) : null);
+  page.dataset.key = 'cover';
+  return page;
+}
+
+function insidePages(content, spread, size) {
   const pages = [];
   const sizer = el('div', { class: 'page measuring' });
   Object.assign(sizer.style, { width: `${size}px`, height: `${size}px` });
   spread.append(sizer);
-  // Fills pages with rows while they fit, measuring each in an invisible page of the same size.
-  const layout = (head, rows) => paginate(rows, (onPage) => {
+  // Fills pages with rows while they fit, measuring each in an invisible page of the same size. Each page is keyed
+  // (section and page number), so a booklet built again can open at the same page.
+  const layout = (key, head, rows) => paginate(rows, (onPage) => {
     sizer.replaceChildren(head(), el('div', { class: 'page-body' }, onPage.map((r) => r())));
     return sizer.scrollHeight <= sizer.clientHeight;
-  }).map((onPage, n) => el('div', { class: 'page' }, head(n), el('div', { class: 'page-body' }, onPage.map((r) => r()))));
+  }).map((onPage, n) => {
+    const page = el('div', { class: 'page' }, head(n), el('div', { class: 'page-body' }, onPage.map((r) => r())));
+    page.dataset.key = `${key}:${n}`;
+    return page;
+  });
 
   // Tracklist.
-  const tracks = albumTracks(app);
-  const title = d.album || 'IN THE QUEUE';
-  pages.push(...layout((n) => heading(n ? `${title} (cont.)` : title, n ? null : d.artist), tracks.map((t, k) => () => {
-    const current = t.i === state.index;
-    const row = el('div', { class: `track${current ? ' current' : ''}`, 'data-play': t.i, title: `Play ${app.queueDisplay(t.p)}` },
+  const { tracks } = content;
+  pages.push(...layout('tracks', (n) => heading(n ? `${tracks.title} (cont.)` : tracks.title, n ? null : tracks.sub), tracks.rows.map((t, k) => () => {
+    const row = el('div', { class: `track${t.current ? ' current' : ''}`, 'data-play': k, title: t.tip },
       el('span', { class: 'no' }, String(k + 1).padStart(2, '0')),
-      el('span', { class: 'name' }, t.d ? t.d.title : app.displayName(t.p)),
-      el('span', { class: 'time' }, t.d && t.d.duration ? app.formatTime(t.d.duration) : ''));
-    row.addEventListener('click', (e) => { e.stopPropagation(); app.playQueueIndex(t.i); });
+      el('span', { class: 'name' }, t.name),
+      el('span', { class: 'time' }, t.time));
+    row.addEventListener('click', (e) => { e.stopPropagation(); t.play(); });
     return row;
   })));
 
-  // Lyrics.
-  if (state.lyrics) {
-    const synced = parseLrc(state.lyrics);
-    const lines = synced.length ? synced.map((l, i) => ({ text: l.text, i })) : formatLyricsForDisplay(state.lyrics).split('\n').map((text) => ({ text }));
-    pages.push(...layout((n) => heading(n ? 'LYRICS (cont.)' : 'LYRICS', n ? null : d.title), lines.map((l) => () => {
+  // Lyrics: each song's on its own pages.
+  for (const song of content.lyrics) {
+    const synced = parseLrc(song.raw);
+    const lines = synced.length ? synced.map((l, i) => ({ text: l.text, i })) : formatLyricsForDisplay(song.raw).split('\n').map((text) => ({ text }));
+    pages.push(...layout(song.key, (n) => heading(n ? `${song.title} (cont.)` : song.title, n ? null : song.sub), lines.map((l) => () => {
       const line = el('div', { class: `lyric${l.text ? '' : ' gap'}` }, l.text || ' ');
-      if (l.i != null) line.dataset.line = l.i;
+      if (l.i != null && song.live) line.dataset.line = l.i;
       return line;
     })));
   }
 
-  // Credits and this disc.
-  const c = d.credits || {};
-  const plays = await app.cdp.playCount(state.loadedPath).catch(() => 0);
-  const rows = [
-    ['WRITTEN BY', [c.composer, c.lyricist && c.lyricist !== c.composer ? c.lyricist : null].filter(Boolean).join(' · ')],
-    ['PRODUCED BY', c.producer], ['CONDUCTED BY', c.conductor], ['ALBUM ARTIST', c.albumArtist !== d.artist ? c.albumArtist : null],
-    ['RELEASED', c.released], ['GENRE', c.genre], ['LABEL', c.label], ['CATALOG NO.', c.catalog],
-    ['TRACK', c.track ? `${c.track.no}${c.track.of ? ` of ${c.track.of}` : ''}` : null],
-    ['DISC', c.disc ? `${c.disc.no}${c.disc.of ? ` of ${c.disc.of}` : ''}` : null], ['BPM', c.bpm],
-  ].filter(([, v]) => v);
-  const disc = [
-    ['FORMAT', d.quality || d.ext], ['LENGTH', app.formatTime(d.duration || app.engine.duration)],
-    ['COVER', app.coverSource()], ['LYRICS', state.lyrics ? (d.lyrics ? 'In the file' : state.lyricsSource || 'Online') : null],
-    ['PLAYED', plays ? `${plays} ${plays === 1 ? 'time' : 'times'}` : null],
-  ].filter(([, v]) => v);
+  // Credits, and this disc or album.
+  const { credits } = content;
   const dl = (list) => el('dl', { class: 'credits' }, list.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, String(v))]));
-  pages.push(el('div', { class: 'page' }, heading('CREDITS', d.title), el('div', { class: 'page-body' },
-    rows.length ? dl(rows) : el('div', { class: 'none' }, 'No credits in this file’s tags.'),
-    el('div', { class: 'page-title small' }, 'THIS DISC'), dl(disc))));
+  const page = el('div', { class: 'page' }, heading('CREDITS', credits.sub), el('div', { class: 'page-body' },
+    credits.rows.length ? dl(credits.rows) : el('div', { class: 'none' }, credits.none),
+    el('div', { class: 'page-title small' }, credits.summaryTitle), dl(credits.summary)));
+  page.dataset.key = 'credits:0';
+  pages.push(page);
 
   sizer.remove();
   return pages;
 }
 
-function backCover(app) {
-  const { state } = app, d = state.details, c = d.credits || {};
-  const tracks = albumTracks(app);
-  const total = tracks.reduce((s, t) => s + ((t.d && t.d.duration) || 0), 0);
-  const code = ean13(c.barcode);
-  return el('div', { class: 'page back-cover' },
-    el('div', { class: 'back-title' }, d.album || d.title),
-    d.artist ? el('div', { class: 'back-artist' }, c.albumArtist || d.artist) : null,
-    el('ol', { class: 'back-tracks' }, tracks.slice(0, 20).map((t) => el('li', {}, t.d ? t.d.title : app.displayName(t.p)))),
-    el('div', { class: 'back-total' }, `${tracks.length} ${tracks.length === 1 ? 'TRACK' : 'TRACKS'}${total ? ` · ${app.formatTime(total)}` : ''}`),
+function backCover(content) {
+  const b = content.back;
+  const code = ean13(b.barcode);
+  const page = el('div', { class: 'page back-cover' },
+    el('div', { class: 'back-title' }, b.title),
+    b.artist ? el('div', { class: 'back-artist' }, b.artist) : null,
+    el('ol', { class: 'back-tracks' }, b.names.slice(0, 20).map((name) => el('li', {}, name))),
+    el('div', { class: 'back-total' }, `${b.count} ${b.count === 1 ? 'TRACK' : 'TRACKS'}${b.total ? ` · ${formatTotal(b.total)}` : ''}`),
     el('div', { class: 'small-print' },
-      c.copyright ? el('div', {}, /[©℗]/.test(c.copyright) ? c.copyright : `℗ © ${c.copyright}`) : null,
-      c.label || c.catalog ? el('div', {}, [c.label, c.catalog].filter(Boolean).join(' · ')) : null,
+      b.copyright ? el('div', {}, /[©℗]/.test(b.copyright) ? b.copyright : `℗ © ${b.copyright}`) : null,
+      b.label || b.catalog ? el('div', {}, [b.label, b.catalog].filter(Boolean).join(' · ')) : null,
       code ? barcode(code) : null,
       el('div', { class: 'made-with' }, 'PLAYED ON CDPLAYER')));
+  page.dataset.key = 'back';
+  return page;
 }
+const formatTotal = (seconds) => { const s = Math.max(0, Math.floor(seconds)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
 function barcode({ digits, bits }) {
   const NS = 'http://www.w3.org/2000/svg';
@@ -250,14 +400,16 @@ function barcode({ digits, bits }) {
 
 // Synced lyrics: the line being sung is highlighted on the lyrics pages while the booklet is open.
 function startLyricsHighlight(app) {
-  const lines = app.state.lyrics ? parseLrc(app.state.lyrics) : [];
-  if (!lines.length) return;
-  let last = -2;
+  let raw = null, lines = [];
+  book.lastLine = -2;
   book.lyricsTimer = setInterval(() => {
     if (!book) return;
+    const now = book.content.liveLyrics();
+    if (now !== raw) { raw = now; lines = raw ? parseLrc(raw) : []; book.lastLine = -2; }
+    if (!lines.length) return;
     const i = currentLineIndex(lines, app.engine.position);
-    if (i === last) return;
-    last = i;
+    if (i === book.lastLine) return;
+    book.lastLine = i;
     book.spread.querySelectorAll('.lyric.now').forEach((n) => n.classList.remove('now'));
     book.spread.querySelectorAll(`.lyric[data-line="${i}"]`).forEach((n) => n.classList.add('now'));
   }, 200);
