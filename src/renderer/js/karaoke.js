@@ -51,7 +51,7 @@ function rebuild() {
   view.current = -2;
   $('karaoke-lines').replaceChildren(...view.nodes);
   $('karaoke-title').textContent = d ? [d.title, d.artist].filter(Boolean).join(' · ') : '';
-  updateKaraoke(app.engine.position, true);
+  updateKaraoke(app.lyricsPosition(), true);
 }
 
 /** Every frame while open: the current line centered, and its words filled up to `position`. */

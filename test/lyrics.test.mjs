@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { parseLrc, formatLyricsForDisplay, currentLineIndex, wordProgress, lineState, lineWords, syllables } from '../src/renderer/js/lyrics.js';
+import { parseLrc, formatLyricsForDisplay, currentLineIndex, wordProgress, lineState, lineWords, syllables, heardPosition } from '../src/renderer/js/lyrics.js';
 
 test('LRC parsing: multiple stamps per line, headers skipped, sorted by time', () => {
   const lines = parseLrc('[ti:Song]\n[00:12.50]Second\n[00:01.00][01:00]Chorus\nuntimed');
@@ -96,4 +96,11 @@ test('line state: singing until the line ends, then not until the next line', ()
   assert.deepStrictEqual(lineState(lines, 4), { index: 0, singing: false });
   assert.deepStrictEqual(lineState(lines, 9.5), { index: 1, singing: true });
   assert.deepStrictEqual(lineState(lines, 0.5), { index: -1, singing: false });
+});
+
+test('the heard position: behind by the output latency, moved by the lyrics offset', () => {
+  assert.strictEqual(heardPosition(10, 0.2, 0), 9.8);
+  assert.strictEqual(heardPosition(10, 0.2, 300), 9.5); // + = lyrics later
+  assert.strictEqual(heardPosition(10, 0, -250), 10.25);
+  assert.strictEqual(heardPosition(0.1, 0.2, 0), 0);
 });

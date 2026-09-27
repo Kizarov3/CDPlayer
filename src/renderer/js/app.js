@@ -7,7 +7,7 @@ import { Visualizer } from './visualizer.js';
 import { Particles } from './particles.js';
 import { anim, el, pill, roundButton, modeButton, Slider, fitText, pulse } from './widgets.js';
 import { openBooklet, closeBooklet } from './booklet.js';
-import { parseLrc, currentLineIndex } from './lyrics.js';
+import { parseLrc, currentLineIndex, heardPosition } from './lyrics.js';
 import { shortcutKey } from './keys.js';
 import * as panels from './panels.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
@@ -42,6 +42,7 @@ const state = {
   volume: 100, volumeBeforeMute: -1, crossfade: 0, mono: false, waveform: true, ambient: true, miniMode: false, discord: true, discNoise: false,
   trayBusy: false, // the tray is moving or the disc is being read: transport presses wait
   saveFound: false, // covers and lyrics found online are written into the song's file
+  lyricsOffset: 0,  // ms the lyrics are moved by (+ later), on top of the output latency
   audioCd: null,    // the audio CD in the drive: { mount, tracks, name, album, artist, year }
   themeIndex: 0, eq: new Array(10).fill(0), customPresets: [], history: [],
   loadedPath: null, details: null, detailsPath: null, lyrics: null, cover: null, loadToken: 0, crossfadeStarted: false,
@@ -430,6 +431,9 @@ function flushFoundSoon() {
   }, (state.crossfade + 2) * 1000);
 }
 function setSaveFound(on) { state.saveFound = on; if (!on) pendingFound.clear(); saveSettingsSoon(); }
+function setLyricsOffset(ms) { state.lyricsOffset = ms; saveSettingsSoon(); }
+// Where the song is for the lyrics: what's being heard (the output's latency taken off) and the user's offset.
+const lyricsPosition = () => heardPosition(engine.position, engine.outputLatency, state.lyricsOffset);
 // The lyrics for the loaded song arrived or went: the LYRICS and KARAOKE buttons, and anything showing them, follow.
 function lyricsChanged() {
   $('lyrics-button').hidden = !state.lyrics;
@@ -966,7 +970,7 @@ function appendAndPlay(p) {
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, saveFound: state.saveFound };
+  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -1161,7 +1165,7 @@ function frame(now) {
   if (state.visualizerMode) bigVisualizer.setSpectrum(engine.playing ? engine.spectrum(bigVisualizer.n) : null, dt);
   visualizer.draw(now);
   if (state.visualizerMode) bigVisualizer.draw(now);
-  if (isKaraokeOpen()) updateKaraoke(engine.position);
+  if (isKaraokeOpen()) updateKaraoke(lyricsPosition());
   watchForShake(now);
   stepDiscMorph(now);
   const discBounds = disc.frame(now, dt);
@@ -1192,7 +1196,7 @@ export const app = {
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) { state.index = i; load(state.queue[i]); } },
   coverSource: () => { const s = $('track-source').textContent; return /COVER ART|ALBUM ART/.test(s) ? s.split(' · ')[0].replace(/ COVER ART$/, '').replace('EMBEDDED ALBUM ART', 'In the file') : null; },
   switchTheme, setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise,
-  insertDisc, saveTags, setSaveFound,
+  insertDisc, saveTags, setSaveFound, setLyricsOffset, lyricsPosition,
   saveEq: () => cdp.saveEqPresets(state.customPresets),
   lyricsLines: () => (state.lyrics ? parseLrc(state.lyrics) : []),
   openKaraoke: () => toggleKaraoke(),
@@ -1245,6 +1249,7 @@ async function start() {
   state.discord = s.discord !== false;
   setDiscNoise(!!s.discNoise);
   state.saveFound = !!s.saveFound;
+  state.lyricsOffset = s.lyricsOffset || 0;
   setEq(s.eq);
   const themeIndex = Math.max(0, THEMES.findIndex((t) => t.name === s.theme));
   state.themeIndex = -1;

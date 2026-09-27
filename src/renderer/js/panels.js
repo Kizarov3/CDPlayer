@@ -111,6 +111,11 @@ function buildSettings(app) {
   });
   sleep.canvas.title = 'Pause playback after a set time (0 = off, up to 120 minutes)';
 
+  const offsetText = (ms) => (ms ? `${ms > 0 ? '+' : '−'}${Math.abs(ms)} MS` : '0 MS');
+  const offsetValue = el('span', { class: 'row-value' }, offsetText(s.lyricsOffset));
+  const lyricsOffset = new Slider({ min: -10, max: 10, value: Math.round(s.lyricsOffset / 50), onInput: (v) => { offsetValue.textContent = offsetText(v * 50); app.setLyricsOffset(v * 50); } });
+  lyricsOffset.canvas.title = 'Move the lyrics later (+) or earlier (−) for a song timed a little off';
+
   const mono = toggle(s.mono, () => { app.setMono(!s.mono); setToggle(mono, s.mono); });
   const waveform = toggle(s.waveform, () => { app.setWaveform(!s.waveform); setToggle(waveform, s.waveform); });
   const ambient = toggle(s.ambient, () => { app.setAmbient(!s.ambient); setToggle(ambient, s.ambient); });
@@ -136,6 +141,8 @@ function buildSettings(app) {
     row('ANIMATIONS', animations), gap(18),
     section('PLAYBACK'),
     sliderRow('SLEEP TIMER', sleep, sleepValue),
+    sliderRow('LYRICS OFFSET', lyricsOffset, offsetValue),
+    hint('Karaoke and the lyrics already follow what you hear, Bluetooth included. Move them if a song’s lyrics are timed a little off.'),
     row('MINI MODE', mini), gap(18),
     section('LIBRARY'),
     row('SAVE FOUND ART & LYRICS', saveFound),
@@ -270,7 +277,7 @@ function buildLyrics(app) {
 /** Karaoke-style: highlight the line at the current playback position and keep it centered. */
 export function updateLyricsSync(app, force = false) {
   if (!lyricsView || !isOpen('lyrics')) return;
-  const index = app.currentLineIndex(lyricsView.lines, app.engine.position);
+  const index = app.currentLineIndex(lyricsView.lines, app.lyricsPosition());
   if (index === lyricsView.highlight && !force) return;
   if (lyricsView.highlight >= 0) lyricsView.nodes[lyricsView.highlight].classList.remove('current');
   lyricsView.highlight = index;

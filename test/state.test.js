@@ -20,7 +20,7 @@ test('reads a settings.txt written by the Java version', () => {
   assert.deepStrictEqual(s, {
     volume: 70, crossfade: 5, mono: true, animations: false, theme: 'OCEAN', eq: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
     waveform: false, miniMode: false, bounds: { x: 10, y: 20, width: 1200, height: 900 }, ambient: false, discord: true,
-    discNoise: false, saveFound: false,
+    discNoise: false, saveFound: false, lyricsOffset: 0,
   });
 });
 
@@ -106,4 +106,14 @@ test('HTTP range parsing for seeking', () => {
   assert.deepStrictEqual(parseRange('bytes=50-500', 100), { start: 50, end: 99 });
   assert.strictEqual(parseRange('bytes=200-', 100), 'invalid');
   assert.strictEqual(parseRange(null, 100), null);
+});
+
+test('lyrics offset is the 14th settings line, in steps of 50 ms within ±500', () => {
+  store.writeSettings({ ...store.DEFAULT_SETTINGS, lyricsOffset: -150 });
+  assert.strictEqual(fs.readFileSync(path.join(home, 'settings.txt'), 'utf8').split('\n')[13], '-150');
+  assert.strictEqual(store.readSettings().lyricsOffset, -150);
+  fs.writeFileSync(path.join(home, 'settings.txt'), '70\n0\n0\n1\nRED\n0,0,0,0,0,0,0,0,0,0\n1\n0\n\n1\n1\n0\n0\n9000\n');
+  assert.strictEqual(store.readSettings().lyricsOffset, 500);
+  fs.writeFileSync(path.join(home, 'settings.txt'), '70\n0\n0\n1\nRED\n0,0,0,0,0,0,0,0,0,0\n1\n0\n\n1\n1\n0\n0\n130\n');
+  assert.strictEqual(store.readSettings().lyricsOffset, 150);
 });

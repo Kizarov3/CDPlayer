@@ -165,6 +165,8 @@ export class AudioEngine {
   pause() { if (this.deck) this.deck.el.pause(); }
   stop() { this.cancelCrossfade(); this.disposeDeck(this.deck); this.deck = null; }
   get playing() { return !!this.deck && !this.deck.el.paused && !this.deck.el.ended; }
+  /** How long sound takes from here to the speakers (seconds): the output's latency, re-read as the device changes. */
+  get outputLatency() { return (this.ctx && (this.ctx.outputLatency || this.ctx.baseLatency)) || 0; }
   get position() {
     if (!this.deck) return 0;
     const p = (this.deck.el.currentTime || 0) - this.deck.start;

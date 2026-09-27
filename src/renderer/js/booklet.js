@@ -407,7 +407,7 @@ function startLyricsHighlight(app) {
     const now = book.content.liveLyrics();
     if (now !== raw) { raw = now; lines = raw ? parseLrc(raw) : []; book.lastLine = -2; }
     if (!lines.length) return;
-    const i = currentLineIndex(lines, app.engine.position);
+    const i = currentLineIndex(lines, app.lyricsPosition());
     if (i === book.lastLine) return;
     book.lastLine = i;
     book.spread.querySelectorAll('.lyric.now').forEach((n) => n.classList.remove('now'));

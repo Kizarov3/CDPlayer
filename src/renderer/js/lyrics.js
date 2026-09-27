@@ -106,6 +106,14 @@ export function currentLineIndex(lines, position) {
   return index;
 }
 
+/**
+ * Where the song is for the ears: `position` less the audio output's latency (large over Bluetooth), and moved by the
+ * user's lyrics offset (ms; + shows the lyrics later). Never before 0.
+ */
+export function heardPosition(position, latencySeconds, offsetMs) {
+  return Math.max(0, Math.round((position - (latencySeconds || 0) - (offsetMs || 0) / 1000) * 1e6) / 1e6);
+}
+
 const VOWELS = /[aeiouyäöüàáâãåæèéêëìíîïòóôõøùúûýÿаеёиоуыэюяіїє]+/gi;
 /** Roughly how many syllables a word has (vowel groups; a silent final e dropped; one per letter where there are no vowels, as in CJK). */
 export function syllables(word) {
