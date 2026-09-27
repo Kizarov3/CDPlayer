@@ -78,7 +78,7 @@ test('naming a disc: its release\'s tracks, and the album\'s cover, for each fil
   const named = await cd.nameDisc(disc, { fetchMb: async (q) => { asked.push(q); return answer; }, fetchCover: async (id) => `cover-of-${id}` });
   assert.deepStrictEqual(named, { album: 'Neon Skies', artist: 'Nova Drift', year: '2019' });
   assert.match(asked[0], /^discid\/abc\?toc=1\+2\+500\+150\+250&inc=/);
-  assert.deepStrictEqual(cd.detailsFor('/v/1 Audio Track.aiff'), { title: 'Solar Flare', artist: 'Nova Drift feat. Someone', album: 'Neon Skies', albumArtist: 'Nova Drift', year: '2019', track: 1, of: 2, disc: null, cover: 'cover-of-r1' });
+  assert.deepStrictEqual(cd.detailsFor('/v/1 Audio Track.aiff'), { title: 'Solar Flare', artist: 'Nova Drift feat. Someone', album: 'Neon Skies', albumArtist: 'Nova Drift', year: '2019', track: 1, of: 2, disc: null, cover: 'cover-of-r1', releaseId: 'r1', discs: 1 });
   assert.strictEqual(cd.detailsFor('/v/2 Audio Track.aiff').artist, 'Nova Drift');
   cd.forgetDisc(disc);
   assert.strictEqual(cd.detailsFor('/v/1 Audio Track.aiff'), null);

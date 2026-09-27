@@ -235,6 +235,7 @@ async function nameDisc(disc, { fetchMb, fetchCover, isCurrent = () => true }) {
       artist: credit(t['artist-credit'] || (t.recording && t.recording['artist-credit'])) || albumArtist,
       album, albumArtist, year: year ? year[0] : null, track: i + 1, of: disc.tracks.length,
       disc: (release.media || []).length > 1 ? medium.position : null, cover,
+      releaseId: release.id, discs: (release.media || []).length || 1,
     });
   });
   return { album, artist: albumArtist, year: year ? year[0] : null };

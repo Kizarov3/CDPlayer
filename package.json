@@ -114,7 +114,8 @@
     },
     "asarUnpack": [
       "src/main/decoders/**",
-      "src/main/win-cd/**"
+      "src/main/win-cd/**",
+      "src/main/encoders/**"
     ],
     "electronLanguages": [
       "en",
