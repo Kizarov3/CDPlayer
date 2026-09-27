@@ -11,6 +11,7 @@ const path = require('path');
 const { Readable } = require('stream');
 const { Worker } = require('worker_threads');
 const { fallbackKind } = require('./decoders');
+const winCd = require('./win-cd');
 
 const RENDERER_DIR = path.join(__dirname, '..', 'renderer');
 const MIME = {
@@ -124,7 +125,31 @@ function respond(request, size, type, bodyFor) {
   return new Response(size ? bodyFor(0, size - 1) : null, { status: 200, headers: { ...headers, 'Content-Length': String(size) } });
 }
 
+// ---- Windows audio CDs --------------------------------------------------------------------------------------------
+// A cdda://F/3 track is played as a WAV: its header, then its sectors read straight from the drive, 25 at a time and
+// only those a request (a seek) needs.
+const CD_CHUNK = 25;
+async function* cddaBytes(info, start, end, read) {
+  if (start < winCd.HEADER) yield winCd.wavHeader(info.sectors * winCd.SECTOR).subarray(start, Math.min(winCd.HEADER, end + 1));
+  const span = winCd.sectorSpan(start, end);
+  if (!span) return;
+  let left = end + 1 - Math.max(start, winCd.HEADER), skip = span.skip;
+  for (let s = span.first; s < span.first + span.count && left > 0; s += CD_CHUNK) {
+    const n = Math.min(CD_CHUNK, span.first + span.count - s);
+    const got = (await read(info.drive, info.lba + s, n)).subarray(skip, skip + left);
+    skip = 0; left -= got.length;
+    yield got;
+  }
+}
+async function serveCdda(request, p, read = winCd.readSectors) {
+  const info = winCd.trackInfo(p);
+  if (!info) return new Response('Not found', { status: 404 });
+  const size = winCd.HEADER + info.sectors * winCd.SECTOR;
+  return respond(request, size, 'audio/wav', (start, end) => Readable.toWeb(Readable.from(cddaBytes(info, start, end, read))));
+}
+
 async function serveMedia(request, filePath) {
+  if (winCd.parseTrackPath(filePath)) return serveCdda(request, filePath);
   if (!filePath || !path.isAbsolute(filePath)) return new Response('Bad path', { status: 400 });
   let st;
   try { st = await fsp.stat(filePath); } catch { return new Response('Not found', { status: 404 }); }
@@ -156,4 +181,4 @@ function handle(request) {
   return serveUi(url.pathname);
 }
 
-module.exports = { handle, resolvePlayable, parseRange };
+module.exports = { handle, resolvePlayable, parseRange, serveCdda, cddaBytes };

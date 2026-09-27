@@ -7,6 +7,7 @@ const path = require('path');
 const { nativeImage } = require('electron');
 const cue = require('./cue');
 const audioCd = require('./audio-cd');
+const winCd = require('./win-cd');
 const { describeFormat } = require('./audio-format');
 const { cleanTrackName, tidyNames, isJunkTitle } = require('./track-names');
 
@@ -116,9 +117,19 @@ async function getCueTrackDetails(ref, withCover) {
   };
 }
 
+// A Windows audio-CD track (cdda://): nothing to read from a file — its length from the disc's table of contents,
+// its name from MusicBrainz (below) or else "Track N".
+function cdTrackDetails(p, info, { withCover = true } = {}) {
+  return {
+    path: p, title: `Track ${info.number}`, artist: null, nameGuessed: false, unnamed: true, credits: {}, album: null,
+    lyrics: null, duration: info.duration, ext: 'CDA', quality: 'CD AUDIO · 16-BIT · 44.1 KHZ', cover: withCover ? null : undefined,
+  };
+}
+
 /** A track's details: its tags, cover and lyrics — and for a track of an audio CD, the names the disc was looked up by. */
 async function getDetails(filePath, opts = {}) {
-  const details = await readDetails(filePath, opts);
+  const onDisc = winCd.trackInfo(filePath);
+  const details = onDisc ? cdTrackDetails(filePath, onDisc, opts) : await readDetails(filePath, opts);
   const cd = audioCd.detailsFor(filePath);
   if (!cd) return details;
   const credits = { ...details.credits, albumArtist: cd.albumArtist || undefined, released: cd.year || undefined, track: { no: cd.track, of: cd.of }, disc: cd.disc ? { no: cd.disc, of: null } : undefined };

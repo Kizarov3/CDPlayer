@@ -346,8 +346,9 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   lyricsChanged();
   renderQueue();
   // Waveform last — it decodes the whole file, so it shouldn't hold up anything the user sees first. (Not for a cue
-  // track: that would mean decoding the entire album file for one song's outline.)
-  if (!cue && engine.duration && engine.duration < 30 * 60) {
+  // track: that would mean decoding the entire album file for one song's outline. Nor for a CD track: it would read
+  // the whole track off the disc first.)
+  if (!cue && !isAudioCdTrack(path) && engine.duration && engine.duration < 30 * 60) {
     engine.computeWaveform(cdp.mediaUrl(path)).then((w) => { if (token === state.loadToken) progress.setWaveform(w); }).catch(() => {});
   }
 }
