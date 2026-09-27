@@ -590,6 +590,14 @@ export function showOnboarding(app) {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.7.0', changes: [
+    '<b>The CD shelf</b> (S): every album in your music folder, spine out on a shelf. Click one and the case slides out; PLAY puts it in the player',
+    '<b>The disc tray</b> (E, or &#9167;): the disc comes out on its tray &mdash; drop music on it for a new disc, close it and the drive reads it and plays',
+    '<b>Audio CDs</b> (macOS and Linux): put a CD in your drive and play it, every track named from MusicBrainz, with its cover',
+    '<b>Karaoke</b> (Y): the lyrics fill the window and fill in word by word as they&rsquo;re sung',
+    '<b>Tags</b>: fix a song&rsquo;s tags from MusicBrainz (or by hand) and save its cover and lyrics into the file &mdash; and, in Settings, have found covers and lyrics saved automatically',
+    '<b>Printed discs</b>: the cover printed around a clear hub, and a handwritten CD-R for songs without one. Plus <b>disc noise</b> in Settings, and more covers and lyrics found online',
+  ] },
   { version: '2.6.0', changes: [
     '<b>The CD booklet</b>: open the album art (click the little cover in the case), then click it again &mdash; the booklet lifts out and opens, printed in the album&rsquo;s colours, with the tracklist, lyrics, credits and a back cover with the small print. &larr; / &rarr; turn the pages',
     '<b>The disc catches the light</b> like a real CD: rainbow reflections that follow your mouse, as if you were tilting it under a lamp',
