@@ -144,18 +144,39 @@ export function syllables(word) {
   return Math.max(1, n);
 }
 
+const wordsOfText = (text) => String(text || '').match(/\S+\s*/g) || [text || ''];
+const DEFAULT_PACE = 0.6;
+/**
+ * How long a syllable may take in this song, for lyrics timed by the line: its slower sung lines' time per syllable
+ * (the upper quartile, so the lines before a break don't count), with a quarter to spare — a slow chorus is let run
+ * over its whole line, and a verse line before a break isn't stretched across it. 0.25…1.2 s.
+ */
+export function songPace(lines) {
+  const rates = [];
+  for (let i = 0; i + 1 < lines.length; i++) {
+    if (!lines[i].text) continue;
+    const n = wordsOfText(lines[i].text).reduce((s, w) => s + syllables(w), 0);
+    rates.push((lines[i + 1].time - lines[i].time) / n);
+  }
+  if (rates.length < 4) return DEFAULT_PACE;
+  rates.sort((a, b) => a - b);
+  const q = rates[Math.floor(0.75 * (rates.length - 1))];
+  return Math.round(Math.min(1.2, Math.max(0.25, q * 1.25)) * 1000) / 1000;
+}
+
 /**
  * The words of `line`, timed: its own (enhanced LRC), or — for a line timed as a whole — its text split into words
- * that share the line's time by how many syllables each has. The line lasts until its own end or `end` (the next
- * line), and no longer than it would take to sing (0.4 s a syllable, at least 1.5 s).
+ * that share the line's time by their syllables, the last held a little longer. The line runs until a breath before
+ * its own end or `end` (the next line), and no longer than `pace` (songPace) a syllable.
  */
-export function lineWords(line, end) {
+export function lineWords(line, end, pace = DEFAULT_PACE) {
   if (line.words && line.words.length) return line.words;
-  const parts = String(line.text || '').match(/\S+\s*/g) || [line.text || ''];
-  const weights = parts.map(syllables);
+  const parts = wordsOfText(line.text);
+  const weights = parts.map((w, i) => syllables(w) + (i === parts.length - 1 && parts.length > 1 ? 1 : 0));
   const total = weights.reduce((s, n) => s + n, 0);
   const until = line.end !== undefined ? Math.min(end, line.end) : end;
-  const length = Math.max(0, Math.min(until - line.time, Math.max(1.5, total * 0.4)));
+  const gap = Math.max(0, until - line.time);
+  const length = Math.min(gap - Math.min(0.3, gap * 0.1), total * pace);
   let at = line.time;
   return parts.map((text, i) => {
     const time = at;
@@ -165,12 +186,12 @@ export function lineWords(line, end) {
 }
 
 /**
- * How far through each word of `line` the singer is at `position`: [0…1] per word of lineWords(line, end). A word
- * with an end fills over its own length and stays full through a pause after it; one without lasts until the next
- * starts — the last until `end` (the next line), at most 1.2 s.
+ * How far through each word of `line` the singer is at `position`: [0…1] per word of lineWords(line, end, pace). A
+ * word with an end fills over its own length and stays full through a pause after it; one without lasts until the
+ * next starts — the last until `end` (the next line), at most 1.2 s.
  */
-export function wordProgress(line, end, position) {
-  const words = lineWords(line, end);
+export function wordProgress(line, end, position, pace) {
+  const words = lineWords(line, end, pace);
   return words.map((w, i) => {
     const stop = w.end !== undefined ? w.end : i + 1 < words.length ? words[i + 1].time : Math.min(end, w.time + 1.2);
     if (position <= w.time) return 0;

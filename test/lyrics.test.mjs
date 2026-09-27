@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { parseLrc, formatLyricsForDisplay, currentLineIndex, wordProgress, lineState, lineWords, syllables, heardPosition, looksOnlineFor, takesOnline, playbackTimeFor } from '../src/renderer/js/lyrics.js';
+import { parseLrc, formatLyricsForDisplay, currentLineIndex, wordProgress, lineState, lineWords, syllables, songPace, heardPosition, looksOnlineFor, takesOnline, playbackTimeFor } from '../src/renderer/js/lyrics.js';
 
 test('LRC parsing: multiple stamps per line, headers skipped, sorted by time', () => {
   const lines = parseLrc('[ti:Song]\n[00:12.50]Second\n[00:01.00][01:00]Chorus\nuntimed');
@@ -54,16 +54,32 @@ test('syllables, roughly', () => {
   assert.deepStrictEqual(['I', 'line', 'Whole', 'criticize', 'Rhythms', 'Группа', '夜空'].map(syllables), [1, 1, 1, 3, 1, 2, 2]);
 });
 
-test('line-only lyrics: the line is shared among its words by how long they take to sing', () => {
-  const [plain] = parseLrc('[00:10.00]Whole line');
-  const words = lineWords(plain, 12);
-  assert.deepStrictEqual(words.map((w) => w.text), ['Whole ', 'line']);
-  assert.deepStrictEqual(words.map((w) => [w.time, w.end]), [[10, 10.75], [10.75, 11.5]]);
+test("a song's pace: how slowly its slowest sung lines go, per syllable, with room to spare — breaks left out", () => {
+  // Verses at 0.25 s a syllable, a slow chorus at 0.5, and a line before a long break (which doesn't count).
+  const lines = parseLrc([
+    '[00:00.00]la la la la', '[00:01.00]la la la la', '[00:02.00]la la la la', '[00:03.00]la la la la',
+    '[00:04.00]la la la la', '[00:06.00]la la la la', '[00:08.00]la la la la', '[00:40.00]la la la la',
+  ].join('\n'));
+  assert.strictEqual(songPace(lines), 0.625);
+  assert.strictEqual(songPace(parseLrc('[00:01.00]one')), 0.6); // too little to go on
+});
+
+test('line-only lyrics: a line fills over the time it has, up to a breath before the next — at the song\'s pace', () => {
   const round = (xs) => xs.map((x) => Math.round(x * 100) / 100);
-  assert.deepStrictEqual(round(wordProgress(plain, 12, 11)), [1, 0.33]);
-  const [long] = parseLrc('[00:00.00]To criticize is critical');
-  const w = lineWords(long, 30);
-  assert.ok(w[1].end - w[1].time > w[0].end - w[0].time, 'criticize takes longer than to');
+  const [slow] = parseLrc('[00:10.00]Denial seems it had to come');
+  // 5 s until the next line and slow enough a pace: sung over all of it but the breath before the next.
+  const words = lineWords(slow, 15, 1);
+  assert.deepStrictEqual(words.map((w) => w.text), ['Denial ', 'seems ', 'it ', 'had ', 'to ', 'come']);
+  assert.strictEqual(words[0].time, 10);
+  assert.strictEqual(Math.round(words[5].end * 100) / 100, 14.7);
+  // Words take time by their syllables, and the last one is held a little.
+  assert.ok(words[0].end - words[0].time > words[1].end - words[1].time, 'Denial takes longer than seems');
+  assert.ok(words[5].end - words[5].time > words[4].end - words[4].time, 'the last word is held');
+  // Before a long break it is sung at the song's pace, not stretched over the break: 8 syllables at 0.5 s.
+  const w = lineWords(slow, 40, 0.5);
+  assert.strictEqual(Math.round(w[5].end * 100) / 100, 14);
+  assert.deepStrictEqual(round(wordProgress(slow, 40, 10, 0.5)), [0, 0, 0, 0, 0, 0]);
+  assert.deepStrictEqual(round(wordProgress(slow, 40, 20, 0.5)), [1, 1, 1, 1, 1, 1]);
 });
 
 test('word ends: a stamp with no word after it ends the word before; one at the end ends the line', () => {

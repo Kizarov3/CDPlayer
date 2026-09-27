@@ -1,10 +1,10 @@
 // Karaoke Mode (Y): the whole window becomes the song's lyrics, the line being sung big in the middle and filling in
 // word by word as it's sung, like Apple Music's — each word over its own time where the lyrics have word timings
-// (from Unison), shared by syllables where they only time whole lines. A word lifts as it's sung and one held long
-// glows; backing vocals fill under their line; a duet's singers sit left and right; and in a long break the line
-// settles while three dots breathe until the next. Click a line to jump there.
+// (from Unison or NetEase), shared by syllables at the song's own pace where they only time lines. A word lifts as
+// it's sung and one held long glows; backing vocals fill under their line; a duet's singers sit left and right; and
+// in a long break the line settles while three dots breathe until the next. Click a line to jump there.
 import { el, anim } from './widgets.js';
-import { parseLrc, lineState, lineWords, wordProgress } from './lyrics.js';
+import { parseLrc, lineState, lineWords, wordProgress, songPace } from './lyrics.js';
 
 const $ = (id) => document.getElementById(id);
 let view = null; // { lines, nodes, words: [[span]], current, lyrics }
@@ -49,11 +49,12 @@ function rebuild() {
   const d = app.state.details;
   view.lyrics = app.state.lyrics;
   view.lines = parseLrc(view.lyrics);
+  view.pace = songPace(view.lines);
   const duet = new Set(view.lines.map((l) => l.agent).filter(Boolean)).size > 1;
   view.words = []; view.bgWords = [];
   // (An empty timed line is an instrumental break: shown as a note.)
   view.nodes = view.lines.map((line, i) => {
-    const words = lineWords(line, endOf(view.lines, i))
+    const words = lineWords(line, endOf(view.lines, i), view.pace)
       .map((w) => el('span', { class: `k-word${w.end !== undefined && w.end - w.time > HELD ? ' held' : ''}` }, w.text));
     view.words.push(words);
     const bg = line.bg ? line.bg.map((w) => el('span', { class: 'k-word' }, w.text)) : [];
@@ -101,7 +102,7 @@ export function updateKaraoke(position, force = false) {
   }
   if (index >= 0) {
     const end = endOf(lines, index);
-    fill(words[index], wordProgress(lines[index], end, position));
+    fill(words[index], wordProgress(lines[index], end, position, view.pace));
     if (lines[index].bg) fill(bgWords[index], wordProgress({ time: lines[index].bg[0].time, text: '', words: lines[index].bg }, end, position));
     // A long break after the line: it settles, and the dots breathe until the next one.
     const next = index + 1 < lines.length ? lines[index + 1].time : Infinity;
