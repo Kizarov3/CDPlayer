@@ -24,6 +24,7 @@ const cue = require('./cue');
 const shelf = require('./shelf');
 const tagWriter = require('./tag-writer');
 const audioCd = require('./audio-cd');
+const rip = require('./rip');
 const { execFile } = require('child_process');
 
 const APP_VERSION = app.getVersion();
@@ -394,6 +395,7 @@ async function checkDiscs() {
     if (seen.has(mount) && entry.disc.id === (now.find((d) => d.mount === mount) || {}).id) continue;
     discs.delete(mount);
     audioCd.forgetDisc(entry.disc);
+    if (ripping && ripping.mount === mount) { ripping.gone = true; ripping.controller.abort(); } // taken out mid-rip
     if (win) win.webContents.send('audio-cd-gone', { mount, tracks: entry.disc.tracks });
   }
   for (const disc of now) {
@@ -422,6 +424,53 @@ handle('cd:eject', (mount) => {
   else if (process.platform === 'win32') require('./win-cd').eject(mount).catch(() => {});
   return true;
 });
+
+// ---- Ripping ------------------------------------------------------------------------------------------------------
+// RIP: the disc in the drive saved into the music folder as FLAC (rip.js). One rip at a time; taking the disc out, or
+// RIP clicked again, stops it.
+let ripping = null; // { mount, controller }
+handle('rip:start', async (mount) => {
+  const entry = discs.get(mount);
+  if (!entry || ripping) return { ok: false, reason: 'busy' };
+  let musicFolder = store.readLastPath();
+  if (!musicFolder || !store.isDir(musicFolder)) {
+    const r = await dialog.showOpenDialog(win, { title: 'Your Music Folder', defaultPath: dialogDefaultPath(), properties: ['openDirectory', 'createDirectory'] });
+    if (r.canceled || !r.filePaths.length) return { ok: false, reason: 'cancelled' };
+    musicFolder = r.filePaths[0];
+    store.writeLastPath(musicFolder);
+  }
+  const { disc, named } = entry;
+  const first = audioCd.detailsFor(disc.tracks[0]) || {};
+  const album = {
+    album: named ? named.album : null, albumArtist: first.albumArtist || (named && named.artist) || null, artist: named ? named.artist : null,
+    year: named ? named.year : null, releaseId: first.releaseId || null, cover: first.cover || null, discId: disc.id,
+  };
+  const tracks = disc.tracks.map((p, i) => {
+    const d = audioCd.detailsFor(p) || {};
+    return { path: p, title: d.title || null, artist: d.artist || null, number: d.track || i + 1, disc: d.disc || 1, discs: d.discs || 1 };
+  });
+  const folder = rip.albumFolder(musicFolder, album);
+  if (fs.existsSync(folder)) {
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'question', buttons: ['Replace', 'Cancel'], defaultId: 1, cancelId: 1,
+      message: `${album.album || 'This disc'} is already in your music folder.`, detail: 'Replace its tracks with this rip?',
+    });
+    if (response !== 0) return { ok: false, reason: 'cancelled' };
+  }
+  const controller = new AbortController(), current = { mount, controller, gone: false };
+  ripping = current;
+  try {
+    const result = await rip.ripDisc({
+      tracks, album, musicFolder, signal: controller.signal,
+      onProgress: (p) => { if (win) win.webContents.send('rip-progress', p); },
+    });
+    return { ok: true, folder: result.folder, album: album.album };
+  } catch (e) {
+    const reason = current.gone ? 'disc-removed' : e.reason || 'failed';
+    return { ok: false, reason, message: reason === 'failed' ? e.message : null };
+  } finally { ripping = null; }
+});
+handle('rip:cancel', () => { if (ripping) ripping.controller.abort(); return true; });
 
 // ---- Windows Start menu shortcut ----------------------------------------------------------------------------------
 // Without a Start menu shortcut carrying the app's ID, Windows can't tell whose media session it is and shows

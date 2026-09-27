@@ -44,6 +44,7 @@ const state = {
   saveFound: false, // covers and lyrics found online are written into the song's file
   lyricsOffset: 0,  // ms the lyrics are moved by (+ later), on top of the output latency
   audioCd: null,    // the audio CD in the drive: { mount, tracks, name, album, artist, year }
+  ripping: false,   // RIP is saving the disc into the music folder
   themeIndex: 0, eq: new Array(10).fill(0), customPresets: [], history: [],
   loadedPath: null, details: null, detailsPath: null, lyrics: null, cover: null, loadToken: 0, crossfadeStarted: false,
   cdView: false, visualizerMode: false, fullscreen: false,
@@ -588,6 +589,7 @@ const isAudioCdTrack = (p) => !!(state.audioCd && state.audioCd.tracks.includes(
 function showAudioCd() {
   const cd = state.audioCd, button = $('cd-button');
   button.hidden = !cd;
+  if (!state.ripping) $('rip-button').hidden = !cd;
   if (cd) button.textContent = cd.album ? `▶ ${cd.album}`.toUpperCase() : 'AUDIO CD';
 }
 function onAudioCd(cd) {
@@ -616,6 +618,23 @@ async function playAudioCd() {
   if (!cd) return;
   if (isShelfOpen()) closeShelf();
   await insertDisc(cd.tracks, { status: `${(cd.album || 'AUDIO CD').toUpperCase()} ON THE TRAY` });
+}
+// RIP: the disc saved into the music folder as FLAC. Clicking it again while it rips cancels.
+const RIP_STATUS = { cancelled: 'RIP CANCELLED', 'disc-removed': 'DISC REMOVED', busy: 'ALREADY RIPPING' };
+async function ripAudioCd() {
+  const cd = state.audioCd, button = $('rip-button');
+  if (state.ripping) { cdp.cancelRip(); return; }
+  if (!cd) return;
+  state.ripping = true;
+  button.classList.add('ripping');
+  button.textContent = `RIPPING 0/${cd.tracks.length} · 0%`;
+  const result = await cdp.startRip(cd.mount).catch((e) => ({ ok: false, reason: 'failed', message: e.message }));
+  state.ripping = false;
+  button.classList.remove('ripping');
+  button.textContent = 'RIP';
+  button.hidden = !state.audioCd;
+  if (result.ok) setStatus(`RIPPED TO ${(result.album || 'YOUR MUSIC FOLDER').toUpperCase()}`);
+  else setStatus(RIP_STATUS[result.reason] || `RIP FAILED · ${String(result.message || 'unknown').toUpperCase()}`);
 }
 // The loaded song's details changed underneath (a CD just got its names): show them without touching playback.
 async function refreshLoadedDetails() {
@@ -1046,6 +1065,8 @@ function buildStaticUi() {
   $('karaoke-button').addEventListener('click', toggleKaraoke);
   $('tray-button').addEventListener('click', toggleTray);
   $('cd-button').addEventListener('click', playAudioCd);
+  $('rip-button').addEventListener('click', () => ripAudioCd());
+  cdp.onRipProgress(({ done, total, percent }) => { if (state.ripping) $('rip-button').textContent = `RIPPING ${done}/${total} · ${percent}%`; });
   cdp.onAudioCd(onAudioCd);
   cdp.onAudioCdGone(onAudioCdGone);
   $('tags-button').addEventListener('click', () => panels.showTags(app));
