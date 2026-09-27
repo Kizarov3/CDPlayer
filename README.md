@@ -55,7 +55,8 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - **IMPORT LIBRARY…** in Search bulk-imports from an exported iTunes/Music.app `Library.xml` or a Spotify export (CSV, or Spotify's own `YourLibrary.json`), matched against what you already have locally
 
 **Now playing**
-- Spinning disc in a jewel case, with your album art on the disc and the case thumbnail — double-click the disc for a little surprise
+- Spinning disc in a jewel case, with your album art printed on the disc like a picture disc (clear plastic hub, mirror band and all) and the case thumbnail — double-click the disc for a little surprise
+- A song without a cover gets a silver CD-R with its title and artist written on in marker
 - The disc catches the light like a real CD: rainbow reflections that follow your mouse around the window, as if you were tilting it under a lamp
 - Click the little cover in the jewel case's corner to open the album art full-size in place of the disc
 - **The booklet**: click the full-size art and the CD booklet lifts out of the case and opens, printed in the album's own colours — the tracklist (click a track to play it), the lyrics with the line being sung highlighted, the credits (written by, producer, label, catalog number, release date…), how many times you've played the song, and a back cover with the small print and a real barcode when the file has one. ← / → turn the pages; Esc puts it back

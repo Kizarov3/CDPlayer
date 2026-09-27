@@ -11,6 +11,10 @@ const SIZES = {
 };
 const EJECT_OUT = 300, EJECT_HOLD = 180, EJECT_BACK = 320;
 const ART_MS = 340;
+const MARKER_FONT = '"Marker Felt", "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive';
+// A real disc, as fractions of its radius: the clear plastic around the hole, the mirror band around that (where the
+// stamped matrix number sits), and the printed label from there out to the rim.
+const CLEAR_R = 0.27, LABEL_R = 0.36;
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
 const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
@@ -22,6 +26,7 @@ export class Disc {
     this.spinning = false;
     this.cover = null;         // HTMLImageElement
     this.lookingUp = false;
+    this.label = null;         // { title, artist }: handwritten on a disc that has no cover, like a burned CD-R
     this.faceCache = null;
     this.faceKey = '';
     this.ejectStart = -1;
@@ -56,6 +61,10 @@ export class Disc {
     });
   }
   setMode(mode) { this.mode = mode; }
+  setLabel(title, artist) {
+    const label = title ? { title, artist: artist || '' } : null;
+    if (JSON.stringify(label) !== JSON.stringify(this.label)) this.label = label;
+  }
   setCover(img) {
     this.cover = img; this.coverVersion = (this.coverVersion || 0) + 1;
     if (!img) { this.artOpen = false; this.artT = 0; } // nothing to show full-size
@@ -143,7 +152,8 @@ export class Disc {
   }
 
   renderFace(side, dpr) {
-    const key = `${side}|${dpr}|${colors.bg}|${this.coverVersion || 0}|${this.lookingUp}`;
+    const label = this.cover || !this.label ? '' : `${this.label.title}\n${this.label.artist}`;
+    const key = `${side}|${dpr}|${colors.bg}|${this.coverVersion || 0}|${this.lookingUp}|${label}`;
     if (this.faceCache && (this.faceKey === key || (this.suppressRebuild && this.faceCache.side === side))) return this.faceCache;
     const scale = dpr * (dpr >= 2 ? 1 : 2); // supersample on low-DPI screens for a clean rim
     const px = Math.max(1, Math.round(side * scale));
@@ -151,21 +161,25 @@ export class Disc {
     const g = face.getContext('2d');
     g.scale(scale, scale);
     const c = side / 2;
-    g.fillStyle = 'rgb(20,21,28)';
-    g.beginPath(); g.arc(c, c, c, 0, Math.PI * 2); g.fill();
     if (this.cover) {
+      // A picture disc: the cover printed on the label, out from the mirror band (center-cropped if not square).
       g.save();
-      g.beginPath(); g.arc(c, c, c, 0, Math.PI * 2); g.clip();
-      // Cover art fills the whole disc face (center-cropped if not square).
+      g.beginPath(); g.arc(c, c, c, 0, Math.PI * 2); g.arc(c, c, c * LABEL_R, 0, Math.PI * 2, true); g.clip('evenodd');
       const iw = this.cover.naturalWidth, ih = this.cover.naturalHeight, s = Math.min(iw, ih);
       g.imageSmoothingQuality = 'high';
       g.drawImage(this.cover, (iw - s) / 2, (ih - s) / 2, s, s, 0, 0, side, side);
       g.restore();
+      this.drawHub(g, c, side, true);
     } else {
-      g.textAlign = 'center';
-      g.fillStyle = this.lookingUp ? 'rgba(255,255,255,0.51)' : 'rgba(255,255,255,0.216)';
-      if (this.lookingUp) { g.font = `bold ${Math.max(8, side / 32)}px ${FONT}`; g.fillText('…', c, c + side / 42); }
-      else { g.font = `${side / 3}px sans-serif`; g.textBaseline = 'middle'; g.fillText('♪', c, c); }
+      // No cover: a silver CD-R, the song's name written on it in marker (or "…" while a cover is being looked up).
+      this.drawSilver(g, c, 0, c);
+      this.drawHub(g, c, side, false);
+      if (this.label) this.drawHandwriting(g, c, side);
+      if (this.lookingUp) {
+        g.textAlign = 'center'; g.fillStyle = 'rgba(30,32,60,0.55)';
+        g.font = `bold ${Math.max(8, side / 26)}px ${FONT}`;
+        g.fillText('…', c, c + c * 0.62);
+      }
     }
     g.lineWidth = 1.6; g.strokeStyle = 'rgba(255,255,255,0.63)';
     g.beginPath(); g.arc(c, c, c - 0.8, 0, Math.PI * 2); g.stroke();
@@ -178,6 +192,56 @@ export class Disc {
     this.faceCache = { canvas: face, side };
     this.faceKey = key;
     return this.faceCache;
+  }
+
+  // Brushed-silver data side: a conic sweep of greys with a faint rainbow tint, between radii r0 and r1.
+  drawSilver(g, c, r0, r1) {
+    const cone = g.createConicGradient(0.6, c, c);
+    const stops = ['#d9dbe0', '#b9bcc4', '#eef0f3', '#c3c1cf', '#dfe3e1', '#b4b8c2', '#ecebf1', '#c8ccd2', '#d9dbe0'];
+    stops.forEach((s, i) => cone.addColorStop(i / (stops.length - 1), s));
+    g.save();
+    g.fillStyle = cone;
+    g.beginPath(); g.arc(c, c, r1, 0, Math.PI * 2); if (r0) g.arc(c, c, r0, 0, Math.PI * 2, true); g.fill('evenodd');
+    g.restore();
+  }
+  // The middle of a real disc: the mirror band with its stamped matrix number, the clear plastic with the stacking
+  // ring moulded into it, and the hole.
+  drawHub(g, c, side, printed) {
+    if (printed) this.drawSilver(g, c, c * CLEAR_R, c * LABEL_R);
+    g.fillStyle = 'rgba(40,42,52,0.55)'; // clear plastic, the darkness behind it showing through
+    g.beginPath(); g.arc(c, c, c * CLEAR_R, 0, Math.PI * 2); g.fill();
+    g.lineWidth = Math.max(0.6, side / 400);
+    g.strokeStyle = 'rgba(255,255,255,0.28)';
+    for (const r of [CLEAR_R, 0.205, 0.195]) { g.beginPath(); g.arc(c, c, c * r, 0, Math.PI * 2); g.stroke(); }
+    g.strokeStyle = 'rgba(0,0,0,0.18)';
+    g.beginPath(); g.arc(c, c, c * LABEL_R, 0, Math.PI * 2); g.stroke();
+    // The matrix number, tiny, round the inner edge of the mirror band.
+    const text = 'CDP-0001  ·  MADE ON CDPLAYER  ·  11';
+    g.save();
+    g.fillStyle = 'rgba(60,62,72,0.45)'; g.font = `${Math.max(3, side / 120)}px ${FONT}`; g.textAlign = 'center';
+    const radius = c * (CLEAR_R + 0.022), step = (side / 120) * 0.62 / radius;
+    g.translate(c, c); g.rotate(-step * text.length / 2);
+    for (const ch of text) { g.save(); g.translate(0, -radius); g.fillText(ch, 0, 0); g.restore(); g.rotate(step); }
+    g.restore();
+  }
+  // The title across the top of the label and the artist under the hole, as if written with a marker: slightly
+  // tilted, in dark blue ink, and shrunk to fit the width of the disc at that height.
+  drawHandwriting(g, c, side) {
+    const write = (text, y, size, tilt) => {
+      const chord = 2 * Math.sqrt(Math.max(0, c * c - (y - c) * (y - c))) * 0.82;
+      g.save();
+      g.translate(c, y); g.rotate(tilt);
+      let px = size;
+      g.font = `${px}px ${MARKER_FONT}`;
+      const w = g.measureText(text).width;
+      if (w > chord) { px = Math.max(size * 0.45, px * chord / w); g.font = `${px}px ${MARKER_FONT}`; }
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillStyle = 'rgba(22,28,78,0.88)';
+      g.fillText(text, 0, 0, chord);
+      g.restore();
+    };
+    write(this.label.title, c - c * 0.6, side / 11, -0.06);
+    if (this.label.artist) write(this.label.artist, c + c * 0.6, side / 15, 0.04);
   }
 
   /** Returns the drawn disc's bounds (CSS px, relative to the canvas) — used to keep theme particles off it. */

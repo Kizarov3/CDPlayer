@@ -75,6 +75,7 @@ const formatDuration = (sec) => (sec > 0 ? formatTime(sec) : '--:--');
 
 function setTrackTitle(name, artist) {
   state.titleText = name; state.artistText = artist;
+  disc.setLabel(state.loadedPath ? name : null, artist); // written on the disc when it has no cover
   fitText($('track-title'), name, 456, 34, 20, true);
   fitText($('cd-title'), name, 860, 30, 18, true);
   const has = !!(artist && artist.trim());
@@ -354,7 +355,9 @@ async function lookUpCover(details, path, token) {
   useFoundName(details, path, result.name);
   const ext = details.quality || details.ext || extension(path);
   if (result.cover) {
-    await setCover(result.cover);
+    const img = await decodeCover(result.cover);
+    if (token !== state.loadToken) return; // another track was picked while the picture decoded
+    applyCover(img);
     $('track-source').textContent = `${result.source} COVER ART · ${ext}`;
     state.details.cover = result.cover;
     state.details.coverUrl = result.url || null;
@@ -385,13 +388,14 @@ function toggleKaraoke() {
   if (!openKaraoke(app)) setStatus(state.lyrics ? 'THESE LYRICS AREN’T TIMED' : 'NO LYRICS FOR THIS SONG');
 }
 
-async function setCover(dataUrl) {
-  let img = null;
-  if (dataUrl) {
-    img = new Image();
-    img.src = dataUrl;
-    try { await img.decode(); } catch { img = null; }
-  }
+async function setCover(dataUrl) { applyCover(await decodeCover(dataUrl)); }
+async function decodeCover(dataUrl) {
+  if (!dataUrl) return null;
+  const img = new Image();
+  img.src = dataUrl;
+  try { await img.decode(); return img; } catch { return null; }
+}
+function applyCover(img) {
   state.cover = img;
   disc.setCover(img);
   onCoverChanged();
@@ -705,7 +709,7 @@ function pushMini(full = false) {
       shuffle: state.shuffle, repeat: state.repeat,
       track: {
         title: state.titleText || 'Pick a track to get started.', artist: state.artistText || null, album: d && d.album ? d.album : null,
-        lookingUp: disc.lookingUp, coverKey: miniCoverKey,
+        lookingUp: disc.lookingUp, coverKey: miniCoverKey, loaded: !!state.loadedPath,
         // The artwork is a large data URL — only send it when it actually changed.
         cover: miniCoverKey !== sentMiniCoverKey ? cover : undefined,
       },

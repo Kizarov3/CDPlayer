@@ -89,6 +89,7 @@ cdp.onMiniState(async (s) => {
     $('subtitle').textContent = [t.artist, t.album].filter(Boolean).join(' — ');
     document.title = t.artist ? `${t.artist} – ${t.title}` : (t.title || 'CDPlayer');
     disc.lookingUp = !!t.lookingUp;
+    disc.setLabel(t.loaded ? t.title : null, t.artist);
     if (t.coverKey !== coverKey && t.cover !== undefined) {
       coverKey = t.coverKey;
       let img = null;
