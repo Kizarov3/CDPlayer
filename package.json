@@ -113,7 +113,8 @@
       "repo": "CDPlayer"
     },
     "asarUnpack": [
-      "src/main/decoders/**"
+      "src/main/decoders/**",
+      "src/main/win-cd/**"
     ],
     "electronLanguages": [
       "en",

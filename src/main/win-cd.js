@@ -5,6 +5,9 @@
  * the table of contents and raw audio sectors through Windows' own CD calls, and this module runs it. A disc's
  * tracks are "cdda://F/3" paths, which the media server plays as WAV and metadata.js names.
  */
+const path = require('path');
+const { spawn } = require('child_process');
+
 const SECTOR = 2352; // bytes of CD audio in a sector: 1/75 s of 44.1 kHz 16-bit stereo
 const HEADER = 44; // a WAV header
 
@@ -95,4 +98,63 @@ function sectorSpan(start, end) {
   return { first, count: Math.floor(b / SECTOR) - first + 1, skip: a - first * SECTOR };
 }
 
-module.exports = { SECTOR, HEADER, parseToc, FrameParser, trackPath, parseTrackPath, remember, keepOnly, trackInfo, wavHeader, sectorSpan };
+// ---- The helper ------------------------------------------------------------------------------------------------
+// Started the first time it's needed and kept running; requests are answered in turn. If it dies, what was asked
+// fails (never hangs), and it's started again next time — but after it has died twice, CDs are off until relaunch.
+const TIMEOUT_MS = 30000;
+let helper = null, deaths = 0, nextId = 1;
+const pending = new Map();
+
+function helperCommand() {
+  if (process.env.CDPLAYER_WIN_CD_HELPER) { const [cmd, ...args] = process.env.CDPLAYER_WIN_CD_HELPER.split(' '); return { cmd, args }; }
+  const script = path.join(__dirname, 'win-cd', 'helper.ps1').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+  return { cmd: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script] };
+}
+function start() {
+  if (helper) return helper;
+  if (deaths >= 2) return null;
+  const { cmd, args } = helperCommand();
+  let child;
+  try { child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true }); } catch { deaths++; return null; }
+  const parser = new FrameParser((header, payload) => {
+    const job = pending.get(header.id);
+    if (!job) return;
+    pending.delete(header.id);
+    clearTimeout(job.timer);
+    if (header.ok) job.resolve({ header, payload }); else job.reject(new Error(header.error || 'failed'));
+  });
+  child.stdout.on('data', (c) => parser.push(c));
+  const died = () => {
+    if (helper !== child) return;
+    helper = null;
+    if (++deaths >= 2) console.log('Audio CDs are off: the Windows CD helper stopped twice');
+    for (const job of pending.values()) { clearTimeout(job.timer); job.reject(new Error('the CD helper stopped')); }
+    pending.clear();
+  };
+  child.on('exit', died);
+  child.on('error', died);
+  child.stdin.on('error', () => {});
+  helper = child;
+  return child;
+}
+function send(op, fields = {}) {
+  const child = start();
+  if (!child) return Promise.reject(new Error('no CD helper'));
+  const id = nextId++;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { if (pending.delete(id)) reject(new Error(`the CD helper didn't answer ${op}`)); }, TIMEOUT_MS);
+    timer.unref();
+    pending.set(id, { resolve, reject, timer });
+    child.stdin.write(`${JSON.stringify({ id, op, ...fields })}\n`);
+  });
+}
+
+const available = () => deaths < 2;
+/** The CD drives with a disc in them right now: ['F:'…]. */
+async function drives() { return (await send('drives')).header.drives || []; }
+async function readToc(drive) { return parseToc((await send('toc', { drive })).payload); }
+/** `count` raw sectors from `lba`: count × 2352 bytes (a sector that won't read comes back silent). */
+async function readSectors(drive, lba, count) { return (await send('read', { drive, lba, count })).payload; }
+async function eject(drive) { await send('eject', { drive }); }
+
+module.exports = { SECTOR, HEADER, parseToc, FrameParser, trackPath, parseTrackPath, remember, keepOnly, trackInfo, wavHeader, sectorSpan, drives, readToc, readSectors, eject, available, _send: send };

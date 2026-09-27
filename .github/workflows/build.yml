@@ -40,6 +40,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - name: The Windows CD helper compiles and answers
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo '{"id":1,"op":"drives"}' | powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File src/main/win-cd/helper.ps1 | tee /dev/stderr | grep -q '"ok":true'
       - name: Package
         run: npx electron-builder ${{ matrix.dist }} --publish never
         env:

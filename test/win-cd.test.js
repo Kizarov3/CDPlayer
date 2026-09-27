@@ -66,3 +66,22 @@ test('the WAV header, and which sectors cover a byte range', () => {
   assert.deepStrictEqual(winCd.sectorSpan(0, 44), { first: 0, count: 1, skip: 0 });
   assert.deepStrictEqual(winCd.sectorSpan(44 + 2352 + 10, 44 + 2352 * 3), { first: 1, count: 3, skip: 10 });
 });
+test('the helper: drives, table of contents, sectors and eject, over the pipe', async () => {
+  process.env.CDPLAYER_WIN_CD_HELPER = `${process.execPath} ${path.join(__dirname, 'fixtures', 'fake-cd-helper.js')}`;
+  assert.deepStrictEqual(await winCd.drives(), ['F:']);
+  const toc = await winCd.readToc('F:');
+  assert.strictEqual(discId(toc), THREE_DOLLAR_BILL.id);
+  const bytes = await winCd.readSectors('F:', 3635, 3);
+  assert.strictEqual(bytes.length, 3 * 2352);
+  assert.deepStrictEqual([bytes[0], bytes[2352], bytes[4704]], [3635 & 0xff, 3636 & 0xff, 3637 & 0xff]);
+  await assert.rejects(winCd.readToc('D:'), /error 21/);
+  await winCd.eject('F:');
+});
+
+test('the helper dying: what was asked fails instead of hanging; twice, and CDs are off', async () => {
+  await assert.rejects(winCd._send('die'), /stopped/);
+  assert.deepStrictEqual(await winCd.drives(), ['F:'], 'started again after the first time');
+  await assert.rejects(winCd._send('die'), /stopped/);
+  assert.strictEqual(winCd.available(), false);
+  await assert.rejects(winCd.drives(), /no CD helper/);
+});
