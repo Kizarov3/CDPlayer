@@ -239,7 +239,7 @@ async function songContent(app) {
       ].filter(([, v]) => v),
       summary: [
         ['FORMAT', d.quality || d.ext], ['LENGTH', app.formatTime(d.duration || app.engine.duration)],
-        ['COVER', app.coverSource()], ['LYRICS', state.lyrics ? (d.lyrics ? 'In the file' : state.lyricsSource || 'Online') : null],
+        ['COVER', app.coverSource()], ['LYRICS', state.lyrics ? state.lyricsSource || (d.lyrics ? 'In the file' : 'Online') : null],
         ['PLAYED', plays ? `${plays} ${plays === 1 ? 'time' : 'times'}` : null],
       ].filter(([, v]) => v),
     },

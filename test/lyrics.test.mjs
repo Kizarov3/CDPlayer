@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { parseLrc, formatLyricsForDisplay, currentLineIndex, wordProgress, lineState, lineWords, syllables, heardPosition } from '../src/renderer/js/lyrics.js';
+import { parseLrc, formatLyricsForDisplay, currentLineIndex, wordProgress, lineState, lineWords, syllables, heardPosition, looksOnlineFor, takesOnline } from '../src/renderer/js/lyrics.js';
 
 test('LRC parsing: multiple stamps per line, headers skipped, sorted by time', () => {
   const lines = parseLrc('[ti:Song]\n[00:12.50]Second\n[00:01.00][01:00]Chorus\nuntimed');
@@ -103,4 +103,18 @@ test('the heard position: behind by the output latency, moved by the lyrics offs
   assert.strictEqual(heardPosition(10, 0.2, 300), 9.5); // + = lyrics later
   assert.strictEqual(heardPosition(10, 0, -250), 10.25);
   assert.strictEqual(heardPosition(0.1, 0.2, 0), 0);
+});
+
+test('online lyrics are looked for when the file has none, or only times its lines', () => {
+  assert.strictEqual(looksOnlineFor(null), true);
+  assert.strictEqual(looksOnlineFor('[00:01.00]A line'), true);
+  assert.strictEqual(looksOnlineFor('[00:01.00]<00:01.00>Word <00:01.50>timed'), false);
+  assert.strictEqual(looksOnlineFor('Plain words, no times'), false);
+});
+
+test('found lyrics replace the file\'s only when the file has none, or when they time every word', () => {
+  const lineTimed = '[00:01.00]A line', wordTimed = '[00:01.00]<00:01.00>A <00:01.40>line';
+  assert.strictEqual(takesOnline(null, lineTimed), true);
+  assert.strictEqual(takesOnline(lineTimed, wordTimed), true);
+  assert.strictEqual(takesOnline(lineTimed, '[00:01.00]Another line'), false);
 });

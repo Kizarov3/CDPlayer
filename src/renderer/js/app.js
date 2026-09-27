@@ -7,7 +7,7 @@ import { Visualizer } from './visualizer.js';
 import { Particles } from './particles.js';
 import { anim, el, pill, roundButton, modeButton, Slider, fitText, pulse } from './widgets.js';
 import { openBooklet, closeBooklet } from './booklet.js';
-import { parseLrc, currentLineIndex, heardPosition } from './lyrics.js';
+import { parseLrc, currentLineIndex, heardPosition, looksOnlineFor, takesOnline } from './lyrics.js';
 import { shortcutKey } from './keys.js';
 import * as panels from './panels.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
@@ -341,7 +341,8 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   updateMediaSession();
   if (canLookUp) lookUpCover(details, path, token);
   state.lyrics = details.lyrics || null; state.lyricsSource = null;
-  if (!state.lyrics && details.title && !details.unnamed) lookUpLyrics(details, token);
+  // Online too when the file's lyrics only time their lines: word-timed ones make karaoke fill word by word.
+  if (looksOnlineFor(state.lyrics) && details.title && !details.unnamed) lookUpLyrics(details, token);
   lyricsChanged();
   renderQueue();
   // Waveform last — it decodes the whole file, so it shouldn't hold up anything the user sees first. (Not for a cue
@@ -387,12 +388,12 @@ async function lookUpCover(details, path, token) {
 }
 async function lookUpLyrics(details, token) {
   const found = await cdp.findLyrics({ ...lookupName(details), album: details.album, duration: details.duration || engine.duration }).catch(() => null);
-  if (!found || token !== state.loadToken) return;
+  if (!found || token !== state.loadToken || !takesOnline(details.lyrics, found.lyrics)) return;
   // (lrclib's entries are user-submitted and some have artist and title swapped, so unlike a cover, the name lyrics
   // were found under never corrects the displayed name.)
   state.lyrics = found.lyrics; state.lyricsSource = found.source || null;
   lyricsChanged();
-  if (state.saveFound) saveFoundLater(state.loadedPath, { lyrics: found.lyrics });
+  if (state.saveFound && !details.lyrics) saveFoundLater(state.loadedPath, { lyrics: found.lyrics }); // never over the file's own
 }
 
 // ---- Writing tags into files -----------------------------------------------------------------------------------
