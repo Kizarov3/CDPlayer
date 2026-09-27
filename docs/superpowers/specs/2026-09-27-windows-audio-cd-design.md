@@ -2,6 +2,13 @@
 
 Date: 2026-09-27 · Status: draft for review
 
+**Feasibility checked on the user's setup** (Windows 11 ARM64 build 26200 in UTM, Mac CD drive passed through):
+the CD drive shows up as `F:` ("Audio CD"); `IOCTL_CDROM_READ_TOC` returned all 13 tracks of Three Dollar Bill,
+Y'all$ (LBAs 0, 3635, 21075, 44183, 68530, 88590, 104555, 132670, 150915, 168360, 182128, 192878, 202733; lead-out
+276725); `IOCTL_CDROM_RAW_READ` (CDDA) returned 10 sectors of real audio. That TOC gives disc ID
+`6u6SZ6TRjV_O9VDaKMAucGeZEOY-`, which MusicBrainz names "Three Dollar Bill, Yall$ (1997)". UTM also adds empty
+virtual CD drives (`D:`, `E:`) that answer error 21 (not ready): they must be skipped quietly.
+
 ## Goal
 
 On Windows, an audio CD in the drive works as it does on macOS and Linux: the **AUDIO CD** button appears, the disc
@@ -31,7 +38,7 @@ by exactly `bytes` raw bytes (0 for most answers):
 
 | Request | Answer header | Payload |
 |---|---|---|
-| `{"id":1,"op":"drives"}` | `{"id":1,"ok":true,"drives":["D:"],"bytes":0}` — CD/DVD drives (`DriveType.CDRom`) | — |
+| `{"id":1,"op":"drives"}` | `{"id":1,"ok":true,"drives":["F:"],"bytes":0}` — CD/DVD drives (`DriveType.CDRom`) that are ready (empty drives, error 21, are left out) | — |
 | `{"id":2,"op":"toc","drive":"D:"}` | `{"id":2,"ok":true,"bytes":804}` | the raw `CDROM_TOC` structure |
 | `{"id":3,"op":"read","drive":"D:","lba":150,"count":25}` | `{"id":3,"ok":true,"bytes":58800}` | `count × 2352` bytes of CD audio (44.1 kHz, 16-bit, stereo, little-endian) |
 | `{"id":4,"op":"eject","drive":"D:"}` | `{"id":4,"ok":true,"bytes":0}` | — |
@@ -85,8 +92,8 @@ unpacked from the app archive (added to `asarUnpack`).
 ## Testing
 
 Unit tests on this Mac (node --test, no Windows needed):
-- `parseToc`: a real `CDROM_TOC` byte layout → offsets/leadout/tracks; the MusicBrainz disc ID matches the one
-  macOS computes for the same disc (Three Dollar Bill, Y'all$ — the user's CD); a data track left out.
+- `parseToc`: the user's real TOC (above) as `CDROM_TOC` bytes → offsets/leadout/tracks, and disc ID
+  `6u6SZ6TRjV_O9VDaKMAucGeZEOY-`; a data track left out.
 - The framed-answer parser: headers and payloads split across chunks in every way, several answers in one chunk.
 - `cdda://` byte range → sector range and trimming; the WAV header bytes.
 - `metadata.getDetails` for `cdda://` paths never touches the file system.
