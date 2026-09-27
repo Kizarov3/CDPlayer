@@ -117,6 +117,7 @@ function buildSettings(app) {
   const animations = toggle(anim.enabled, () => { app.setAnimations(!anim.enabled); setToggle(animations, anim.enabled); });
   const mini = toggle(s.miniMode, () => app.setMiniMode(!s.miniMode));
   const discord = toggle(s.discord, () => { app.setDiscord(!s.discord); setToggle(discord, s.discord); });
+  const discNoise = toggle(s.discNoise, () => { app.setDiscNoise(!s.discNoise); setToggle(discNoise, s.discNoise); });
 
   const github = el('div', { class: 'github-link', title: 'Open GitHub profile', onClick: () => app.cdp.openGitHub('Kizarov3') }, catSvg(), el('span', {}, 'Kizarov3'));
   const body = el('div', { class: 'scroll settings-body' },
@@ -124,7 +125,9 @@ function buildSettings(app) {
     row('EQUALIZER', el('div', { class: 'row-pills' }, presetButton, eqButton)),
     sliderRow('CROSSFADE', crossfade, crossfadeValue),
     row('MONO AUDIO', mono),
-    hint('Sums the left and right channels together — for a single speaker or one earbud.'), gap(18),
+    hint('Sums the left and right channels together — for a single speaker or one earbud.'),
+    row('DISC NOISE', discNoise),
+    hint('A real player’s sounds: a faint hiss, the tray motor, the disc spinning up — and a skip when you shake the window.'), gap(18),
     section('LOOK'),
     row('THEME', themeButton),
     row('WAVEFORM', waveform),

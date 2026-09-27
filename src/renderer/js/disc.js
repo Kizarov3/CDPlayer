@@ -10,6 +10,8 @@ const SIZES = {
   mini: { cap: 84, margin: 4 },
 };
 const EJECT_OUT = 300, EJECT_HOLD = 180, EJECT_BACK = 320;
+const TRAY_MS = 650;     // the tray motor, one way
+const SPIN_TAU_MS = 260; // how quickly the disc gets up to speed or winds down (READING spins up slower)
 const ART_MS = 340;
 const MARKER_FONT = '"Marker Felt", "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive';
 // A real disc, as fractions of its radius: the clear plastic around the hole, the mirror band around that (where the
@@ -24,6 +26,12 @@ export class Disc {
     this.mode = 'normal';
     this.angle = 0;
     this.spinning = false;
+    this.speed = 0;            // 0…1 of full speed, easing toward spinning ? 1 : 0
+    this.reading = false;      // spinning up after the tray closes: slower to get going, like a real drive
+    this.trayOpen = false;     // the disc tray is out
+    this.trayT = 0;            // 0 = closed … 1 = open (animated)
+    this.trayDone = null;      // resolves the open/close in progress
+    this.discPresent = true;   // false: an empty tray (nothing loaded)
     this.cover = null;         // HTMLImageElement
     this.lookingUp = false;
     this.label = null;         // { title, artist }: handwritten on a disc that has no cover, like a burned CD-R
@@ -137,6 +145,27 @@ export class Disc {
     g.globalAlpha *= 0.22 + 0.2 * strength;
     g.drawImage(this.shine, cx - side / 2, cy - side / 2, side, side);
     g.restore();
+  }
+
+  /** Runs the tray motor out (true) or in (false); resolves when it's there. */
+  setTray(open) {
+    this.trayOpen = open;
+    if (this.trayT === (open ? 1 : 0)) return Promise.resolve();
+    return new Promise((resolve) => { const prev = this.trayDone; this.trayDone = () => { if (prev) prev(); resolve(); }; });
+  }
+  stepTray(dt) {
+    const target = this.trayOpen ? 1 : 0;
+    if (this.trayT === target) return;
+    this.trayT = Math.max(0, Math.min(1, this.trayT + (this.trayOpen ? 1 : -1) * (dt / TRAY_MS)));
+    if (this.trayT === target && this.trayDone) { const done = this.trayDone; this.trayDone = null; done(); }
+  }
+
+  /** A jolt: the disc shudders for a moment (disc noise's skip, when the window is shaken). */
+  startWobble() { this.wobbleStart = performance.now(); }
+  wobbleOffset(now) {
+    const t = now - (this.wobbleStart || -1e9);
+    if (t > 450) return 0;
+    return Math.sin(t / 22) * (1 - t / 450) * 5;
   }
 
   startEject() { if (this.ejectStart < 0) { this.ejectStart = performance.now(); this.ejectPeakFired = false; } }
@@ -254,12 +283,17 @@ export class Disc {
     const g = cnv.getContext('2d');
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, r.width, r.height);
-    if (this.spinning) this.angle += 0.045 * (dt / 16);
+    const tau = this.reading ? SPIN_TAU_MS * 3 : SPIN_TAU_MS;
+    this.speed += ((this.spinning ? 1 : 0) - this.speed) * (1 - Math.exp(-dt / tau));
+    if (this.speed < 0.002 && !this.spinning) this.speed = 0;
+    this.angle += 0.045 * this.speed * (dt / 16);
+    this.stepTray(dt);
 
+    const mini = this.mode === 'mini';
+    const tray = mini ? 0 : easeInOutCubic(this.trayT);
     const a = SIZES[this.morph ? this.morph.from : this.mode], b = SIZES[this.morph ? this.morph.to : this.mode];
     const t = this.morph ? this.morph.t : 0;
     const cap = a.cap + (b.cap - a.cap) * t, margin = a.margin + (b.margin - a.margin) * t;
-    const mini = this.mode === 'mini';
     const room = Math.min(r.width, r.height) - (mini ? margin : margin + 20);
     const side = Math.max(10, Math.floor(Math.min(cap, room)));
     const x = (r.width - side) / 2, y = (r.height - side) / 2, cx = x + side / 2, cy = y + side / 2;
@@ -306,8 +340,31 @@ export class Disc {
       }
     }
 
+    // The tray: a dark plate with a recess for the disc, coming forward out of the case (drawn over it, with a shadow)
+    // and carrying the disc with it.
+    const trayDy = side * 0.16 * tray, trayScale = 1 + 0.05 * tray;
+    if (tray > 0) {
+      g.save();
+      g.globalAlpha = Math.min(1, tray * 1.6);
+      g.translate(cx, cy + trayDy); g.scale(trayScale, trayScale);
+      const plate = side * 1.1;
+      g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = 24 * tray; g.shadowOffsetY = 10 * tray;
+      const grad = g.createLinearGradient(0, -plate / 2, 0, plate / 2);
+      grad.addColorStop(0, 'rgb(34,35,41)'); grad.addColorStop(1, 'rgb(16,16,20)');
+      g.fillStyle = grad;
+      g.beginPath(); g.roundRect(-plate / 2, -plate / 2, plate, plate, side * 0.03); g.fill();
+      g.shadowColor = 'transparent';
+      g.strokeStyle = 'rgba(255,255,255,0.1)'; g.lineWidth = 1; g.stroke();
+      g.fillStyle = 'rgb(10,10,13)';
+      g.beginPath(); g.arc(0, 0, side / 2 + side * 0.025, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = rgb(colors.accent, 0.35); g.stroke();
+      g.restore();
+    }
     const eject = this.ejectProgress(now);
     g.save();
+    if (!this.discPresent && tray > 0) g.globalAlpha = 0; // an empty tray
+    const wobble = this.wobbleOffset(now);
+    g.translate(cx + wobble, cy + trayDy + wobble * 0.4); g.scale(trayScale, trayScale); g.translate(-cx, -cy);
     // As the full art opens, the disc sinks back a little and fades out underneath it.
     g.globalAlpha = 1 - art;
     g.translate(cx + side * 0.14 * eject, cy - side * 0.42 * eject);
@@ -324,14 +381,17 @@ export class Disc {
     g.restore();
     this.stepLight(now, dt);
     this.drawShine(g, cx, cy, side, dpr);
-    if (!this.spinning) {
-      g.fillStyle = 'rgba(10,11,16,0.35)';
+    if (this.speed < 0.99) { // a stopped disc sits a little darker, brightening as it gets up to speed
+      g.fillStyle = `rgba(10,11,16,${(0.35 * (1 - this.speed)).toFixed(3)})`;
       g.beginPath(); g.arc(cx, cy, side / 2, 0, Math.PI * 2); g.fill();
     }
     g.restore();
-    if (drawArt) drawArt(this.cover);
+    if (drawArt && tray < 1) { // the case's cover thumbnail steps aside while the tray is out
+      g.save(); g.globalAlpha = 1 - tray; drawArt(this.cover); g.restore();
+    }
+    if (tray > 0) this.artRect = null;
     return bounds;
   }
 
-  get animating() { return this.spinning || this.ejectStart >= 0; }
+  get animating() { return this.spinning || this.speed > 0 || this.trayT > 0 || this.ejectStart >= 0; }
 }

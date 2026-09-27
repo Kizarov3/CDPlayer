@@ -124,6 +124,7 @@ body.cd-view #cd-info { display: block !important; }
 .row-label { font-size: 10px; color: rgb(var(--muted)); margin-right: 10px; }
 .row-value { font-size: 10px; color: rgb(var(--muted)); margin-left: 8px; min-width: 36px; }
 #volume-slider { width: 120px; height: 20px; }
+#tray-button { margin-right: 6px; font-size: 12px; padding: 6px 11px; }
 
 #queue-card {
   margin-top: 20px;

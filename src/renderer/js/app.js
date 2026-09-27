@@ -10,6 +10,7 @@ import { openBooklet, closeBooklet } from './booklet.js';
 import { parseLrc, currentLineIndex } from './lyrics.js';
 import { shortcutKey } from './keys.js';
 import * as panels from './panels.js';
+import { DiscNoise, ShakeDetector } from './disc-noise.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
 
 const cdp = window.cdp;
@@ -37,7 +38,8 @@ export const BUILTIN_EQ_PRESETS = [
 
 const state = {
   queue: [], index: -1, shuffle: false, repeat: 'OFF',
-  volume: 100, volumeBeforeMute: -1, crossfade: 0, mono: false, waveform: true, ambient: true, miniMode: false, discord: true,
+  volume: 100, volumeBeforeMute: -1, crossfade: 0, mono: false, waveform: true, ambient: true, miniMode: false, discord: true, discNoise: false,
+  trayBusy: false, // the tray is moving or the disc is being read: transport presses wait
   themeIndex: 0, eq: new Array(10).fill(0), customPresets: [], history: [],
   loadedPath: null, details: null, detailsPath: null, lyrics: null, cover: null, loadToken: 0, crossfadeStarted: false,
   cdView: false, visualizerMode: false, fullscreen: false,
@@ -50,6 +52,9 @@ const disc = new Disc($('disc'));
 const visualizer = new Visualizer($('visualizer'));
 const bigVisualizer = new Visualizer($('big-visualizer'), { big: true });
 const particles = new Particles($('particles'));
+const noise = new DiscNoise(engine);
+const shake = new ShakeDetector();
+const TRAY_MS = 650, READING_MS = 1300;
 const detailsCache = new Map(); // path -> details without cover (queue labels, durations)
 
 // ---- Status / labels ---------------------------------------------------------------------------------------
@@ -216,6 +221,7 @@ function setupQueueDrag() {
 async function addToQueue(items, { sorted = false } = {}) {
   const songs = sorted ? items : await cdp.collectAudio(items);
   if (!songs.length) { setStatus('NO SUPPORTED AUDIO FOUND'); return; }
+  if (disc.trayOpen && !state.trayBusy) { putDiscOnTray(songs); return; }
   state.queue.push(...songs);
   setStatus(`ADDED ${songs.length} TO QUEUE`);
   renderQueue(); saveQueueSoon();
@@ -262,6 +268,7 @@ function resetToIdle(message) {
   $('elapsed').textContent = $('length').textContent = '0:00';
   progress.setValue(0); progress.setWaveform(null);
   setCover(null); disc.lookingUp = false;
+  disc.discPresent = false;
   setPlaying(false);
   lyricsChanged();
   setStatus(message);
@@ -272,6 +279,7 @@ function resetToIdle(message) {
 
 async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0 } = {}) {
   const token = ++state.loadToken;
+  disc.discPresent = true;
   const fade = allowCrossfade && engine.playing && state.crossfade > 0 ? state.crossfade : 0;
   state.crossfadeStarted = false;
   state.loadedPath = path;
@@ -417,6 +425,7 @@ function onCoverChanged() {
 
 function setPlaying(playing) {
   disc.spinning = playing;
+  noise.setPlaying(playing);
   playButton.setGlyph(playing ? 'PAUSE' : 'PLAY'); pulse(playButton, true);
   setStatus(playing ? 'NOW SPINNING' : state.loadedPath ? 'PAUSED' : 'READY TO PLAY');
   visualizer.setActive(playing); bigVisualizer.setActive(playing);
@@ -425,6 +434,8 @@ function setPlaying(playing) {
   pushDiscord();
 }
 async function toggle() {
+  if (state.trayBusy) return;
+  if (disc.trayOpen) { closeTray(); return; } // PLAY with the tray out closes it and plays, like a real deck
   if (!engine.deck) { if (state.queue.length && state.index >= 0) load(state.queue[state.index]); else choose(); return; }
   if (engine.playing) { engine.pause(); setPlaying(false); }
   else { await engine.play(); setPlaying(true); }
@@ -467,6 +478,76 @@ function seekTo(seconds) {
   updateMediaSessionPosition();
   pushMini();
   pushDiscord();
+}
+
+// ---- The disc tray ---------------------------------------------------------------------------------------------
+// E (or the ⏏ button) runs the tray out: playback stops and the disc comes out on its tray. Music dropped on the player while it's out goes in as a new disc, replacing the queue. Closing it
+// (E again, or PLAY) reads the disc — the drive spins it up — and plays: the new disc from its first track, or the
+// same one from where it stopped.
+
+let trayResume = null; // { playing } of the disc that was in when the tray opened
+async function openTray() {
+  if (disc.trayOpen || state.trayBusy || state.miniMode) return;
+  if (state.cdView) await toggleCdView();
+  state.trayBusy = true;
+  trayResume = { playing: engine.playing };
+  if (engine.playing) { engine.pause(); setPlaying(false); }
+  setStatus('OPENING');
+  noise.tray(TRAY_MS);
+  await disc.setTray(true);
+  state.trayBusy = false;
+  setStatus(state.queue.length ? 'OPEN · DROP IN A NEW DISC, OR PRESS E TO CLOSE' : 'OPEN · DROP MUSIC ON THE TRAY');
+  $('tray-button').classList.add('on');
+}
+async function closeTray({ play = true } = {}) {
+  if (!disc.trayOpen || state.trayBusy) return;
+  state.trayBusy = true;
+  setStatus('CLOSING');
+  noise.tray(TRAY_MS);
+  await disc.setTray(false);
+  $('tray-button').classList.remove('on');
+  const resume = trayResume || { playing: false };
+  trayResume = null;
+  if (!state.queue.length || state.index < 0) { state.trayBusy = false; setStatus('NO DISC'); return; }
+  // Reading: the disc spins up, slowly, before anything plays.
+  setStatus('READING…');
+  disc.reading = true; disc.spinning = true;
+  noise.spinUp(READING_MS);
+  await new Promise((r) => setTimeout(r, READING_MS));
+  disc.reading = false;
+  state.trayBusy = false;
+  if (!engine.deck) { if (play) load(state.queue[state.index]); else disc.spinning = false; return; }
+  if (play || resume.playing) { await engine.play(); setPlaying(true); } else setPlaying(false);
+}
+function toggleTray() { if (disc.trayOpen) closeTray(); else openTray(); }
+/**
+ * A whole new disc: the tray comes out, `paths` go in as the queue (its first track loaded, so its cover is on the
+ * disc in the tray), and the tray closes, reads and plays from the first track. For the shelf and real audio CDs.
+ */
+async function insertDisc(paths, { status } = {}) {
+  if (!paths.length || state.miniMode) return;
+  if (!disc.trayOpen) await openTray();
+  if (state.trayBusy) return;
+  putDiscOnTray(paths);
+  if (status) setStatus(status);
+  await new Promise((r) => setTimeout(r, 450));
+  await closeTray();
+}
+// Music dropped (or picked) while the tray is out: that's the new disc — it replaces the queue, loaded but not playing.
+function putDiscOnTray(paths) {
+  state.queue = paths.slice();
+  state.index = 0;
+  shuffleCache.index = NaN;
+  disc.discPresent = true;
+  renderQueue(); saveQueueSoon();
+  trayResume = { playing: false };
+  load(paths[0], { autoPlay: false }).then(() => { if (disc.trayOpen && !state.trayBusy) setStatus('DISC ON THE TRAY · PRESS E OR PLAY TO CLOSE'); });
+}
+
+// Disc noise's skip: shaking the window jolts the pickup, and the song stutters.
+function watchForShake(now) {
+  if (!state.discNoise || !engine.playing) return;
+  if (shake.feed(window.screenX, window.screenY, now)) { noise.skip(); disc.startWobble(); }
 }
 
 function recordHistory(p) {
@@ -512,6 +593,7 @@ function findDiscordCover(d) {
     .catch(() => {});
 }
 function setDiscord(on) { state.discord = on; pushDiscord(); saveSettingsSoon(); }
+function setDiscNoise(on) { state.discNoise = on; noise.setEnabled(on); noise.setPlaying(engine.playing); saveSettingsSoon(); }
 
 function setupMediaSession() {
   if (!('mediaSession' in navigator)) return;
@@ -779,7 +861,7 @@ function appendAndPlay(p) {
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord };
+  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -847,6 +929,7 @@ function buildStaticUi() {
   $('clear-queue-button').addEventListener('click', () => (undoClear ? undoClearQueue() : clearQueue()));
   $('lyrics-button').addEventListener('click', () => panels.showLyrics(app));
   $('karaoke-button').addEventListener('click', toggleKaraoke);
+  $('tray-button').addEventListener('click', toggleTray);
   $('history-button').addEventListener('click', () => panels.showHistory(app));
   $('settings-button').addEventListener('click', () => panels.showSettings(app));
   $('cd-view-button').addEventListener('click', toggleCdView);
@@ -893,7 +976,7 @@ function onKeyDown(e) {
   if (anyOverlayOpen()) return;
   const actions = {
     ArrowLeft: () => seek(-SKIP_SECONDS), ArrowRight: () => seek(SKIP_SECONDS), ArrowUp: () => adjustVolume(5), ArrowDown: () => adjustVolume(-5),
-    u: toggleMute, ' ': toggle, k: toggle, j: previousTrack, l: nextTrack, f: toggleFullscreen, c: toggleCdView, v: toggleVisualizerMode, y: toggleKaraoke,
+    u: toggleMute, ' ': toggle, k: toggle, j: previousTrack, l: nextTrack, f: toggleFullscreen, c: toggleCdView, v: toggleVisualizerMode, y: toggleKaraoke, e: toggleTray,
   };
   if (actions[key]) { e.preventDefault(); if (!e.repeat || key.startsWith('Arrow')) actions[key](); }
 }
@@ -967,6 +1050,7 @@ function frame(now) {
   visualizer.draw(now);
   if (state.visualizerMode) bigVisualizer.draw(now);
   if (isKaraokeOpen()) updateKaraoke(engine.position);
+  watchForShake(now);
   stepDiscMorph(now);
   const discBounds = disc.frame(now, dt);
   const exclusions = [];
@@ -995,7 +1079,8 @@ export const app = {
   detailsFor: (p) => detailsCache.get(p),
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) { state.index = i; load(state.queue[i]); } },
   coverSource: () => { const s = $('track-source').textContent; return /COVER ART|ALBUM ART/.test(s) ? s.split(' · ')[0].replace(/ COVER ART$/, '').replace('EMBEDDED ALBUM ART', 'In the file') : null; },
-  switchTheme, setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord,
+  switchTheme, setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise,
+  insertDisc,
   saveEq: () => cdp.saveEqPresets(state.customPresets),
   lyricsLines: () => (state.lyrics ? parseLrc(state.lyrics) : []),
   openKaraoke: () => toggleKaraoke(),
@@ -1046,6 +1131,7 @@ async function start() {
   setWaveform(s.waveform);
   state.ambient = s.ambient;
   state.discord = s.discord !== false;
+  setDiscNoise(!!s.discNoise);
   setEq(s.eq);
   const themeIndex = Math.max(0, THEMES.findIndex((t) => t.name === s.theme));
   state.themeIndex = -1;

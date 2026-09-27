@@ -20,7 +20,15 @@ test('reads a settings.txt written by the Java version', () => {
   assert.deepStrictEqual(s, {
     volume: 70, crossfade: 5, mono: true, animations: false, theme: 'OCEAN', eq: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
     waveform: false, miniMode: false, bounds: { x: 10, y: 20, width: 1200, height: 900 }, ambient: false, discord: true,
+    discNoise: false,
   });
+});
+
+test('disc noise is off unless turned on, and survives a save', () => {
+  fs.writeFileSync(path.join(home, 'settings.txt'), '70\n5\n1\n0\nOCEAN\n0,0,0,0,0,0,0,0,0,0\n0\n0\n\n0\n1\n');
+  assert.strictEqual(store.readSettings().discNoise, false);
+  store.writeSettings({ ...store.readSettings(), discNoise: true });
+  assert.strictEqual(store.readSettings().discNoise, true);
 });
 
 test('old, shorter settings files keep defaults for the newer lines', () => {
