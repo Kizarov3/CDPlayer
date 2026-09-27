@@ -1,9 +1,10 @@
 'use strict';
 /**
  * Apple-style TTML lyrics ("<p begin=… end=…><span begin=…>word</span> …</p>", as Unison serves them) turned into
- * LRC for the lyrics view — enhanced LRC when the words are timed ("[00:08.84]<00:08.84>Now <00:09.15>he's"), which
- * the karaoke view fills in word by word. Background vocals (ttm:role="x-bg"), which Apple nests inside the line
- * they are sung under, are left out.
+ * LRC for the lyrics view — extended enhanced LRC when the words are timed ("[00:08.84]<00:08.84>Now <00:09.15>he's"),
+ * which the karaoke view fills in word by word: a stamp before each word, one after a word followed by a pause and at
+ * the line's end, "v1:" singer prefixes in a duet, and background vocals (ttm:role="x-bg"), which Apple nests inside
+ * the line they are sung under, on a "[bg: …]" line after it.
  */
 
 // A TTML time: [[hh:]mm:]ss[.fff], or an offset like "12.5s" / "500ms". → seconds, or null when it is neither.
@@ -32,52 +33,97 @@ const attr = (attrs, name) => {
 };
 
 /**
- * The lines of a TTML document: [{ time (seconds), text }], in document order. `text` carries a "\u0000<s>\u0000"
- * marker before each timed word (s = its time), turned into a stamp or dropped by the caller.
+ * The lines of a TTML document: [{ time, end, agent, text, words: [{ time, end, text }], bg: [{ time, end, text }] }]
+ * in document order. `text` is the whole line (background vocals left out); a word's text keeps the space after it.
+ * Syllables in spans with no space between them are words of their own (joined back up when shown). Untimed
+ * documents have `words` empty.
  */
 function ttmlLines(xml) {
   const lines = [];
-  let line = null, skipDepth = 0, wordTime = null;
+  let line = null, target = null, word = null, bgDepth = 0;
+  const spans = []; // per open span: { word } or { bg }
   const TOKEN = /<(\/?)([\w:.-]+)((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>|<!--[\s\S]*?-->|<\?[\s\S]*?\?>|([^<]+)/g;
   for (let m = TOKEN.exec(String(xml || '')); m; m = TOKEN.exec(xml)) {
-    const [, closing, tag, attrs, selfClosing, text] = m;
-    if (text !== undefined) {
-      if (!line || skipDepth) continue;
-      if (wordTime !== null && text.trim()) { line.text += `\u0000${wordTime}\u0000`; wordTime = null; }
-      line.text += decodeEntities(text);
+    const [, closing, tag, attrs, selfClosing, raw] = m;
+    if (raw !== undefined) {
+      if (!line) continue;
+      const text = decodeEntities(raw);
+      if (!bgDepth) line.text += text;
+      if (word) word.text += text;
+      else if (target.length && text) target[target.length - 1].text += text.replace(/\s+/g, ' ');
       continue;
     }
     if (!tag) continue; // comment or processing instruction
     const name = tag.replace(/^.*:/, '');
     if (name === 'p') {
       if (closing) {
-        if (line) lines.push({ time: line.time, text: line.text.replace(/\s+/g, ' ').trim() });
-        line = null; skipDepth = 0; wordTime = null;
-      } else if (!selfClosing) line = { time: parseTime(attr(attrs, 'begin')), text: '' };
+        if (line) {
+          line.text = line.text.replace(/\s+/g, ' ').trim();
+          for (const list of [line.words, line.bg]) if (list.length) list[list.length - 1].text = list[list.length - 1].text.trimEnd();
+          if (line.text) lines.push(line);
+        }
+        line = null; target = null; word = null; bgDepth = 0; spans.length = 0;
+      } else if (!selfClosing) {
+        line = { time: parseTime(attr(attrs, 'begin')), end: parseTime(attr(attrs, 'end')), agent: attr(attrs, 'agent') || null, text: '', words: [], bg: [] };
+        target = line.words;
+      }
     } else if (line && name === 'span' && !selfClosing) {
-      if (closing) { if (skipDepth) skipDepth--; wordTime = null; }
-      else if (skipDepth || attr(attrs, 'role') === 'x-bg') skipDepth++;
-      else if (attr(attrs, 'begin')) wordTime = parseTime(attr(attrs, 'begin'));
-    } else if (line && name === 'br' && !skipDepth) line.text += ' ';
+      if (closing) {
+        const open = spans.pop();
+        if (open && open.word) word = null;
+        if (open && open.bg && !--bgDepth) target = line.words;
+      } else if (attr(attrs, 'role') === 'x-bg') {
+        bgDepth++; target = line.bg; spans.push({ bg: true });
+      } else {
+        const begin = parseTime(attr(attrs, 'begin'));
+        if (begin === null) { spans.push({}); continue; }
+        word = { time: begin, end: parseTime(attr(attrs, 'end')), text: '' };
+        target.push(word);
+        spans.push({ word: true });
+      }
+    } else if (line && name === 'br' && !bgDepth) line.text += ' ';
   }
-  return lines.filter((l) => l.text.replace(/\u0000[^\u0000]*\u0000/g, '').trim());
+  return lines;
 }
 
 const stamp = (seconds, [open, close] = '[]') => {
   const cs = Math.round(Math.max(0, seconds) * 100);
   return `${open}${String(Math.floor(cs / 6000)).padStart(2, '0')}:${String(Math.floor(cs / 100) % 60).padStart(2, '0')}.${String(cs % 100).padStart(2, '0')}${close}`;
 };
+const GAP = 0.02; // a word that ends more than this before the next one starts leaves a pause
+
+// Words as enhanced LRC: "<begin>word " — plus "<end>" after a word a pause follows, and after the last one.
+function wordsLrc(words, lineEnd) {
+  let out = '';
+  words.forEach((w, i) => {
+    out += stamp(w.time, '<>') + w.text;
+    const next = words[i + 1];
+    if (next) {
+      if (w.end !== null && next.time - w.end > GAP) out = `${out.replace(/\s+$/, '')} ${stamp(w.end, '<>')} `;
+    } else {
+      const end = lineEnd !== null && lineEnd !== undefined ? lineEnd : w.end;
+      if (end !== null) out += stamp(end, '<>');
+    }
+  });
+  return out;
+}
 
 /**
- * LRC for a TTML document: enhanced (a stamp before every word) where the words are timed and `words` is on,
- * line-synced otherwise; plain text when it has no timings at all; '' when it has no lyrics.
+ * LRC for a TTML document: extended enhanced LRC where the words are timed and `words` is on (see the top of this
+ * file); line-synced when `words` is off or nothing is word-timed; plain text when it has no timings at all; '' when
+ * it has no lyrics.
  */
 function ttmlToLrc(xml, { words = true } = {}) {
   const lines = ttmlLines(xml);
   const timed = lines.some((l) => l.time !== null);
+  const wordTimed = words && timed && lines.some((l) => l.words.length);
+  const singers = new Set(lines.map((l) => l.agent).filter(Boolean));
   return lines.map((l) => {
-    const text = l.text.replace(/\u0000([^\u0000]*)\u0000/g, (_, t) => (words && timed ? stamp(parseFloat(t), '<>') : ''));
-    return timed ? `${stamp(l.time || 0)}${text}` : text;
+    if (!timed) return l.text;
+    if (!wordTimed || !l.words.length) return `${stamp(l.time || 0)}${l.text}`;
+    const who = singers.size > 1 && l.agent ? `${l.agent}:` : '';
+    const main = `${stamp(l.time || 0)}${who}${wordsLrc(l.words, l.end)}`;
+    return l.bg.length ? `${main}\n[bg: ${wordsLrc(l.bg, null)}]` : main;
   }).join('\n');
 }
 

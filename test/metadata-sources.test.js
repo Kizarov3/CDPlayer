@@ -18,10 +18,29 @@ const TTML = `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org
 <p begin="1:02.5" end="1:05"><span begin="1:02.5">Rock</span> <span begin="1:03">&amp; roll</span><span ttm:role="x-bg"><span begin="1:04">(ooh)</span></span></p>
 </div></body></tt>`;
 
-test('TTML becomes enhanced LRC: a stamp per word, syllables joined, background vocals and head left out', () => {
-  assert.strictEqual(ttmlToLrc(TTML), "[00:08.84]<00:08.84>Now <00:09.15>he's <00:10.00>es<00:10.20>press<00:10.40>o\n[01:02.50]<01:02.50>Rock <01:03.00>& roll");
+test('TTML becomes enhanced LRC: a stamp per word, syllables joined, the line end kept, the head left out', () => {
+  assert.strictEqual(ttmlToLrc(TTML),
+    "[00:08.84]<00:08.84>Now <00:09.15>he's <00:10.00>es<00:10.20>press<00:10.40>o<00:12.34>\n" +
+    '[01:02.50]<01:02.50>Rock <01:03.00>& roll<01:05.00>\n[bg: <01:04.00>(ooh)]');
   assert.strictEqual(ttmlToLrc(TTML, { words: false }), "[00:08.84]Now he's espresso\n[01:02.50]Rock & roll");
   assert.strictEqual(ttmlDuration(TTML), 185.5);
+});
+
+// Unison's real shape (Espresso, In the End): every word and line has an end; singers v1/v2; backing vocals.
+const TIMED = `<tt xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><body dur="3:00"><div>
+<p begin="8.835" end="12.339" ttm:agent="v1"><span begin="8.835" end="9.155">Now</span> <span begin="9.155" end="9.587">he's</span> <span begin="10.056" end="10.328">thinkin'</span></p>
+<p begin="16.712" end="19.112" ttm:agent="v2"><span begin="16.712" end="17.016">It</span> <span begin="17.016" end="17.600">starts</span><span ttm:role="x-bg"><span begin="18.0" end="18.3">(oh</span> <span begin="18.3" end="18.9">no)</span></span></p>
+</div></body></tt>`;
+
+test('TTML with word ends: gaps between words and the line end are stamped, singers prefixed, backing vocals on a [bg: line', () => {
+  assert.strictEqual(ttmlToLrc(TIMED),
+    "[00:08.84]v1:<00:08.84>Now <00:09.15>he's <00:09.59> <00:10.06>thinkin'<00:12.34>\n" + // 9.155 rounds down in floating point, as in the test above
+    '[00:16.71]v2:<00:16.71>It <00:17.02>starts<00:19.11>\n[bg: <00:18.00>(oh <00:18.30>no)<00:18.90>]');
+});
+
+test('one singer: no singer prefixes', () => {
+  const solo = TIMED.replace(/ttm:agent="v2"/, 'ttm:agent="v1"');
+  assert.ok(!/v1:|v2:/.test(ttmlToLrc(solo)));
 });
 
 test('TTML time expressions', () => {
