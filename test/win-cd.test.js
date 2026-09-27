@@ -67,7 +67,7 @@ test('the WAV header, and which sectors cover a byte range', () => {
   assert.deepStrictEqual(winCd.sectorSpan(44 + 2352 + 10, 44 + 2352 * 3), { first: 1, count: 3, skip: 10 });
 });
 test('the helper: drives, table of contents, sectors and eject, over the pipe', async () => {
-  process.env.CDPLAYER_WIN_CD_HELPER = `${process.execPath} ${path.join(__dirname, 'fixtures', 'fake-cd-helper.js')}`;
+  process.env.CDPLAYER_WIN_CD_HELPER = JSON.stringify([process.execPath, path.join(__dirname, 'fixtures', 'fake-cd-helper.js')]);
   assert.deepStrictEqual(await winCd.drives(), ['F:']);
   const toc = await winCd.readToc('F:');
   assert.strictEqual(discId(toc), THREE_DOLLAR_BILL.id);

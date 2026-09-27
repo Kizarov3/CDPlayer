@@ -99,7 +99,8 @@ test('a late answer for a disc that has since been swapped names nothing', async
 test('Windows: the disc in a drive, read through the CD helper, with its cdda:// tracks — and forgotten when it\'s taken out', async () => {
   const realPlatform = process.platform;
   Object.defineProperty(process, 'platform', { value: 'win32' });
-  process.env.CDPLAYER_WIN_CD_HELPER = `${process.execPath} ${path.join(__dirname, 'fixtures', 'fake-cd-helper.js')}`;
+  const cdRoot = process.env.CDPLAYER_CD_ROOT; delete process.env.CDPLAYER_CD_ROOT; // (the file's stand-in CD folder would win)
+  process.env.CDPLAYER_WIN_CD_HELPER = JSON.stringify([process.execPath, path.join(__dirname, 'fixtures', 'fake-cd-helper.js')]);
   try {
     const winCd = require('../src/main/win-cd');
     const { findDiscs } = require('../src/main/audio-cd');
@@ -115,6 +116,7 @@ test('Windows: the disc in a drive, read through the CD helper, with its cdda://
     assert.strictEqual(winCd.trackInfo('cdda://F/3'), null);
   } finally {
     Object.defineProperty(process, 'platform', { value: realPlatform });
+    process.env.CDPLAYER_CD_ROOT = cdRoot;
     delete process.env.CDPLAYER_WIN_CD_HELPER;
   }
 });
@@ -122,7 +124,8 @@ test('Windows: the disc in a drive, read through the CD helper, with its cdda://
 test('Windows: a check that fails (the helper busy or restarting) is not an ejected disc', async () => {
   const realPlatform = process.platform;
   Object.defineProperty(process, 'platform', { value: 'win32' });
-  process.env.CDPLAYER_WIN_CD_HELPER = `${process.execPath} ${path.join(__dirname, 'fixtures', 'fake-cd-helper.js')}`;
+  const cdRoot = process.env.CDPLAYER_CD_ROOT; delete process.env.CDPLAYER_CD_ROOT; // (the file's stand-in CD folder would win)
+  process.env.CDPLAYER_WIN_CD_HELPER = JSON.stringify([process.execPath, path.join(__dirname, 'fixtures', 'fake-cd-helper.js')]);
   const winCd = require('../src/main/win-cd');
   const { drives, readToc } = winCd;
   try {
@@ -139,6 +142,7 @@ test('Windows: a check that fails (the helper busy or restarting) is not an ejec
   } finally {
     winCd.drives = drives; winCd.readToc = readToc;
     Object.defineProperty(process, 'platform', { value: realPlatform });
+    process.env.CDPLAYER_CD_ROOT = cdRoot;
     delete process.env.CDPLAYER_WIN_CD_HELPER;
   }
 });

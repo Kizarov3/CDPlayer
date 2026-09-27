@@ -106,7 +106,9 @@ let helper = null, deaths = 0, nextId = 1;
 const pending = new Map();
 
 function helperCommand() {
-  if (process.env.CDPLAYER_WIN_CD_HELPER) { const [cmd, ...args] = process.env.CDPLAYER_WIN_CD_HELPER.split(' '); return { cmd, args }; }
+  // (tests: a stand-in helper, as a JSON array ["C:\\Program Files\\nodejs\\node.exe", "fake.js"] or words split on spaces)
+  const custom = process.env.CDPLAYER_WIN_CD_HELPER;
+  if (custom) { const [cmd, ...args] = custom.trim().startsWith('[') ? JSON.parse(custom) : custom.split(' '); return { cmd, args }; }
   const script = path.join(__dirname, 'win-cd', 'helper.ps1').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
   return { cmd: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script] };
 }

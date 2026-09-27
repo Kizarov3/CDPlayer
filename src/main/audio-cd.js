@@ -182,7 +182,7 @@ async function findWinDiscs() {
 const known = new Map(); // mount -> disc
 /** Every audio CD in a drive right now: [{ mount, name, tracks: [paths in order], toc, id }]. */
 async function findDiscs() {
-  if (process.platform === 'win32') return findWinDiscs();
+  if (process.platform === 'win32' && !process.env.CDPLAYER_CD_ROOT) return findWinDiscs(); // (a stand-in folder wins everywhere)
   const candidates = await candidateMounts();
   for (const mount of known.keys()) if (!candidates.some((c) => c.mount === mount)) known.delete(mount);
   const discs = [];
