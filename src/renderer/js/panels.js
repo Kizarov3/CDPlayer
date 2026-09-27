@@ -632,6 +632,13 @@ export function showOnboarding(app) {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.8.0', changes: [
+    '<b>Rip a CD</b>: RIP beside AUDIO CD saves the disc into your music folder as lossless FLAC, tagged with its names and cover &mdash; click RIPPING for the list of tracks',
+    '<b>Audio CDs on Windows</b> too: put a CD in and play it, named from MusicBrainz, straight from the drive',
+    '<b>Karaoke like Apple Music&rsquo;s</b> (Y): each word fills as it&rsquo;s sung and holds on long notes, with backing vocals, duets and a breathing pause &mdash; word-timed lyrics now also from NetEase Music, and a Lyrics Offset in Settings',
+    '<b>The album booklet</b>: on the shelf, click a case&rsquo;s cover and its booklet lifts out &mdash; the tracklist, every song&rsquo;s lyrics, the credits and the back cover',
+    '<b>Every album has its cover</b>: the shelf finds covers online for albums with none, and always the album&rsquo;s own',
+  ] },
   { version: '2.7.0', changes: [
     '<b>The CD shelf</b> (S): every album in your music folder, spine out on a shelf. Click one and the case slides out; PLAY puts it in the player',
     '<b>The disc tray</b> (E, or &#9167;): the disc comes out on its tray &mdash; drop music on it for a new disc, close it and the drive reads it and plays',

@@ -44,15 +44,18 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - The seek bar can show the track's real amplitude shape instead of a plain line
 - True fullscreen (`F`), and keyboard shortcuts for everything (see below)
 
-**Audio CDs** (macOS and Linux)
+**Audio CDs** (macOS, Windows and Linux)
 - Put a real CD in your drive and an **AUDIO CD** button appears — named, a moment later, from MusicBrainz (by the disc's ID, the way Apple Music and rippers name CDs), with the album's cover on the disc. Click it and the disc goes in through the tray and plays; every track has its real name
 - Opening the tray (`E`) on a CD that's playing ejects it from the drive; take a disc out and it leaves the queue
-- Works with the drive macOS mounts, and GNOME's on Linux. Windows only shows an audio CD as shortcuts with no audio behind them, so CDs can't be played there; and names stored on the disc itself (CD-TEXT) can't be read without talking to the drive directly — MusicBrainz knows far more discs anyway
+- Works with the drive macOS mounts, and GNOME's on Linux. On Windows, which only shows an audio CD as shortcuts with no audio behind them, CDPlayer reads the drive itself (a small helper in Windows PowerShell, nothing to install). Names stored on the disc itself (CD-TEXT) aren't read — MusicBrainz knows far more discs anyway
+- **RIP** saves the disc into your music folder as lossless **FLAC** — `Artist/Album (Year)/01 Title.flac`, tagged from MusicBrainz with the cover inside and a `cover.jpg` beside them — so it's on the shelf and plays without the disc. Every file is decoded back and compared with the disc's audio before it's kept. Keep listening while it rips; click **RIPPING** for the list of tracks (done, being read, still to come) and **CANCEL RIP**. The FLAC encoder is CDPlayer's own, in JavaScript: nothing to install
 
 **The CD shelf**
 - **SHELF** (`S`) stands every album in your music folder on a shelf, spine out — each spine in the colours of its cover, a double album in a double-width case — sorted by artist and year, with a box to find one
 - Albums come from the tags (album artist and album, so a set split into `CD1`/`CD2` folders is one album), or the folder for untagged music; covers from a `cover.jpg`/`folder.jpg` beside the files or the art inside them
 - Click a spine and the case slides out and turns to its front: the cover and tracklist, **PLAY** (the tray comes out, the disc goes in, the tray closes and it plays — or click a track to start there) and **ADD TO QUEUE**
+- Click the case's cover and the album's **booklet** lifts out: its whole tracklist, every song's lyrics (found online as you read), the credits and the back cover
+- An album with no art of its own (a Music.app library keeps its artwork to itself) gets its cover found online; album names that differ only in punctuation are one album
 - What's on the shelf is remembered, so only new or changed files are read the next time
 
 **Queue**
@@ -77,8 +80,8 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - Artist, title and album from the file's tags, with the filename as a fallback
 - The audio quality under the title: `FLAC · 24-BIT · 96 KHZ` for lossless files, `MP3 · 320 KBPS` for compressed ones
 - Embedded album art, with automatic iTunes → Deezer → Spotify → [MusicBrainz](https://musicbrainz.org) / [Cover Art Archive](https://coverartarchive.org) cover lookup when a file has none
-- **Lyrics** — embedded lyrics, or an automatic [lrclib.net](https://lrclib.net) lookup, then [Unison](https://unison.boidu.dev) (the hand-timed lyrics from Better Lyrics). Timed (LRC) lyrics highlight and auto-scroll karaoke-style, and clicking a line jumps playback to it
-- **Karaoke Mode** (`Y`) — the lyrics fill the window, the line being sung big in the middle and filling in word by word as it's sung (per word where the lyrics are word-timed, as Unison's are; a sweep across the line otherwise)
+- **Lyrics** — embedded lyrics, or found online: word-timed lyrics first, from [Unison](https://unison.boidu.dev) (hand-timed, from Better Lyrics) or NetEase Music, then [lrclib.net](https://lrclib.net). Word-timed lyrics found online are used over a file's own line-timed or untimed ones. Timed lyrics highlight and auto-scroll, and clicking a line jumps playback to it
+- **Karaoke Mode** (`Y`) — the lyrics fill the window like Apple Music's: each word fills as it's sung, holding on long notes (which glow) and pausing in the gaps, backing vocals under their line, a duet's singers left and right, and three dots breathing through the breaks. It follows what you hear, Bluetooth delay included, and **Lyrics Offset** in Settings moves it for a song timed a little off. Lyrics timed only by line are shared out by syllables
 - **Tags** — see what a song's file says and fix it: MusicBrainz fills in the album, album artist, year, track and disc numbers, genre and label (the right recording, as long as the file, on its original album — not a live take or a compilation), with its cover from the Cover Art Archive and the lyrics found online. Tick what to keep, or type your own, and **SAVE TO FILE**. MP3, M4A, FLAC, OGG/Opus, WAV and AIFF; the file is edited as a copy and checked before it replaces the original, and a song that's playing carries on without a hitch
 - **Save found art & lyrics** (Settings, off by default) — covers and lyrics found online are written into the song's file once it's finished playing, so they're there offline and in other players too
 - **History** — your last 50 tracks, one click away from playing again or adding back to the queue
@@ -99,7 +102,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 </p>
 
 **Settings**
-- Theme, Equalizer, Crossfade, Sleep Timer, Mono Audio, Waveform, Ambient Background, Animations, Mini Mode and Discord Status in one dialog
+- Theme, Equalizer, Crossfade, Sleep Timer, Lyrics Offset, Mono Audio, Waveform, Ambient Background, Animations, Mini Mode and Discord Status in one dialog
 - **Ambient Background** washes the window with a blurred glow of the current cover art
 - **Sleep Timer** pauses playback after up to 120 minutes, with a live countdown in the header (click it to cancel)
 - Everything — volume, crossfade, mono, EQ, theme, waveform, animations, window size and position — persists across launches
