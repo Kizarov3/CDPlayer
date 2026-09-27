@@ -190,6 +190,20 @@ test('NetEase word-timed lyrics when Unison has none, before lrclib', async () =
   assert.ok(!asked.some((u) => /lrclib/.test(u)), 'lrclib not asked');
 });
 
+test('Kugou word-timed lyrics when neither Unison nor NetEase has them, before lrclib — checked against its line timing', async () => {
+  const zlib = require('zlib');
+  const KEY = [64, 71, 97, 119, 94, 50, 116, 71, 81, 54, 49, 45, 206, 210, 110, 105];
+  const krc = '[63340,4560]<0,190,0>Denial <190,1000,0>seems <1190,430,0>it <1620,500,0>had <2120,560,0>to <2680,1880,0>come';
+  const content = Buffer.concat([Buffer.from('krc1'), Buffer.from(zlib.deflateSync(Buffer.from(krc)).map((b, i) => b ^ KEY[i % 16]))]).toString('base64');
+  answer([[/lyrics\.kugou\.com\/search/, { status: 200, candidates: [{ id: '9', accesskey: 'K9', song: 'Denial', singer: 'Sevendust', duration: 257305 }] }],
+    [/lyrics\.kugou\.com\/download/, { status: 200, content }],
+    [/lrclib\.net\/api\/get/, { trackName: 'Denial', artistName: 'Sevendust', duration: 257, syncedLyrics: '[01:02.71]Denial seems it had to come' }]]);
+  const found = await findLyrics({ artist: 'Sevendust', title: 'Denial', duration: 257.27 });
+  assert.strictEqual(found.source, 'Kugou');
+  // lrclib's line timing is what Kugou's is checked against: 0.63 s apart, so Kugou's is moved onto it.
+  assert.match(found.lyrics, /^\[01:02\.71\]<01:02\.71>Denial <01:02\.90>seems /);
+});
+
 test('Unison unreachable (a timeout, not a 404): asked once, then lrclib', async () => {
   asked = [];
   global.fetch = async (url) => {

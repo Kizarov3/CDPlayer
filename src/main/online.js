@@ -359,9 +359,9 @@ const wordTimed = (lrc) => /<\d{1,3}:\d{2}/.test(lrc);
 
 /**
  * Lyrics for { title, artist, album, duration, guessed }: word-timed first — Karaoke fills them word by word —
- * Unison's (timed by hand, with duets and backing vocals), then NetEase Music's. Otherwise lrclib.net's exact entry for the name as given (with album and
- * length), then a search for every guess from nameVariants(), then Unison's line-timed lyrics, then a free-text
- * lrclib search. Only entries that are this song count. → { lyrics, name, source } (name = the guess that found
+ * Unison's (timed by hand, with duets and backing vocals), then NetEase Music's, then Kugou's (checked against
+ * lrclib's line timing). Otherwise lrclib.net's exact entry for the name as given (with album and length), then a
+ * search for every guess from nameVariants(), then Unison's line-timed lyrics, then a free-text lrclib search. Only entries that are this song count. → { lyrics, name, source } (name = the guess that found
  * them) or null.
  */
 async function findLyrics({ title, artist, album, duration, guessed }) {
@@ -381,23 +381,32 @@ async function findLyrics({ title, artist, album, duration, guessed }) {
     if (lyrics === neteaseLyrics.UNREACHABLE) break;
     if (lyrics) return { lyrics, name: v, source: 'NetEase' };
   }
+  // lrclib's (timed by the line) — which Kugou's word timing is checked against (else Unison's), as Kugou's versions vary.
+  let lined = null;
   if (first.artist) {
     let url = `https://lrclib.net/api/get?track_name=${encodeURIComponent(first.title)}&artist_name=${encodeURIComponent(first.artist)}`;
     if (album) url += `&album_name=${encodeURIComponent(album)}`;
     if (duration > 0) url += `&duration=${Math.round(duration)}`;
     try {
       const lyrics = pickLrclib(await fetchJson(url), { ...first, duration });
-      if (lyrics) return { lyrics, name: first, source: 'lrclib.net' };
+      if (lyrics) lined = { lyrics, name: first, source: 'lrclib.net' };
     } catch { /* 404 = no exact match; search below */ }
   }
-  for (const v of variants) {
+  for (const v of lined ? [] : variants) {
     try {
       let url = `https://lrclib.net/api/search?track_name=${encodeURIComponent(v.title)}`;
       if (v.artist) url += `&artist_name=${encodeURIComponent(v.artist)}`;
       const lyrics = pickLrclib(await fetchJson(url), { ...v, duration });
-      if (lyrics) return { lyrics, name: v, source: 'lrclib.net' };
+      if (lyrics) { lined = { lyrics, name: v, source: 'lrclib.net' }; break; }
     } catch { /* try the next guess */ }
   }
+  const { kugouLyrics } = require('./kugou');
+  for (const v of variants.filter((x) => x.artist)) {
+    const lyrics = await kugouLyrics({ ...v, duration, reference: (lined || unisonLines || {}).lyrics });
+    if (lyrics === kugouLyrics.UNREACHABLE) break;
+    if (lyrics) return { lyrics, name: v, source: 'Kugou' };
+  }
+  if (lined) return lined;
   if (unisonLines) return unisonLines;
   try {
     const lyrics = pickLrclib(await fetchJson(`https://lrclib.net/api/search?q=${encodeURIComponent(searchText(first))}`), { ...first, duration });

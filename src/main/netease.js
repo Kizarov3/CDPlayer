@@ -32,20 +32,27 @@ function yrcToLrc(yrc, { title, artist } = {}) {
       .filter((w) => w.text !== '');
     const text = words.map((w) => w.text).join('').trim();
     if (!text || (!out.length && (credits.has(bare(text)) || /[:：]/.test(text)))) continue;
-    const lineEnd = (+head[1] + +head[2]) / 1000;
-    let lrc = stamp(+head[1] / 1000);
-    words.forEach((w, i) => {
-      const next = words[i + 1];
-      lrc += stamp(w.time, '<>') + (next ? w.text : w.text.trimEnd());
-      if (next) { if (next.time - w.end > GAP) lrc = `${lrc.replace(/\s+$/, '')} ${stamp(w.end, '<>')} `; }
-      else {
-        lrc += stamp(w.end, '<>');
-        if (lineEnd - w.end > GAP) lrc += ` ${stamp(lineEnd, '<>')}`;
-      }
-    });
-    out.push(lrc);
+    out.push(timedLine(+head[1] / 1000, (+head[1] + +head[2]) / 1000, words));
   }
   return out.join('\n');
+}
+
+/**
+ * One line of word-timed LRC from its start, its end and its words ([{ time, end, text }], seconds): a stamp before
+ * each word, one after a word a pause follows, and one at the line's end.
+ */
+function timedLine(start, lineEnd, words) {
+  let lrc = stamp(start);
+  words.forEach((w, i) => {
+    const next = words[i + 1];
+    lrc += stamp(w.time, '<>') + (next ? w.text : w.text.trimEnd());
+    if (next) { if (next.time - w.end > GAP) lrc = `${lrc.replace(/\s+$/, '')} ${stamp(w.end, '<>')} `; }
+    else {
+      lrc += stamp(w.end, '<>');
+      if (lineEnd - w.end > GAP) lrc += ` ${stamp(lineEnd, '<>')}`;
+    }
+  });
+  return lrc;
 }
 
 async function getJson(url) {
@@ -80,4 +87,4 @@ async function neteaseLyrics({ artist, title, duration }) {
 }
 neteaseLyrics.UNREACHABLE = UNREACHABLE;
 
-module.exports = { yrcToLrc, neteaseLyrics };
+module.exports = { yrcToLrc, neteaseLyrics, timedLine };
