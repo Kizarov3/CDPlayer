@@ -77,3 +77,9 @@ test('"Title - Artist" files: the guessed artist is also tried the other way rou
   // A real artist tag is never swapped.
   assert.strictEqual(nameVariants({ artist: 'Korn', title: 'Got The Life', guessed: false }).length, 1);
 });
+
+test('names that say nothing about the song are recognised, so nothing is looked up by them', () => {
+  const { isJunkTitle } = require('../src/main/track-names');
+  for (const t of ['Audio Track', 'Track 6', 'Audio Track 06', 'Untitled', '07', '', null]) assert.strictEqual(isJunkTitle(t), true, String(t));
+  for (const t of ['Trackmaster', 'Audio Track Blues', 'Solar Flare']) assert.strictEqual(isJunkTitle(t), false, t);
+});

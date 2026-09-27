@@ -8,7 +8,7 @@ const { nativeImage } = require('electron');
 const cue = require('./cue');
 const audioCd = require('./audio-cd');
 const { describeFormat } = require('./audio-format');
-const { cleanTrackName, tidyNames } = require('./track-names');
+const { cleanTrackName, tidyNames, isJunkTitle } = require('./track-names');
 
 // The small print for the booklet's credits page and back cover — only the tags a file actually has.
 function creditsFrom(c) {
@@ -124,7 +124,7 @@ async function getDetails(filePath, opts = {}) {
   const credits = { ...details.credits, albumArtist: cd.albumArtist || undefined, released: cd.year || undefined, track: { no: cd.track, of: cd.of }, disc: cd.disc ? { no: cd.disc, of: null } : undefined };
   for (const k of Object.keys(credits)) if (credits[k] == null) delete credits[k];
   return {
-    ...details, title: cd.title, artist: cd.artist, album: cd.album, nameGuessed: false, credits,
+    ...details, title: cd.title, artist: cd.artist, album: cd.album, nameGuessed: false, unnamed: false, credits,
     cover: opts.withCover === false ? undefined : cd.cover || details.cover,
   };
 }
@@ -162,6 +162,8 @@ async function readDetails(filePath, { withCover = true } = {}) {
       title: names.title || fallbackTitle(filePath),
       artist: names.artist,
       nameGuessed: names.guessed,
+      // Only a name like "6 Audio Track" (an unknown CD's track) or "Untitled": nothing to look the song up by.
+      unnamed: !names.artist && isJunkTitle(names.title || fallbackTitle(filePath)),
       credits,
       album: cleanTrackName(album && album.trim() ? album.trim() : null) || null,
       lyrics,

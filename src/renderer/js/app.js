@@ -331,7 +331,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   setTrackTitle(details.title, details.artist);
   fadeInNowPlaying();
   const ext = details.quality || details.ext || extension(path);
-  const canLookUp = !details.cover && !!details.title;
+  const canLookUp = !details.cover && !!details.title && !details.unnamed;
   await setCover(details.cover);
   disc.lookingUp = canLookUp;
   const fromCd = isAudioCdTrack(path);
@@ -340,7 +340,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   updateMediaSession();
   if (canLookUp) lookUpCover(details, path, token);
   state.lyrics = details.lyrics || null; state.lyricsSource = null;
-  if (!state.lyrics && details.title) lookUpLyrics(details, token);
+  if (!state.lyrics && details.title && !details.unnamed) lookUpLyrics(details, token);
   lyricsChanged();
   renderQueue();
   // Waveform last — it decodes the whole file, so it shouldn't hold up anything the user sees first. (Not for a cue

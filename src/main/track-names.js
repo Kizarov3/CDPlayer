@@ -130,4 +130,7 @@ function searchVariants(query) {
   return [...new Set([clean, bareTitle(clean)].filter(Boolean))];
 }
 
-module.exports = { cleanTrackName, cleanArtist, parseFilename, splitName, tidyNames, bareTitle, primaryArtist, nameVariants, searchVariants };
+/** A title that says nothing about the song ("Track 6", "Audio Track", "Untitled"). */
+const isJunkTitle = (title) => !title || JUNK_TITLE.test(String(title).trim());
+
+module.exports = { cleanTrackName, cleanArtist, parseFilename, splitName, tidyNames, bareTitle, primaryArtist, nameVariants, searchVariants, isJunkTitle };
