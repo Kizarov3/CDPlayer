@@ -6,6 +6,7 @@
 const path = require('path');
 const { nativeImage } = require('electron');
 const cue = require('./cue');
+const audioCd = require('./audio-cd');
 const { describeFormat } = require('./audio-format');
 const { cleanTrackName, tidyNames } = require('./track-names');
 
@@ -115,7 +116,19 @@ async function getCueTrackDetails(ref, withCover) {
   };
 }
 
-async function getDetails(filePath, { withCover = true } = {}) {
+/** A track's details: its tags, cover and lyrics — and for a track of an audio CD, the names the disc was looked up by. */
+async function getDetails(filePath, opts = {}) {
+  const details = await readDetails(filePath, opts);
+  const cd = audioCd.detailsFor(filePath);
+  if (!cd) return details;
+  const credits = { ...details.credits, albumArtist: cd.albumArtist || undefined, released: cd.year || undefined, track: { no: cd.track, of: cd.of }, disc: cd.disc ? { no: cd.disc, of: null } : undefined };
+  for (const k of Object.keys(credits)) if (credits[k] == null) delete credits[k];
+  return {
+    ...details, title: cd.title, artist: cd.artist, album: cd.album, nameGuessed: false, credits,
+    cover: opts.withCover === false ? undefined : cd.cover || details.cover,
+  };
+}
+async function readDetails(filePath, { withCover = true } = {}) {
   if (cue.parseRef(filePath)) return getCueTrackDetails(filePath, withCover);
   const cached = detailsCache.get(filePath);
   if (cached && (!withCover || coverCache.get(filePath) !== undefined)) {

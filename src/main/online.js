@@ -461,4 +461,4 @@ function spotifySignIn() {
   return signInInProgress;
 }
 
-module.exports = { findCover, findCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, resolveSpotifyLink, spotifySignIn, classifySpotifyLink, wordOverlapRatio };
+module.exports = { findCover, findCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, resolveSpotifyLink, spotifySignIn, classifySpotifyLink, wordOverlapRatio };

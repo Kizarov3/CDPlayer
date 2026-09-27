@@ -42,6 +42,7 @@ const state = {
   volume: 100, volumeBeforeMute: -1, crossfade: 0, mono: false, waveform: true, ambient: true, miniMode: false, discord: true, discNoise: false,
   trayBusy: false, // the tray is moving or the disc is being read: transport presses wait
   saveFound: false, // covers and lyrics found online are written into the song's file
+  audioCd: null,    // the audio CD in the drive: { mount, tracks, name, album, artist, year }
   themeIndex: 0, eq: new Array(10).fill(0), customPresets: [], history: [],
   loadedPath: null, details: null, detailsPath: null, lyrics: null, cover: null, loadToken: 0, crossfadeStarted: false,
   cdView: false, visualizerMode: false, fullscreen: false,
@@ -333,7 +334,9 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   const canLookUp = !details.cover && !!details.title;
   await setCover(details.cover);
   disc.lookingUp = canLookUp;
-  $('track-source').textContent = details.cover ? `EMBEDDED ALBUM ART · ${ext}` : canLookUp ? `LOCAL AUDIO FILE · ${ext}` : 'NO EMBEDDED COVER · ADD SONG METADATA';
+  const fromCd = isAudioCdTrack(path);
+  $('tags-button').hidden = fromCd; // a CD can't be written to
+  $('track-source').textContent = details.cover ? `${fromCd ? 'AUDIO CD · MUSICBRAINZ COVER ART' : 'EMBEDDED ALBUM ART'} · ${ext}` : canLookUp ? `${fromCd ? 'AUDIO CD' : 'LOCAL AUDIO FILE'} · ${ext}` : 'NO EMBEDDED COVER · ADD SONG METADATA';
   updateMediaSession();
   if (canLookUp) lookUpCover(details, path, token);
   state.lyrics = details.lyrics || null; state.lyricsSource = null;
@@ -531,8 +534,11 @@ function seekTo(seconds) {
 // same one from where it stopped.
 
 let trayResume = null; // { playing } of the disc that was in when the tray opened
-async function openTray() {
+async function openTray({ eject = false } = {}) {
   if (disc.trayOpen || state.trayBusy || state.miniMode) return;
+  // Opening the tray on the audio CD that's playing takes it out of the real drive too.
+  const cd = state.audioCd;
+  if (eject && cd && cd.tracks.includes(state.loadedPath)) { engine.stop(); cdp.ejectAudioCd(cd.mount); }
   if (state.cdView) await toggleCdView();
   state.trayBusy = true;
   trayResume = { playing: engine.playing };
@@ -564,7 +570,55 @@ async function closeTray({ play = true } = {}) {
   if (!engine.deck) { if (play) load(state.queue[state.index]); else disc.spinning = false; return; }
   if (play || resume.playing) { await engine.play(); setPlaying(true); } else setPlaying(false);
 }
-function toggleTray() { if (disc.trayOpen) closeTray(); else openTray(); }
+function toggleTray() { if (disc.trayOpen) closeTray(); else openTray({ eject: true }); }
+
+// ---- Audio CDs ---------------------------------------------------------------------------------------------------
+// The main process says when a CD is in the drive (and again once MusicBrainz has named it), and when it's gone.
+
+const isAudioCdTrack = (p) => !!(state.audioCd && state.audioCd.tracks.includes(p));
+function showAudioCd() {
+  const cd = state.audioCd, button = $('cd-button');
+  button.hidden = !cd;
+  if (cd) button.textContent = cd.album ? `▶ ${cd.album}`.toUpperCase() : 'AUDIO CD';
+}
+function onAudioCd(cd) {
+  const first = !state.audioCd || state.audioCd.mount !== cd.mount;
+  state.audioCd = cd;
+  showAudioCd();
+  if (first) setStatus(`AUDIO CD IN THE DRIVE${cd.album ? ` · ${cd.album.toUpperCase()}` : ''} · CLICK IT ABOVE TO PLAY`);
+  // Named now: the queue and the song on the disc in the player take the new names (and cover).
+  for (const p of cd.tracks) detailsCache.delete(p);
+  renderQueue();
+  if (cd.album && cd.tracks.includes(state.loadedPath)) refreshLoadedDetails();
+}
+function onAudioCdGone({ mount, tracks }) {
+  if (state.audioCd && state.audioCd.mount === mount) { state.audioCd = null; showAudioCd(); }
+  const gone = new Set(tracks);
+  if (!state.queue.some((p) => gone.has(p))) return;
+  const current = state.loadedPath;
+  state.queue = state.queue.filter((p) => !gone.has(p));
+  if (gone.has(current)) resetToIdle('DISC EJECTED');
+  else state.index = state.queue.indexOf(current);
+  renderQueue();
+  saveQueueSoon();
+}
+async function playAudioCd() {
+  const cd = state.audioCd;
+  if (!cd) return;
+  if (isShelfOpen()) closeShelf();
+  await insertDisc(cd.tracks, { status: `${(cd.album || 'AUDIO CD').toUpperCase()} ON THE TRAY` });
+}
+// The loaded song's details changed underneath (a CD just got its names): show them without touching playback.
+async function refreshLoadedDetails() {
+  const path = state.loadedPath, d = await cdp.details(path, { withCover: true }).catch(() => null);
+  if (!d || state.loadedPath !== path) return;
+  state.details = d; state.detailsPath = path;
+  detailsCache.set(path, { ...d, cover: undefined });
+  setTrackTitle(d.title, d.artist);
+  if (d.cover) { await setCover(d.cover); $('track-source').textContent = `AUDIO CD · MUSICBRAINZ COVER ART · ${d.quality || d.ext || extension(path)}`; }
+  updateMediaSession();
+  renderQueue();
+}
 function toggleShelf() {
   if (isShelfOpen()) { closeShelf(); return; }
   if (state.miniMode) return;
@@ -982,6 +1036,9 @@ function buildStaticUi() {
   $('lyrics-button').addEventListener('click', () => panels.showLyrics(app));
   $('karaoke-button').addEventListener('click', toggleKaraoke);
   $('tray-button').addEventListener('click', toggleTray);
+  $('cd-button').addEventListener('click', playAudioCd);
+  cdp.onAudioCd(onAudioCd);
+  cdp.onAudioCdGone(onAudioCdGone);
   $('tags-button').addEventListener('click', () => panels.showTags(app));
   $('shelf-button').addEventListener('click', toggleShelf);
   setupShelf(app);
@@ -1198,6 +1255,7 @@ async function start() {
   setInterval(playbackTick, 40);
   checkForUpdate();
   setInterval(checkForUpdate, UPDATE_RECHECK_MS);
+  cdp.listAudioCds().then((list) => { if (list.length) { state.audioCd = list[0]; showAudioCd(); } }).catch(() => {});
   if (s.miniMode) setMiniMode(true);
 
   if (saved.queue) {

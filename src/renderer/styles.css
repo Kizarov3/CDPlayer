@@ -61,7 +61,8 @@ button { font-family: inherit; outline: none; }
   display: flex; flex-direction: column;
 }
 #header { height: 56px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; }
-#header-west { min-width: 0; }
+#header-west { min-width: 0; display: flex; gap: 8px; align-items: center; }
+#cd-button { color: rgb(var(--accent2)); max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 #update-button { color: rgb(var(--accent)); }
 #status-pill {
   justify-self: center;

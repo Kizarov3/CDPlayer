@@ -44,6 +44,11 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - The seek bar can show the track's real amplitude shape instead of a plain line
 - True fullscreen (`F`), and keyboard shortcuts for everything (see below)
 
+**Audio CDs** (macOS and Linux)
+- Put a real CD in your drive and an **AUDIO CD** button appears — named, a moment later, from MusicBrainz (by the disc's ID, the way Apple Music and rippers name CDs), with the album's cover on the disc. Click it and the disc goes in through the tray and plays; every track has its real name
+- Opening the tray (`E`) on a CD that's playing ejects it from the drive; take a disc out and it leaves the queue
+- Works with the drive macOS mounts, and GNOME's on Linux. Windows only shows an audio CD as shortcuts with no audio behind them, so CDs can't be played there; and names stored on the disc itself (CD-TEXT) can't be read without talking to the drive directly — MusicBrainz knows far more discs anyway
+
 **The CD shelf**
 - **SHELF** (`S`) stands every album in your music folder on a shelf, spine out — each spine in the colours of its cover, a double album in a double-width case — sorted by artist and year, with a box to find one
 - Albums come from the tags (album artist and album, so a set split into `CD1`/`CD2` folders is one album), or the folder for untagged music; covers from a `cover.jpg`/`folder.jpg` beside the files or the art inside them

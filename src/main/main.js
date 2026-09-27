@@ -23,6 +23,8 @@ const discord = require('./discord');
 const cue = require('./cue');
 const shelf = require('./shelf');
 const tagWriter = require('./tag-writer');
+const audioCd = require('./audio-cd');
+const { execFile } = require('child_process');
 
 const APP_VERSION = app.getVersion();
 const APP_ID = 'com.kizarov3.cdplayer'; // = build.appId in package.json
@@ -369,6 +371,49 @@ handle('updates:check', () => (smokeDir ? null : updates.checkForUpdate(APP_VERS
 handle('updates:openReleases', () => shell.openExternal(updates.RELEASES_PAGE));
 handle('shell:openGitHub', (user) => { if (/^[A-Za-z0-9-]+$/.test(user)) shell.openExternal(`https://github.com/${user}`); });
 
+// ---- Audio CDs ---------------------------------------------------------------------------------------------------
+// Every few seconds: which audio CDs are in a drive. A new one is named from MusicBrainz (in the background) and the
+// window hears about it — first as it is, then again once it has names; a disc that's gone is reported gone.
+
+const discs = new Map(); // mount -> { disc, named }
+const discMessage = ({ disc, named }) => ({
+  mount: disc.mount, id: disc.id, tracks: disc.tracks, name: disc.name,
+  album: named ? named.album : null, artist: named ? named.artist : null, year: named ? named.year : null,
+});
+async function pollDiscs() {
+  const now = await audioCd.findDiscs().catch(() => []);
+  const seen = new Set(now.map((d) => d.mount));
+  for (const [mount, entry] of discs) {
+    if (seen.has(mount) && entry.disc.id === (now.find((d) => d.mount === mount) || {}).id) continue;
+    discs.delete(mount);
+    audioCd.forgetDisc(entry.disc);
+    if (win) win.webContents.send('audio-cd-gone', { mount, tracks: entry.disc.tracks });
+  }
+  for (const disc of now) {
+    if (discs.has(disc.mount)) continue;
+    const entry = { disc, named: null };
+    discs.set(disc.mount, entry);
+    if (win) win.webContents.send('audio-cd', discMessage(entry));
+    audioCd.nameDisc(disc, {
+      fetchMb: online.mbFetch,
+      fetchCover: (releaseId) => online.coverFromUrl(`https://coverartarchive.org/release/${releaseId}/front-500`),
+    }).then((named) => {
+      if (!named || discs.get(disc.mount) !== entry) return;
+      entry.named = named;
+      for (const p of disc.tracks) metadata.forget(p);
+      if (win) win.webContents.send('audio-cd', discMessage(entry));
+    }).catch(() => {});
+  }
+}
+handle('cd:list', () => [...discs.values()].map(discMessage));
+// The real drive's eject, for when the tray is opened on a CD that's in it.
+handle('cd:eject', (mount) => {
+  if (!discs.has(mount)) return false;
+  if (process.platform === 'darwin') execFile('diskutil', ['eject', mount], () => {});
+  else if (process.platform === 'linux') execFile('gio', ['mount', '-e', mount], () => {});
+  return true;
+});
+
 // ---- Windows Start menu shortcut ----------------------------------------------------------------------------------
 // Without a Start menu shortcut carrying the app's ID, Windows can't tell whose media session it is and shows
 // "Unknown app" in its media controls. The portable .exe installs nothing, so the app keeps this one shortcut up to
@@ -393,6 +438,10 @@ app.whenReady().then(() => {
   registerWindowsShortcut();
   buildMenu();
   createWindow();
+  if (!smokeDir && (process.platform === 'darwin' || process.platform === 'linux' || process.env.CDPLAYER_CD_ROOT)) {
+    setTimeout(pollDiscs, 1500);
+    setInterval(pollDiscs, 3000);
+  }
   app.on('activate', () => {
     if (!win) createWindow();
     else if (miniMode && miniWin) miniWin.show();
