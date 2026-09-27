@@ -78,6 +78,14 @@ test('the helper: drives, table of contents, sectors and eject, over the pipe', 
   await winCd.eject('F:');
 });
 
+test('a drive that hangs: the request times out, the helper is restarted, and CDs stay on', async () => {
+  winCd._setTimeout(300);
+  await assert.rejects(winCd._send('hang'), /didn't answer/);
+  assert.deepStrictEqual(await winCd.drives(), ['F:'], 'a fresh helper answers');
+  assert.strictEqual(winCd.available(), true, 'a hang is not one of the two deaths');
+  winCd._setTimeout(30000);
+});
+
 test('the helper dying: what was asked fails instead of hanging; twice, and CDs are off', async () => {
   await assert.rejects(winCd._send('die'), /stopped/);
   assert.deepStrictEqual(await winCd.drives(), ['F:'], 'started again after the first time');

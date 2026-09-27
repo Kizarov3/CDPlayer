@@ -101,7 +101,7 @@ function sectorSpan(start, end) {
 // ---- The helper ------------------------------------------------------------------------------------------------
 // Started the first time it's needed and kept running; requests are answered in turn. If it dies, what was asked
 // fails (never hangs), and it's started again next time — but after it has died twice, CDs are off until relaunch.
-const TIMEOUT_MS = 30000;
+let timeoutMs = 30000;
 let helper = null, deaths = 0, nextId = 1;
 const pending = new Map();
 
@@ -127,10 +127,8 @@ function start() {
   child.stdout.on('data', (c) => parser.push(c));
   const died = () => {
     if (helper !== child) return;
-    helper = null;
     if (++deaths >= 2) console.log('Audio CDs are off: the Windows CD helper stopped twice');
-    for (const job of pending.values()) { clearTimeout(job.timer); job.reject(new Error('the CD helper stopped')); }
-    pending.clear();
+    abandon(child, 'the CD helper stopped');
   };
   child.on('exit', died);
   child.on('error', died);
@@ -138,6 +136,13 @@ function start() {
   helper = child;
   hold(false);
   return child;
+}
+// Lets go of a helper: whatever was asked of it fails now, and the next request starts a fresh one.
+function abandon(child, reason) {
+  if (helper !== child) return;
+  helper = null;
+  for (const job of pending.values()) { clearTimeout(job.timer); job.reject(new Error(reason)); }
+  pending.clear();
 }
 // An idle helper doesn't keep Node running; one with a request in flight does (until it answers or times out).
 function hold(on) {
@@ -149,7 +154,14 @@ function send(op, fields = {}) {
   if (!child) return Promise.reject(new Error('no CD helper'));
   const id = nextId++;
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { if (pending.delete(id)) { if (!pending.size) hold(false); reject(new Error(`the CD helper didn't answer ${op}`)); } }, TIMEOUT_MS);
+    // No answer in time: the drive is stuck (a bad disc, a USB hiccup). The helper is stopped — everything asked of it
+    // fails now rather than waiting behind it — and a fresh one starts with the next request. (Not a death: CDs stay on.)
+    const timer = setTimeout(() => {
+      if (!pending.delete(id)) return;
+      reject(new Error(`the CD helper didn't answer ${op}`));
+      abandon(child, `the CD helper didn't answer ${op}`);
+      child.kill();
+    }, timeoutMs);
     pending.set(id, { resolve, reject, timer });
     hold(true);
     child.stdin.write(`${JSON.stringify({ id, op, ...fields })}\n`);
@@ -157,6 +169,7 @@ function send(op, fields = {}) {
 }
 
 const available = () => deaths < 2;
+const setTimeoutMs = (ms) => { timeoutMs = ms; }; // (tests)
 // The helper's drive list, flat whatever shape PowerShell gave it (Windows PowerShell 5.1 wraps it: [["F:"]]).
 const driveList = (d) => [].concat(d == null ? [] : d).flat(Infinity).filter((x) => typeof x === 'string');
 /** The CD drives with a disc in them right now: ['F:'…]. */
@@ -166,4 +179,4 @@ async function readToc(drive) { return parseToc((await send('toc', { drive })).p
 async function readSectors(drive, lba, count) { return (await send('read', { drive, lba, count })).payload; }
 async function eject(drive) { await send('eject', { drive }); }
 
-module.exports = { SECTOR, HEADER, parseToc, FrameParser, trackPath, parseTrackPath, remember, keepOnly, trackInfo, wavHeader, sectorSpan, driveList, drives, readToc, readSectors, eject, available, _send: send };
+module.exports = { SECTOR, HEADER, parseToc, FrameParser, trackPath, parseTrackPath, remember, keepOnly, trackInfo, wavHeader, sectorSpan, driveList, drives, readToc, readSectors, eject, available, _send: send, _setTimeout: setTimeoutMs };

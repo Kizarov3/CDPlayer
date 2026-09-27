@@ -11,6 +11,7 @@ process.stdout.write('WARNING: a stray PowerShell line\n');
 readline.createInterface({ input: process.stdin }).on('line', (line) => {
   const req = JSON.parse(line);
   if (req.op === 'die') process.exit(1);
+  if (req.op === 'hang') return; // a drive that never answers
   if (req.op === 'drives') return send({ id: req.id, ok: true, drives: ['F:'] });
   if (req.op === 'toc') return req.drive === 'F:' ? send({ id: req.id, ok: true }, toc) : send({ id: req.id, ok: false, error: 'toc: error 21' });
   if (req.op === 'read') {

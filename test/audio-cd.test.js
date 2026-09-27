@@ -89,6 +89,13 @@ test('a disc MusicBrainz doesn\'t know keeps its tracks\' own names', async () =
   assert.strictEqual(await cd.nameDisc(disc, { fetchMb: async () => ({ releases: [] }), fetchCover: async () => null }), null);
   assert.strictEqual(cd.detailsFor('/v/1 Audio Track.aiff'), null);
 });
+test('a late answer for a disc that has since been swapped names nothing', async () => {
+  const disc = { id: 'abc', toc: { first: 1, last: 1, leadout: 300, offsets: [150] }, tracks: ['cdda://F/1'] };
+  const answer = { releases: [{ id: 'r1', title: 'Old Disc', 'artist-credit': [{ name: 'Someone' }], media: [{ position: 1, discs: [{ id: 'abc' }], tracks: [{ title: 'Old Song' }] }] }] };
+  assert.strictEqual(await cd.nameDisc(disc, { fetchMb: async () => answer, fetchCover: async () => null, isCurrent: () => false }), null);
+  assert.strictEqual(cd.detailsFor('cdda://F/1'), null);
+});
+
 test('Windows: the disc in a drive, read through the CD helper, with its cdda:// tracks — and forgotten when it\'s taken out', async () => {
   const realPlatform = process.platform;
   Object.defineProperty(process, 'platform', { value: 'win32' });
@@ -107,6 +114,30 @@ test('Windows: the disc in a drive, read through the CD helper, with its cdda://
     assert.deepStrictEqual(await findDiscs(), []);
     assert.strictEqual(winCd.trackInfo('cdda://F/3'), null);
   } finally {
+    Object.defineProperty(process, 'platform', { value: realPlatform });
+    delete process.env.CDPLAYER_WIN_CD_HELPER;
+  }
+});
+
+test('Windows: a check that fails (the helper busy or restarting) is not an ejected disc', async () => {
+  const realPlatform = process.platform;
+  Object.defineProperty(process, 'platform', { value: 'win32' });
+  process.env.CDPLAYER_WIN_CD_HELPER = `${process.execPath} ${path.join(__dirname, 'fixtures', 'fake-cd-helper.js')}`;
+  const winCd = require('../src/main/win-cd');
+  const { drives, readToc } = winCd;
+  try {
+    const { findDiscs } = require('../src/main/audio-cd');
+    winCd.drives = async () => ['F:']; winCd.readToc = readToc;
+    const [disc] = await findDiscs();
+    winCd.drives = async () => { throw new Error('the CD helper stopped'); };
+    assert.deepStrictEqual((await findDiscs()).map((d) => d.id), [disc.id], 'no answer: the disc stays');
+    winCd.drives = async () => ['F:']; winCd.readToc = async () => { throw new Error('toc: busy'); };
+    assert.deepStrictEqual((await findDiscs()).map((d) => d.id), [disc.id], 'its table of contents unreadable for a moment: it stays');
+    assert.ok(winCd.trackInfo('cdda://F/3'), 'and its tracks still play');
+    winCd.drives = async () => []; winCd.readToc = readToc;
+    assert.deepStrictEqual(await findDiscs(), [], 'a drive answered without it: gone');
+  } finally {
+    winCd.drives = drives; winCd.readToc = readToc;
     Object.defineProperty(process, 'platform', { value: realPlatform });
     delete process.env.CDPLAYER_WIN_CD_HELPER;
   }

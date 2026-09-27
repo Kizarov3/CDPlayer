@@ -153,20 +153,28 @@ async function readDisc({ kind, mount, name }) {
 }
 
 // Windows: the discs in the drives, read through the CD helper — their tracks are cdda://F/1… paths. A drive whose
-// disc is gone is forgotten, so its tracks stop playing.
+// disc is gone is forgotten, so its tracks stop playing. Only an answer that leaves a drive out means its disc is
+// gone: a check that fails (the helper busy with a slow read, or restarting) keeps the discs as they were.
+let winDiscs = []; // what the last check found
 async function findWinDiscs() {
-  let drives = [];
-  try { drives = await winCd.drives(); } catch { drives = []; }
+  let drives;
+  try { drives = await winCd.drives(); } catch { return winDiscs; }
   const discs = [], seen = new Set();
   for (const drive of drives) {
     let toc = null;
-    try { toc = await winCd.readToc(drive); } catch { toc = null; }
+    try { toc = await winCd.readToc(drive); } catch {
+      const was = winDiscs.find((d) => d.mount === drive); // unreadable for a moment: still the same disc
+      if (was) { discs.push(was); seen.add(drive); }
+      continue;
+    }
     if (!toc) continue;
     seen.add(drive);
     winCd.remember(drive, toc);
-    discs.push({ mount: drive, name: 'Audio CD', tracks: toc.tracks.map((n) => winCd.trackPath(drive, n)), toc, id: discId(toc) });
+    const id = discId(toc), was = winDiscs.find((d) => d.mount === drive && d.id === id);
+    discs.push(was || { mount: drive, name: 'Audio CD', tracks: toc.tracks.map((n) => winCd.trackPath(drive, n)), toc, id });
   }
   winCd.keepOnly(seen);
+  winDiscs = discs;
   return discs;
 }
 
@@ -209,7 +217,7 @@ const credit = (c) => (c || []).map((x) => `${x.name}${x.joinphrase || ''}`).joi
  * → { album, artist, year } once named, or null when MusicBrainz doesn't know the disc (the tracks keep their file
  * names, "1 Audio Track").
  */
-async function nameDisc(disc, { fetchMb, fetchCover }) {
+async function nameDisc(disc, { fetchMb, fetchCover, isCurrent = () => true }) {
   const answer = await fetchMb(`discid/${encodeURIComponent(disc.id)}?toc=${tocParam(disc.toc)}&inc=artist-credits+recordings&fmt=json`);
   const found = releaseFor(disc, answer);
   if (!found || !found.medium) return null;
@@ -218,6 +226,8 @@ async function nameDisc(disc, { fetchMb, fetchCover }) {
   const year = /\d{4}/.exec(release.date || '');
   const cover = await fetchCover(release.id).catch(() => null);
   const tracks = medium.tracks || [];
+  // (A disc swapped out while it was looked up names nothing: on Windows the next disc's tracks have the same paths.)
+  if (!isCurrent()) return null;
   disc.tracks.forEach((p, i) => {
     const t = tracks[i] || {};
     names.set(p, {

@@ -381,7 +381,13 @@ const discMessage = ({ disc, named }) => ({
   mount: disc.mount, id: disc.id, tracks: disc.tracks, name: disc.name,
   album: named ? named.album : null, artist: named ? named.artist : null, year: named ? named.year : null,
 });
+let polling = false;
 async function pollDiscs() {
+  if (polling) return; // the last check is still going (a slow drive): skip this one rather than queue behind it
+  polling = true;
+  try { await checkDiscs(); } finally { polling = false; }
+}
+async function checkDiscs() {
   const now = await audioCd.findDiscs().catch(() => []);
   const seen = new Set(now.map((d) => d.mount));
   for (const [mount, entry] of discs) {
@@ -396,6 +402,7 @@ async function pollDiscs() {
     discs.set(disc.mount, entry);
     if (win) win.webContents.send('audio-cd', discMessage(entry));
     audioCd.nameDisc(disc, {
+      isCurrent: () => discs.get(disc.mount) === entry,
       fetchMb: online.mbFetch,
       fetchCover: (releaseId) => online.coverFromUrl(`https://coverartarchive.org/release/${releaseId}/front-500`),
     }).then((named) => {
