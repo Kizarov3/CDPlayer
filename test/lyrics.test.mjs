@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { parseLrc, formatLyricsForDisplay, currentLineIndex, wordProgress, lineState } from '../src/renderer/js/lyrics.js';
+import { parseLrc, formatLyricsForDisplay, currentLineIndex, wordProgress, lineState, lineWords, syllables } from '../src/renderer/js/lyrics.js';
 
 test('LRC parsing: multiple stamps per line, headers skipped, sorted by time', () => {
   const lines = parseLrc('[ti:Song]\n[00:12.50]Second\n[00:01.00][01:00]Chorus\nuntimed');
@@ -39,9 +39,31 @@ test('word progress: sung words full, the current one partly, the rest empty', (
   assert.deepStrictEqual(wordProgress(line, 20, 11.5), [1, 0.5, 0]);
   // The last word lasts until the next line, but no longer than 1.2 seconds.
   assert.deepStrictEqual(wordProgress(line, 30, 12.6), [1, 1, 0.5]);
-  // A line without word stamps fills as one piece.
+  // Before a word starts it is empty again (seeking back un-fills it).
+  assert.deepStrictEqual(wordProgress(line, 20, 10.5), [0.5, 0, 0]);
+});
+
+test('a word with an end fills over its own length and holds through the pause after it', () => {
+  const [line] = parseLrc("[00:08.00]<00:08.00>he's <00:09.00> <00:10.00>thinkin'<00:14.00>");
+  assert.deepStrictEqual(wordProgress(line, 20, 8.5), [0.5, 0]);
+  assert.deepStrictEqual(wordProgress(line, 20, 9.5), [1, 0]); // the pause: nothing moves
+  assert.deepStrictEqual(wordProgress(line, 20, 12), [1, 0.5]); // a long held note fills slowly
+});
+
+test('syllables, roughly', () => {
+  assert.deepStrictEqual(['I', 'line', 'Whole', 'criticize', 'Rhythms', 'Группа', '夜空'].map(syllables), [1, 1, 1, 3, 1, 2, 2]);
+});
+
+test('line-only lyrics: the line is shared among its words by how long they take to sing', () => {
   const [plain] = parseLrc('[00:10.00]Whole line');
-  assert.deepStrictEqual(wordProgress(plain, 12, 11), [0.5]);
+  const words = lineWords(plain, 12);
+  assert.deepStrictEqual(words.map((w) => w.text), ['Whole ', 'line']);
+  assert.deepStrictEqual(words.map((w) => [w.time, w.end]), [[10, 10.75], [10.75, 11.5]]);
+  const round = (xs) => xs.map((x) => Math.round(x * 100) / 100);
+  assert.deepStrictEqual(round(wordProgress(plain, 12, 11)), [1, 0.33]);
+  const [long] = parseLrc('[00:00.00]To criticize is critical');
+  const w = lineWords(long, 30);
+  assert.ok(w[1].end - w[1].time > w[0].end - w[0].time, 'criticize takes longer than to');
 });
 
 test('word ends: a stamp with no word after it ends the word before; one at the end ends the line', () => {

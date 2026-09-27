@@ -106,17 +106,49 @@ export function currentLineIndex(lines, position) {
   return index;
 }
 
+const VOWELS = /[aeiouyäöüàáâãåæèéêëìíîïòóôõøùúûýÿаеёиоуыэюяіїє]+/gi;
+/** Roughly how many syllables a word has (vowel groups; a silent final e dropped; one per letter where there are no vowels, as in CJK). */
+export function syllables(word) {
+  const w = String(word).toLowerCase().replace(/[^\p{L}]/gu, '');
+  if (!w) return 1;
+  const groups = w.match(VOWELS);
+  if (!groups) return w.length;
+  let n = groups.length;
+  if (n > 1 && /[^aeiouy]e$/.test(w)) n--; // "whole", "line"
+  return Math.max(1, n);
+}
+
 /**
- * How far through each word of `line` the singer is at `position`: [0…1] per word (the line's words, or the whole
- * line as one word). A word lasts until the next one starts — or, for the last, until `end` (the next line), capped so
- * a long instrumental gap doesn't stretch it out.
+ * The words of `line`, timed: its own (enhanced LRC), or — for a line timed as a whole — its text split into words
+ * that share the line's time by how many syllables each has. The line lasts until its own end or `end` (the next
+ * line), and no longer than it would take to sing (0.4 s a syllable, at least 1.5 s).
+ */
+export function lineWords(line, end) {
+  if (line.words && line.words.length) return line.words;
+  const parts = String(line.text || '').match(/\S+\s*/g) || [line.text || ''];
+  const weights = parts.map(syllables);
+  const total = weights.reduce((s, n) => s + n, 0);
+  const until = line.end !== undefined ? Math.min(end, line.end) : end;
+  const length = Math.max(0, Math.min(until - line.time, Math.max(1.5, total * 0.4)));
+  let at = line.time;
+  return parts.map((text, i) => {
+    const time = at;
+    at += (length * weights[i]) / total;
+    return { time, end: at, text };
+  });
+}
+
+/**
+ * How far through each word of `line` the singer is at `position`: [0…1] per word of lineWords(line, end). A word
+ * with an end fills over its own length and stays full through a pause after it; one without lasts until the next
+ * starts — the last until `end` (the next line), at most 1.2 s.
  */
 export function wordProgress(line, end, position) {
-  const words = line.words && line.words.length ? line.words : [{ time: line.time, text: line.text }];
+  const words = lineWords(line, end);
   return words.map((w, i) => {
-    const next = i + 1 < words.length ? words[i + 1].time : Math.min(end, w.time + (line.words ? 1.2 : 4));
+    const stop = w.end !== undefined ? w.end : i + 1 < words.length ? words[i + 1].time : Math.min(end, w.time + 1.2);
     if (position <= w.time) return 0;
-    if (next <= w.time || position >= next) return 1;
-    return (position - w.time) / (next - w.time);
+    if (stop <= w.time || position >= stop) return 1;
+    return (position - w.time) / (stop - w.time);
   });
 }
