@@ -8,7 +8,7 @@ const path = require('path');
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cdplayer-test-'));
 process.env.CDPLAYER_HOME = home; // never touch a real ~/.cdplayer
-const { ripDisc, trackPcm, encodeChecked } = require('../src/main/rip');
+const { ripDisc, trackPcm, encodeChecked, existingTargets } = require('../src/main/rip');
 test.after(() => fs.rmSync(home, { recursive: true, force: true }));
 
 const tone = (seconds, f) => { const n = Math.round(44100 * seconds), p = new Int16Array(n * 2); for (let i = 0; i < n; i++) { p[i * 2] = Math.round(9000 * Math.sin(i * f)); p[i * 2 + 1] = Math.round(7000 * Math.sin(i * f * 1.5)); } return p; };
@@ -67,4 +67,28 @@ test('a write that fails stops with the reason; a disc that goes away says so', 
 test('trackPcm: a CD\'s AIFF track (macOS) as 16-bit stereo PCM', async () => {
   const pcm = await trackPcm(path.join(__dirname, 'fixtures', 'tone.aiff'));
   assert.ok(pcm instanceof Int16Array && pcm.length > 1000);
+});
+
+test('cancelled while a track is encoding: stops at once, and the next encode still works', async () => {
+  const ctl = new AbortController();
+  const long = tone(60, 0.02);
+  const pending = encodeChecked(long, ctl.signal);
+  setTimeout(() => ctl.abort(), 50);
+  const t = Date.now();
+  await assert.rejects(pending, (e) => e.reason === 'cancelled');
+  assert.ok(Date.now() - t < 2000, `stopped in ${Date.now() - t} ms`);
+  assert.strictEqual((await encodeChecked(tone(0.2, 0.05))).toString('ascii', 0, 4), 'fLaC');
+});
+
+test('"already there" means one of this rip\'s own files exists — not disc 1 of the same set', () => {
+  const music = fs.mkdtempSync(path.join(os.tmpdir(), 'rip-music-'));
+  const album = { album: 'Mellon Collie', albumArtist: 'The Smashing Pumpkins', year: '1995' };
+  const folder = path.join(music, 'The Smashing Pumpkins', 'Mellon Collie (1995)');
+  fs.mkdirSync(folder, { recursive: true });
+  fs.writeFileSync(path.join(folder, '1-01 Mellon Collie.flac'), '');
+  const disc2 = [{ number: 1, title: 'Where Boys Fear to Tread', disc: 2, discs: 2 }];
+  assert.deepStrictEqual(existingTargets(music, album, disc2), []);
+  const disc1 = [{ number: 1, title: 'Mellon Collie', disc: 1, discs: 2 }];
+  assert.deepStrictEqual(existingTargets(music, album, disc1), [path.join(folder, '1-01 Mellon Collie.flac')]);
+  fs.rmSync(music, { recursive: true, force: true });
 });

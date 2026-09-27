@@ -10,7 +10,7 @@ test('names safe on every system', () => {
   assert.strictEqual(safeName('CON'), '_CON');
   assert.strictEqual(safeName('com1'), '_com1');
   assert.strictEqual(safeName('tab\there'), 'tab_here');
-  assert.strictEqual(safeName('x'.repeat(300)).length, 120);
+  assert.strictEqual(safeName('x'.repeat(300)).length, 150); // 150 bytes
   assert.strictEqual(safeName('///'), '___');
   assert.strictEqual(safeName('   '), '_');
 });
@@ -27,4 +27,12 @@ test('track files: numbered, a double album\'s disc first, same titles kept apar
   assert.deepStrictEqual(trackFiles([{ number: 1, title: null }, { number: 2, title: '' }]), ['01 Track 1.flac', '02 Track 2.flac']);
   const same = trackFiles([{ number: 1, title: 'Interlude' }, { number: 1, title: 'Interlude' }]);
   assert.strictEqual(new Set(same).size, 2);
+});
+
+test('names are cut by bytes, not letters, and never mid-character (Cyrillic, Japanese, emoji)', () => {
+  for (const long of ['Ж'.repeat(200), '夜空に星が'.repeat(40), '🎸'.repeat(100)]) {
+    const s = safeName(long);
+    assert.ok(Buffer.byteLength(s) <= 150, `${Buffer.byteLength(s)} bytes`);
+    assert.ok(!/[\uD800-\uDFFF]/.test(s.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, '')), 'no half emoji');
+  }
 });

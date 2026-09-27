@@ -377,10 +377,11 @@ handle('shell:openGitHub', (user) => { if (/^[A-Za-z0-9-]+$/.test(user)) shell.o
 // Every few seconds: which audio CDs are in a drive. A new one is named from MusicBrainz (in the background) and the
 // window hears about it — first as it is, then again once it has names; a disc that's gone is reported gone.
 
-const discs = new Map(); // mount -> { disc, named }
-const discMessage = ({ disc, named }) => ({
+const discs = new Map(); // mount -> { disc, named, naming }
+const discMessage = ({ disc, named, naming }) => ({
   mount: disc.mount, id: disc.id, tracks: disc.tracks, name: disc.name,
   album: named ? named.album : null, artist: named ? named.artist : null, year: named ? named.year : null,
+  ready: !naming, // MusicBrainz has answered (or couldn't): ripping now uses the names
 });
 let polling = false;
 async function pollDiscs() {
@@ -400,7 +401,7 @@ async function checkDiscs() {
   }
   for (const disc of now) {
     if (discs.has(disc.mount)) continue;
-    const entry = { disc, named: null };
+    const entry = { disc, named: null, naming: true };
     discs.set(disc.mount, entry);
     if (win) win.webContents.send('audio-cd', discMessage(entry));
     audioCd.nameDisc(disc, {
@@ -411,8 +412,11 @@ async function checkDiscs() {
       if (!named || discs.get(disc.mount) !== entry) return;
       entry.named = named;
       for (const p of disc.tracks) metadata.forget(p);
+    }).catch(() => {}).finally(() => {
+      if (discs.get(disc.mount) !== entry) return;
+      entry.naming = false;
       if (win) win.webContents.send('audio-cd', discMessage(entry));
-    }).catch(() => {});
+    });
   }
 }
 handle('cd:list', () => [...discs.values()].map(discMessage));
@@ -432,6 +436,7 @@ let ripping = null; // { mount, controller }
 handle('rip:start', async (mount) => {
   const entry = discs.get(mount);
   if (!entry || ripping) return { ok: false, reason: 'busy' };
+  if (entry.naming) return { ok: false, reason: 'naming' }; // (the button waits for this too)
   let musicFolder = store.readLastPath();
   if (!musicFolder || !store.isDir(musicFolder)) {
     const r = await dialog.showOpenDialog(win, { title: 'Your Music Folder', defaultPath: dialogDefaultPath(), properties: ['openDirectory', 'createDirectory'] });
@@ -449,11 +454,12 @@ handle('rip:start', async (mount) => {
     const d = audioCd.detailsFor(p) || {};
     return { path: p, title: d.title || null, artist: d.artist || null, number: d.track || i + 1, disc: d.disc || 1, discs: d.discs || 1 };
   });
-  const folder = rip.albumFolder(musicFolder, album);
-  if (fs.existsSync(folder)) {
+  // Asked only when this rip's own files are there — disc 2 of a set shares disc 1's folder without replacing it.
+  const folder = rip.albumFolder(musicFolder, album), already = rip.existingTargets(musicFolder, album, tracks);
+  if (already.length) {
     const { response } = await dialog.showMessageBox(win, {
       type: 'question', buttons: ['Replace', 'Cancel'], defaultId: 1, cancelId: 1,
-      message: `${album.album || 'This disc'} is already in your music folder.`, detail: 'Replace its tracks with this rip?',
+      message: `${album.album || 'This disc'} is already in your music folder.`, detail: `Replace its ${already.length} ${already.length === 1 ? 'track' : 'tracks'} in ${folder} with this rip?`,
     });
     if (response !== 0) return { ok: false, reason: 'cancelled' };
   }

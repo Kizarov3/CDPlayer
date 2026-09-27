@@ -2,12 +2,17 @@
 /** Folder and file names for a ripped CD — safe on macOS, Linux and Windows alike. */
 const path = require('path');
 
-const MAX = 120;
+const MAX_BYTES = 150; // well under the 255-byte name limit of APFS and ext4, with room for temp-file names
 const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 
 /** Text as a single file or folder name: unsafe characters → "_", no trailing dots or spaces, never empty. */
 function safeName(text) {
-  let s = String(text == null ? '' : text).replace(/[/\\:*?"<>|\u0000-\u001f]/g, '_').slice(0, MAX).replace(/[. ]+$/, '');
+  let s = '';
+  for (const ch of String(text == null ? '' : text).replace(/[/\\:*?"<>|\u0000-\u001f]/g, '_')) { // whole characters, emoji included
+    if (Buffer.byteLength(s + ch) > MAX_BYTES) break;
+    s += ch;
+  }
+  s = s.replace(/[. ]+$/, '');
   if (!s.trim()) s = '_';
   if (RESERVED.test(s)) s = `_${s}`;
   return s;

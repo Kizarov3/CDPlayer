@@ -589,7 +589,7 @@ const isAudioCdTrack = (p) => !!(state.audioCd && state.audioCd.tracks.includes(
 function showAudioCd() {
   const cd = state.audioCd, button = $('cd-button');
   button.hidden = !cd;
-  if (!state.ripping) $('rip-button').hidden = !cd;
+  if (!state.ripping) $('rip-button').hidden = !cd || !cd.ready; // not before MusicBrainz has named it (or couldn't)
   if (cd) button.textContent = cd.album ? `▶ ${cd.album}`.toUpperCase() : 'AUDIO CD';
 }
 function onAudioCd(cd) {
@@ -620,7 +620,7 @@ async function playAudioCd() {
   await insertDisc(cd.tracks, { status: `${(cd.album || 'AUDIO CD').toUpperCase()} ON THE TRAY` });
 }
 // RIP: the disc saved into the music folder as FLAC. Clicking it again while it rips cancels.
-const RIP_STATUS = { cancelled: 'RIP CANCELLED', 'disc-removed': 'DISC REMOVED', busy: 'ALREADY RIPPING' };
+const RIP_STATUS = { cancelled: 'RIP CANCELLED', 'disc-removed': 'DISC REMOVED', busy: 'ALREADY RIPPING', naming: 'STILL NAMING THE DISC — A MOMENT' };
 async function ripAudioCd() {
   const cd = state.audioCd, button = $('rip-button');
   if (state.ripping) { cdp.cancelRip(); return; }
@@ -632,8 +632,8 @@ async function ripAudioCd() {
   state.ripping = false;
   button.classList.remove('ripping');
   button.textContent = 'RIP';
-  button.hidden = !state.audioCd;
-  if (result.ok) setStatus(`RIPPED TO ${(result.album || 'YOUR MUSIC FOLDER').toUpperCase()}`);
+  button.hidden = !state.audioCd || !state.audioCd.ready;
+  if (result.ok) setStatus(`RIPPED TO ${(result.album || 'YOUR MUSIC FOLDER').toUpperCase()} · ${result.folder}`);
   else setStatus(RIP_STATUS[result.reason] || `RIP FAILED · ${String(result.message || 'unknown').toUpperCase()}`);
 }
 // The loaded song's details changed underneath (a CD just got its names): show them without touching playback.
