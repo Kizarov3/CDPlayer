@@ -338,13 +338,14 @@ function pickLrclib(json, { artist, title, duration }) {
 
 // Unison (the lyrics Better Lyrics users time by hand, as TTML): only when its song is this one and, when both lengths
 // are known, its recording is within a few seconds of the file — so the lines land on the right beat. → LRC or null.
+const UNREACHABLE = Symbol('unreachable'); // Unison didn't answer at all (offline, a timeout): don't ask it again
 async function unisonLyrics({ artist, title, album, duration }) {
   if (!artist) return null;
   let url = `https://unison.boidu.dev/lyrics?song=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`;
   if (album) url += `&album=${encodeURIComponent(album)}`;
   if (duration > 0) url += `&duration=${Math.round(duration)}`;
   let json;
-  try { json = await fetchJson(url); } catch { return null; } // 404 = nobody has written them yet
+  try { json = await fetchJson(url); } catch (e) { return e && e.status ? null : UNREACHABLE; } // 404 = nobody has written them yet
   const data = json && json.data;
   if (!data || typeof data.lyrics !== 'string' || !sameSong({ title: data.song || '', artist: data.artist || '' }, artist, title)) return null;
   if (data.format === 'lrc') return data.lyrics.trim() || null;
@@ -370,6 +371,7 @@ async function findLyrics({ title, artist, album, duration, guessed }) {
   let unisonLines = null;
   for (const v of variants.filter((x) => x.artist)) {
     const lyrics = await unisonLyrics({ ...v, album: v.artist === artist ? album : null, duration });
+    if (lyrics === UNREACHABLE) break;
     if (lyrics && wordTimed(lyrics)) return { lyrics, name: v, source: 'Unison' };
     if (lyrics && !unisonLines) unisonLines = { lyrics, name: v, source: 'Unison' };
   }

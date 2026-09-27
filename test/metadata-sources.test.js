@@ -34,8 +34,13 @@ const TIMED = `<tt xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><body dur="3:0
 
 test('TTML with word ends: gaps between words and the line end are stamped, singers prefixed, backing vocals on a [bg: line', () => {
   assert.strictEqual(ttmlToLrc(TIMED),
-    "[00:08.84]v1:<00:08.84>Now <00:09.15>he's <00:09.59> <00:10.06>thinkin'<00:12.34>\n" + // 9.155 rounds down in floating point, as in the test above
-    '[00:16.71]v2:<00:16.71>It <00:17.02>starts<00:19.11>\n[bg: <00:18.00>(oh <00:18.30>no)<00:18.90>]');
+    "[00:08.84]v1:<00:08.84>Now <00:09.15>he's <00:09.59> <00:10.06>thinkin'<00:10.33> <00:12.34>\n" + // 9.155 rounds down in floating point, as in the test above
+    '[00:16.71]v2:<00:16.71>It <00:17.02>starts<00:17.60> <00:19.11>\n[bg: <00:18.00>(oh <00:18.30>no)<00:18.90>]'); // the last word ends when it does; the line when its backing vocals do
+});
+
+test('singers are numbered v1, v2… in the order they first sing, whatever the document calls them', () => {
+  const group = TIMED.replace('ttm:agent="v1"', 'ttm:agent="v1000"').replace('ttm:agent="v2"', 'ttm:agent="Chester"');
+  assert.deepStrictEqual(ttmlToLrc(group).split('\n').filter((l) => !l.startsWith('[bg:')).map((l) => l.slice(10, 13)), ['v1:', 'v2:']);
 });
 
 test('one singer: no singer prefixes', () => {
@@ -171,6 +176,19 @@ test('Unison with line timing only: lrclib still comes first, and Unison is not 
   answer([...NO_STORE_HITS, unison({ song: 'Espresso', artist: 'Sabrina Carpenter', format: 'lrc', lyrics: '[00:01.00]From Unison' })]);
   const fallback = await findLyrics({ artist: 'Sabrina Carpenter', title: 'Espresso', duration: 175 });
   assert.strictEqual(fallback.lyrics, '[00:01.00]From Unison');
+  assert.strictEqual(asked.filter((u) => /unison/.test(u)).length, 1);
+});
+
+test('Unison unreachable (a timeout, not a 404): asked once, then lrclib', async () => {
+  asked = [];
+  global.fetch = async (url) => {
+    asked.push(String(url));
+    if (/unison/.test(url)) throw new Error('The operation was aborted due to timeout');
+    if (/lrclib\.net\/api\/get/.test(url)) return { ok: true, status: 200, json: async () => ({ trackName: 'Karma Police', artistName: 'Radiohead', duration: 264, syncedLyrics: '[00:01.00]Karma police' }) };
+    return { ok: true, status: 200, json: async () => [] };
+  };
+  const found = await findLyrics({ artist: 'Radiohead', title: 'Karma Police (Remastered)', duration: 264 });
+  assert.strictEqual(found && found.source, 'lrclib.net');
   assert.strictEqual(asked.filter((u) => /unison/.test(u)).length, 1);
 });
 

@@ -265,7 +265,7 @@ function buildLyrics(app) {
     body = el('div', { class: 'scroll' }, el('div', { class: 'lyrics-plain' }, formatLyricsForDisplay(app.state.lyrics)));
     lyricsView = null;
   } else {
-    const nodes = lines.map((l) => el('div', { class: 'lyrics-line', onClick: () => app.seekTo(l.time) }, l.text || ' '));
+    const nodes = lines.map((l) => el('div', { class: 'lyrics-line', onClick: () => app.seekToLyric(l.time) }, l.text || ' '));
     body = el('div', { class: 'scroll' }, nodes);
     lyricsView = { lines, nodes, scroller: body, highlight: -1 };
   }

@@ -101,8 +101,10 @@ function wordsLrc(words, lineEnd) {
     if (next) {
       if (w.end !== null && next.time - w.end > GAP) out = `${out.replace(/\s+$/, '')} ${stamp(w.end, '<>')} `;
     } else {
-      const end = lineEnd !== null && lineEnd !== undefined ? lineEnd : w.end;
-      if (end !== null) out += stamp(end, '<>');
+      // The last word ends when it does; the line, when it (or its backing vocals) does, if that's later still.
+      if (w.end !== null) out += stamp(w.end, '<>');
+      const end = lineEnd !== null && lineEnd !== undefined ? lineEnd : null;
+      if (end !== null && (w.end === null || end - w.end > GAP)) out = w.end === null ? out + stamp(end, '<>') : `${out.replace(/\s+$/, '')} ${stamp(end, '<>')}`;
     }
   });
   return out;
@@ -117,11 +119,13 @@ function ttmlToLrc(xml, { words = true } = {}) {
   const lines = ttmlLines(xml);
   const timed = lines.some((l) => l.time !== null);
   const wordTimed = words && timed && lines.some((l) => l.words.length);
-  const singers = new Set(lines.map((l) => l.agent).filter(Boolean));
+  // Singers numbered v1, v2… in the order they first sing (documents name them anything: v1000, a person's name).
+  const singers = new Map();
+  for (const l of lines) if (l.agent && !singers.has(l.agent)) singers.set(l.agent, `v${singers.size + 1}`);
   return lines.map((l) => {
     if (!timed) return l.text;
     if (!wordTimed || !l.words.length) return `${stamp(l.time || 0)}${l.text}`;
-    const who = singers.size > 1 && l.agent ? `${l.agent}:` : '';
+    const who = singers.size > 1 && l.agent ? `${singers.get(l.agent)}:` : '';
     const main = `${stamp(l.time || 0)}${who}${wordsLrc(l.words, l.end)}`;
     return l.bg.length ? `${main}\n[bg: ${wordsLrc(l.bg, null)}]` : main;
   }).join('\n');

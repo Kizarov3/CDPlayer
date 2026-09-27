@@ -7,7 +7,7 @@ import { Visualizer } from './visualizer.js';
 import { Particles } from './particles.js';
 import { anim, el, pill, roundButton, modeButton, Slider, fitText, pulse } from './widgets.js';
 import { openBooklet, closeBooklet } from './booklet.js';
-import { parseLrc, currentLineIndex, heardPosition, looksOnlineFor, takesOnline } from './lyrics.js';
+import { parseLrc, currentLineIndex, heardPosition, playbackTimeFor, looksOnlineFor, takesOnline } from './lyrics.js';
 import { shortcutKey } from './keys.js';
 import * as panels from './panels.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
@@ -433,8 +433,11 @@ function flushFoundSoon() {
 }
 function setSaveFound(on) { state.saveFound = on; if (!on) pendingFound.clear(); saveSettingsSoon(); }
 function setLyricsOffset(ms) { state.lyricsOffset = ms; saveSettingsSoon(); }
-// Where the song is for the lyrics: what's being heard (the output's latency taken off) and the user's offset.
-const lyricsPosition = () => heardPosition(engine.position, engine.outputLatency, state.lyricsOffset);
+// Where the song is for the lyrics: what's being heard (the output's latency taken off — only while playing: paused,
+// nothing is on its way to the speakers) and the user's offset. A clicked line plays from where it's heard.
+const heardLatency = () => (engine.playing ? engine.outputLatency : 0);
+const lyricsPosition = () => heardPosition(engine.position, heardLatency(), state.lyricsOffset);
+const seekToLyric = (t) => seekTo(playbackTimeFor(t, heardLatency(), state.lyricsOffset));
 // The lyrics for the loaded song arrived or went: the LYRICS and KARAOKE buttons, and anything showing them, follow.
 function lyricsChanged() {
   $('lyrics-button').hidden = !state.lyrics;
@@ -1197,7 +1200,7 @@ export const app = {
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) { state.index = i; load(state.queue[i]); } },
   coverSource: () => { const s = $('track-source').textContent; return /COVER ART|ALBUM ART/.test(s) ? s.split(' · ')[0].replace(/ COVER ART$/, '').replace('EMBEDDED ALBUM ART', 'In the file') : null; },
   switchTheme, setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise,
-  insertDisc, saveTags, setSaveFound, setLyricsOffset, lyricsPosition,
+  insertDisc, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   saveEq: () => cdp.saveEqPresets(state.customPresets),
   lyricsLines: () => (state.lyrics ? parseLrc(state.lyrics) : []),
   openKaraoke: () => toggleKaraoke(),

@@ -59,7 +59,7 @@ function rebuild() {
     const bg = line.bg ? line.bg.map((w) => el('span', { class: 'k-word' }, w.text)) : [];
     view.bgWords.push(bg);
     const cls = ['k-line', line.text ? '' : 'gap', duet && line.agent ? `k-${line.agent}` : ''].filter(Boolean).join(' ');
-    return el('div', { class: cls, onClick: () => app.seekTo(line.time) },
+    return el('div', { class: cls, onClick: () => app.seekToLyric(line.time) },
       line.text ? el('div', { class: 'k-main' }, words) : '♪',
       bg.length ? el('div', { class: 'k-bg' }, bg) : null,
       el('div', { class: 'k-dots' }, el('i'), el('i'), el('i')));

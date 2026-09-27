@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { parseLrc, formatLyricsForDisplay, currentLineIndex, wordProgress, lineState, lineWords, syllables, heardPosition, looksOnlineFor, takesOnline } from '../src/renderer/js/lyrics.js';
+import { parseLrc, formatLyricsForDisplay, currentLineIndex, wordProgress, lineState, lineWords, syllables, heardPosition, looksOnlineFor, takesOnline, playbackTimeFor } from '../src/renderer/js/lyrics.js';
 
 test('LRC parsing: multiple stamps per line, headers skipped, sorted by time', () => {
   const lines = parseLrc('[ti:Song]\n[00:12.50]Second\n[00:01.00][01:00]Chorus\nuntimed');
@@ -117,4 +117,10 @@ test('found lyrics replace the file\'s only when the file has none, or when they
   assert.strictEqual(takesOnline(null, lineTimed), true);
   assert.strictEqual(takesOnline(lineTimed, wordTimed), true);
   assert.strictEqual(takesOnline(lineTimed, '[00:01.00]Another line'), false);
+});
+
+test('a lyric line clicked plays from where it is heard: the inverse of the heard position', () => {
+  assert.strictEqual(playbackTimeFor(20, 0.2, 0), 20.2);
+  assert.strictEqual(playbackTimeFor(20, 0, 300), 20.3);
+  for (const [t, lat, off] of [[20, 0.056, 0], [7.5, 0.2, -150]]) assert.ok(Math.abs(heardPosition(playbackTimeFor(t, lat, off), lat, off) - t) < 1e-9);
 });
