@@ -608,6 +608,7 @@ function spotify() {
     loadPlayer: () => loadSpotifySdk(),
     getToken: () => cdp.spotifyAccessToken(),
     startPlayback: (request) => cdp.spotifyPlay(request),
+    drmReady: () => cdp.spotifyDrmReady(),
     volume: state.volume / 100,
   });
   spotifySession.on(onSpotifyEvent);

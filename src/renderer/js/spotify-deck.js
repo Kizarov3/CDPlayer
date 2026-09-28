@@ -35,8 +35,8 @@ const OVERRUN_MS = 1500;    // no word from Spotify this long past the end: fini
 const STALE_MS = 3000;      // after a request, an unknown track this far from where it was asked for is still the old one
 
 export class SpotifySession {
-  constructor({ loadPlayer, getToken, startPlayback, now = () => Date.now(), wait = (ms) => new Promise((r) => setTimeout(r, ms)), volume = 1, name = 'CDPlayer' }) {
-    Object.assign(this, { loadPlayer, getToken, startPlayback, now, wait, volume, name });
+  constructor({ loadPlayer, getToken, startPlayback, drmReady = null, now = () => Date.now(), wait = (ms) => new Promise((r) => setTimeout(r, ms)), volume = 1, name = 'CDPlayer', connectTimeoutMs = 15000 }) {
+    Object.assign(this, { loadPlayer, getToken, startPlayback, drmReady, now, wait, volume, name, connectTimeoutMs });
     this.listeners = new Set();
     this.player = null; this.deviceId = null; this.ready = null;
     this.currentUri = null; this.lost = false;
@@ -51,6 +51,8 @@ export class SpotifySession {
     if (this.ready) return this.ready;
     this.ready = (async () => {
       if (!this.player) {
+        // Widevine comes down on first run; without it the SDK can only fail, so say so rather than try.
+        if (this.drmReady && !(await this.drmReady().catch(() => false))) { this.emit({ type: 'error', reason: 'unsupported' }); return { ok: false, reason: 'unsupported' }; }
         let Player;
         try { Player = await this.loadPlayer(); } catch { Player = null; }
         if (!Player) { this.emit({ type: 'error', reason: 'offline' }); return { ok: false, reason: 'offline' }; }
@@ -58,6 +60,8 @@ export class SpotifySession {
       }
       return new Promise((resolve) => {
         this.settle = resolve;
+        // A player that never says ready (no network, Spotify not registering it) mustn't leave PLAY waiting forever.
+        this.connectTimer = setTimeout(() => this.fail('offline'), this.connectTimeoutMs);
         this.player.connect().then((ok) => { if (!ok) this.fail('unsupported'); }, () => this.fail('unsupported'));
       });
     })();
@@ -76,7 +80,7 @@ export class SpotifySession {
     player.addListener('playback_error', () => this.onPlaybackError());
     player.addListener('player_state_changed', (s) => this.onState(s));
   }
-  resolveConnect(result) { const settle = this.settle; this.settle = null; if (settle) settle(result); }
+  resolveConnect(result) { clearTimeout(this.connectTimer); const settle = this.settle; this.settle = null; if (settle) settle(result); }
   fail(reason) { this.emit({ type: 'error', reason }); this.resolveConnect({ ok: false, reason }); }
   /** DISCONNECT SPOTIFY: stops the music and closes the player (kept, to be reopened by the next connect). */
   disconnect() {

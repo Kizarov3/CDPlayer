@@ -352,3 +352,24 @@ test('an older request answering late changes nothing for the newer one', async 
   assert.strictEqual(session.currentUri, B);
   assert.ok(!b.paused);
 });
+
+test('a player that never says ready gives up after a while, so the next PLAY can try again', async () => {
+  class SilentPlayer extends FakePlayer { connect() { this.tries = (this.tries || 0) + 1; if (this.tries > 1) return super.connect(); return Promise.resolve(true); } }
+  const events = [];
+  const session = new SpotifySession({ loadPlayer: async () => SilentPlayer, getToken: async () => 't', startPlayback: async () => ({ ok: true, status: 204 }), wait: async () => {}, connectTimeoutMs: 20 });
+  session.on((e) => events.push(e));
+  assert.deepStrictEqual(await session.connect(), { ok: false, reason: 'offline' });
+  assert.deepStrictEqual(events, [{ type: 'error', reason: 'offline' }]);
+  assert.deepStrictEqual(await session.connect(), { ok: true });
+});
+
+test('Widevine is waited for first; without it Spotify is unsupported and no player is made', async () => {
+  let made = 0;
+  class Counting extends FakePlayer { constructor(o) { super(o); made++; } }
+  const events = [];
+  const session = new SpotifySession({ loadPlayer: async () => Counting, getToken: async () => 't', startPlayback: async () => ({ ok: true }), drmReady: async () => false });
+  session.on((e) => events.push(e));
+  assert.deepStrictEqual(await session.connect(), { ok: false, reason: 'unsupported' });
+  assert.deepStrictEqual(events, [{ type: 'error', reason: 'unsupported' }]);
+  assert.strictEqual(made, 0);
+});
