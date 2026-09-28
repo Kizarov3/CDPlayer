@@ -66,6 +66,7 @@ contextBridge.exposeInMainWorld('cdp', {
   toggleFullscreen: invoke('win:toggleFullscreen'),
   isFullscreen: invoke('win:isFullscreen'),
   openGitHub: invoke('shell:openGitHub'),
+  copyText: invoke('clipboard:write'),
   checkForUpdate: invoke('updates:check'),
   openReleasesPage: invoke('updates:openReleases'),
   setDiscordTrack: (track) => ipcRenderer.send('discord:track', track),

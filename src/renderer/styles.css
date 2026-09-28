@@ -254,6 +254,12 @@ body.cd-view #cd-info { display: block !important; }
 .card .subtitle { margin-top: 6px; font-size: 11px; color: rgb(var(--muted)); }
 .card .close-row { display: flex; justify-content: flex-end; margin-top: 16px; }
 .card .close-row.split { justify-content: space-between; }
+.copy-link {
+  border: none; background: none; padding: 0; font: inherit; color: rgb(var(--accent2)); cursor: pointer;
+  text-decoration: underline dotted; text-underline-offset: 3px; user-select: text; -webkit-user-select: text;
+}
+.copy-link:hover { color: rgb(var(--text)); }
+.copy-link.copied::after { content: "  ✓ COPIED"; color: rgb(var(--accent)); text-decoration: none; display: inline-block; margin-left: 6px; font-weight: bold; }
 .card .scroll { min-height: 0; }
 .setting-row { display: flex; align-items: center; justify-content: space-between; min-height: 30px; font-size: 10px; color: rgb(var(--muted)); }
 .setting-row.slider-row { justify-content: flex-start; }

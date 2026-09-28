@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog, protocol, screen, shell, Menu, nativeTheme, components } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, protocol, screen, shell, Menu, nativeTheme, components, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -393,6 +393,8 @@ handle('win:toggleFullscreen', () => { if (win && !miniMode) win.setFullScreen(!
 handle('win:isFullscreen', () => !!(win && win.isFullScreen()));
 handle('updates:check', () => (smokeDir ? null : updates.checkForUpdate(APP_VERSION)));
 handle('updates:openReleases', () => shell.openExternal(updates.RELEASES_PAGE));
+// Text for the user to paste elsewhere (the Spotify dashboard's Redirect URI). Only short plain text.
+handle('clipboard:write', (text) => { if (typeof text === 'string' && text.length <= 2000) clipboard.writeText(text); return true; });
 handle('shell:openGitHub', (user) => { if (/^[A-Za-z0-9-]+$/.test(user)) shell.openExternal(`https://github.com/${user}`); });
 
 // ---- Audio CDs ---------------------------------------------------------------------------------------------------

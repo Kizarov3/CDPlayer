@@ -674,6 +674,18 @@ async function putSpotifyOnTray(app, item) {
   app.playSpotifyDisc(r.tracks, item.name);
 }
 
+// Text to paste somewhere else (the Spotify dashboard's Redirect URI): clicking it copies it, and it says so.
+function copyLink(app, text) {
+  const link = el('button', { class: 'copy-link', title: 'Copy' }, text);
+  let timer = null;
+  link.addEventListener('click', async () => {
+    if (!(await app.cdp.copyText(text).catch(() => false))) return;
+    link.classList.add('copied');
+    clearTimeout(timer); timer = setTimeout(() => link.classList.remove('copied'), 1600);
+  });
+  return link;
+}
+
 const changeAppPill = () => pill('CHANGE APP', () => { sp.editing = true; sp.status = ''; refreshPanel('spotify'); }, 'Enter another Client ID and Secret — to fix a mistyped one, or to use another Spotify developer app');
 
 function buildSpotify(app) {
@@ -697,7 +709,7 @@ function buildSpotify(app) {
     return [title('SPOTIFY'), gap(12),
       hint('Spotify lets each app play for only five people, so CDPlayer plays through your own free Spotify developer app. You need Spotify Premium.'),
       hint('1. Open the Spotify dashboard and create an app. Tick Web API and Web Playback SDK.'),
-      hint('2. Redirect URI: http://127.0.0.1:8080/callback'),
+      el('div', { class: 'setting-hint' }, '2. Redirect URI: ', copyLink(app, 'http://127.0.0.1:8080/callback'), ' (click it to copy)'),
       hint('3. Under User Management, add the email of your Spotify account.'),
       hint('4. Paste the app’s Client ID and Client Secret here.'), gap(12),
       el('div', { class: 'row-pills' }, pill('OPEN SPOTIFY DASHBOARD', () => app.cdp.openSpotifyDashboard())), gap(12),
