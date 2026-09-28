@@ -7,6 +7,7 @@
  * spotify.txt: line 1 Client ID, line 2 Client Secret, line 3 the refresh token from "Connect Spotify", line 4 the
  * scopes it was granted. The Java version wrote the first three; a token without line 4 predates playback.
  */
+const { httpFetch, networkErrorCode } = require('./http');
 const http = require('http');
 const crypto = require('crypto');
 const { shell } = require('electron');
@@ -21,7 +22,7 @@ const TIMEOUT_MS = 8000;
 const tokens = { app: null, appExpiry: 0, user: null, userExpiry: 0, invalid: false };
 
 async function fetchJson(url, init = {}) {
-  const res = await fetch(url, { ...init, headers: { 'User-Agent': USER_AGENT, ...(init.headers || {}) }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  const res = await httpFetch(url, { ...init, headers: { 'User-Agent': USER_AGENT, ...(init.headers || {}) }, signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!res.ok) {
     const err = new Error(`HTTP ${res.status}`);
     err.status = res.status;
@@ -102,9 +103,11 @@ async function accessToken() {
     const token = await getSpotifyUserToken();
     return token ? { token } : { error: 'SIGN_IN' };
   } catch (e) {
-    return { error: e.status ? 'SIGN_IN' : 'OFFLINE' };
+    return e.status ? { error: 'SIGN_IN' } : offline(e);
   }
 }
+// No answer from Spotify at all: { error: 'OFFLINE' }, with why when the network says (a certificate, a proxy…).
+function offline(e) { const detail = networkErrorCode(e); return detail ? { error: 'OFFLINE', detail } : { error: 'OFFLINE' }; }
 function forgetUserToken() { tokens.user = null; tokens.userExpiry = 0; }
 
 // ---- Links (SEARCH's paste-a-link import) -------------------------------------------------------------------------
@@ -173,7 +176,8 @@ function spotifySignIn() {
       tokens.invalid = false;
       return 'SPOTIFY CONNECTED';
     } catch (e) {
-      return `SPOTIFY SIGN-IN FAILED${e && e.message ? ` — ${e.message.toUpperCase()}` : ''}`;
+      const why = e && !e.status ? networkErrorCode(e) : null;
+      return why ? `COULDN'T REACH SPOTIFY · ${why}` : `SPOTIFY SIGN-IN FAILED${e && e.message ? ` — ${e.message.toUpperCase()}` : ''}`;
     }
   })().finally(() => { signInInProgress = null; });
   return signInInProgress;
@@ -182,25 +186,29 @@ function spotifySignIn() {
 // ---- The user's library (the SPOTIFY panel) ----------------------------------------------------------------------
 
 const API = 'https://api.spotify.com/v1';
-class SpotifyError extends Error { constructor(code) { super(code); this.code = code; } }
+class SpotifyError extends Error { constructor(code, cause) { super(code); this.code = code; this.detail = cause ? networkErrorCode(cause) : null; } }
 /** A Web API call as the signed-in user: refreshed once on a 401, then 'SIGN_IN'; no network → 'OFFLINE'. */
 async function userApi(pathAndQuery, init = {}) {
   for (let attempt = 0; attempt < 2; attempt++) {
     let token;
-    try { token = await getSpotifyUserToken(); } catch (e) { throw new SpotifyError(e.status ? 'SIGN_IN' : 'OFFLINE'); }
+    try { token = await getSpotifyUserToken(); } catch (e) { throw e.status ? new SpotifyError('SIGN_IN') : new SpotifyError('OFFLINE', e); }
     if (!token) throw new SpotifyError('SIGN_IN');
     try {
       return await fetchJson(pathAndQuery.startsWith('http') ? pathAndQuery : `${API}${pathAndQuery}`, { ...init, headers: { Authorization: `Bearer ${token}`, ...(init.headers || {}) } });
     } catch (e) {
       if (e.status === 401 && attempt === 0) { forgetUserToken(); continue; }
       if (e.status === 401) { tokens.invalid = true; throw new SpotifyError('SIGN_IN'); }
-      if (!e.status) throw new SpotifyError('OFFLINE');
+      if (!e.status) throw new SpotifyError('OFFLINE', e);
       throw e;
     }
   }
   throw new SpotifyError('SIGN_IN');
 }
-const asError = (e) => ({ error: e.code || (e.status ? `HTTP ${e.status}` : 'OFFLINE') });
+const asError = (e) => {
+  if (e.code && e.code !== 'OFFLINE') return { error: e.code };
+  if (e.status) return { error: `HTTP ${e.status}` };
+  return e.code === 'OFFLINE' ? (e.detail ? { error: 'OFFLINE', detail: e.detail } : { error: 'OFFLINE' }) : offline(e);
+};
 const nextOffset = (json) => { if (!json.next) return null; const n = Number(new URL(json.next).searchParams.get('offset')); return Number.isFinite(n) ? n : null; };
 const artistNames = (a) => (a || []).map((x) => x.name).filter(Boolean).join(', ');
 const biggest = (images) => { const list = (images || []).filter((i) => i && i.url); list.sort((a, b) => (b.width || 0) - (a.width || 0)); return list.length ? list[0].url : null; };
@@ -281,7 +289,8 @@ async function startPlayback({ deviceId, uris, positionMs }) {
   } catch (e) {
     // A 403 is PREMIUM_REQUIRED without Premium, or "Restriction violated" for a track Spotify won't play.
     const status = e.status || (e.code === 'SIGN_IN' ? 401 : 0);
-    return status === 403 ? { ok: false, status, reason: e.reason || null } : { ok: false, status };
+    if (status === 403) return { ok: false, status, reason: e.reason || null };
+    return status === 0 && e.detail ? { ok: false, status, detail: e.detail } : { ok: false, status };
   }
 }
 
@@ -289,7 +298,7 @@ async function startPlayback({ deviceId, uris, positionMs }) {
 async function coverDataUrl(url) {
   if (!/^https:\/\/i\.scdn\.co\/image\//.test(String(url))) return null;
   try {
-    const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    const res = await httpFetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(TIMEOUT_MS) });
     if (!res.ok) return null;
     const type = res.headers.get('content-type') || 'image/jpeg';
     return `data:${type};base64,${Buffer.from(await res.arrayBuffer()).toString('base64')}`;

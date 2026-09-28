@@ -76,7 +76,7 @@ export class SpotifySession {
     player.addListener('not_ready', () => { this.deviceId = null; });
     player.addListener('initialization_error', () => this.fail('unsupported'));
     // Spotify refuses the empty token we had to give while offline: that's the network, not a sign-out.
-    player.addListener('authentication_error', () => this.fail(this.tokenError === 'OFFLINE' ? 'offline' : 'auth'));
+    player.addListener('authentication_error', () => (this.tokenError === 'OFFLINE' ? this.fail('offline', this.tokenDetail) : this.fail('auth')));
     player.addListener('account_error', () => this.fail('premium'));
     player.addListener('playback_error', () => this.onPlaybackError());
     player.addListener('player_state_changed', (s) => this.onState(s));
@@ -86,11 +86,12 @@ export class SpotifySession {
     this.getToken().then((t) => {
       const token = typeof t === 'string' ? t : t && t.token;
       this.tokenError = token ? null : (t && t.error) || 'SIGN_IN';
+      this.tokenDetail = (!token && t && t.detail) || null;
       cb(token || '');
-    }, () => { this.tokenError = 'OFFLINE'; cb(''); });
+    }, () => { this.tokenError = 'OFFLINE'; this.tokenDetail = null; cb(''); });
   }
   resolveConnect(result) { clearTimeout(this.connectTimer); const settle = this.settle; this.settle = null; if (settle) settle(result); }
-  fail(reason) { this.emit({ type: 'error', reason }); this.resolveConnect({ ok: false, reason }); }
+  fail(reason, detail = null) { this.emit(detail ? { type: 'error', reason, detail } : { type: 'error', reason }); this.resolveConnect({ ok: false, reason }); }
   /** DISCONNECT SPOTIFY: stops the music and closes the player (kept, to be reopened by the next connect). */
   disconnect() {
     if (this.currentUri && !this.pos.paused) this.pause();
@@ -132,7 +133,8 @@ export class SpotifySession {
     this.pos = { ms: positionMs, at: this.now(), paused: true };
     // A 403 is only a missing Premium when Spotify says so; "Restriction violated" is a track it won't play.
     const premium = r.status === 403 && r.reason === 'PREMIUM_REQUIRED';
-    this.emit({ type: 'error', reason: r.status === 401 ? 'auth' : premium ? 'premium' : r.status === 0 ? 'offline' : 'playback' });
+    const reason = r.status === 401 ? 'auth' : premium ? 'premium' : r.status === 0 ? 'offline' : 'playback';
+    this.emit(reason === 'offline' && r.detail ? { type: 'error', reason, detail: r.detail } : { type: 'error', reason });
     return false;
   }
   async resume() {

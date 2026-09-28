@@ -620,9 +620,9 @@ function onSpotifyEvent(e) {
   if (!spotifyActive()) return;
   if (e.type === 'lost') { setPlaying(false); setStatus('PLAYING ON ANOTHER DEVICE · PRESS PLAY TO BRING IT BACK'); return; }
   if (e.type !== 'error') return;
-  spotifyTrouble = SPOTIFY_ERRORS[e.reason] || SPOTIFY_ERRORS.playback;
+  spotifyTrouble = `${SPOTIFY_ERRORS[e.reason] || SPOTIFY_ERRORS.playback}${e.detail ? ` · ${e.detail}` : ''}`;
   if (e.reason !== 'playback') { engine.pause(); setPlaying(false); }
-  setStatus(SPOTIFY_ERRORS[e.reason] || SPOTIFY_ERRORS.playback);
+  setStatus(spotifyTrouble);
 }
 /** Tells Spotify the order after the current track again, after shuffle, repeat or the queue changed. */
 function spotifyResync() {

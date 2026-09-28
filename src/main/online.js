@@ -4,6 +4,7 @@
  * (word-timed from Unison or NetEase → lrclib.net → Unison). Spotify's own calls live in spotify.js. All optional — the
  * player works offline.
  */
+const { httpFetch } = require('./http');
 const { nativeImage } = require('electron');
 const { getSpotifyAppToken } = require('./spotify');
 const { searchVariants, nameVariants, bareTitle } = require('./track-names');
@@ -13,12 +14,12 @@ const USER_AGENT = 'CDPlayer/2.0 (open cover lookup)';
 const TIMEOUT_MS = 8000;
 
 async function fetchJson(url, init = {}) {
-  const res = await fetch(url, { ...init, headers: { 'User-Agent': USER_AGENT, ...(init.headers || {}) }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  const res = await httpFetch(url, { ...init, headers: { 'User-Agent': USER_AGENT, ...(init.headers || {}) }, signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!res.ok) { const err = new Error(`HTTP ${res.status}`); err.status = res.status; throw err; }
   return res.json();
 }
 async function fetchImageDataUrl(url) {
-  const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  const res = await httpFetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!res.ok) return null;
   const img = nativeImage.createFromBuffer(Buffer.from(await res.arrayBuffer()));
   if (img.isEmpty()) return null;

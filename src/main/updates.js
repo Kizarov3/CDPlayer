@@ -5,6 +5,7 @@
  * now (the renderer asks at launch and every 15 minutes). It never downloads or installs anything: the pill just
  * opens the Releases page. When GitHub can't be reached the result says so, and the pill stays as it was.
  */
+const { httpFetch } = require('./http');
 const LATEST_RELEASE_API = 'https://api.github.com/repos/Kizarov3/CDPlayer/releases/latest';
 const RELEASES_PAGE = 'https://github.com/Kizarov3/CDPlayer/releases/latest';
 const TIMEOUT_MS = 8000;
@@ -21,7 +22,7 @@ function isNewer(a, b) {
 }
 
 async function fetchLatestVersion(currentVersion) {
-  const res = await fetch(LATEST_RELEASE_API, {
+  const res = await httpFetch(LATEST_RELEASE_API, {
     headers: { Accept: 'application/vnd.github+json', 'User-Agent': `CDPlayer/${currentVersion}` },
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });

@@ -620,7 +620,8 @@ const SPOTIFY_MESSAGES = {
   NOT_SHARED: 'SPOTIFY ONLY SHARES THE SONGS OF PLAYLISTS YOU OWN OR COLLABORATE ON', EMPTY: 'NOTHING TO PLAY ON THAT ONE',
 };
 const sp = { account: null, editing: false, drm: null, tab: 'ALBUMS', lists: { ALBUMS: null, PLAYLISTS: null }, next: { ALBUMS: 0, PLAYLISTS: 0 }, query: '', found: null, status: '', searchTimer: null };
-const spotifyMessage = (code) => SPOTIFY_MESSAGES[code] || `SPOTIFY · ${code}`;
+// (No answer at all says why, when the network did: "COULDN'T REACH SPOTIFY · ERR_CERT_AUTHORITY_INVALID".)
+const spotifyMessage = (code, detail) => (code === 'OFFLINE' && detail ? `${SPOTIFY_MESSAGES.OFFLINE} · ${detail}` : SPOTIFY_MESSAGES[code] || `SPOTIFY · ${code}`);
 
 export function showSpotify(app) {
   openPanel('spotify', () => buildSpotify(app), { width: 540 });
@@ -640,7 +641,7 @@ async function loadSpotifyList(app, tab) {
   sp.status = 'LOADING…'; refreshPanel('spotify');
   const r = await (tab === 'ALBUMS' ? app.cdp.spotifyAlbums(offset) : app.cdp.spotifyPlaylists(offset)).catch(() => ({ error: 'OFFLINE' }));
   if (r.error) {
-    sp.status = spotifyMessage(r.error);
+    sp.status = spotifyMessage(r.error, r.detail);
     if (r.error === 'SIGN_IN') sp.account = { ...sp.account, reconnectNeeded: true };
   } else {
     sp.lists[tab] = [...(sp.lists[tab] || []), ...r.items];
@@ -656,7 +657,7 @@ function searchSpotify(app, query) {
   sp.searchTimer = setTimeout(async () => {
     const r = await app.cdp.spotifySearch(query.trim()).catch(() => ({ error: 'OFFLINE' }));
     if (sp.query !== query) return; // typed on since
-    if (r.error) { sp.status = spotifyMessage(r.error); if (r.error === 'SIGN_IN') sp.account = { ...sp.account, reconnectNeeded: true }; } else { sp.found = r.items; sp.status = ''; }
+    if (r.error) { sp.status = spotifyMessage(r.error, r.detail); if (r.error === 'SIGN_IN') sp.account = { ...sp.account, reconnectNeeded: true }; } else { sp.found = r.items; sp.status = ''; }
     refreshPanel('spotify');
   }, 400);
 }
@@ -664,7 +665,7 @@ async function putSpotifyOnTray(app, item) {
   sp.status = `READING ${item.name.toUpperCase()}…`; refreshPanel('spotify');
   const r = await app.cdp.spotifyDiscTracks({ kind: item.kind, id: item.id }).catch(() => ({ error: 'OFFLINE' }));
   if (r.error) {
-    sp.status = spotifyMessage(r.error);
+    sp.status = spotifyMessage(r.error, r.detail);
     if (r.error === 'SIGN_IN') sp.account = { ...sp.account, reconnectNeeded: true }; // the panel offers RECONNECT
     refreshPanel('spotify'); return;
   }

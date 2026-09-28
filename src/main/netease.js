@@ -4,6 +4,7 @@
  * them for many songs Unison doesn't. Only a song that is this one — same title and artist, and within a few seconds
  * of the file's length — counts. NetEase's API is unofficial: when it doesn't answer, lyrics come from elsewhere.
  */
+const { httpFetch } = require('./http');
 const TIMEOUT_MS = 8000;
 const LENGTH_SLACK = 4; // seconds a recording may differ from the file and still be the same one
 const GAP = 0.02; // a word that ends more than this before the next one starts leaves a pause
@@ -56,7 +57,7 @@ function timedLine(start, lineEnd, words) {
 }
 
 async function getJson(url) {
-  const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  const res = await httpFetch(url, { headers: HEADERS, signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!res.ok) { const err = new Error(`HTTP ${res.status}`); err.status = res.status; throw err; }
   return res.json();
 }

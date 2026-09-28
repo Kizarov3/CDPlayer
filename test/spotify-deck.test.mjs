@@ -386,3 +386,19 @@ test("Spotify refusing a token that couldn't be refreshed offline is 'offline', 
   FakePlayer.last.emit('authentication_error', { message: 'x' });
   assert.deepStrictEqual(events.at(-1), { type: 'error', reason: 'offline' });
 });
+
+test('no answer from Spotify says why, when the network told us', async () => {
+  const session = new SpotifySession({ loadPlayer: async () => FakePlayer, getToken: async () => ({ error: 'OFFLINE', detail: 'ERR_CERT_AUTHORITY_INVALID' }), startPlayback: async () => ({ ok: true }) });
+  const events = [];
+  session.on((e) => events.push(e));
+  const connecting = session.connect();
+  await new Promise((r) => setTimeout(r, 5));
+  await new Promise((resolve) => FakePlayer.last.opts.getOAuthToken(resolve));
+  FakePlayer.last.emit('authentication_error', { message: 'x' });
+  await connecting;
+  assert.deepStrictEqual(events.at(-1), { type: 'error', reason: 'offline', detail: 'ERR_CERT_AUTHORITY_INVALID' });
+
+  const { session: s2, events: ev2 } = setup({ responses: [{ ok: false, status: 0, detail: 'ERR_PROXY_CONNECTION_FAILED' }] });
+  await s2.play(A);
+  assert.deepStrictEqual(ev2.at(-1), { type: 'error', reason: 'offline', detail: 'ERR_PROXY_CONNECTION_FAILED' });
+});

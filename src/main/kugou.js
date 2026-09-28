@@ -5,6 +5,7 @@
  * title and artist, close to the file's length, and with its lines where the song's line timing has them — counts.
  * Kugou's API is unofficial: when it doesn't answer, lyrics come from elsewhere.
  */
+const { httpFetch } = require('./http');
 const zlib = require('zlib');
 const { timedLine } = require('./netease');
 
@@ -58,7 +59,7 @@ function krcToLrc(krc, { title, artist } = {}) {
 }
 
 async function getJson(url) {
-  const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+  const res = await httpFetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!res.ok) { const err = new Error(`HTTP ${res.status}`); err.status = res.status; throw err; }
   return res.json();
 }
