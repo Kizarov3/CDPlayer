@@ -8,13 +8,21 @@
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
-const { File, Picture, PictureType, ByteVector, Id3v2Settings, StringType } = require('node-taglib-sharp');
 
-// ID3v2.3 for MP3 and AIFF: what every player and tag reader understands. Older files' v2.2 tags are brought up to it
-// (their lyrics frame is one other readers, and CDPlayer's, don't know). A WAV's ID3 chunk has to be v2.4: taglib
-// gives it a footer, which only v2.4 has. Text in UTF-16, which both versions have, for any language.
-Id3v2Settings.defaultEncoding = StringType.UTF16;
+// The tag library is loaded the first time a tag is read or written, not at startup: it's large (a twentieth of a second
+// and 15 MB to load), and most sessions never save a tag.
+let lib = null;
+function taglib() {
+  if (lib) return lib;
+  lib = require('node-taglib-sharp');
+  // ID3v2.3 for MP3 and AIFF: what every player and tag reader understands. Older files' v2.2 tags are brought up to
+  // it (their lyrics frame is one other readers, and CDPlayer's, don't know). A WAV's ID3 chunk has to be v2.4: taglib
+  // gives it a footer, which only v2.4 has. Text in UTF-16, which both versions have, for any language.
+  lib.Id3v2Settings.defaultEncoding = lib.StringType.UTF16;
+  return lib;
+}
 function open(filePath) {
+  const { File, Id3v2Settings } = taglib();
   const riff = /\.wave?$/i.test(filePath);
   Id3v2Settings.defaultVersion = riff ? 4 : 3;
   Id3v2Settings.forceDefaultVersion = !riff;
@@ -55,6 +63,7 @@ function readTags(filePath) {
 function coverPicture(cover) {
   const m = /^data:([^;]+);base64,(.*)$/s.exec(cover);
   const bytes = m ? Buffer.from(m[2], 'base64') : Buffer.from(cover);
+  const { Picture, PictureType, ByteVector } = taglib();
   const pic = Picture.fromData(ByteVector.fromByteArray(bytes));
   pic.type = PictureType.FrontCover;
   pic.mimeType = m ? m[1] : 'image/jpeg';
@@ -75,7 +84,7 @@ async function writeTags(filePath, changes) {
     const f = open(tmp);
     try {
       for (const [k, v] of Object.entries(changes)) {
-        if (k === 'cover') { if (v) f.tag.pictures = [coverPicture(v), ...(f.tag.pictures || []).filter((p) => p.type !== PictureType.FrontCover)]; continue; }
+        if (k === 'cover') { if (v) f.tag.pictures = [coverPicture(v), ...(f.tag.pictures || []).filter((p) => p.type !== taglib().PictureType.FrontCover)]; continue; }
         if (FIELDS[k]) FIELDS[k].set(f.tag, v === '' ? null : v);
       }
       f.save();
