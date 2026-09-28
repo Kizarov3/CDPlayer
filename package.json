@@ -37,6 +37,7 @@
       "mirror": "https://github.com/castlabs/electron-releases/releases/download/"
     },
     "afterPack": "build/vmp-sign.js",
+    "afterSign": "build/vmp-sign-after-sign.js",
     "files": [
       "src/**/*",
       "package.json"
