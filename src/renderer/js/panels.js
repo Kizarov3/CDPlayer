@@ -765,6 +765,12 @@ export function showOnboarding(app) {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.9.0', changes: [
+    '<b>Spotify</b> (Premium): SPOTIFY lists your saved albums and playlists, with a search &mdash; click one and it goes in as a disc and plays, with Up Next, shuffle and repeat, lyrics and karaoke, and an album plays through without gaps',
+    'It plays through your own free Spotify developer app (Spotify lets an app play for only five people) &mdash; the SPOTIFY panel walks you through it',
+    '<b>Word-by-word lyrics for more songs</b>, now also from Kugou, checked against the song&rsquo;s line timing',
+    'Karaoke for lyrics timed only by the line fills at the song&rsquo;s own pace, instead of racing ahead on slow choruses',
+  ] },
   { version: '2.8.0', changes: [
     '<b>Rip a CD</b>: RIP beside AUDIO CD saves the disc into your music folder as lossless FLAC, tagged with its names and cover &mdash; click RIPPING for the list of tracks',
     '<b>Audio CDs on Windows</b> too: put a CD in and play it, named from MusicBrainz, straight from the drive',
