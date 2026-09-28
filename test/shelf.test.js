@@ -116,3 +116,25 @@ test('covers remembered by the old song-based search are not trusted', async () 
   assert.strictEqual(await fresh.onlineCover({ artist: 'Limp Bizkit', album: 'Three Dollar Bill' }, { find }), 'data:image/jpeg;base64,RIGHT');
   assert.strictEqual(find.calls.length, 1);
 });
+
+test('when a track was first seen: kept from the cache even once its tags are rewritten; the file\'s date on a first scan', () => {
+  const { addedAt } = require('../src/main/shelf');
+  const now = Date.UTC(2026, 8, 28);
+  const st = { birthtimeMs: Date.UTC(2020, 0, 1), mtimeMs: Date.UTC(2026, 8, 27) }; // tags rewritten yesterday
+  assert.strictEqual(addedAt({ added: Date.UTC(2024, 4, 1) }, st, true, now), Date.UTC(2024, 4, 1));
+  assert.strictEqual(addedAt(undefined, st, false, now), Date.UTC(2020, 0, 1)); // no cache yet: not all NEW at once
+  assert.strictEqual(addedAt({ stamp: 'x' }, st, true, now), Date.UTC(2020, 0, 1)); // cached before `added` existed
+  assert.strictEqual(addedAt(undefined, { birthtimeMs: 0, mtimeMs: Date.UTC(2021, 0, 1) }, false, now), Date.UTC(2021, 0, 1)); // no birth time (Linux)
+  assert.strictEqual(addedAt(undefined, st, true, now), now); // a file that appears after the shelf was read: just added
+  assert.strictEqual(addedAt(undefined, null, true, now), null);
+});
+
+test('an album was added when its newest track was', () => {
+  const [a] = groupAlbums([
+    { ...t('/m/x/1.mp3', { album: 'A', artist: 'B' }), added: 100 },
+    { ...t('/m/x/2.mp3', { album: 'A', artist: 'B' }), added: 300 },
+    { ...t('/m/x/3.mp3', { album: 'A', artist: 'B' }), added: null },
+  ]);
+  assert.strictEqual(a.added, 300);
+  assert.strictEqual(groupAlbums([t('/m/y/1.mp3', { album: 'C' })])[0].added, null);
+});

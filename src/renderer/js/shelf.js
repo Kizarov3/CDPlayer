@@ -4,6 +4,7 @@
 // in, the tray closes and it plays). Click the case's cover and the album's booklet lifts out of it.
 import { el, pill, anim } from './widgets.js';
 import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './booklet.js';
+import { stickersFor } from './shelf-stickers.js';
 
 const $ = (id) => document.getElementById(id);
 const shelf = { open: false, albums: [], loading: false, covers: new Map(), colors: new Map(), observer: null, caseOpen: null, app: null, generation: 0 };
@@ -86,9 +87,13 @@ function render() {
   shelf.observer = new IntersectionObserver((entries) => {
     for (const e of entries) if (e.isIntersecting) { shelf.observer.unobserve(e.target); loadCover(e.target.album, e.target); }
   }, { root: body, rootMargin: '200px' });
+  const now = Date.now();
   const spines = shown.map((a) => {
-    const spine = el('button', { class: `spine${a.discs > 1 ? ' double' : ''}`, title: [a.artist, a.title, a.year].filter(Boolean).join(' · '), onClick: () => openCase(a, spine) },
-      el('span', { class: 'spine-text' }, a.artist ? el('b', {}, a.artist) : null, a.artist ? ' · ' : null, a.title));
+    const st = a.stickers = stickersFor(a, now);
+    const spine = el('button', { class: `spine${a.discs > 1 ? ' double' : ''}${st.obi ? ' obi' : ''}${st.isNew ? ' new' : ''}`, title: [a.artist, a.title, a.year].filter(Boolean).join(' · '), onClick: () => openCase(a, spine) },
+      el('span', { class: 'spine-text' }, a.artist ? el('b', {}, a.artist) : null, a.artist ? ' · ' : null, a.title),
+      st.obi ? el('span', { class: 'obi-cat' }, st.obi.catalog) : null,
+      st.isNew ? el('span', { class: 'sticker-new' }, 'NEW') : null);
     spine.album = a;
     paintSpine(spine, a);
     shelf.observer.observe(spine);
@@ -155,8 +160,15 @@ async function openCase(a, spine) {
     : el('div', { class: 'case-cover cdr' }, el('div', { class: 'marker' }, a.title), a.artist ? el('div', { class: 'marker small' }, a.artist) : null);
   front.title = 'Open the booklet';
   front.addEventListener('click', () => openAlbumBooklet(a, front));
+  const st = a.stickers || stickersFor(a);
   const card = el('div', { class: 'case-card' },
-    el('div', { class: 'case-front' }, front),
+    el('div', { class: 'case-front' }, front,
+      st.obi ? el('div', { class: 'case-obi' },
+        el('div', { class: 'obi-top' }, 'CD'),
+        el('div', { class: 'obi-title' }, a.title),
+        el('div', { class: 'obi-foot' }, el('div', {}, st.obi.catalog), el('div', {}, st.price))) : null,
+      !st.obi && st.price ? el('div', { class: 'sticker-price' }, st.price) : null,
+      st.isNew ? el('div', { class: 'sticker-new' }, 'NEW') : null),
     el('div', { class: 'case-info' },
       el('div', { class: 'case-title' }, a.title),
       el('div', { class: 'case-artist' }, [a.artist, a.year].filter(Boolean).join(' · ')),
@@ -168,6 +180,8 @@ async function openCase(a, spine) {
         pill('ADD TO QUEUE', () => { app.addToQueue(a.tracks.map((t) => t.path), { sorted: true }); closeCase(); }, 'Add every track to the end of the queue'),
         el('button', { class: 'pill on', onClick: () => play(a, 0) }, 'PLAY'))));
   const layer = el('div', { class: 'case-layer', onClick: (e) => { if (e.target === layer) closeCase(); } }, card);
+  const c = shelf.colors.get(a.id) || hashColor(a.title + a.artist);
+  card.style.setProperty('--spine', `${c[0]}, ${c[1]}, ${c[2]}`);
   $('shelf').append(layer);
   shelf.caseOpen = { layer, card, spine };
   spine.classList.add('out');

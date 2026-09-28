@@ -85,6 +85,7 @@ function groupAlbums(tracks) {
       year: years[0] || null,
       discs: Math.max(1, ...g.items.map((t) => t.info.disc || 1)),
       duration: g.items.reduce((s, t) => s + (t.info.duration || 0), 0),
+      added: g.items.reduce((m, t) => (t.added && (m === null || t.added > m) ? t.added : m), null), // its newest track (a NEW sticker)
       tracks: g.items.map((t) => ({ path: t.path, title: t.info.title, artist: t.info.artist, duration: t.info.duration, track: t.info.track, disc: t.info.disc })),
     };
   });
@@ -99,10 +100,22 @@ function readCache(folder) {
     const c = JSON.parse(store.readText(CACHE_FILE) || '');
     if (c && c.version === CACHE_VERSION && c.folder === folder && c.tracks) return c.tracks;
   } catch { /* none yet, or unreadable: start over */ }
-  return {};
+  return null;
 }
-async function stampOf(p) {
-  try { const st = await fsp.stat(sourceOf(p)); return `${st.size}:${Math.round(st.mtimeMs)}`; } catch { return null; }
+async function statOf(p) {
+  try { return await fsp.stat(sourceOf(p)); } catch { return null; }
+}
+
+/**
+ * When the shelf first saw a track, for the NEW sticker. Remembered in the cache, so a file whose tags CDPlayer rewrote
+ * (a newer date) isn't new again. On the very first read of a folder — or for tracks cached before this was kept —
+ * the file's own date stands in, so the whole shelf isn't NEW at once; after that, a file that turns up is new now.
+ */
+function addedAt(prev, st, cacheFound, now) {
+  if (prev && prev.added) return prev.added;
+  if (!st) return null;
+  if (!cacheFound || prev) return st.birthtimeMs > 0 ? Math.min(st.birthtimeMs, st.mtimeMs) : st.mtimeMs;
+  return now;
 }
 
 let running = null;
@@ -113,17 +126,19 @@ function scanAlbums(onProgress) {
     const folder = store.readLastPath();
     if (!folder || !store.isDir(folder)) return { folder: null, albums: [] };
     const files = await library.collectAudio([folder]);
-    const cached = readCache(folder), fresh = {};
+    const found = readCache(folder), cached = found || {}, fresh = {}, now = Date.now();
     const tracks = new Array(files.length);
     let next = 0, done = 0;
     async function worker() {
       while (next < files.length) {
         const i = next++, p = files[i];
-        const stamp = await stampOf(p);
+        const st = await statOf(p);
+        const stamp = st ? `${st.size}:${Math.round(st.mtimeMs)}` : null;
+        const added = addedAt(cached[p], st, !!found, now);
         let info = cached[p] && cached[p].stamp === stamp ? cached[p].info : null;
         if (!info) { try { info = await trackInfo(p); } catch { info = { title: path.basename(p), artist: null, album: null, albumArtist: null, year: null, track: null, disc: 1, duration: 0 }; } }
-        fresh[p] = { stamp, info };
-        tracks[i] = { path: p, info };
+        fresh[p] = { stamp, info, added };
+        tracks[i] = { path: p, info, added };
         if (++done % 20 === 0 && onProgress) onProgress(done, files.length);
       }
     }
@@ -229,4 +244,4 @@ async function albumCoverFull(firstTrack) {
 /** A file's tags changed: its album's cover thumbnail is made again next time. */
 function forget(filePath) { thumbs.delete(filePath); }
 
-module.exports = { scanAlbums, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };
+module.exports = { scanAlbums, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };

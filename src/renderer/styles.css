@@ -443,6 +443,29 @@ body.cd-view #cd-info { display: block !important; }
 }
 .spine.double .spine-text { line-height: 52px; }
 .spine-text b { font-weight: bold; }
+/* A Japanese edition's obi: the paper strip wrapped round the case's spine — cream paper, the album's colour at the
+   top, its catalog number at the foot (shelf-stickers.js picks which albums have one). */
+.spine.obi {
+  background:
+    linear-gradient(to right, rgba(255, 255, 255, .5) 0 1px, transparent 1px calc(100% - 3px), rgba(0, 0, 0, .18) calc(100% - 3px)),
+    linear-gradient(to bottom, rgb(var(--spine)) 0 24px, rgba(0, 0, 0, .25) 24px 25px, transparent 25px),
+    rgb(238, 232, 218);
+}
+.spine.obi .spine-text { inset: 32px 0 62px; color: rgb(38, 32, 28); }
+.obi-cat {
+  position: absolute; left: 0; right: 0; bottom: 8px; height: 50px; overflow: hidden;
+  writing-mode: vertical-rl; line-height: inherit; font-size: 7px; letter-spacing: .06em; color: rgb(90, 80, 70);
+}
+.spine .obi-cat { line-height: 30px; }
+.spine.double .obi-cat { line-height: 52px; }
+/* NEW: a round sticker on an album that turned up in the music folder lately. */
+.sticker-new {
+  position: absolute; display: grid; place-items: center; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle at 35% 30%, rgb(255, 92, 72), rgb(214, 30, 30));
+  color: rgb(255, 244, 150); font-weight: bold; box-shadow: 0 1px 3px rgba(0, 0, 0, .5), inset 0 0 0 1px rgba(255, 255, 255, .25);
+}
+.spine .sticker-new { top: 4px; left: 50%; width: 22px; height: 22px; margin-left: -11px; font-size: 6px; transform: rotate(-12deg); z-index: 1; }
+.spine.new:not(.obi) .spine-text { top: 30px; }
 .shelf-empty { display: flex; flex-direction: column; align-items: center; gap: 16px; padding-top: 18vh; font-size: 14px; color: rgb(var(--muted)); }
 .case-layer { position: absolute; inset: 0; background: rgba(0, 0, 0, .6); display: grid; place-items: center; perspective: 1400px; }
 .case-card {
@@ -460,6 +483,25 @@ body.cd-view #cd-info { display: block !important; }
 .case-front::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: linear-gradient(to right, rgba(0, 0, 0, .35) 0 10px, rgba(255, 255, 255, .15) 10px 12px, transparent 12px), linear-gradient(125deg, rgba(255, 255, 255, .16), transparent 40%);
+}
+/* The obi, over the left of the case's front (outside the plastic, so over its hinge too), and the stickers. */
+.case-obi {
+  position: absolute; top: 0; bottom: 0; left: 0; width: 13%; z-index: 1; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; overflow: hidden;
+  background: linear-gradient(to right, rgba(0, 0, 0, .06), transparent 30%, rgba(0, 0, 0, .12)), rgb(238, 232, 218);
+  box-shadow: 2px 0 6px rgba(0, 0, 0, .35); color: rgb(38, 32, 28);
+}
+.obi-top { align-self: stretch; padding: 8px 0; text-align: center; font-size: 11px; font-weight: bold; letter-spacing: .1em; background: rgb(var(--spine)); color: rgb(250, 248, 240); text-shadow: 0 1px 2px rgba(0, 0, 0, .5); }
+.obi-title { flex: 1 1 auto; min-height: 0; margin: 12px 0; writing-mode: vertical-rl; font-size: 13px; font-weight: bold; letter-spacing: .08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.obi-foot { padding: 0 2px 10px; text-align: center; font-size: 7px; white-space: nowrap; line-height: 1.5; color: rgb(90, 80, 70); }
+.obi-foot div:last-child { font-size: 10px; font-weight: bold; color: rgb(38, 32, 28); }
+.case-front .sticker-new { top: 14px; right: 14px; width: 54px; height: 54px; font-size: 14px; letter-spacing: .04em; transform: rotate(14deg); z-index: 2; }
+.sticker-price {
+  position: absolute; right: 16px; bottom: 16px; z-index: 2; pointer-events: none; padding: 5px 9px 4px;
+  background: rgb(252, 250, 244); color: rgb(30, 30, 34); font-size: 13px; font-weight: bold; letter-spacing: .02em;
+  border: 1px solid rgba(0, 0, 0, .12); border-radius: 2px; box-shadow: 0 1px 3px rgba(0, 0, 0, .4);
+  transform: rotate(-3deg);
+  background-image: linear-gradient(to bottom, rgb(232, 96, 40) 0 3px, transparent 3px);
 }
 .case-info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
 .case-title { font-size: 22px; color: rgb(var(--text)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
