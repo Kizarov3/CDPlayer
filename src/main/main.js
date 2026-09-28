@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog, protocol, screen, shell, Menu, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, protocol, screen, shell, Menu, nativeTheme, components } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -166,6 +166,15 @@ function buildMenu() {
 // ---- IPC ------------------------------------------------------------------------------------------------------
 
 const handle = (channel, fn) => ipcMain.handle(channel, (_e, ...args) => fn(...args));
+// Widevine arrives through castLabs' component updater (downloaded on first run), so it's awaited only when Spotify
+// needs it — never at startup, which must work offline and in the smoke test.
+function drmReady() {
+  if (!components || typeof components.whenReady !== 'function') return Promise.resolve(false);
+  return Promise.race([
+    components.whenReady().then(() => true, () => false),
+    new Promise((resolve) => setTimeout(() => resolve(false), 20000)),
+  ]);
+}
 
 handle('state:load', () => ({
   settings,

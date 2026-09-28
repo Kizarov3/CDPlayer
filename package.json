@@ -13,14 +13,16 @@
     "dist": "electron-builder",
     "dist:mac": "electron-builder --mac",
     "dist:win": "electron-builder --win",
-    "dist:linux": "electron-builder --linux"
+    "dist:linux": "electron-builder --linux",
+    "postinstall": "node node_modules/electron/install.js",
+    "vmp-sign-dev": "python3 -m castlabs_evs.vmp sign-pkg node_modules/electron/dist"
   },
   "dependencies": {
     "music-metadata": "^11.16.1",
     "node-taglib-sharp": "^6.0.3"
   },
   "devDependencies": {
-    "electron": "^44.4.5",
+    "electron": "https://github.com/castlabs/electron-releases#v44.1.0+wvcus",
     "electron-builder": "^26.15.3"
   },
   "build": {
@@ -31,6 +33,10 @@
       "output": "dist",
       "buildResources": "build"
     },
+    "electronDownload": {
+      "mirror": "https://github.com/castlabs/electron-releases/releases/download/"
+    },
+    "afterPack": "build/vmp-sign.js",
     "files": [
       "src/**/*",
       "package.json"
