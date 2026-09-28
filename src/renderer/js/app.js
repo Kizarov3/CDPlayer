@@ -11,7 +11,7 @@ import { parseLrc, currentLineIndex, heardPosition, playbackTimeFor, looksOnline
 import { shortcutKey } from './keys.js';
 import { jogSeconds } from './jog.js';
 import { dockIcon } from './dock-disc.js';
-import { drawCard, lyricChoices, cardSubtitle } from './share-card.js';
+import { drawCard, lyricChoices, cardSubtitle, quoteLines, MAX_QUOTE_LINES } from './share-card.js';
 import * as panels from './panels.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
 import { openShelf, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer } from './shelf.js';
@@ -483,19 +483,19 @@ function applyCover(img) {
   refreshDockSoon();
 }
 
-// P, or right-click the disc: a picture of what's playing (share-card.js), with a line of its lyrics picked in a panel,
-// copied to paste into a chat or saved.
+// P, or right-click the disc: a picture of what's playing (share-card.js), quoting lines of its lyrics picked in a
+// panel, copied to paste into a chat or saved.
 function shareCard() {
   if (!state.loadedPath) { setStatus('NOTHING PLAYING TO SHARE'); return; }
   const song = { cover: state.cover, title: state.titleText, artist: state.artistText, subtitle: cardSubtitle(state.details) };
   const choices = lyricChoices(state.lyrics, lyricsPosition());
-  const png = (i) => drawCard({ ...song, lyric: i >= 0 ? choices.lines[i] : null }, { ...colors });
-  const attempt = (work, done) => async (i) => {
-    try { if (!(await work(await png(i)))) return false; setStatus(done); return true; } catch { setStatus("COULDN'T MAKE THE CARD"); return false; }
+  const png = (picked) => drawCard({ ...song, quote: quoteLines(choices.lines, picked) }, { ...colors });
+  const attempt = (work, done) => async (picked) => {
+    try { if (!(await work(await png(picked)))) return false; setStatus(done); return true; } catch { setStatus("COULDN'T MAKE THE CARD"); return false; }
   };
   panels.showCard(app, {
-    choices,
-    render: async (i) => URL.createObjectURL(new Blob([await png(i)], { type: 'image/png' })),
+    choices, maxLines: MAX_QUOTE_LINES,
+    render: async (picked) => URL.createObjectURL(new Blob([await png(picked)], { type: 'image/png' })),
     copy: attempt(async (bytes) => { await cdp.copyImage(bytes); return true; }, 'CARD COPIED · PASTE IT ANYWHERE'),
     save: attempt((bytes) => cdp.saveCard(bytes, [song.artist, song.title].filter(Boolean).join(' - ')), 'CARD SAVED'),
   });

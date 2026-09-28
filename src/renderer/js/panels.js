@@ -73,16 +73,18 @@ function sliderRow(label, slider, valueLabel) {
 }
 
 // ---- The Now Playing card ----------------------------------------------------------------------------------------
-// P (or right-click the disc): the card as it will look, and which line of the lyrics goes on it — the one being sung,
-// another, or none — then COPY it to paste into a chat, or SAVE… it as a picture. ↑/↓ pick a line, Enter copies.
-// `render(i)` → a URL of the card with line i (-1: none); `copy(i)` / `save(i)` → true once done.
+// P (or right-click the disc): the card as it will look, and which lines of the lyrics go on it — up to ten, the one
+// being sung to start with — then COPY it to paste into a chat, or SAVE… it as a picture. Click a line to add or take
+// it off, shift-click to take in every line from the last one clicked; ↑/↓ move to a single line; Enter copies.
+// `render(lines)` → a URL of the card quoting those lines (indexes; none: no quote); `copy` / `save` → true once done.
 
-export function showCard(app, { choices, render, copy, save }) {
-  let picked = choices.picked, shownUrl = null, drawing = 0;
+export function showCard(app, { choices, maxLines, render, copy, save }) {
+  let picked = choices.picked >= 0 ? [choices.picked] : [], anchor = choices.picked, shownUrl = null, drawing = 0, noteTimer = null;
   const preview = el('img', { class: 'card-preview', alt: '' });
+  const note = el('div', { class: 'card-note' });
   const rows = [
-    el('div', { class: 'list-row card-line none', onClick: () => pick(-1) }, el('span', { class: 'entry' }, '— WITHOUT LYRICS —')),
-    ...choices.lines.map((text, i) => el('div', { class: 'list-row card-line', title: text, onClick: () => pick(i) }, el('span', { class: 'entry' }, text))),
+    el('div', { class: 'list-row card-line none', onClick: () => set([], -1) }, el('span', { class: 'entry' }, '— WITHOUT LYRICS —')),
+    ...choices.lines.map((text, i) => el('div', { class: 'list-row card-line', title: text, onClick: (e) => click(i, e.shiftKey) }, el('span', { class: 'entry' }, text))),
   ];
   const list = el('div', { class: 'scroll card-lines' }, rows);
   async function redraw() {
@@ -91,11 +93,20 @@ export function showCard(app, { choices, render, copy, save }) {
     if (shownUrl) URL.revokeObjectURL(shownUrl);
     preview.src = shownUrl = url;
   }
-  function pick(i) {
-    picked = i;
-    rows.forEach((r, j) => r.classList.toggle('on', j - 1 === i));
-    rows[i + 1].scrollIntoView({ block: 'nearest' });
+  function tell(text) { note.textContent = text; clearTimeout(noteTimer); noteTimer = setTimeout(() => { note.textContent = ''; }, 1600); }
+  function set(lines, from, scroll = false) {
+    if (lines.length > maxLines) { tell(`UP TO ${maxLines} LINES`); return; }
+    picked = lines; anchor = from;
+    rows[0].classList.toggle('on', !lines.length);
+    rows.slice(1).forEach((r, i) => r.classList.toggle('on', lines.includes(i)));
+    if (scroll) rows[from + 1].scrollIntoView({ block: 'nearest' });
     redraw();
+  }
+  function click(i, range) {
+    if (range && anchor >= 0) {
+      const span = []; for (let j = Math.min(anchor, i); j <= Math.max(anchor, i); j++) span.push(j);
+      set([...new Set([...picked, ...span])], i);
+    } else set(picked.includes(i) ? picked.filter((j) => j !== i) : [...picked, i], i);
   }
   let busy = false;
   const finish = (action) => async () => {
@@ -106,18 +117,19 @@ export function showCard(app, { choices, render, copy, save }) {
   const onKey = (e) => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
-      pick(Math.max(-1, Math.min(choices.lines.length - 1, picked + (e.key === 'ArrowDown' ? 1 : -1))));
+      const at = Math.max(-1, Math.min(choices.lines.length - 1, anchor + (e.key === 'ArrowDown' ? 1 : -1)));
+      set(at >= 0 ? [at] : [], at, true);
     } else if (e.key === 'Enter') { e.preventDefault(); finish(copy)(); }
   };
   const p = openPanel('card', () => [
     title('NOW PLAYING CARD'),
     el('div', { class: 'card-pick' }, preview, list),
-    el('div', { class: 'close-row split' }, pill('CANCEL', () => closePanel('card')),
+    el('div', { class: 'close-row split' }, pill('CANCEL', () => closePanel('card')), note,
       el('div', { class: 'card-actions' }, pill('SAVE…', finish(save), 'Save the card as a picture'), el('button', { class: 'pill on', onClick: finish(copy) }, 'COPY'))),
   ], { width: 940 });
   window.addEventListener('keydown', onKey);
-  p.onClose = () => { window.removeEventListener('keydown', onKey); drawing++; if (shownUrl) URL.revokeObjectURL(shownUrl); };
-  requestAnimationFrame(() => pick(picked));
+  p.onClose = () => { window.removeEventListener('keydown', onKey); clearTimeout(noteTimer); drawing++; if (shownUrl) URL.revokeObjectURL(shownUrl); };
+  requestAnimationFrame(() => set(picked, anchor, true));
 }
 
 // ---- Settings ----------------------------------------------------------------------------------------------------
