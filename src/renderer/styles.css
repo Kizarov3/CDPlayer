@@ -487,6 +487,18 @@ body.cd-view #cd-info { display: block !important; }
   writing-mode: vertical-rl; line-height: 24px; font-size: 9px; font-weight: bold; letter-spacing: .08em;
 }
 .shelf-divider.short span { writing-mode: horizontal-tb; text-align: center; font-size: 14px; }
+/* Carrying a spine off the shelf: the shelf all but disappears, so the player shows through to drop it on. */
+#shelf { transition: background-color 160ms ease, opacity 160ms ease; }
+#shelf.carrying { opacity: .06; pointer-events: none; }
+.spine.lifted { visibility: hidden; }
+.spine-ghost {
+  position: fixed; z-index: 30; margin: 0; pointer-events: none; transform-origin: 50% 20%;
+  box-shadow: 0 18px 30px rgba(0, 0, 0, .6);
+}
+#drop-ring {
+  position: fixed; z-index: 29; pointer-events: none; box-sizing: border-box;
+  border: 2px solid rgb(var(--accent)); box-shadow: 0 0 24px rgba(var(--accent), .55), inset 0 0 18px rgba(var(--accent), .25);
+}
 .shelf-empty { display: flex; flex-direction: column; align-items: center; gap: 16px; padding-top: 18vh; font-size: 14px; color: rgb(var(--muted)); }
 .case-layer { position: absolute; inset: 0; background: rgba(0, 0, 0, .6); display: grid; place-items: center; perspective: 1400px; }
 .case-card {

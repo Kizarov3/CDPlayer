@@ -1,7 +1,8 @@
 // The CD shelf (S, or SHELF): every album in your music folder as a jewel case standing on a shelf, spine out — the
 // spine in the colours of its cover, a double album twice as thick. Click one and the case slides out and turns to
 // show its front: the cover, the tracklist, and PLAY, which puts it in the player (the tray comes out, the disc goes
-// in, the tray closes and it plays). Click the case's cover and the album's booklet lifts out of it.
+// in, the tray closes and it plays). Click the case's cover and the album's booklet lifts out of it. Or pick a spine up
+// and carry it out: the shelf fades so the player shows through, and it goes in on the disc or at the end of the queue.
 import { el, pill, anim } from './widgets.js';
 import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './booklet.js';
 import { stickersFor } from './shelf-stickers.js';
@@ -114,11 +115,12 @@ function render() {
   const items = arrange(shown, sort).map((a) => {
     if (a.divider) return el('div', { class: `shelf-divider${[...a.divider].length <= 2 ? ' short' : ''}`, 'aria-hidden': 'true' }, el('span', {}, a.divider));
     const st = a.stickers = stickersFor(a, now);
-    const spine = el('button', { class: `spine${a.discs > 1 ? ' double' : ''}${st.obi ? ' obi' : ''}${st.isNew ? ' new' : ''}${holds(a, shelf.inPlayer) ? ' in-player' : ''}`, title: spineTitle(a), onClick: () => openCase(a, spine) },
+    const spine = el('button', { class: `spine${a.discs > 1 ? ' double' : ''}${st.obi ? ' obi' : ''}${st.isNew ? ' new' : ''}${holds(a, shelf.inPlayer) ? ' in-player' : ''}`, title: spineTitle(a), onClick: () => { if (!shelf.dragged) openCase(a, spine); } },
       el('span', { class: 'spine-text' }, a.artist ? el('b', {}, a.artist) : null, a.artist ? ' · ' : null, a.title),
       st.obi ? el('span', { class: 'obi-cat' }, st.obi.catalog) : null,
       st.isNew ? el('span', { class: 'sticker-new' }, 'NEW') : null);
     spine.album = a;
+    spine.addEventListener('pointerdown', (e) => pressSpine(e, spine));
     paintSpine(spine, a);
     shelf.observer.observe(spine);
     return spine;
@@ -167,6 +169,84 @@ async function loadCover(a, spine) {
   try { await img.decode(); } catch { return; }
   shelf.colors.set(a.id, averageColor(img));
   paintSpine(spine, a);
+}
+
+// ---- A spine carried off the shelf, onto the disc or the queue ---------------------------------------------------
+
+const DRAG_START_PX = 6;
+function pressSpine(e, spine) {
+  if (e.button !== 0 || shelf.caseOpen) return;
+  const start = { x: e.clientX, y: e.clientY };
+  let drag = null;
+  shelf.dragged = false;
+  const move = (ev) => {
+    if (!drag && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > DRAG_START_PX) drag = pickUp(spine, start);
+    if (drag) carry(drag, ev.clientX, ev.clientY);
+  };
+  // Followed on the window, wherever the pointer goes while the spine is carried.
+  const up = (ev) => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
+    if (!drag) return;
+    shelf.dragged = true; // the click that follows isn't "open the case"
+    setTimeout(() => { shelf.dragged = false; }, 0);
+    putDown(drag, ev.type === 'pointerup' ? targetAt(ev.clientX, ev.clientY) : null);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
+}
+function pickUp(spine, start) {
+  const r = spine.getBoundingClientRect();
+  const ghost = spine.cloneNode(true);
+  ghost.classList.add('spine-ghost');
+  ghost.classList.remove('in-player');
+  Object.assign(ghost.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+  document.body.append(ghost);
+  spine.classList.add('lifted');
+  $('shelf').classList.add('carrying');
+  return { spine, ghost, from: r, grab: { x: start.x - r.left, y: start.y - r.top }, target: null };
+}
+// Where a spine let go at (x, y) would go: the disc (in its case) or the queue.
+function targetAt(x, y) {
+  const c = shelf.app.disc.center;
+  if (c && !shelf.app.state.miniMode && Math.abs(x - c.x) <= c.r + 30 && Math.abs(y - c.y) <= c.r + 30) return 'disc';
+  const q = $('queue-card').getBoundingClientRect();
+  if (q.width && x >= q.left && x <= q.right && y >= q.top && y <= q.bottom) return 'queue';
+  return null;
+}
+function carry(drag, x, y) {
+  drag.ghost.style.transform = `translate(${x - drag.grab.x - drag.from.left}px, ${y - drag.grab.y - drag.from.top}px) rotate(-6deg)`;
+  const target = targetAt(x, y);
+  if (target === drag.target) return;
+  drag.target = target;
+  showDropTarget(target);
+}
+// A ring round the disc, or an outline round the queue, while a spine is over it.
+function showDropTarget(target) {
+  let ring = $('drop-ring');
+  if (!ring) { ring = el('div', { id: 'drop-ring' }); document.body.append(ring); }
+  ring.hidden = !target;
+  if (!target) return;
+  if (target === 'disc') {
+    const c = shelf.app.disc.center;
+    Object.assign(ring.style, { left: `${c.x - c.r - 6}px`, top: `${c.y - c.r - 6}px`, width: `${2 * c.r + 12}px`, height: `${2 * c.r + 12}px`, borderRadius: '50%' });
+  } else {
+    const q = $('queue-card').getBoundingClientRect();
+    Object.assign(ring.style, { left: `${q.left - 6}px`, top: `${q.top - 6}px`, width: `${q.width + 12}px`, height: `${q.height + 12}px`, borderRadius: '10px' });
+  }
+}
+function putDown(drag, target) {
+  const { spine, ghost } = drag;
+  const a = spine.album;
+  showDropTarget(null);
+  const back = () => { ghost.remove(); spine.classList.remove('lifted'); $('shelf').classList.remove('carrying'); };
+  if (target === 'disc') { back(); play(a, 0); return; }
+  if (target === 'queue') { back(); shelf.app.addToQueue(a.tracks.map((t) => t.path), { sorted: true }); return; }
+  // Let go anywhere else: it goes back in its place on the shelf.
+  if (!anim.enabled) { back(); return; }
+  ghost.animate([{ transform: ghost.style.transform }, { transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.3,.7,.3,1)' }).onfinish = back;
 }
 
 // ---- The case, pulled out and turned to its front ----------------------------------------------------------------
