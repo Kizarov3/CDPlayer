@@ -1,6 +1,6 @@
 # CDPlayer
 
-CDPlayer is a desktop music player that recreates the tactile feel of a physical CD player for your local music. Load a track, press play, and enjoy a simple, distraction-free listening experience — no accounts, no streaming, no internet required to play a song.
+CDPlayer is a desktop music player that recreates the tactile feel of a physical CD player for your local music. Load a track, press play, and enjoy a simple, distraction-free listening experience — no account needed, no internet required to play a song. (If you have Spotify Premium, it can play your Spotify albums too.)
 
 **Download it, open it, and it plays.** MP3, M4A (AAC *and* Apple Lossless), FLAC, WAV, AIFF, AU, OGG and Opus all work out of the box on macOS, Windows and Linux. There is nothing else to install — no FFmpeg, no Java.
 
@@ -71,6 +71,13 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 <p align="center">
   <img src="docs/screenshots/booklet.jpg" width="70%" alt="An album's booklet: the tracklist and the first song's lyrics">
 </p>
+
+**Spotify** (Premium)
+- **SPOTIFY** lists your saved albums and playlists, with a search. Click one and it goes in as a disc and plays — the tray, the disc, Up Next, shuffle and repeat, lyrics and karaoke all work as for your files, and an album plays through without gaps
+- Spotify lets an app play for only five people, so CDPlayer plays through **your own** free Spotify developer app — see [Spotify setup](#spotify-optional)
+- Spotify's audio is protected, so the EQ, crossfade, mono, visualizer and waveform don't apply to it, and it can't be ripped. Spotify only shares the songs of playlists you made or collaborate on, not ones you just follow
+- **DISCONNECT SPOTIFY** signs CDPlayer out again
+- Works on macOS and Windows. On Linux it depends on your system's Widevine support
 
 **Queue**
 - Full queue list with per-track duration, click-to-play, and a hover-to-reveal remove (×) button
@@ -164,7 +171,16 @@ The original Java app lives on at [Kizarov3/CDPlayer-Legacy](https://github.com/
 
 ## Spotify (optional)
 
-Everything else works without it. Spotify is only used as a third cover-art source and for resolving pasted Spotify links. To enable it, create a free app at [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) with the redirect URI `http://127.0.0.1:8080/callback`, then put its **Client ID** on the first line and **Client Secret** on the second line of `spotify.txt` in the data folder above.
+Everything else works without it. With it, CDPlayer plays your Spotify albums and playlists (Premium only), and also uses Spotify as a third cover-art source and to resolve pasted Spotify links.
+
+Spotify lets each developer app play for only five people, so CDPlayer uses your own — the **SPOTIFY** button walks you through it:
+
+1. Create a free app at [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard), with **Web API** and **Web Playback SDK** ticked
+2. Add the redirect URI `http://127.0.0.1:8080/callback`
+3. Under **User Management**, add the email of your Spotify account
+4. Paste the app's **Client ID** and **Client Secret** into the SPOTIFY panel, then **CONNECT SPOTIFY**
+
+They're kept in `spotify.txt` in the data folder above. If you set Spotify up for an earlier version, the panel asks you to connect once more: playing needs a few more permissions than importing playlists did.
 
 ## Build from source
 
