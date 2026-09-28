@@ -11,6 +11,7 @@ import { parseLrc, currentLineIndex, heardPosition, playbackTimeFor, looksOnline
 import { shortcutKey } from './keys.js';
 import { jogSeconds } from './jog.js';
 import { dockIcon } from './dock-disc.js';
+import { drawCard, cardLyric, cardSubtitle } from './share-card.js';
 import * as panels from './panels.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
 import { openShelf, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer } from './shelf.js';
@@ -480,6 +481,19 @@ function applyCover(img) {
   onCoverChanged();
   pushMini(true);
   refreshDockSoon();
+}
+
+// P, or right-click the disc: a picture of what's playing onto the clipboard, to paste into a chat (share-card.js).
+async function copyCard() {
+  if (!state.loadedPath) { setStatus('NOTHING PLAYING TO SHARE'); return; }
+  const song = {
+    cover: state.cover, title: state.titleText, artist: state.artistText, subtitle: cardSubtitle(state.details),
+    lyric: state.lyrics ? cardLyric(parseLrc(state.lyrics), lyricsPosition()) : null,
+  };
+  try {
+    await cdp.copyImage(await drawCard(song, colors));
+    setStatus('CARD COPIED · PASTE IT ANYWHERE');
+  } catch { setStatus("COULDN'T MAKE THE CARD"); }
 }
 
 // The Dock / taskbar icon shows the disc that's in (dock-disc.js), redrawn a moment after its cover or label settles.
@@ -1283,6 +1297,10 @@ function buildStaticUi() {
   $('vis-mode').addEventListener('mousedown', () => { if (state.visualizerMode) toggleVisualizerMode(); });
   disc.onEjectPeak = () => nextTrack();
   disc.canGrab = () => !!engine.deck && !state.trayBusy;
+  $('disc').addEventListener('contextmenu', async (e) => {
+    e.preventDefault();
+    if (!state.miniMode && await cdp.discMenu(!!state.loadedPath) === 'card') copyCard();
+  });
   disc.onGrab = startJog;
   disc.onJog = turnJog;
   disc.onJogEnd = endJog;
@@ -1325,7 +1343,7 @@ function onKeyDown(e) {
   if (anyOverlayOpen()) return;
   const actions = {
     ArrowLeft: () => seek(-SKIP_SECONDS), ArrowRight: () => seek(SKIP_SECONDS), ArrowUp: () => adjustVolume(5), ArrowDown: () => adjustVolume(-5),
-    u: toggleMute, ' ': toggle, k: toggle, j: previousTrack, l: nextTrack, f: toggleFullscreen, c: toggleCdView, v: toggleVisualizerMode, y: toggleKaraoke, e: toggleTray, s: toggleShelf,
+    u: toggleMute, p: copyCard, ' ': toggle, k: toggle, j: previousTrack, l: nextTrack, f: toggleFullscreen, c: toggleCdView, v: toggleVisualizerMode, y: toggleKaraoke, e: toggleTray, s: toggleShelf,
   };
   if (actions[key]) { e.preventDefault(); if (!e.repeat || key.startsWith('Arrow')) actions[key](); }
 }

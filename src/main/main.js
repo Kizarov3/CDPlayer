@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog, protocol, screen, shell, Menu, nativeTheme, components, clipboard, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, protocol, screen, shell, Menu, nativeTheme, components, clipboard, ClipboardItem, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -209,6 +209,13 @@ handle('plays:add', (p) => {
   return n;
 });
 handle('plays:count', (p) => plays().get(p) || 0);
+// The now-playing card (share-card.js), onto the clipboard as a picture.
+handle('clipboard:image', (png) => clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]));
+// Right-clicking the disc: its menu → what was chosen ('card'), or null.
+handle('menu:disc', (loaded) => new Promise((resolve) => {
+  const menu = Menu.buildFromTemplate([{ label: 'Copy Now Playing Card', sublabel: 'P', enabled: !!loaded, click: () => resolve('card') }]);
+  menu.popup({ window: win, callback: () => setTimeout(() => resolve(null), 0) });
+}));
 // The Dock (macOS) or taskbar (Windows, Linux) icon: the disc that's in (drawn by dock-disc.js), or the app's own
 // icon when nothing is.
 let dockShowsDisc = false;

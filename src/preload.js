@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('cdp', {
   addPlay: invoke('plays:add'),
   playCount: invoke('plays:count'),
   dockDisc: invoke('dock:disc'),
+  copyImage: invoke('clipboard:image'),
+  discMenu: invoke('menu:disc'),
   findCover: invoke('online:cover'),
   findCoverUrl: invoke('online:coverUrl'),
   findLyrics: invoke('online:lyrics'),
