@@ -56,6 +56,8 @@ test('the sign-in page asks for every scope playback needs, on the loopback redi
   assert.strictEqual(u.searchParams.get('state'), 'st8');
   assert.deepStrictEqual(u.searchParams.get('scope').split(' ').sort(), [...spotify.SCOPES].sort());
   for (const s of ['streaming', 'user-read-email', 'user-read-private', 'user-library-read', 'user-modify-playback-state']) assert.ok(spotify.SCOPES.includes(s), s);
+  // Always the account picker ("Not you?"), not a silent sign-in as whoever the browser is logged in as.
+  assert.strictEqual(u.searchParams.get('show_dialog'), 'true');
 });
 
 test('user token: refreshed with the app credentials, cached, and a rotated refresh token is kept', async () => {

@@ -305,9 +305,11 @@ async function coverDataUrl(url) {
   } catch { return null; }
 }
 
+// show_dialog: Spotify always shows who's signing in, with "Not you?" to pick another account — otherwise it signs in
+// silently as whoever the browser is logged in to Spotify as (a friend's account, say).
 function authorizeUrl(clientId, state) {
   return `https://accounts.spotify.com/authorize?response_type=code&client_id=${encodeURIComponent(clientId)}`
-    + `&scope=${encodeURIComponent(SCOPES.join(' '))}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${state}`;
+    + `&scope=${encodeURIComponent(SCOPES.join(' '))}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${state}&show_dialog=true`;
 }
 
 module.exports = {
