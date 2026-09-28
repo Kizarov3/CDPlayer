@@ -264,3 +264,13 @@ test('volume reaches the player, before and after it exists', async () => {
   session.setVolume(0.8);
   assert.deepStrictEqual(player().calls.at(-1), ['volume', 0.8]);
 });
+
+test("a refused play leaves nothing loaded: Spotify's empty report after it isn't another device taking over", async () => {
+  const { session, events, player } = setup({ responses: [{ ok: false, status: 403, reason: 'UNKNOWN' }] });
+  const a = new SpotifyTrackElement(session, A, 200000, () => []);
+  await assert.rejects(a.play());
+  player().emit('player_state_changed', null);
+  assert.deepStrictEqual(events.map((e) => e.type), ['error']);
+  assert.strictEqual(session.currentUri, null);
+  assert.ok(a.paused);
+});

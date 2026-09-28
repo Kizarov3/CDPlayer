@@ -87,6 +87,8 @@ export class SpotifySession {
     let r = await this.startPlayback(request);
     if (!r.ok && r.status === 404) { await this.wait(1000); r = await this.startPlayback({ ...request, deviceId: this.deviceId }); }
     if (r.ok) return true;
+    // Refused: nothing is on the device, so Spotify's empty report next isn't another device taking over.
+    this.currentUri = null; this.awaiting = null;
     this.pos = { ms: positionMs, at: this.now(), paused: true };
     // A 403 is only a missing Premium when Spotify says so; "Restriction violated" is a track it won't play.
     const premium = r.status === 403 && r.reason === 'PREMIUM_REQUIRED';

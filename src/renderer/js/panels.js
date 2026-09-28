@@ -124,13 +124,16 @@ function buildSettings(app) {
   const discord = toggle(s.discord, () => { app.setDiscord(!s.discord); setToggle(discord, s.discord); });
   const discNoise = toggle(s.discNoise, () => { app.setDiscNoise(!s.discNoise); setToggle(discNoise, s.discNoise); });
   const saveFound = toggle(s.saveFound, () => { app.setSaveFound(!s.saveFound); setToggle(saveFound, s.saveFound); });
+  // A Spotify disc plays outside Web Audio: the EQ, crossfade and mono can't shape it.
+  const forSpotify = app.spotifyActive();
+  const unavailable = (node) => (forSpotify ? el('div', { class: 'unavailable', title: 'Not available for Spotify' }, node) : node);
 
   const github = el('div', { class: 'github-link', title: 'Open GitHub profile', onClick: () => app.cdp.openGitHub('Kizarov3') }, catSvg(), el('span', {}, 'Kizarov3'));
   const body = el('div', { class: 'scroll settings-body' },
     section('SOUND'),
-    row('EQUALIZER', el('div', { class: 'row-pills' }, presetButton, eqButton)),
-    sliderRow('CROSSFADE', crossfade, crossfadeValue),
-    row('MONO AUDIO', mono),
+    unavailable(row('EQUALIZER', el('div', { class: 'row-pills' }, presetButton, eqButton))),
+    unavailable(sliderRow('CROSSFADE', crossfade, crossfadeValue)),
+    unavailable(row('MONO AUDIO', mono)),
     hint('Sums the left and right channels together — for a single speaker or one earbud.'),
     row('DISC NOISE', discNoise),
     hint('A real player’s sounds: a faint hiss, the tray motor, the disc spinning up — and a skip when you shake the window.'), gap(18),
@@ -239,7 +242,7 @@ function buildEq(app) {
   const trigger = pill('SAVE AS PRESET', () => { trigger.hidden = true; inputRow.hidden = false; nameField.focus(); });
   const saveArea = el('div', {}, trigger, inputRow);
   const presets = el('div', { class: 'presets scroll' }, presetButtons);
-  return [title('EQUALIZER'), gap(18), sliders.map((x) => x.row), gap(10),
+  return [title('EQUALIZER'), app.spotifyActive() ? hint('Not available for Spotify — the equalizer shapes your own files.') : [], gap(18), sliders.map((x) => x.row), gap(10),
     el('div', { class: 'setting-row' }, 'PRESETS'), presets, gap(14), saveArea, closeRow(() => closePanel('eq'))];
 }
 

@@ -186,6 +186,8 @@ body.cd-view #cd-info { display: block !important; }
 .pill.on::before { opacity: 1; }
 .pill:disabled { color: rgba(var(--muted), .39); cursor: default; }
 .pill:disabled:hover { background: rgba(255, 255, 255, .047); }
+.unavailable { opacity: .4; }
+.unavailable > * { pointer-events: none; }
 .pulse { animation: pulse 90ms ease-in-out; }
 .pulse-strong { animation: pulseStrong 90ms ease-in-out; }
 @keyframes pulse { 50% { transform: scale(.92); } }

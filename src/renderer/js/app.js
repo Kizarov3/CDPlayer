@@ -13,6 +13,7 @@ import * as panels from './panels.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
 import { openShelf, closeShelf, isShelfOpen, escapeShelf, setupShelf } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
+import { SpotifySession, SpotifyTrackElement, isSpotifyUri, spotifyUpcoming, loadSpotifySdk } from './spotify-deck.js';
 
 const cdp = window.cdp;
 const $ = (id) => document.getElementById(id);
@@ -62,6 +63,7 @@ const noise = new DiscNoise(engine);
 const shake = new ShakeDetector();
 const TRAY_MS = 650, READING_MS = 1300;
 const detailsCache = new Map(); // path -> details without cover (queue labels, durations)
+const spotifyTracks = new Map(); // spotify:track:… -> { uri, title, artist, album, durationMs, cover } of the Spotify disc
 
 // ---- Status / labels ---------------------------------------------------------------------------------------
 
@@ -208,7 +210,7 @@ function setupQueueDrag() {
       drag.index = target;
       drag.accumulated -= dir * step;
     }
-    if (changed) { renderQueue(); saveQueueSoon(); }
+    if (changed) { renderQueue(); saveQueueSoon(); spotifyResync(); }
   });
   // The list captures the pointer on press (so a drag keeps tracking outside the row), which also means the
   // browser delivers the release — and the click — to the list, not the row. So "pressed and released without
@@ -227,6 +229,7 @@ function setupQueueDrag() {
 async function addToQueue(items, { sorted = false } = {}) {
   const songs = sorted ? items : await cdp.collectAudio(items);
   if (!songs.length) { setStatus('NO SUPPORTED AUDIO FOUND'); return; }
+  if (spotifyDiscIn()) { insertDisc(songs); return; } // files replace a Spotify disc, like a new CD
   if (disc.trayOpen && !state.trayBusy) { putDiscOnTray(songs); return; }
   state.queue.push(...songs);
   setStatus(`ADDED ${songs.length} TO QUEUE`);
@@ -239,6 +242,7 @@ function removeFromQueue(i) {
   if (!state.queue.length) resetToIdle('QUEUE EMPTY');
   else if (i === state.index) { state.index = Math.min(i, state.queue.length - 1); load(state.queue[state.index]); }
   else if (i < state.index) state.index--;
+  spotifyResync();
   renderQueue(); saveQueueSoon();
 }
 // CLEAR QUEUE can be taken back for a few seconds: the button turns into UNDO CLEAR (and ⌘Z / Ctrl+Z works), and
@@ -293,6 +297,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   if (state.loadedPath !== path) flushFoundSoon();
   state.loadedPath = path;
   $('tags-button').hidden = false;
+  if (isSpotifyUri(path)) { progress.setWaveform(null); await loadSpotify(path, token, { autoPlay, startAt }); return; }
   progress.setWaveform(null);
   const detailsPromise = cdp.details(path, { withCover: true }).catch(() => null);
   // A cue sheet track is a stretch of an album-length file, so which file and where it starts must be known first.
@@ -420,7 +425,7 @@ async function saveTags(path, changes) {
 const pendingFound = new Map(); // path -> changes
 let flushTimer = null;
 function saveFoundLater(path, changes) {
-  if (!path || /\.cue#\d+$/i.test(path)) return;
+  if (!path || /\.cue#\d+$/i.test(path) || isSpotifyUri(path)) return;
   pendingFound.set(path, { ...(pendingFound.get(path) || {}), ...changes });
 }
 function flushFoundSoon() {
@@ -486,7 +491,8 @@ function setPlaying(playing) {
   disc.spinning = playing;
   noise.setPlaying(playing);
   playButton.setGlyph(playing ? 'PAUSE' : 'PLAY'); pulse(playButton, true);
-  setStatus(playing ? 'NOW SPINNING' : state.loadedPath ? 'PAUSED' : 'READY TO PLAY');
+  if (playing) spotifyTrouble = null;
+  setStatus(playing ? 'NOW SPINNING' : spotifyActive() && spotifyTrouble ? spotifyTrouble : state.loadedPath ? 'PAUSED' : 'READY TO PLAY');
   visualizer.setActive(playing); bigVisualizer.setActive(playing);
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = state.loadedPath ? (playing ? 'playing' : 'paused') : 'none';
   pushMini(true);
@@ -497,7 +503,7 @@ async function toggle() {
   if (disc.trayOpen) { closeTray(); return; } // PLAY with the tray out closes it and plays, like a real deck
   if (!engine.deck) { if (state.queue.length && state.index >= 0) load(state.queue[state.index]); else choose(); return; }
   if (engine.playing) { engine.pause(); setPlaying(false); }
-  else { await engine.play(); setPlaying(true); }
+  else { await engine.play(); setPlaying(engine.playing); } // a Spotify track can be refused
 }
 function nextTrack() {
   const next = upcomingIndex();
@@ -579,9 +585,86 @@ async function closeTray({ play = true } = {}) {
   disc.reading = false;
   state.trayBusy = false;
   if (!engine.deck) { if (play) load(state.queue[state.index]); else disc.spinning = false; return; }
-  if (play || resume.playing) { await engine.play(); setPlaying(true); } else setPlaying(false);
+  if (play || resume.playing) { await engine.play(); setPlaying(engine.playing); } else setPlaying(false);
 }
 function toggleTray() { if (disc.trayOpen) closeTray(); else openTray({ eject: true }); }
+
+// ---- Spotify discs ---------------------------------------------------------------------------------------------
+// An album or playlist from the SPOTIFY panel goes in as a whole disc of spotify:track:… entries. The Web Playback
+// SDK plays it (spotify-deck.js); everything else — the disc, transport, lyrics, karaoke — works as for files.
+
+const SPOTIFY_ERRORS = {
+  premium: 'SPOTIFY PREMIUM IS NEEDED TO PLAY',
+  unsupported: "SPOTIFY PLAYBACK ISN'T SUPPORTED ON THIS SYSTEM",
+  auth: 'SPOTIFY SIGNED OUT · CONNECT AGAIN UNDER SPOTIFY',
+  offline: "COULDN'T REACH SPOTIFY",
+  playback: "COULDN'T PLAY THAT TRACK ON SPOTIFY",
+};
+let spotifySession = null;
+let spotifyTrouble = null; // why Spotify last refused to play, kept in the status line until something plays
+function spotify() {
+  if (spotifySession) return spotifySession;
+  spotifySession = new SpotifySession({
+    loadPlayer: () => loadSpotifySdk(),
+    getToken: () => cdp.spotifyAccessToken(),
+    startPlayback: (request) => cdp.spotifyPlay(request),
+    volume: state.volume / 100,
+  });
+  spotifySession.on(onSpotifyEvent);
+  return spotifySession;
+}
+const spotifyActive = () => isSpotifyUri(state.loadedPath);
+const spotifyDiscIn = () => state.queue.some(isSpotifyUri);
+function onSpotifyEvent(e) {
+  if (!spotifyActive()) return;
+  if (e.type === 'lost') { setPlaying(false); setStatus('PLAYING ON ANOTHER DEVICE · PRESS PLAY TO BRING IT BACK'); return; }
+  if (e.type !== 'error') return;
+  spotifyTrouble = SPOTIFY_ERRORS[e.reason] || SPOTIFY_ERRORS.playback;
+  if (e.reason !== 'playback') { engine.pause(); setPlaying(false); }
+  setStatus(SPOTIFY_ERRORS[e.reason] || SPOTIFY_ERRORS.playback);
+}
+/** Tells Spotify the order after the current track again, after shuffle, repeat or the queue changed. */
+function spotifyResync() {
+  if (spotifyActive() && spotifySession) spotifySession.resync(spotifyUpcoming(state.queue, state.index, state));
+}
+async function playSpotifyDisc(tracks, name) {
+  if (!tracks.length) return;
+  for (const t of tracks) {
+    spotifyTracks.set(t.uri, t);
+    detailsCache.set(t.uri, { title: t.title, artist: t.artist, album: t.album, duration: t.durationMs / 1000 });
+  }
+  if (isShelfOpen()) closeShelf();
+  await insertDisc(tracks.map((t) => t.uri), { status: `${String(name || 'SPOTIFY').toUpperCase()} ON THE TRAY` });
+}
+async function loadSpotify(path, token, { autoPlay, startAt }) {
+  const t = spotifyTracks.get(path);
+  if (!t) { engine.stop(); setPlaying(false); setStatus('THAT SPOTIFY DISC IS NO LONGER IN'); return; }
+  $('tags-button').hidden = true;
+  const element = new SpotifyTrackElement(spotify(), path, t.durationMs, () => spotifyUpcoming(state.queue, state.index, state));
+  const ok = await engine.load(path, { autoPlay: false, element }).catch(() => false);
+  if (!ok || token !== state.loadToken) return;
+  if (startAt > 0) engine.seek(Math.min(startAt, engine.duration));
+  if (autoPlay) await engine.play();
+  if (token !== state.loadToken) return;
+  setPlaying(autoPlay && engine.playing);
+  if (!autoPlay) setStatus('TRACK LOADED');
+  $('length').textContent = formatTime(engine.duration);
+  updateProgressUi(true);
+  renderQueue(); saveQueueSoon();
+  panels.refreshSettingsIfOpen(app);
+  const details = { title: t.title, artist: t.artist, album: t.album, lyrics: null, cover: null, coverUrl: t.cover, duration: t.durationMs / 1000, ext: 'SPOTIFY' };
+  state.details = details; state.detailsPath = path;
+  setTrackTitle(details.title, details.artist);
+  fadeInNowPlaying();
+  $('track-source').textContent = `SPOTIFY${t.album ? ` · ${t.album.toUpperCase()}` : ''}`;
+  state.lyrics = null; state.lyricsSource = null;
+  lyricsChanged();
+  if (details.title) lookUpLyrics(details, token);
+  details.cover = t.cover ? await cdp.spotifyCover(t.cover).catch(() => null) : null;
+  if (token !== state.loadToken) return;
+  await setCover(details.cover);
+  updateMediaSession();
+}
 
 // ---- Audio CDs ---------------------------------------------------------------------------------------------------
 // The main process says when a CD is in the drive (and again once MusicBrainz has named it), and when it's gone.
@@ -778,6 +861,7 @@ function switchTheme(index, { instant = false } = {}) {
 function setVolume(v, { fromSlider = false } = {}) {
   state.volume = Math.max(0, Math.min(100, Math.round(v)));
   engine.setVolume(state.volume / 100);
+  if (spotifySession) spotifySession.setVolume(state.volume / 100);
   $('volume-value').textContent = `${state.volume}%`;
   if (!fromSlider) volumeSlider.setValue(state.volume);
   saveSettingsSoon();
@@ -987,12 +1071,14 @@ async function loadPlaylist() {
   if (r.canceled) return;
   if (r.error) { setStatus("COULDN'T READ PLAYLIST"); return; }
   if (!r.tracks.length) { setStatus('NO PLAYABLE TRACKS IN PLAYLIST'); return; }
+  if (spotifyDiscIn()) { insertDisc(r.tracks); return; }
   state.queue.push(...r.tracks); // order preserved exactly as saved
   setStatus(`LOADED PLAYLIST · ${r.tracks.length} TRACK${r.tracks.length === 1 ? '' : 'S'}`);
   renderQueue(); saveQueueSoon();
   if (state.index < 0) { state.index = 0; load(state.queue[0]); }
 }
 function appendAndPlay(p) {
+  if (spotifyDiscIn()) { insertDisc([p]); return; }
   state.queue.push(p);
   state.index = state.queue.length - 1;
   renderQueue();
@@ -1035,6 +1121,7 @@ const playButton = roundButton('PLAY', 68, { primary: true, title: 'Play/Pause',
 function toggleShuffle() {
   state.shuffle = !state.shuffle; shuffleButton.setOn(state.shuffle); shuffleCache.index = NaN; renderQueue();
   pushMini(true);
+  spotifyResync();
 }
 function cycleRepeat() {
   state.repeat = state.repeat === 'OFF' ? 'ONE' : state.repeat === 'ONE' ? 'ALL' : 'OFF';
@@ -1043,6 +1130,7 @@ function cycleRepeat() {
   repeatButton.title = state.repeat === 'OFF' ? 'Repeat' : state.repeat === 'ONE' ? 'Repeat: one track' : 'Repeat: whole queue';
   renderQueue();
   pushMini(true);
+  spotifyResync();
 }
 const shuffleButton = modeButton('SHUFFLE', 'Shuffle', toggleShuffle);
 const repeatButton = modeButton('REPEAT', 'Repeat', cycleRepeat);
@@ -1096,7 +1184,7 @@ function buildStaticUi() {
   $('sleep-indicator').addEventListener('click', () => { armSleepTimer(0); panels.refreshSettingsIfOpen(app); });
   $('vis-mode').addEventListener('mousedown', () => { if (state.visualizerMode) toggleVisualizerMode(); });
   disc.onEjectPeak = () => nextTrack();
-  disc.onArtClick = (from) => openBooklet(app, from);
+  disc.onArtClick = (from) => { if (!spotifyActive()) openBooklet(app, from); };
   engine.onEnded = trackFinished;
   engine.onCrossfadeDone = () => { if (engine.playing) setStatus('NOW SPINNING'); };
   setupQueueDrag();
@@ -1175,10 +1263,11 @@ let sessionTick = 0, miniLevelsAt = 0;
 function playbackTick() {
   if (!engine.deck || !engine.playing) return;
   engine.watchSegmentEnd();
+  if (spotifyActive()) { if (spotifySession) spotifySession.tick(); }
   // Crossfade into the next track once we're within the crossfade window of the end — except between cue sheet
   // tracks that run into each other in the same file, which play on through, as on the album.
   const dur = engine.duration, pos = engine.position;
-  if (!state.crossfadeStarted && state.crossfade > 0 && dur > 0 && dur - pos <= state.crossfade) {
+  if (!state.crossfadeStarted && state.crossfade > 0 && !spotifyActive() && dur > 0 && dur - pos <= state.crossfade) {
     state.crossfadeStarted = true;
     if (state.repeat === 'ONE' && state.loadedPath) load(state.loadedPath, { allowCrossfade: true });
     else {
@@ -1239,7 +1328,7 @@ export const app = {
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) { state.index = i; load(state.queue[i]); } },
   coverSource: () => { const s = $('track-source').textContent; return /COVER ART|ALBUM ART/.test(s) ? s.split(' · ')[0].replace(/ COVER ART$/, '').replace('EMBEDDED ALBUM ART', 'In the file') : null; },
   switchTheme, setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise,
-  insertDisc, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
+  insertDisc, playSpotifyDisc, spotifyActive, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   saveEq: () => cdp.saveEqPresets(state.customPresets),
   lyricsLines: () => (state.lyrics ? parseLrc(state.lyrics) : []),
   openKaraoke: () => toggleKaraoke(),
