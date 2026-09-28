@@ -778,6 +778,11 @@ export function showOnboarding(app) {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.9.1', changes: [
+    '<b>Spotify on Windows</b>: CDPlayer couldn&rsquo;t reach Spotify on PCs whose antivirus checks secure connections, or behind a proxy &mdash; it now connects the way your browser does. Covers, lyrics and update checks there are fixed too',
+    'If Spotify still can&rsquo;t be reached, CDPlayer now says why',
+    'In the Spotify setup, click the Redirect URI to copy it',
+  ] },
   { version: '2.9.0', changes: [
     '<b>Spotify</b> (Premium): SPOTIFY lists your saved albums and playlists, with a search &mdash; click one and it goes in as a disc and plays, with Up Next, shuffle and repeat, lyrics and karaoke, and an album plays through without gaps',
     'It plays through your own free Spotify developer app (Spotify lets an app play for only five people) &mdash; the SPOTIFY panel walks you through it',
