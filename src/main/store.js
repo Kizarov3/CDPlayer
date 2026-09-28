@@ -30,7 +30,7 @@ const file = (name) => path.join(dataDir(), name);
 const FILES = {
   queue: 'queue.txt', onboarded: 'onboarded', lastVersion: 'lastversion.txt', lastPath: 'lastpath.txt',
   settings: 'settings.txt', eqPresets: 'eq-presets.txt', history: 'history.txt', spotify: 'spotify.txt',
-  miniPosition: 'mini-position.txt', plays: 'plays.txt',
+  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt',
 };
 
 function readText(name) {
@@ -142,6 +142,37 @@ function writePlayCounts(counts) {
   return writeText(FILES.plays, entries.map(([p, n]) => `${n}\t${p}`).join('\n') + (entries.length ? '\n' : ''));
 }
 
+// lastplayed.txt — "ms<TAB>path" per line: when each track was last played (for dust on the shelf). CDPlayer 2 only.
+function readLastPlayed() {
+  const times = new Map();
+  for (const line of lines(readText(FILES.lastPlayed))) {
+    const tab = line.indexOf('\t'), t = Number(line.slice(0, tab)), p = line.slice(tab + 1).trim();
+    if (tab > 0 && t > 0 && p) times.set(p, t);
+  }
+  return times;
+}
+function writeLastPlayed(times) {
+  const entries = [...times].filter(([p]) => safePath(p)).slice(-PLAYS_LIMIT); // the most recently played are last
+  return writeText(FILES.lastPlayed, entries.map(([p, t]) => `${t}\t${p}`).join('\n') + (entries.length ? '\n' : ''));
+}
+
+// dust.txt — "since <ms>": when dust started gathering on the shelf (so an update doesn't find it all dusty at once),
+// then "ms<TAB>album id" (JSON: an id has line breaks in it) for each album wiped clean. CDPlayer 2 only.
+function readDust() {
+  const dust = { since: null, wiped: new Map() };
+  for (const line of lines(readText(FILES.dust))) {
+    const since = /^since (\d+)$/.exec(line.trim());
+    if (since) { dust.since = Number(since[1]); continue; }
+    const tab = line.indexOf('\t'), t = Number(line.slice(0, tab));
+    try { const id = JSON.parse(line.slice(tab + 1)); if (tab > 0 && t > 0 && typeof id === 'string') dust.wiped.set(id, t); } catch { /* a broken line */ }
+  }
+  return dust;
+}
+function writeDust({ since, wiped }) {
+  const body = [...wiped].map(([id, t]) => `${t}\t${JSON.stringify(id)}`);
+  return writeText(FILES.dust, [`since ${since || Date.now()}`, ...body].join('\n') + '\n');
+}
+
 const HISTORY_LIMIT = 50;
 function readHistory() {
   return lines(readText(FILES.history)).map((p) => p.trim()).filter((p) => p && entryExists(p)).slice(0, HISTORY_LIMIT);
@@ -181,6 +212,6 @@ const writeLastVersion = (v) => writeText(FILES.lastVersion, v);
 module.exports = {
   dataDir, file, FILES, readText, writeText, isFile, isDir,
   readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, writeQueue, readHistory, writeHistory, HISTORY_LIMIT,
-  readPlayCounts, writePlayCounts,
+  readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readDust, writeDust,
   readEqPresets, writeEqPresets, readLastPath, writeLastPath, isOnboarded, markOnboarded, readLastVersion, writeLastVersion,
 };

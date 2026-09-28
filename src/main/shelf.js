@@ -159,6 +159,15 @@ function byTrack(albums) {
   for (const a of albums) { const paths = a.tracks.map((t) => t.path); for (const p of paths) map.set(p, paths); }
   return map;
 }
+/**
+ * When an album was last touched, for its dust: the latest of when it turned up in the music folder, when a song of it
+ * was last played, when it was last wiped, and when dust started gathering at all (so nothing's dusty from before).
+ */
+function touchedAt(album, { lastPlayed, wiped, since }) {
+  let t = Math.max(since || 0, album.added || 0, wiped.get(album.id) || 0);
+  for (const track of album.tracks) t = Math.max(t, lastPlayed.get(track.path) || 0);
+  return t || null;
+}
 /** The paths of the tracks on the same shelf album as `p` (itself included), or null when it isn't on the shelf. */
 function albumTracks(p) {
   if (!onShelf) {
@@ -263,4 +272,4 @@ async function albumCoverFull(firstTrack) {
 /** A file's tags changed: its album's cover thumbnail is made again next time. */
 function forget(filePath) { thumbs.delete(filePath); }
 
-module.exports = { scanAlbums, albumTracks, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };
+module.exports = { scanAlbums, albumTracks, touchedAt, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };

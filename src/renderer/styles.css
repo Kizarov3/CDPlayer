@@ -437,7 +437,8 @@ body.cd-view #cd-info { display: block !important; }
     rgb(92, 64, 44) 196px 199px, rgb(70, 47, 32) 199px 212px, rgba(0, 0, 0, .55) 212px 216px, transparent 216px 224px);
 }
 .spine {
-  position: relative; width: 30px; height: 196px; padding: 0; border: none; cursor: pointer; border-radius: 1px;
+  position: relative; isolation: isolate; /* its dust stays under whatever opens over the shelf */
+  width: 30px; height: 196px; padding: 0; border: none; cursor: pointer; border-radius: 1px;
   background:
     linear-gradient(to right, rgba(255, 255, 255, .28) 0 1px, rgba(255, 255, 255, .06) 1px 4px, transparent 4px calc(100% - 4px), rgba(0, 0, 0, .25) calc(100% - 4px) calc(100% - 1px), rgba(0, 0, 0, .5) calc(100% - 1px)),
     linear-gradient(to bottom, rgba(255, 255, 255, .12), transparent 18%, transparent 85%, rgba(0, 0, 0, .3)),
@@ -487,6 +488,19 @@ body.cd-view #cd-info { display: block !important; }
 }
 .spine .sticker-new { top: 4px; left: 50%; width: 22px; height: 22px; margin-left: -11px; font-size: 6px; transform: rotate(-12deg); z-index: 1; }
 .spine.new:not(.obi) .spine-text { top: 30px; }
+/* Dust (shelf-dust.js), settled on the top of a case left unplayed: a grey film with specks in it, thicker and further
+   down the spine the longer it's been. Rubbed off with the mouse. */
+.spine.dusty::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; pointer-events: none; z-index: 2;
+  height: calc(18% + 42% * var(--dust)); opacity: calc(.35 + .65 * var(--dust));
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 .86 0 0 0 0 .84 0 0 0 0 .8 0 0 0 1.6 -.75'/%3E%3C/filter%3E%3Crect width='60' height='60' filter='url(%23n)'/%3E%3C/svg%3E"),
+    linear-gradient(to bottom, rgba(196, 190, 178, .85), rgba(180, 174, 162, .45) 45%, rgba(170, 165, 155, 0));
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent);
+  transition: height 260ms ease, opacity 260ms ease;
+}
+.dust-mote { position: fixed; z-index: 40; pointer-events: none; border-radius: 50%; background: rgb(200, 194, 182); }
 /* A divider card between the shelf's sections (shelf-order.js): plain cardboard, a little shorter than the cases, the
    section written at its top. */
 .shelf-divider {

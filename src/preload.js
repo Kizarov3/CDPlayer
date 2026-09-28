@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('cdp', {
   addPlay: invoke('plays:add'),
   playCount: invoke('plays:count'),
   albumPlays: invoke('plays:album'),
+  wipeAlbum: invoke('dust:wipe'),
   dockDisc: invoke('dock:disc'),
   copyImage: invoke('clipboard:image'),
   saveCard: invoke('dialog:saveCard'),

@@ -133,3 +133,19 @@ test('disc wear is the 16th settings line, on unless turned off', () => {
   assert.strictEqual(fs.readFileSync(path.join(home, 'settings.txt'), 'utf8').split('\n')[15], '0');
   assert.strictEqual(store.readSettings().discWear, false);
 });
+
+test('when each track was last played, newest last, in lastplayed.txt', () => {
+  store.writeLastPlayed(new Map([['/m/a.mp3', 1000], ['/m/b.flac', 2000]]));
+  assert.strictEqual(fs.readFileSync(path.join(home, 'lastplayed.txt'), 'utf8'), '1000\t/m/a.mp3\n2000\t/m/b.flac\n');
+  assert.deepStrictEqual([...store.readLastPlayed()], [['/m/a.mp3', 1000], ['/m/b.flac', 2000]]);
+  fs.writeFileSync(path.join(home, 'lastplayed.txt'), 'junk\n5\t\nx\t/m/c.mp3\n3000\t/m/d.mp3\n');
+  assert.deepStrictEqual([...store.readLastPlayed()], [['/m/d.mp3', 3000]]);
+});
+
+test('dust.txt: since when dust has gathered, and when each album was wiped', () => {
+  fs.rmSync(path.join(home, 'dust.txt'), { force: true });
+  assert.deepStrictEqual(store.readDust(), { since: null, wiped: new Map() });
+  const id = 'korn\nfollow the leader\n';
+  store.writeDust({ since: 500, wiped: new Map([[id, 900]]) });
+  assert.deepStrictEqual(store.readDust(), { since: 500, wiped: new Map([[id, 900]]) });
+});

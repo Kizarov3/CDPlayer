@@ -3,11 +3,13 @@
 // show its front: the cover, the tracklist, and PLAY, which puts it in the player (the tray comes out, the disc goes
 // in, the tray closes and it plays). Click the case's cover and the album's booklet lifts out of it. Or pick a spine up
 // and carry it out: the shelf fades so the player shows through, and it goes in on the disc or at the end of the queue
-// (with ⇧ held, to play next).
+// (with ⇧ held, to play next). An album left unplayed gathers dust (shelf-dust.js): rub the mouse over its spine to
+// wipe it. PULL ONE takes one off the shelf at random, the dustier the likelier.
 import { el, pill, anim } from './widgets.js';
 import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './booklet.js';
 import { stickersFor } from './shelf-stickers.js';
 import { arrange, SORTS } from './shelf-order.js';
+import { dustLevel, pickOne, Wiper } from './shelf-dust.js';
 
 const $ = (id) => document.getElementById(id);
 const shelf = { open: false, albums: [], loading: false, covers: new Map(), colors: new Map(), observer: null, caseOpen: null, app: null, generation: 0, inPlayer: null };
@@ -61,6 +63,7 @@ export function setupShelf(app) {
   shelf.app = app;
   $('shelf-close').addEventListener('click', closeShelf);
   $('shelf-folder').addEventListener('click', pickFolder);
+  $('shelf-pull').addEventListener('click', pullOne);
   $('shelf-filter').addEventListener('input', render);
   $('shelf-sort').addEventListener('click', () => {
     const { state } = shelf.app;
@@ -113,6 +116,7 @@ function render() {
   }, { root: body, rootMargin: '200px' });
   const now = Date.now(), sort = shelf.app.state.shelfSort;
   $('shelf-sort').textContent = `SORT: ${SORT_LABELS[sort] || sort}`;
+  shelf.shown = shown;
   const items = arrange(shown, sort).map((a) => {
     if (a.divider) return el('div', { class: `shelf-divider${[...a.divider].length <= 2 ? ' short' : ''}`, 'aria-hidden': 'true' }, el('span', {}, a.divider));
     const st = a.stickers = stickersFor(a, now);
@@ -122,6 +126,9 @@ function render() {
       st.isNew ? el('span', { class: 'sticker-new' }, 'NEW') : null);
     spine.album = a;
     spine.addEventListener('pointerdown', (e) => pressSpine(e, spine));
+    spine.addEventListener('pointermove', (e) => rubSpine(e, spine));
+    spine.addEventListener('pointerleave', () => { spine.wiper = null; });
+    setDust(spine, st.isNew ? 0 : dustLevel(a.touched, now)); // a new album is fresh from the shop
     paintSpine(spine, a);
     shelf.observer.observe(spine);
     return spine;
@@ -248,6 +255,52 @@ function putDown(drag, target, next = false) {
   // Let go anywhere else: it goes back in its place on the shelf.
   if (!anim.enabled) { back(); return; }
   ghost.animate([{ transform: ghost.style.transform }, { transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.3,.7,.3,1)' }).onfinish = back;
+}
+
+// ---- Dust -------------------------------------------------------------------------------------------------------
+
+function setDust(spine, level) {
+  spine.dust = level;
+  spine.classList.toggle('dusty', level > 0);
+  spine.style.setProperty('--dust', level.toFixed(3));
+}
+// Rubbing the mouse back and forth over a dusty spine (no button held) wipes a little off with each stroke; wiped
+// clean, it's remembered, and dust starts gathering again from now.
+const WIPE_PER_STROKE = 0.3;
+function rubSpine(e, spine) {
+  if (e.buttons || !spine.dust) return;
+  spine.wiper = spine.wiper || new Wiper();
+  if (!spine.wiper.move(e.clientX, e.timeStamp)) return;
+  puff(e.clientX, e.clientY, spine.dust);
+  const left = spine.dust - WIPE_PER_STROKE;
+  setDust(spine, left > 0.02 ? left : 0);
+  if (spine.dust) return;
+  const a = spine.album;
+  shelf.app.cdp.wipeAlbum(a.id).then((t) => { a.touched = t; }).catch(() => {});
+}
+// A little cloud of dust falling off where the spine was wiped.
+function puff(x, y, level) {
+  if (!anim.enabled) return;
+  for (let i = 0; i < 4 + Math.round(level * 6); i++) {
+    const size = 2 + Math.random() * 3;
+    const mote = el('div', { class: 'dust-mote' });
+    Object.assign(mote.style, { left: `${x + (Math.random() - 0.5) * 14}px`, top: `${y + (Math.random() - 0.5) * 8}px`, width: `${size}px`, height: `${size}px` });
+    document.body.append(mote);
+    const dx = (Math.random() - 0.5) * 30, dy = 30 + Math.random() * 40;
+    mote.animate([{ opacity: 0.8, transform: 'none' }, { opacity: 0, transform: `translate(${dx}px, ${dy}px)` }],
+      { duration: 600 + Math.random() * 500, easing: 'cubic-bezier(.2,.6,.4,1)' }).onfinish = () => mote.remove();
+  }
+}
+
+// PULL ONE: an album off the shelf at random — of those shown, the dustier the likelier — brought into view and
+// pulled out.
+function pullOne() {
+  if (shelf.caseOpen || !shelf.shown || !shelf.shown.length) return;
+  const a = pickOne(shelf.shown);
+  const spine = [...document.querySelectorAll('#shelf-body .spine')].find((s) => s.album === a);
+  if (!spine) return;
+  spine.scrollIntoView({ block: 'center', inline: 'nearest', behavior: anim.enabled ? 'smooth' : 'auto' });
+  setTimeout(() => { if (shelf.open) openCase(a, spine); }, anim.enabled ? 450 : 0);
 }
 
 // ---- The case, pulled out and turned to its front ----------------------------------------------------------------

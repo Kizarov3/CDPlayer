@@ -65,6 +65,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - An album with no art of its own (a Music.app library keeps its artwork to itself) gets its cover found online; album names that differ only in punctuation are one album
 - What's on the shelf is remembered, so only new or changed files are read the next time
 - **SORT** stands it by artist, newest in your music folder, most played or year, with cardboard divider cards between the letters, months or decades, like a record shop's
+- **Dust**: an album nobody's played in a month starts gathering dust on top of its case, thicker the longer it's left, up to six months. Rub the mouse back and forth over the spine to wipe it off — it stays clean until dust settles again. **PULL ONE** takes an album off the shelf at random, the dustier the likelier
 - Some cases are Japanese editions, with an **obi** round the spine and a yen price; others still wear a shop's price sticker; and an album that turned up in your music folder in the last two weeks has a **NEW** sticker
 
 <p align="center">

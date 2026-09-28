@@ -156,3 +156,13 @@ test('the tracks of the shelf album a song is on, from the shelf\'s cache; a son
   assert.deepStrictEqual(albumTracks(`${music}/Korn/Issues/01.flac`), [`${music}/Korn/Issues/01.flac`]);
   assert.strictEqual(albumTracks('/Downloads/song.mp3'), null);
 });
+
+test('an album was last touched when it turned up, a song of it was played or it was wiped — or when dust began', () => {
+  const { touchedAt } = require('../src/main/shelf');
+  const album = { id: 'x', added: 100, tracks: [{ path: '/a' }, { path: '/b' }] };
+  const none = { lastPlayed: new Map(), wiped: new Map(), since: 50 };
+  assert.strictEqual(touchedAt(album, none), 100);
+  assert.strictEqual(touchedAt({ ...album, added: null }, none), 50);
+  assert.strictEqual(touchedAt(album, { ...none, lastPlayed: new Map([['/b', 400], ['/zzz', 9000]]) }), 400);
+  assert.strictEqual(touchedAt(album, { ...none, lastPlayed: new Map([['/b', 400]]), wiped: new Map([['x', 700]]) }), 700);
+});

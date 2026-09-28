@@ -202,10 +202,15 @@ handle('meta:details', (p, opts) => metadata.getDetails(p, opts));
 // Play counts, kept in memory and written a moment after the last change.
 let playCounts = null, playsTimer = null;
 const plays = () => (playCounts = playCounts || store.readPlayCounts());
+let lastPlayed = null;
+const playedAt = () => (lastPlayed = lastPlayed || store.readLastPlayed());
+function writePlays() { playsTimer = null; store.writePlayCounts(playCounts); if (lastPlayed) store.writeLastPlayed(lastPlayed); }
 handle('plays:add', (p) => {
   const counts = plays(), n = (counts.get(p) || 0) + 1;
   counts.delete(p); counts.set(p, n); // most recently played last, so the oldest drop off first
-  clearTimeout(playsTimer); playsTimer = setTimeout(() => store.writePlayCounts(counts), 1000);
+  const times = playedAt();
+  times.delete(p); times.set(p, Date.now());
+  clearTimeout(playsTimer); playsTimer = setTimeout(writePlays, 1000);
   return n;
 });
 handle('plays:count', (p) => plays().get(p) || 0);
@@ -315,8 +320,21 @@ handle('shelf:albums', async () => {
   // How many times each album's songs have been played, for the shelf's MOST PLAYED order.
   const counts = plays();
   for (const a of result.albums) a.plays = a.tracks.reduce((n, t) => n + (counts.get(t.path) || 0), 0);
+  // …and when each was last played or wiped, for its dust.
+  const touch = { ...dust(), lastPlayed: playedAt() };
+  for (const a of result.albums) a.touched = shelf.touchedAt(a, touch);
   return result;
 });
+// Dust on the shelf: gathering since the first time the shelf was read with it, wiped album by album.
+let dustState = null;
+function dust() {
+  if (!dustState) {
+    dustState = store.readDust();
+    if (!dustState.since) { dustState.since = Date.now(); store.writeDust(dustState); }
+  }
+  return dustState;
+}
+handle('dust:wipe', (id) => { const d = dust(), t = Date.now(); d.wiped.set(id, t); store.writeDust(d); return t; });
 handle('shelf:cover', (firstTrack) => shelf.albumCover(firstTrack));
 handle('shelf:coverFull', (firstTrack) => shelf.albumCoverFull(firstTrack));
 handle('dialog:pickMusicFolder', async () => {
@@ -609,6 +627,6 @@ app.whenReady().then(() => {
 });
 app.on('before-quit', () => {
   quitting = true;
-  if (playsTimer) { clearTimeout(playsTimer); playsTimer = null; store.writePlayCounts(playCounts); }
+  if (playsTimer) { clearTimeout(playsTimer); writePlays(); }
 });
 app.on('window-all-closed', () => app.quit());
