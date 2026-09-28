@@ -50,24 +50,40 @@ export class SpotifySession {
   connect() {
     if (this.ready) return this.ready;
     this.ready = (async () => {
-      let Player;
-      try { Player = await this.loadPlayer(); } catch { Player = null; }
-      if (!Player) { this.emit({ type: 'error', reason: 'offline' }); return { ok: false, reason: 'offline' }; }
+      if (!this.player) {
+        let Player;
+        try { Player = await this.loadPlayer(); } catch { Player = null; }
+        if (!Player) { this.emit({ type: 'error', reason: 'offline' }); return { ok: false, reason: 'offline' }; }
+        this.createPlayer(Player);
+      }
       return new Promise((resolve) => {
-        const fail = (reason) => { this.emit({ type: 'error', reason }); resolve({ ok: false, reason }); };
-        const player = this.player = new Player({ name: this.name, volume: this.volume, getOAuthToken: (cb) => { this.getToken().then((t) => cb(t || ''), () => cb('')); } });
-        player.addListener('ready', ({ device_id }) => { this.deviceId = device_id; resolve({ ok: true }); });
-        player.addListener('not_ready', () => { this.deviceId = null; });
-        player.addListener('initialization_error', () => fail('unsupported'));
-        player.addListener('authentication_error', () => fail('auth'));
-        player.addListener('account_error', () => fail('premium'));
-        player.addListener('playback_error', () => this.onPlaybackError());
-        player.addListener('player_state_changed', (s) => this.onState(s));
-        player.connect().then((ok) => { if (!ok) fail('unsupported'); }, () => fail('unsupported'));
+        this.settle = resolve;
+        this.player.connect().then((ok) => { if (!ok) this.fail('unsupported'); }, () => this.fail('unsupported'));
       });
     })();
     this.ready.then((r) => { if (!r.ok) this.ready = null; }); // a failed connection can be tried again
     return this.ready;
+  }
+  // One SDK player for the app's whole run: a second one in the same page never registers with Spotify, so
+  // disconnecting closes this one and connecting again reopens it.
+  createPlayer(Player) {
+    const player = this.player = new Player({ name: this.name, volume: this.volume, getOAuthToken: (cb) => { this.getToken().then((t) => cb(t || ''), () => cb('')); } });
+    player.addListener('ready', ({ device_id }) => { this.deviceId = device_id; this.resolveConnect({ ok: true }); });
+    player.addListener('not_ready', () => { this.deviceId = null; });
+    player.addListener('initialization_error', () => this.fail('unsupported'));
+    player.addListener('authentication_error', () => this.fail('auth'));
+    player.addListener('account_error', () => this.fail('premium'));
+    player.addListener('playback_error', () => this.onPlaybackError());
+    player.addListener('player_state_changed', (s) => this.onState(s));
+  }
+  resolveConnect(result) { const settle = this.settle; this.settle = null; if (settle) settle(result); }
+  fail(reason) { this.emit({ type: 'error', reason }); this.resolveConnect({ ok: false, reason }); }
+  /** DISCONNECT SPOTIFY: stops the music and closes the player (kept, to be reopened by the next connect). */
+  disconnect() {
+    if (this.currentUri && !this.pos.paused) this.pause();
+    this.currentUri = null; this.awaiting = null; this.sent = []; this.pendingUpcoming = null; this.lost = false;
+    this.deviceId = null; this.ready = null;
+    if (this.player) this.player.disconnect();
   }
 
   get paused() { return this.pos.paused; }

@@ -211,3 +211,12 @@ test('SEARCH’s playlist-link import reads the same /items contents', async () 
   answer({ ...TOKEN, 'https://api.spotify.com/v1/playlists/p1/items': { body: { items: [{ item: { type: 'track', uri: 'spotify:track:t1', name: 'One', duration_ms: 1, artists: [{ name: 'Ar' }], album: { name: 'Al', images: [] } } }], next: null } } });
   assert.deepStrictEqual(await spotify.resolveSpotifyLink('https://open.spotify.com/playlist/p1'), { tracks: [{ title: 'One', artist: 'Ar' }] });
 });
+
+test('disconnecting forgets the sign-in and its tokens, but keeps the Client ID and Secret', async () => {
+  connected();
+  answer(TOKEN);
+  assert.strictEqual(await spotify.accessToken(), 'user-1');
+  assert.deepStrictEqual(spotify.disconnect(), { configured: true, connected: false, reconnectNeeded: false });
+  assert.deepStrictEqual(spotify.credentials(), { clientId: 'id', clientSecret: 'secret', refreshToken: '', scopes: [] });
+  assert.strictEqual(await spotify.accessToken(), null); // the cached token is gone too
+});

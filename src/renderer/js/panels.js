@@ -11,7 +11,7 @@ import { formatLyricsForDisplay } from './lyrics.js';
 const layer = () => document.getElementById('overlays');
 const panels = new Map(); // name -> { overlay, card, build }
 // Escape closes the closest thing first, in this order.
-const ESC_ORDER = ['onboarding', 'changelog', 'booklet', 'menu', 'lyrics', 'tags', 'eq', 'rip', 'history', 'search', 'settings'];
+const ESC_ORDER = ['onboarding', 'changelog', 'booklet', 'menu', 'lyrics', 'tags', 'eq', 'rip', 'history', 'spotify', 'search', 'settings'];
 
 function openPanel(name, build, { width } = {}) {
   let p = panels.get(name);
@@ -609,6 +609,126 @@ async function importLibrary(app) {
   }
   if (!r.tracks.length) { setSearchStatus('NO TRACKS FOUND IN THAT EXPORT FILE'); return; }
   finishImport(app, r.tracks);
+}
+
+// ---- Spotify -----------------------------------------------------------------------------------------------------
+// Three states: no developer app yet (the Client ID and Secret, with how to get them), not connected (or connected
+// before playback existed), and connected — your saved albums, your playlists, and a search. A click puts it on the tray.
+
+const SPOTIFY_MESSAGES = {
+  SIGN_IN: 'CONNECT SPOTIFY AGAIN', OFFLINE: "COULDN'T REACH SPOTIFY",
+  NOT_SHARED: 'SPOTIFY ONLY SHARES THE SONGS OF PLAYLISTS YOU OWN OR COLLABORATE ON', EMPTY: 'NOTHING TO PLAY ON THAT ONE',
+};
+const sp = { account: null, drm: null, tab: 'ALBUMS', lists: { ALBUMS: null, PLAYLISTS: null }, next: { ALBUMS: 0, PLAYLISTS: 0 }, query: '', found: null, status: '', searchTimer: null };
+const spotifyMessage = (code) => SPOTIFY_MESSAGES[code] || `SPOTIFY · ${code}`;
+
+export function showSpotify(app) {
+  openPanel('spotify', () => buildSpotify(app), { width: 540 });
+  refreshSpotifyAccount(app);
+}
+async function refreshSpotifyAccount(app) {
+  sp.account = await app.cdp.spotifyStatus().catch(() => null);
+  if (sp.account && sp.account.connected && !sp.account.reconnectNeeded) {
+    if (sp.drm === null) app.cdp.spotifyDrmReady().then((ok) => { sp.drm = ok; refreshPanel('spotify'); });
+    if (!sp.lists[sp.tab]) loadSpotifyList(app, sp.tab);
+  }
+  refreshPanel('spotify');
+}
+async function loadSpotifyList(app, tab) {
+  const offset = sp.next[tab];
+  if (offset === null) return;
+  sp.status = 'LOADING…'; refreshPanel('spotify');
+  const r = await (tab === 'ALBUMS' ? app.cdp.spotifyAlbums(offset) : app.cdp.spotifyPlaylists(offset)).catch(() => ({ error: 'OFFLINE' }));
+  if (r.error) {
+    sp.status = spotifyMessage(r.error);
+    if (r.error === 'SIGN_IN') sp.account = { ...sp.account, reconnectNeeded: true };
+  } else {
+    sp.lists[tab] = [...(sp.lists[tab] || []), ...r.items];
+    sp.next[tab] = r.next;
+    sp.status = '';
+  }
+  refreshPanel('spotify');
+}
+function searchSpotify(app, query) {
+  sp.query = query;
+  clearTimeout(sp.searchTimer);
+  if (!query.trim()) { sp.found = null; refreshPanel('spotify'); return; }
+  sp.searchTimer = setTimeout(async () => {
+    const r = await app.cdp.spotifySearch(query.trim()).catch(() => ({ error: 'OFFLINE' }));
+    if (sp.query !== query) return; // typed on since
+    if (r.error) sp.status = spotifyMessage(r.error); else { sp.found = r.items; sp.status = ''; }
+    refreshPanel('spotify');
+  }, 400);
+}
+async function putSpotifyOnTray(app, item) {
+  sp.status = `READING ${item.name.toUpperCase()}…`; refreshPanel('spotify');
+  const r = await app.cdp.spotifyDiscTracks({ kind: item.kind, id: item.id }).catch(() => ({ error: 'OFFLINE' }));
+  if (r.error) { sp.status = spotifyMessage(r.error); refreshPanel('spotify'); return; }
+  sp.status = '';
+  closePanel('spotify');
+  app.playSpotifyDisc(r.tracks, item.name);
+}
+
+function buildSpotify(app) {
+  const a = sp.account;
+  const status = el('div', { class: 'setting-hint' }, sp.status);
+  const foot = el('div', { class: 'close-row' }, pill('CLOSE', () => closePanel('spotify')));
+  if (!a) return [title('SPOTIFY'), gap(18), hint('CHECKING…'), foot];
+
+  if (!a.configured) {
+    const id = el('input', { class: 'text-input', type: 'text', placeholder: 'Client ID', spellcheck: 'false' });
+    const secret = el('input', { class: 'text-input', type: 'password', placeholder: 'Client Secret', spellcheck: 'false' });
+    const save = pill('SAVE', async () => {
+      if (!id.value.trim() || !secret.value.trim()) { sp.status = 'BOTH ARE NEEDED'; refreshPanel('spotify'); return; }
+      sp.account = await app.cdp.saveSpotifyCredentials({ clientId: id.value, clientSecret: secret.value });
+      sp.status = ''; refreshPanel('spotify');
+    });
+    return [title('SPOTIFY'), gap(12),
+      hint('Spotify lets each app play for only five people, so CDPlayer plays through your own free Spotify developer app. You need Spotify Premium.'),
+      hint('1. Open the Spotify dashboard and create an app. Tick Web API and Web Playback SDK.'),
+      hint('2. Redirect URI: http://127.0.0.1:8080/callback'),
+      hint('3. Under User Management, add the email of your Spotify account.'),
+      hint('4. Paste the app’s Client ID and Client Secret here.'), gap(12),
+      el('div', { class: 'row-pills' }, pill('OPEN SPOTIFY DASHBOARD', () => app.cdp.openSpotifyDashboard())), gap(12),
+      id, gap(8), secret, gap(12), el('div', { class: 'row-pills' }, save), status, foot];
+  }
+
+  if (!a.connected || a.reconnectNeeded) {
+    const connect = pill(a.reconnectNeeded ? 'RECONNECT SPOTIFY' : 'CONNECT SPOTIFY', async () => {
+      connect.disabled = true;
+      sp.status = 'OPENING SPOTIFY LOGIN IN YOUR BROWSER…'; status.textContent = sp.status;
+      sp.status = await app.cdp.spotifySignIn();
+      if (sp.status === 'SPOTIFY CONNECTED') { sp.status = ''; sp.lists = { ALBUMS: null, PLAYLISTS: null }; sp.next = { ALBUMS: 0, PLAYLISTS: 0 }; }
+      refreshSpotifyAccount(app);
+    });
+    return [title('SPOTIFY'), gap(12),
+      hint(a.reconnectNeeded ? 'Playing Spotify needs a few more permissions than importing playlists did — connect once more.' : 'Sign in to Spotify in your browser to see your albums and playlists here.'),
+      gap(12), el('div', { class: 'row-pills' }, connect), status, foot];
+  }
+
+  const tabs = el('div', { class: 'row-pills' }, ...['ALBUMS', 'PLAYLISTS'].map((t) => {
+    const b = pill(t, () => { sp.tab = t; sp.query = ''; sp.found = null; if (!sp.lists[t]) loadSpotifyList(app, t); refreshPanel('spotify'); });
+    b.classList.toggle('on', !sp.found && sp.tab === t);
+    return b;
+  }));
+  const field = el('input', { class: 'text-input', type: 'text', placeholder: 'Search Spotify for an album or playlist', value: sp.query, spellcheck: 'false' });
+  field.addEventListener('input', () => searchSpotify(app, field.value));
+  const items = sp.found || sp.lists[sp.tab] || [];
+  const rows = items.map((item) => el('div', { class: 'list-row', title: `Put ${item.name} on the tray`, onClick: () => putSpotifyOnTray(app, item) },
+    el('span', { class: 'entry' }, `${item.name}${item.owner ? ` · ${item.owner}` : ''}`),
+    el('span', { class: 'duration' }, `${sp.found ? `${item.kind.toUpperCase()} · ` : ''}${item.total} TRACKS`)));
+  if (!sp.found && sp.next[sp.tab] !== null && sp.lists[sp.tab]) rows.push(el('div', { class: 'row-pills' }, pill('MORE', () => loadSpotifyList(app, sp.tab))));
+  if (sp.found && !sp.found.length) rows.push(el('div', { class: 'list-row plain' }, 'NOTHING FOUND'));
+  const drm = sp.drm === false ? hint("Spotify playback isn't supported on this system — Widevine isn't available.") : [];
+  requestAnimationFrame(() => { if (sp.query && document.activeElement !== field) { field.focus(); field.setSelectionRange(field.value.length, field.value.length); } });
+  const disconnect = pill('DISCONNECT SPOTIFY', async () => {
+    app.stopSpotify();
+    sp.account = await app.cdp.disconnectSpotify();
+    Object.assign(sp, { lists: { ALBUMS: null, PLAYLISTS: null }, next: { ALBUMS: 0, PLAYLISTS: 0 }, query: '', found: null, status: 'SPOTIFY DISCONNECTED' });
+    refreshPanel('spotify');
+  }, 'Sign CDPlayer out of Spotify. Your Client ID and Secret stay, so connecting again is one click.');
+  const connectedFoot = el('div', { class: 'close-row split' }, disconnect, pill('CLOSE', () => closePanel('spotify')));
+  return [title('SPOTIFY'), gap(12), tabs, gap(10), field, drm, gap(10), el('div', { class: 'scroll' }, rows), status, connectedFoot];
 }
 
 // ---- Welcome & What's New ------------------------------------------------------------------------------------------

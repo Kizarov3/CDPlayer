@@ -274,3 +274,29 @@ test("a refused play leaves nothing loaded: Spotify's empty report after it isn'
   assert.strictEqual(session.currentUri, null);
   assert.ok(a.paused);
 });
+
+test('disconnecting stops Spotify and closes the player; connecting again reuses that same player (a second one never registers)', async () => {
+  let made = 0;
+  class CountingPlayer extends FakePlayer {
+    constructor(opts) { super(opts); made++; this.connects = 0; this.disconnects = 0; }
+    connect() { this.connects++; return super.connect(); }
+    disconnect() { this.disconnects++; }
+  }
+  const plays = [];
+  const session = new SpotifySession({ loadPlayer: async () => CountingPlayer, getToken: async () => 't', startPlayback: async (r) => { plays.push(r); return { ok: true, status: 204 }; }, wait: async () => {} });
+  const events = [];
+  session.on((e) => events.push(e));
+  const a = new SpotifyTrackElement(session, A, 200000, () => []);
+  await a.play();
+  FakePlayer.last.emit('player_state_changed', st(A, 5000));
+  session.disconnect();
+  assert.ok(a.paused);
+  assert.strictEqual(FakePlayer.last.disconnects, 1);
+  FakePlayer.last.emit('player_state_changed', null);
+  assert.ok(!events.some((e) => e.type === 'lost')); // we closed it: not another device
+  const b = new SpotifyTrackElement(session, B, 200000, () => []);
+  await b.play();
+  assert.strictEqual(made, 1);
+  assert.strictEqual(FakePlayer.last.connects, 2);
+  assert.deepStrictEqual(plays.at(-1), { deviceId: 'dev1', uris: [B], positionMs: 0 });
+});

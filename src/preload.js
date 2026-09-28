@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('cdp', {
   resolveSpotifyLink: invoke('spotify:resolve'),
   spotifySignIn: invoke('spotify:signIn'),
   spotifyStatus: invoke('spotify:status'),
+  disconnectSpotify: invoke('spotify:disconnect'),
   saveSpotifyCredentials: invoke('spotify:saveCredentials'),
   spotifyAccessToken: invoke('spotify:accessToken'),
   spotifyAlbums: invoke('spotify:albums'),

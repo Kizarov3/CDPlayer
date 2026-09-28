@@ -218,6 +218,7 @@ handle('spotify:resolve', async (text) => {
 });
 handle('spotify:signIn', () => spotify.spotifySignIn());
 handle('spotify:status', () => spotify.status());
+handle('spotify:disconnect', () => spotify.disconnect());
 handle('spotify:saveCredentials', (c) => spotify.saveCredentials(c));
 handle('spotify:accessToken', () => spotify.accessToken());
 handle('spotify:albums', (offset) => spotify.savedAlbums(offset));

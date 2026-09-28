@@ -627,6 +627,12 @@ function onSpotifyEvent(e) {
 function spotifyResync() {
   if (spotifyActive() && spotifySession) spotifySession.resync(spotifyUpcoming(state.queue, state.index, state));
 }
+/** DISCONNECT SPOTIFY: a Spotify disc comes out, and the player closes. */
+function stopSpotify() {
+  if (spotifySession) spotifySession.disconnect();
+  if (spotifyDiscIn()) { state.queue = []; resetToIdle('SPOTIFY DISCONNECTED'); renderQueue(); saveQueueSoon(); }
+  spotifyTracks.clear();
+}
 async function playSpotifyDisc(tracks, name) {
   if (!tracks.length) return;
   for (const t of tracks) {
@@ -1176,6 +1182,7 @@ function buildStaticUi() {
   cdp.onAudioCdGone(onAudioCdGone);
   $('tags-button').addEventListener('click', () => panels.showTags(app));
   $('shelf-button').addEventListener('click', toggleShelf);
+  $('spotify-button').addEventListener('click', () => panels.showSpotify(app));
   setupShelf(app);
   $('history-button').addEventListener('click', () => panels.showHistory(app));
   $('settings-button').addEventListener('click', () => panels.showSettings(app));
@@ -1328,7 +1335,7 @@ export const app = {
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) { state.index = i; load(state.queue[i]); } },
   coverSource: () => { const s = $('track-source').textContent; return /COVER ART|ALBUM ART/.test(s) ? s.split(' · ')[0].replace(/ COVER ART$/, '').replace('EMBEDDED ALBUM ART', 'In the file') : null; },
   switchTheme, setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise,
-  insertDisc, playSpotifyDisc, spotifyActive, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
+  insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   saveEq: () => cdp.saveEqPresets(state.customPresets),
   lyricsLines: () => (state.lyrics ? parseLrc(state.lyrics) : []),
   openKaraoke: () => toggleKaraoke(),

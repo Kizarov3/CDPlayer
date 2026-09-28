@@ -50,6 +50,12 @@ function saveCredentials({ clientId, clientSecret }) {
   resetForTests();
   return status();
 }
+/** DISCONNECT SPOTIFY: the sign-in is forgotten; the Client ID and Secret stay, so connecting again is one click. */
+function disconnect() {
+  writeCredentials({ ...credentials(), refreshToken: '', scopes: [] });
+  resetForTests();
+  return status();
+}
 function resetForTests() { Object.assign(tokens, { app: null, appExpiry: 0, user: null, userExpiry: 0 }); }
 
 async function postToken(body) {
@@ -280,7 +286,7 @@ function authorizeUrl(clientId, state) {
 }
 
 module.exports = {
-  SCOPES, REDIRECT_URI, credentials, status, saveCredentials, authorizeUrl, resetForTests,
+  SCOPES, REDIRECT_URI, credentials, status, saveCredentials, disconnect, authorizeUrl, resetForTests,
   getSpotifyAppToken, getSpotifyUserToken, accessToken, forgetUserToken, fetchJson,
   classifySpotifyLink, resolveSpotifyLink, spotifySignIn,
   savedAlbums, playlists, search, discTracks, startPlayback, coverDataUrl,
