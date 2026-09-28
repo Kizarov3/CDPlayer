@@ -9,6 +9,7 @@ import { anim, el, pill, roundButton, modeButton, Slider, fitText, pulse } from 
 import { openBooklet, closeBooklet } from './booklet.js';
 import { parseLrc, currentLineIndex, heardPosition, playbackTimeFor, looksOnlineFor, takesOnline } from './lyrics.js';
 import { shortcutKey } from './keys.js';
+import { jogSeconds } from './jog.js';
 import * as panels from './panels.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
 import { openShelf, closeShelf, isShelfOpen, escapeShelf, setupShelf } from './shelf.js';
@@ -291,6 +292,7 @@ function resetToIdle(message) {
 
 async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0, reload = false } = {}) {
   const token = ++state.loadToken;
+  dropJog();
   disc.discPresent = true;
   const fade = allowCrossfade && engine.playing && state.crossfade > 0 ? state.crossfade : 0;
   state.crossfadeStarted = false;
@@ -502,6 +504,7 @@ async function toggle() {
   if (state.trayBusy) return;
   if (disc.trayOpen) { closeTray(); return; } // PLAY with the tray out closes it and plays, like a real deck
   if (!engine.deck) { if (state.queue.length && state.index >= 0) load(state.queue[state.index]); else choose(); return; }
+  if (jog) { jog.wasPlaying = !jog.wasPlaying; setPlaying(jog.wasPlaying); return; } // plays on (or not) once the disc is let go
   if (engine.playing) { engine.pause(); setPlaying(false); }
   else { await engine.play(); setPlaying(engine.playing); } // a Spotify track can be refused
 }
@@ -545,6 +548,55 @@ function seekTo(seconds) {
   pushDiscord();
 }
 
+// ---- Turning the disc by hand -----------------------------------------------------------------------------------
+// Grab the disc and turn it: the song moves with it (jog.js) — clockwise forward — further the harder it's turned, and
+// a disc let go with a spin coasts on. While it turns you hear snatches of the song, the way a CD player sounds as it
+// searches; once it's still, the song plays on from there, or stays paused if it was. A Spotify track moves too, but
+// silently: its audio is protected.
+
+let jog = null; // { wasPlaying, target, audible, sentAt }
+const JOG_SEEK_MS = 80, JOG_SPOTIFY_SEEK_MS = 300;
+function startJog() {
+  engine.cancelCrossfade();
+  jog = { wasPlaying: engine.playing, target: engine.position, audible: !spotifyActive(), sentAt: 0 };
+  if (engine.playing) engine.pause();
+  noise.setPlaying(false);
+  setStatus('SEARCHING');
+}
+function turnJog(radians, ms) {
+  if (!jog || !engine.deck) return;
+  const dur = engine.duration;
+  jog.target = Math.max(0, Math.min(Math.max(0, dur - 0.5), jog.target + jogSeconds(radians, ms)));
+  const now = performance.now();
+  if (now - jog.sentAt < (jog.audible ? JOG_SEEK_MS : JOG_SPOTIFY_SEEK_MS)) {
+    progress.setValue(dur ? Math.round((jog.target * 1000) / dur) : 0);
+    setText($('elapsed'), formatTime(jog.target));
+    return;
+  }
+  jog.sentAt = now;
+  engine.seek(jog.target);
+  if (jog.audible) engine.blip();
+  updateProgressUi(true);
+}
+async function endJog() {
+  const j = jog;
+  if (!j) return;
+  jog = null;
+  if (j.audible) engine.endBlips();
+  if (!engine.deck) return;
+  seekTo(j.target);
+  if (j.wasPlaying) { await engine.play(); setPlaying(engine.playing); } else setPlaying(false);
+}
+/** Lets go of the disc without playing on (a new song, the tray opening) → whether it was playing before the grab. */
+function dropJog() {
+  const j = jog;
+  if (!j) return false;
+  jog = null;
+  if (j.audible) engine.endBlips();
+  disc.drop();
+  return j.wasPlaying;
+}
+
 // ---- The disc tray ---------------------------------------------------------------------------------------------
 // E (or the ⏏ button) runs the tray out: playback stops and the disc comes out on its tray. Music dropped on the player while it's out goes in as a new disc, replacing the queue. Closing it
 // (E again, or PLAY) reads the disc — the drive spins it up — and plays: the new disc from its first track, or the
@@ -558,7 +610,7 @@ async function openTray({ eject = false } = {}) {
   if (eject && cd && cd.tracks.includes(state.loadedPath)) { engine.stop(); cdp.ejectAudioCd(cd.mount); }
   if (state.cdView) await toggleCdView();
   state.trayBusy = true;
-  trayResume = { playing: engine.playing };
+  trayResume = { playing: dropJog() || engine.playing };
   if (engine.playing) { engine.pause(); setPlaying(false); }
   setStatus('OPENING');
   noise.tray(TRAY_MS);
@@ -1195,6 +1247,10 @@ function buildStaticUi() {
   $('sleep-indicator').addEventListener('click', () => { armSleepTimer(0); panels.refreshSettingsIfOpen(app); });
   $('vis-mode').addEventListener('mousedown', () => { if (state.visualizerMode) toggleVisualizerMode(); });
   disc.onEjectPeak = () => nextTrack();
+  disc.canGrab = () => !!engine.deck && !state.trayBusy;
+  disc.onGrab = startJog;
+  disc.onJog = turnJog;
+  disc.onJogEnd = endJog;
   disc.onArtClick = (from) => { if (!spotifyActive()) openBooklet(app, from); };
   engine.onEnded = trackFinished;
   engine.onCrossfadeDone = () => { if (engine.playing) setStatus('NOW SPINNING'); };
@@ -1274,7 +1330,7 @@ function setText(node, text) { if (node.textContent !== text) node.textContent =
 // requestAnimationFrame stops — so it runs on a plain timer instead of the frame loop.
 let sessionTick = 0, miniLevelsAt = 0;
 function playbackTick() {
-  if (!engine.deck || !engine.playing) return;
+  if (!engine.deck || !engine.playing || jog) return; // the snatches heard while the disc is turned by hand aren't playing
   engine.watchSegmentEnd();
   if (spotifyActive()) { if (spotifySession) spotifySession.tick(); }
   // Crossfade into the next track once we're within the crossfade window of the end — except between cue sheet

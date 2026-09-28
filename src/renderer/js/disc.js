@@ -1,8 +1,9 @@
 // The spinning disc in its jewel case — the app's centerpiece. Normal view, CD view (enlarged) and Mini Mode
 // (no case) share one canvas; the disc face is pre-rendered once per cover/size/colors and just rotated per frame.
 // Clicking the little cover in the case's corner opens the album art full-size over the case, in place of the
-// disc; clicking the art puts it back in the corner.
+// disc; clicking the art puts it back in the corner. Grab the disc and turn it to move through the song (jog.js).
 import { colors, rgb, FONT } from './theme.js';
+import { angleDelta, coast, releaseVelocity } from './jog.js';
 
 const SIZES = {
   normal: { cap: 380, margin: 40 },
@@ -50,6 +51,30 @@ export class Disc {
     // The light the disc reflects: it follows the mouse anywhere in the window, like tilting a CD under a lamp.
     this.light = { angle: -Math.PI * 0.75, target: -Math.PI * 0.75, strength: 0.6, targetStrength: 0.6, movedAt: 0 };
     this.center = null; // the disc's center and radius on screen, from the last frame
+    // Turning the disc by hand: a press on it becomes a grab once the mouse moves (so clicks and the double-click
+    // still work); let go with a spin and it coasts. The app says whether there's a song to turn through
+    // (canGrab), and hears onGrab, onJog(radians, ms) as it turns — held or coasting — and onJogEnd once it's still.
+    this.canGrab = null; this.onGrab = null; this.onJog = null; this.onJogEnd = null;
+    this.press = null;   // { id, x, y }: pressed on the disc, not moved enough yet to be a grab
+    this.held = null;    // { id, a, t, samples }: in the hand
+    this.fling = 0;      // rad/ms: let go with a spin
+    this.jogging = false;
+    canvas.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || !this.grabbable(e)) return;
+      if (this.fling) { this.fling = 0; this.grab(e); } // caught while coasting
+      else this.press = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      const p = this.press;
+      if (this.held && e.pointerId === this.held.id) this.turnTo(e);
+      else if (p && e.pointerId === p.id && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 5) this.grab(e);
+    });
+    const up = (e) => {
+      if (this.press && e.pointerId === this.press.id) this.press = null;
+      if (this.held && e.pointerId === this.held.id) this.letGo();
+    };
+    canvas.addEventListener('pointerup', up);
+    canvas.addEventListener('pointercancel', up);
     window.addEventListener('mousemove', (e) => this.aimLight(e.clientX, e.clientY));
     canvas.addEventListener('dblclick', (e) => { if (this.mode !== 'mini' && !this.artOpen && !this.overArt(e)) this.startEject(); });
     canvas.addEventListener('click', (e) => {
@@ -64,7 +89,7 @@ export class Disc {
     });
     canvas.addEventListener('mousemove', (e) => {
       const over = this.mode !== 'mini' && this.overArt(e);
-      canvas.style.cursor = over ? 'pointer' : '';
+      canvas.style.cursor = this.held ? 'grabbing' : over ? 'pointer' : this.grabbable(e) ? 'grab' : '';
       canvas.title = over ? (this.artOpen ? (this.onArtClick ? 'Open the booklet' : 'Back to the disc') : 'Show the full album art') : '';
     });
   }
@@ -81,6 +106,47 @@ export class Disc {
     const r = this.artRect;
     return !!(r && this.cover && e.offsetX >= r.x && e.offsetX <= r.x + r.w && e.offsetY >= r.y && e.offsetY <= r.y + r.h);
   }
+  // A press here can take hold of the disc: on the disc itself, in the case (not Mini Mode), with nothing over it.
+  grabbable(e) {
+    const c = this.center;
+    if (!c || this.mode === 'mini' || this.artOpen || this.artT > 0 || this.trayT > 0 || this.ejectStart >= 0 || this.morph) return false;
+    if (!this.discPresent || this.overArt(e) || Math.hypot(e.clientX - c.x, e.clientY - c.y) > c.r) return false;
+    return !this.canGrab || this.canGrab();
+  }
+  handAngle(e) { return Math.atan2(e.clientY - this.center.y, e.clientX - this.center.x); }
+  grab(e) {
+    this.press = null;
+    try { this.canvas.setPointerCapture(e.pointerId); } catch { /* the pointer's gone */ }
+    const t = performance.now();
+    this.held = { id: e.pointerId, a: this.handAngle(e), t, samples: [{ t, a: 0 }], turned: 0 };
+    this.canvas.style.cursor = 'grabbing';
+    if (!this.jogging) { this.jogging = true; if (this.onGrab) this.onGrab(); }
+  }
+  turnTo(e) {
+    const h = this.held, t = performance.now(), a = this.handAngle(e);
+    const d = angleDelta(h.a, a), dt = t - h.t;
+    h.a = a; h.t = t; h.turned += d;
+    h.samples.push({ t, a: h.turned });
+    while (h.samples.length > 2 && t - h.samples[0].t > 150) h.samples.shift();
+    this.angle += d;
+    if (d && this.onJog) this.onJog(d, dt);
+  }
+  letGo() {
+    const h = this.held;
+    this.held = null;
+    this.canvas.style.cursor = '';
+    this.fling = coast(releaseVelocity(h.samples, performance.now()), 0);
+    if (!this.fling) this.endJog();
+  }
+  endJog() {
+    this.fling = 0;
+    if (!this.jogging) return;
+    this.jogging = false;
+    if (this.onJogEnd) this.onJogEnd();
+  }
+  // Lets go of the disc without a spin — its song changed, or the tray is opening.
+  drop() { this.press = null; if (this.held) { this.held = null; this.canvas.style.cursor = ''; } this.endJog(); }
+
   aimLight(x, y) {
     const c = this.center;
     if (!c) return;
@@ -287,7 +353,13 @@ export class Disc {
     const tau = this.reading ? SPIN_TAU_MS * 3 : SPIN_TAU_MS;
     this.speed += ((this.spinning ? 1 : 0) - this.speed) * (1 - Math.exp(-dt / tau));
     if (this.speed < 0.002 && !this.spinning) this.speed = 0;
-    this.angle += 0.045 * this.speed * (dt / 16);
+    if (this.fling) {
+      const d = this.fling * dt;
+      this.angle += d;
+      if (this.onJog) this.onJog(d, dt);
+      this.fling = coast(this.fling, dt);
+      if (!this.fling) this.endJog();
+    } else if (!this.jogging) this.angle += 0.045 * this.speed * (dt / 16);
     this.stepTray(dt);
 
     const mini = this.mode === 'mini';
@@ -406,5 +478,5 @@ export class Disc {
     return bounds;
   }
 
-  get animating() { return this.spinning || this.speed > 0 || this.trayT > 0 || this.ejectStart >= 0; }
+  get animating() { return this.spinning || this.speed > 0 || this.trayT > 0 || this.ejectStart >= 0 || this.jogging; }
 }

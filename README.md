@@ -63,6 +63,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - Click the case's cover and the album's **booklet** lifts out: its whole tracklist, every song's lyrics (found online as you read), the credits and the back cover
 - An album with no art of its own (a Music.app library keeps its artwork to itself) gets its cover found online; album names that differ only in punctuation are one album
 - What's on the shelf is remembered, so only new or changed files are read the next time
+- Some cases are Japanese editions, with an **obi** round the spine and a yen price; others still wear a shop's price sticker; and an album that turned up in your music folder in the last two weeks has a **NEW** sticker
 
 <p align="center">
   <img src="docs/screenshots/shelf.jpg" width="49%" alt="The CD shelf: every album spine-out, in the colours of its cover">
@@ -95,6 +96,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - **The disc tray** (`E`, or the ⏏ button): the disc comes out of the case on its tray and playback stops. Drop music on the player while it's out and that's the new disc, replacing the queue; close the tray (`E` again, or PLAY) and the drive reads it — the disc spins up — and plays it from the first track
 - **Disc noise** (Settings, off by default): the sounds of a real player — a faint hiss under the music, the tray motor, the disc spinning up — and shaking the window makes the song skip
 - The disc catches the light like a real CD: rainbow reflections that follow your mouse around the window, as if you were tilting it under a lamp
+- **Turn the disc by hand**: grab it and turn it like a DJ's jog wheel — clockwise forward, anticlockwise back, further the harder you turn it — and let go with a spin to send it coasting. You hear snatches of the song as it goes, like a CD player searching; once it's still, the song plays on from there
 - Click the little cover in the jewel case's corner to open the album art full-size in place of the disc
 - **The booklet**: click the full-size art and the CD booklet lifts out of the case and opens, printed in the album's own colours — the tracklist (click a track to play it), the lyrics with the line being sung highlighted, the credits (written by, producer, label, catalog number, release date…), how many times you've played the song, and a back cover with the small print and a real barcode when the file has one. ← / → turn the pages; Esc puts it back
 - Live audio visualizer driven by the actual audio, pulsing on detected beats, with a shape that changes with the theme

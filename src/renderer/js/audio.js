@@ -168,6 +168,33 @@ export class AudioEngine {
     try { await this.deck.el.play(); } catch { /* interrupted by a newer load */ }
   }
   pause() { if (this.deck) this.deck.el.pause(); }
+
+  /**
+   * A snatch of the song from where it is now — the way a CD player sounds while it searches — faded in and out over
+   * a few milliseconds so it doesn't click. Only for files: a Spotify track plays outside Web Audio.
+   */
+  async blip(ms = 70) {
+    const d = this.deck;
+    if (!d || !d.source) return;
+    clearTimeout(this.blipTimer);
+    const g = d.gain.gain, t = this.ctx.currentTime;
+    g.cancelScheduledValues(t); g.setValueAtTime(0, t); g.linearRampToValueAtTime(1, t + 0.008);
+    this.blipTimer = setTimeout(() => {
+      if (this.deck !== d) return;
+      g.setTargetAtTime(0, this.ctx.currentTime, 0.005);
+      this.blipTimer = setTimeout(() => { if (this.deck === d) d.el.pause(); }, 25);
+    }, ms);
+    if (d.el.paused) await this.play();
+  }
+  /** Done searching: quiet, and the track back at full level for when it plays on. */
+  endBlips() {
+    clearTimeout(this.blipTimer); this.blipTimer = null;
+    const d = this.deck;
+    if (!d) return;
+    d.el.pause();
+    d.gain.gain.cancelScheduledValues(this.ctx.currentTime);
+    d.gain.gain.value = 1;
+  }
   stop() { this.cancelCrossfade(); this.disposeDeck(this.deck); this.deck = null; }
   get playing() { return !!this.deck && !this.deck.el.paused && !this.deck.el.ended; }
   /** How long sound takes from here to the speakers (seconds): the output's latency, re-read as the device changes. */
