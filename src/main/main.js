@@ -16,6 +16,7 @@ if (process.env.CDPLAYER_HOME) app.setPath('userData', path.join(process.env.CDP
 const store = require('./store');
 const metadata = require('./metadata');
 const online = require('./online');
+const spotify = require('./spotify');
 const library = require('./library');
 const media = require('./media-protocol');
 const updates = require('./updates');
@@ -211,11 +212,11 @@ handle('plays:count', (p) => plays().get(p) || 0);
 handle('online:cover', (query) => online.findCover(query));
 handle('online:coverUrl', (query) => online.findCoverUrl(query));
 handle('online:lyrics', (details) => online.findLyrics(details));
-handle('spotify:classify', (text) => online.classifySpotifyLink(text));
+handle('spotify:classify', (text) => spotify.classifySpotifyLink(text));
 handle('spotify:resolve', async (text) => {
-  try { return await online.resolveSpotifyLink(text); } catch (e) { return { error: (e.message || 'LOOKUP FAILED').toUpperCase() }; }
+  try { return await spotify.resolveSpotifyLink(text); } catch (e) { return { error: (e.message || 'LOOKUP FAILED').toUpperCase() }; }
 });
-handle('spotify:signIn', () => online.spotifySignIn());
+handle('spotify:signIn', () => spotify.spotifySignIn());
 
 handle('library:collect', async (items) => (await library.collectAudio(items)).sort(library.byName));
 handle('library:scan', async () => {

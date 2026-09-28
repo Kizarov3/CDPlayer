@@ -1,12 +1,11 @@
 'use strict';
 /**
  * Everything that talks to the network: cover-art lookup (iTunes → Deezer → Spotify → MusicBrainz), lyrics lookup
- * (word-timed from Unison or NetEase → lrclib.net → Unison), and Spotify link/playlist resolution with the one-time browser sign-in. All optional — the player works offline.
+ * (word-timed from Unison or NetEase → lrclib.net → Unison). Spotify's own calls live in spotify.js. All optional — the
+ * player works offline.
  */
-const http = require('http');
-const crypto = require('crypto');
-const { shell, nativeImage } = require('electron');
-const store = require('./store');
+const { nativeImage } = require('electron');
+const { getSpotifyAppToken } = require('./spotify');
 const { searchVariants, nameVariants, bareTitle } = require('./track-names');
 const { ttmlToLrc, ttmlDuration } = require('./ttml');
 
@@ -415,127 +414,4 @@ async function findLyrics({ title, artist, album, duration, guessed }) {
   return null;
 }
 
-// ---- Spotify ----------------------------------------------------------------------------------------------------
-// spotify.txt: line 1 Client ID, line 2 Client Secret (from a free app at developer.spotify.com/dashboard), line 3
-// the user refresh token written after "Connect Spotify account". Same file the Java version used.
-
-const SPOTIFY_REDIRECT_URI = 'http://127.0.0.1:8080/callback';
-const spotify = { appToken: null, appExpiry: 0, userToken: null, userExpiry: 0 };
-
-function spotifyCredentials() {
-  const l = (store.readText(store.FILES.spotify) || '').split(/\r?\n/).map((s) => s.trim());
-  return { clientId: l[0] || '', clientSecret: l[1] || '', refreshToken: l[2] || '' };
-}
-function saveRefreshToken(token) {
-  const c = spotifyCredentials();
-  store.writeText(store.FILES.spotify, `${c.clientId}\n${c.clientSecret}\n${token}\n`);
-}
-async function postToken(body) {
-  const { clientId, clientSecret } = spotifyCredentials();
-  return fetchJson('https://accounts.spotify.com/api/token', {
-    method: 'POST',
-    headers: { Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-    body,
-  });
-}
-async function getSpotifyAppToken() {
-  const { clientId, clientSecret } = spotifyCredentials();
-  if (!clientId || !clientSecret) return null;
-  if (spotify.appToken && Date.now() < spotify.appExpiry) return spotify.appToken;
-  const json = await postToken('grant_type=client_credentials');
-  if (!json.access_token) return null;
-  spotify.appToken = json.access_token;
-  spotify.appExpiry = Date.now() + Math.max(0, (json.expires_in || 3600) - 60) * 1000;
-  return spotify.appToken;
-}
-async function getSpotifyUserToken() {
-  if (spotify.userToken && Date.now() < spotify.userExpiry) return spotify.userToken;
-  const { refreshToken } = spotifyCredentials();
-  if (!refreshToken) return null;
-  const json = await postToken(`grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}`);
-  if (!json.access_token) return null;
-  spotify.userToken = json.access_token;
-  spotify.userExpiry = Date.now() + Math.max(0, (json.expires_in || 3600) - 60) * 1000;
-  if (json.refresh_token) saveRefreshToken(json.refresh_token); // Spotify sometimes rotates it
-  return spotify.userToken;
-}
-
-const TRACK_URL = /open\.spotify\.com\/(?:intl-[a-z]+\/)?track\/([a-zA-Z0-9]+)|spotify:track:([a-zA-Z0-9]+)/;
-const PLAYLIST_URL = /open\.spotify\.com\/(?:intl-[a-z]+\/)?playlist\/([a-zA-Z0-9]+)|spotify:playlist:([a-zA-Z0-9]+)/;
-function classifySpotifyLink(text) {
-  let m = TRACK_URL.exec(text);
-  if (m) return { kind: 'track', id: m[1] || m[2] };
-  m = PLAYLIST_URL.exec(text);
-  if (m) return { kind: 'playlist', id: m[1] || m[2] };
-  return null;
-}
-
-/** Resolves a Spotify link to [{title, artist}] — or {needsSignIn: true} for a playlist without a user token. */
-async function resolveSpotifyLink(text) {
-  const link = classifySpotifyLink(text);
-  if (!link) return { error: 'NOT A SPOTIFY LINK' };
-  if (link.kind === 'track') {
-    const token = await getSpotifyAppToken();
-    if (!token) return { error: 'SPOTIFY APP CREDENTIALS NOT CONFIGURED' };
-    const t = await fetchJson(`https://api.spotify.com/v1/tracks/${link.id}`, { headers: { Authorization: `Bearer ${token}` } });
-    return { tracks: [{ title: t.name, artist: t.artists && t.artists[0] ? t.artists[0].name : '' }] };
-  }
-  let token = null;
-  try { token = await getSpotifyUserToken(); } catch { token = null; }
-  if (!token) return { needsSignIn: true };
-  const tracks = [];
-  let url = `https://api.spotify.com/v1/playlists/${link.id}/tracks?limit=50&fields=${encodeURIComponent('items(track(name,artists(name))),next')}`;
-  for (let pages = 0; url && pages < 20; pages++) {
-    const json = await fetchJson(url, { headers: { Authorization: `Bearer ${token}` } });
-    for (const item of json.items || []) {
-      if (item.track && item.track.name) tracks.push({ title: item.track.name, artist: item.track.artists && item.track.artists[0] ? item.track.artists[0].name : '' });
-    }
-    url = json.next;
-  }
-  return { tracks };
-}
-
-let signInInProgress = null;
-/** Opens Spotify's login page in the browser and waits (up to 3 minutes) for the redirect back to 127.0.0.1:8080. */
-function spotifySignIn() {
-  if (signInInProgress) return signInInProgress;
-  signInInProgress = (async () => {
-    const { clientId } = spotifyCredentials();
-    if (!clientId) return 'SPOTIFY APP CREDENTIALS NOT CONFIGURED';
-    const state = crypto.randomBytes(8).toString('hex');
-    const page = (h, p) => `<html><body style="font-family:sans-serif"><h2>${h}</h2><p>${p}</p></body></html>`;
-    try {
-      const code = await new Promise((resolve, reject) => {
-        const server = http.createServer((req, res) => {
-          const u = new URL(req.url, SPOTIFY_REDIRECT_URI);
-          if (u.pathname !== '/callback') { res.writeHead(404); res.end(); return; }
-          const error = u.searchParams.get('error'), got = u.searchParams.get('code');
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-          if (error) { res.end(page('Spotify sign-in was cancelled', 'You can close this tab and try again in CDPlayer.')); finish(new Error(error)); }
-          else if (got && u.searchParams.get('state') === state) { res.end(page('Connected to Spotify', 'You can close this tab and return to CDPlayer.')); finish(null, got); }
-          else { res.end(page('Something went wrong', 'You can close this tab and try again in CDPlayer.')); finish(new Error('state mismatch')); }
-        });
-        const timer = setTimeout(() => finish(new Error('timed out waiting for sign-in')), 180000);
-        function finish(err, value) { clearTimeout(timer); server.close(); err ? reject(err) : resolve(value); }
-        server.on('error', (e) => finish(e));
-        server.listen(8080, '127.0.0.1', () => {
-          const auth = `https://accounts.spotify.com/authorize?response_type=code&client_id=${encodeURIComponent(clientId)}`
-            + `&scope=${encodeURIComponent('playlist-read-private playlist-read-collaborative')}`
-            + `&redirect_uri=${encodeURIComponent(SPOTIFY_REDIRECT_URI)}&state=${state}`;
-          shell.openExternal(auth);
-        });
-      });
-      const json = await postToken(`grant_type=authorization_code&code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent(SPOTIFY_REDIRECT_URI)}`);
-      if (!json.access_token || !json.refresh_token) throw new Error('unexpected response');
-      spotify.userToken = json.access_token;
-      spotify.userExpiry = Date.now() + Math.max(0, (json.expires_in || 3600) - 60) * 1000;
-      saveRefreshToken(json.refresh_token);
-      return 'SPOTIFY CONNECTED';
-    } catch (e) {
-      return `SPOTIFY SIGN-IN FAILED${e && e.message ? ` — ${e.message.toUpperCase()}` : ''}`;
-    }
-  })().finally(() => { signInInProgress = null; });
-  return signInInProgress;
-}
-
-module.exports = { sameSong, findCover, findCoverUrl, findAlbumCover, findAlbumCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, resolveSpotifyLink, spotifySignIn, classifySpotifyLink, wordOverlapRatio };
+module.exports = { sameSong, findCover, findCoverUrl, findAlbumCover, findAlbumCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, wordOverlapRatio };
