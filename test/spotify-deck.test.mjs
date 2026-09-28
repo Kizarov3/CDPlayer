@@ -300,3 +300,55 @@ test('disconnecting stops Spotify and closes the player; connecting again reuses
   assert.strictEqual(FakePlayer.last.connects, 2);
   assert.deepStrictEqual(plays.at(-1), { deviceId: 'dev1', uris: [B], positionMs: 0 });
 });
+
+test("skipping within a track's first seconds: the old track's paused report isn't taken for the new one", async () => {
+  let release = null;
+  const requests = [];
+  const session = new SpotifySession({ loadPlayer: async () => FakePlayer, getToken: async () => 't', wait: async () => {},
+    startPlayback: (r) => { requests.push(r); return requests.length === 1 ? Promise.resolve({ ok: true, status: 204 }) : new Promise((res) => { release = res; }); } });
+  const b = new SpotifyTrackElement(session, B, 200000, () => [C]);
+  await b.play();
+  FakePlayer.last.emit('player_state_changed', st(B, 1000));
+  b.load(); // NEXT: the engine disposes B (pausing Spotify)…
+  const c = new SpotifyTrackElement(session, C, 200000, () => []);
+  const playing = c.play(); // …and asks for C
+  while (!release) await new Promise((r) => setTimeout(r, 0));
+  FakePlayer.last.emit('player_state_changed', st(B, 1500, { paused: true })); // B's pause, arriving while C is requested
+  release({ ok: true, status: 204 });
+  await playing;
+  assert.ok(!c.paused);
+  assert.strictEqual(session.currentUri, C);
+  FakePlayer.last.emit('player_state_changed', st(C, 0));
+  assert.ok(!c.paused);
+});
+
+test('a swapped copy (no linked_from) stays the same track when the order is re-sent mid-song', async () => {
+  const { session, events, player } = setup();
+  const a = new SpotifyTrackElement(session, A, 200000, () => [B, C]);
+  await a.play();
+  player().emit('player_state_changed', st('spotify:track:Acopy', 0));
+  player().emit('player_state_changed', st('spotify:track:Acopy', 40000));
+  session.resync([C]); // shuffle/queue change: A again from 40 s, then C
+  await new Promise((r) => setTimeout(r, 0));
+  player().emit('player_state_changed', st('spotify:track:Acopy', 40000));
+  player().emit('player_state_changed', st(C, 0));
+  assert.deepStrictEqual(events.filter((e) => e.type === 'trackchange').map((e) => [e.from, e.to]), [[A, C]]);
+});
+
+test('an older request answering late changes nothing for the newer one', async () => {
+  let release;
+  const answers = [new Promise((r) => { release = r; }), Promise.resolve({ ok: true, status: 204 })];
+  const events = [];
+  const session = new SpotifySession({ loadPlayer: async () => FakePlayer, getToken: async () => 't', startPlayback: () => answers.shift(), wait: async () => {} });
+  session.on((e) => events.push(e));
+  const a = new SpotifyTrackElement(session, A, 200000, () => []);
+  const first = a.play().catch(() => 'superseded');
+  await new Promise((r) => setTimeout(r, 5));
+  const b = new SpotifyTrackElement(session, B, 200000, () => []);
+  await b.play();
+  release({ ok: false, status: 0 }); // A's request times out after B's went through
+  await first;
+  assert.deepStrictEqual(events, []);
+  assert.strictEqual(session.currentUri, B);
+  assert.ok(!b.paused);
+});

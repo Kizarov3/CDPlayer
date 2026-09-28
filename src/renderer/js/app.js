@@ -210,7 +210,7 @@ function setupQueueDrag() {
       drag.index = target;
       drag.accumulated -= dir * step;
     }
-    if (changed) { renderQueue(); saveQueueSoon(); spotifyResync(); }
+    if (changed) { renderQueue(); saveQueueSoon(); }
   });
   // The list captures the pointer on press (so a drag keeps tracking outside the row), which also means the
   // browser delivers the release — and the click — to the list, not the row. So "pressed and released without
@@ -219,7 +219,7 @@ function setupQueueDrag() {
     if (drag.index < 0) return;
     const index = drag.index, moved = drag.moved;
     drag.index = -1; drag.moved = false;
-    if (moved) renderQueue();
+    if (moved) { renderQueue(); spotifyResync(); } // Spotify hears the new order once, when the row is let go
     else if (e.type === 'pointerup' && index < state.queue.length) { state.index = index; load(state.queue[index]); }
   };
   list.addEventListener('pointerup', end);

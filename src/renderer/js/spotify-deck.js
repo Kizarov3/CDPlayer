@@ -32,7 +32,7 @@ export function spotifyUpcoming(queue, index, { shuffle, repeat }) {
 
 const NEAR_END_MS = 2000;   // a track paused back at 0 this close to its end has finished
 const OVERRUN_MS = 1500;    // no word from Spotify this long past the end: finished anyway
-const STALE_MS = 3000;      // after a request, a report further in than this is still the old track's
+const STALE_MS = 3000;      // after a request, an unknown track this far from where it was asked for is still the old one
 
 export class SpotifySession {
   constructor({ loadPlayer, getToken, startPlayback, now = () => Date.now(), wait = (ms) => new Promise((r) => setTimeout(r, ms)), volume = 1, name = 'CDPlayer' }) {
@@ -94,14 +94,25 @@ export class SpotifySession {
 
   /** Plays `uri` from `positionMs`, followed by `upcoming`. False when Spotify refused (the error is emitted). */
   async play(uri, positionMs = 0, upcoming = []) {
+    // Requests overlap (quick skips, shuffle toggles): only the newest one's answer counts.
+    const gen = this.gen = (this.gen || 0) + 1;
     const c = await this.connect();
+    if (gen !== this.gen) return false;
     if (!c.ok) return false;
+    this.previousUri = this.currentUri; this.requestedMs = positionMs;
     this.sent = [uri, ...upcoming]; this.sentIndex = 0;
-    this.currentUri = uri; this.awaiting = uri; this.aliases.clear(); this.pendingUpcoming = null; this.lost = false;
+    for (const [raw, meant] of this.aliases) if (!this.sent.includes(meant)) this.aliases.delete(raw); // copies still in play stay known
+    this.currentUri = uri; this.awaiting = uri; this.pendingUpcoming = null; this.lost = false;
     this.pos = { ms: positionMs, at: this.now(), paused: false };
     const request = { deviceId: this.deviceId, uris: this.sent, positionMs: Math.round(positionMs) };
     let r = await this.startPlayback(request);
-    if (!r.ok && r.status === 404) { await this.wait(1000); r = await this.startPlayback({ ...request, deviceId: this.deviceId }); }
+    if (gen !== this.gen) return false;
+    if (!r.ok && r.status === 404) {
+      await this.wait(1000);
+      if (gen !== this.gen) return false;
+      r = await this.startPlayback({ ...request, deviceId: this.deviceId });
+      if (gen !== this.gen) return false;
+    }
     if (r.ok) return true;
     // Refused: nothing is on the device, so Spotify's empty report next isn't another device taking over.
     this.currentUri = null; this.awaiting = null;
@@ -172,7 +183,9 @@ export class SpotifySession {
     let uri = this.aliases.get(raw) || (linked && this.sent.includes(linked) ? linked : raw);
     if (this.awaiting) {
       if (uri !== this.awaiting) {
-        if (s.position > STALE_MS) return; // the previous track's last word
+        // The previous track's last word, or another track of the list: not the one asked for.
+        const known = uri === this.previousUri || this.sent.includes(uri);
+        if (known || Math.abs(s.position - this.requestedMs) > STALE_MS) return;
         this.aliases.set(raw, this.awaiting); uri = this.awaiting; // Spotify plays another copy of it (relinked)
       }
       this.awaiting = null;
