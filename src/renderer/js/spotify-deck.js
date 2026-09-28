@@ -71,14 +71,23 @@ export class SpotifySession {
   // One SDK player for the app's whole run: a second one in the same page never registers with Spotify, so
   // disconnecting closes this one and connecting again reopens it.
   createPlayer(Player) {
-    const player = this.player = new Player({ name: this.name, volume: this.volume, getOAuthToken: (cb) => { this.getToken().then((t) => cb(t || ''), () => cb('')); } });
+    const player = this.player = new Player({ name: this.name, volume: this.volume, getOAuthToken: (cb) => this.giveToken(cb) });
     player.addListener('ready', ({ device_id }) => { this.deviceId = device_id; this.resolveConnect({ ok: true }); });
     player.addListener('not_ready', () => { this.deviceId = null; });
     player.addListener('initialization_error', () => this.fail('unsupported'));
-    player.addListener('authentication_error', () => this.fail('auth'));
+    // Spotify refuses the empty token we had to give while offline: that's the network, not a sign-out.
+    player.addListener('authentication_error', () => this.fail(this.tokenError === 'OFFLINE' ? 'offline' : 'auth'));
     player.addListener('account_error', () => this.fail('premium'));
     player.addListener('playback_error', () => this.onPlaybackError());
     player.addListener('player_state_changed', (s) => this.onState(s));
+  }
+  /** The token for the SDK: { token } or { error } from the main process (a plain string is accepted too). */
+  giveToken(cb) {
+    this.getToken().then((t) => {
+      const token = typeof t === 'string' ? t : t && t.token;
+      this.tokenError = token ? null : (t && t.error) || 'SIGN_IN';
+      cb(token || '');
+    }, () => { this.tokenError = 'OFFLINE'; cb(''); });
   }
   resolveConnect(result) { clearTimeout(this.connectTimer); const settle = this.settle; this.settle = null; if (settle) settle(result); }
   fail(reason) { this.emit({ type: 'error', reason }); this.resolveConnect({ ok: false, reason }); }

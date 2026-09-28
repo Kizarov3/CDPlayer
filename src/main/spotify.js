@@ -17,7 +17,8 @@ const SCOPES = ['streaming', 'user-read-email', 'user-read-private', 'user-libra
   'user-read-playback-state', 'playlist-read-private', 'playlist-read-collaborative'];
 const USER_AGENT = 'CDPlayer/2.0';
 const TIMEOUT_MS = 8000;
-const tokens = { app: null, appExpiry: 0, user: null, userExpiry: 0 };
+// invalid: Spotify stopped honouring the sign-in (revoked, expired) — the panel asks to connect again.
+const tokens = { app: null, appExpiry: 0, user: null, userExpiry: 0, invalid: false };
 
 async function fetchJson(url, init = {}) {
   const res = await fetch(url, { ...init, headers: { 'User-Agent': USER_AGENT, ...(init.headers || {}) }, signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -40,7 +41,7 @@ function writeCredentials(c) {
 function status() {
   const c = credentials();
   const connected = !!c.refreshToken;
-  return { configured: !!(c.clientId && c.clientSecret), connected, reconnectNeeded: connected && !SCOPES.every((s) => c.scopes.includes(s)) };
+  return { configured: !!(c.clientId && c.clientSecret), connected, reconnectNeeded: connected && (tokens.invalid || !SCOPES.every((s) => c.scopes.includes(s))) };
 }
 /** The Client ID and Secret from the SPOTIFY panel. A different app's sign-in isn't valid for this one: dropped. */
 function saveCredentials({ clientId, clientSecret }) {
@@ -56,7 +57,7 @@ function disconnect() {
   resetForTests();
   return status();
 }
-function resetForTests() { Object.assign(tokens, { app: null, appExpiry: 0, user: null, userExpiry: 0 }); }
+function resetForTests() { Object.assign(tokens, { app: null, appExpiry: 0, user: null, userExpiry: 0, invalid: false }); }
 
 async function postToken(body) {
   const { clientId, clientSecret } = credentials();
@@ -80,15 +81,29 @@ async function getSpotifyUserToken() {
   if (tokens.user && Date.now() < tokens.userExpiry) return tokens.user;
   const c = credentials();
   if (!c.refreshToken) return null;
-  const json = await postToken(`grant_type=refresh_token&refresh_token=${encodeURIComponent(c.refreshToken)}`);
+  let json;
+  try {
+    json = await postToken(`grant_type=refresh_token&refresh_token=${encodeURIComponent(c.refreshToken)}`);
+  } catch (e) {
+    if (e.status === 400 || e.status === 401) tokens.invalid = true; // invalid_grant: revoked or expired
+    throw e;
+  }
   if (!json || !json.access_token) return null;
   tokens.user = json.access_token; tokens.userExpiry = expiry(json);
   if (json.refresh_token) writeCredentials({ ...credentials(), refreshToken: json.refresh_token }); // Spotify sometimes rotates it
   return tokens.user;
 }
-/** For the Web Playback SDK's getOAuthToken: asked afresh each time, so a long session gets refreshed tokens. */
+/**
+ * For the Web Playback SDK's getOAuthToken: asked afresh each time, so a long session gets refreshed tokens.
+ * { token }, or { error: 'SIGN_IN' } (not signed in, or Spotify refused) / { error: 'OFFLINE' } (no network).
+ */
 async function accessToken() {
-  try { return await getSpotifyUserToken(); } catch { return null; }
+  try {
+    const token = await getSpotifyUserToken();
+    return token ? { token } : { error: 'SIGN_IN' };
+  } catch (e) {
+    return { error: e.status ? 'SIGN_IN' : 'OFFLINE' };
+  }
 }
 function forgetUserToken() { tokens.user = null; tokens.userExpiry = 0; }
 
@@ -155,6 +170,7 @@ function spotifySignIn() {
       tokens.userExpiry = Date.now() + Math.max(0, (json.expires_in || 3600) - 60) * 1000;
       const granted = String(json.scope || SCOPES.join(' ')).split(/\s+/).filter(Boolean);
       writeCredentials({ ...credentials(), refreshToken: json.refresh_token, scopes: granted });
+      tokens.invalid = false;
       return 'SPOTIFY CONNECTED';
     } catch (e) {
       return `SPOTIFY SIGN-IN FAILED${e && e.message ? ` — ${e.message.toUpperCase()}` : ''}`;
@@ -177,7 +193,7 @@ async function userApi(pathAndQuery, init = {}) {
       return await fetchJson(pathAndQuery.startsWith('http') ? pathAndQuery : `${API}${pathAndQuery}`, { ...init, headers: { Authorization: `Bearer ${token}`, ...(init.headers || {}) } });
     } catch (e) {
       if (e.status === 401 && attempt === 0) { forgetUserToken(); continue; }
-      if (e.status === 401) throw new SpotifyError('SIGN_IN');
+      if (e.status === 401) { tokens.invalid = true; throw new SpotifyError('SIGN_IN'); }
       if (!e.status) throw new SpotifyError('OFFLINE');
       throw e;
     }

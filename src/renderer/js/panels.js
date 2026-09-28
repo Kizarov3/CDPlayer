@@ -656,14 +656,18 @@ function searchSpotify(app, query) {
   sp.searchTimer = setTimeout(async () => {
     const r = await app.cdp.spotifySearch(query.trim()).catch(() => ({ error: 'OFFLINE' }));
     if (sp.query !== query) return; // typed on since
-    if (r.error) sp.status = spotifyMessage(r.error); else { sp.found = r.items; sp.status = ''; }
+    if (r.error) { sp.status = spotifyMessage(r.error); if (r.error === 'SIGN_IN') sp.account = { ...sp.account, reconnectNeeded: true }; } else { sp.found = r.items; sp.status = ''; }
     refreshPanel('spotify');
   }, 400);
 }
 async function putSpotifyOnTray(app, item) {
   sp.status = `READING ${item.name.toUpperCase()}…`; refreshPanel('spotify');
   const r = await app.cdp.spotifyDiscTracks({ kind: item.kind, id: item.id }).catch(() => ({ error: 'OFFLINE' }));
-  if (r.error) { sp.status = spotifyMessage(r.error); refreshPanel('spotify'); return; }
+  if (r.error) {
+    sp.status = spotifyMessage(r.error);
+    if (r.error === 'SIGN_IN') sp.account = { ...sp.account, reconnectNeeded: true }; // the panel offers RECONNECT
+    refreshPanel('spotify'); return;
+  }
   sp.status = '';
   closePanel('spotify');
   app.playSpotifyDisc(r.tracks, item.name);

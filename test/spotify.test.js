@@ -61,8 +61,8 @@ test('the sign-in page asks for every scope playback needs, on the loopback redi
 test('user token: refreshed with the app credentials, cached, and a rotated refresh token is kept', async () => {
   write(['id', 'secret', 'refresh', ALL]);
   answer({ 'https://accounts.spotify.com/api/token': { body: { access_token: 'user-1', expires_in: 3600, refresh_token: 'refresh-2' } } });
-  assert.strictEqual(await spotify.accessToken(), 'user-1');
-  assert.strictEqual(await spotify.accessToken(), 'user-1');
+  assert.deepStrictEqual(await spotify.accessToken(), { token: 'user-1' });
+  assert.deepStrictEqual(await spotify.accessToken(), { token: 'user-1' });
   assert.strictEqual(requests.length, 1);
   assert.match(requests[0].init.headers.Authorization, /^Basic /);
   assert.match(String(requests[0].init.body), /grant_type=refresh_token&refresh_token=refresh/);
@@ -72,7 +72,7 @@ test('user token: refreshed with the app credentials, cached, and a rotated refr
 
 test('no sign-in → no access token; a Java-era file still gives the app token for cover art', async () => {
   write(['id', 'secret']);
-  assert.strictEqual(await spotify.accessToken(), null);
+  assert.deepStrictEqual(await spotify.accessToken(), { error: 'SIGN_IN' });
   answer({ 'https://accounts.spotify.com/api/token': { body: { access_token: 'app-1', expires_in: 3600 } } });
   write(['id', 'secret', 'refresh']);
   assert.strictEqual(await spotify.getSpotifyAppToken(), 'app-1');
@@ -215,8 +215,26 @@ test('SEARCH’s playlist-link import reads the same /items contents', async () 
 test('disconnecting forgets the sign-in and its tokens, but keeps the Client ID and Secret', async () => {
   connected();
   answer(TOKEN);
-  assert.strictEqual(await spotify.accessToken(), 'user-1');
+  assert.deepStrictEqual(await spotify.accessToken(), { token: 'user-1' });
   assert.deepStrictEqual(spotify.disconnect(), { configured: true, connected: false, reconnectNeeded: false });
   assert.deepStrictEqual(spotify.credentials(), { clientId: 'id', clientSecret: 'secret', refreshToken: '', scopes: [] });
-  assert.strictEqual(await spotify.accessToken(), null); // the cached token is gone too
+  assert.deepStrictEqual(await spotify.accessToken(), { error: 'SIGN_IN' }); // the cached token is gone too
+});
+
+test('a sign-in Spotify stops honouring (revoked, expired) asks to reconnect; a dropped network is only offline', async () => {
+  connected();
+  answer({ 'https://accounts.spotify.com/api/token': { status: 400, body: { error: 'invalid_grant' } } });
+  assert.deepStrictEqual(await spotify.accessToken(), { error: 'SIGN_IN' });
+  assert.deepStrictEqual(spotify.status(), { configured: true, connected: true, reconnectNeeded: true });
+  spotify.resetForTests();
+  global.fetch = async () => { throw new TypeError('fetch failed'); };
+  assert.deepStrictEqual(await spotify.accessToken(), { error: 'OFFLINE' });
+  assert.deepStrictEqual(spotify.status(), { configured: true, connected: true, reconnectNeeded: false });
+});
+
+test('the library refusing a fresh token twice also asks to reconnect', async () => {
+  connected();
+  answer({ ...TOKEN, 'https://api.spotify.com/v1/me/albums': { status: 401, body: {} } });
+  assert.deepStrictEqual(await spotify.savedAlbums(0), { error: 'SIGN_IN' });
+  assert.strictEqual(spotify.status().reconnectNeeded, true);
 });

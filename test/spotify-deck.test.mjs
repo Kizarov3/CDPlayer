@@ -373,3 +373,16 @@ test('Widevine is waited for first; without it Spotify is unsupported and no pla
   assert.deepStrictEqual(events, [{ type: 'error', reason: 'unsupported' }]);
   assert.strictEqual(made, 0);
 });
+
+test("Spotify refusing a token that couldn't be refreshed offline is 'offline', not 'signed out'", async () => {
+  const events = [];
+  const session = new SpotifySession({ loadPlayer: async () => FakePlayer, getToken: async () => ({ error: 'OFFLINE' }), startPlayback: async () => ({ ok: true }) });
+  session.on((e) => events.push(e));
+  await session.connect();
+  const got = [];
+  FakePlayer.last.opts.getOAuthToken((t) => got.push(t));
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepStrictEqual(got, ['']);
+  FakePlayer.last.emit('authentication_error', { message: 'x' });
+  assert.deepStrictEqual(events.at(-1), { type: 'error', reason: 'offline' });
+});
