@@ -435,6 +435,8 @@ body.cd-view #cd-info { display: block !important; }
 }
 .spine.double { width: 52px; }
 .spine:hover { transform: translateY(-8px); box-shadow: 0 10px 16px rgba(0, 0, 0, .55); }
+.spine.in-player { transform: translateY(-4px); box-shadow: 0 0 0 1px rgba(var(--accent), .7), 0 0 12px rgba(var(--accent), .35), 0 6px 10px rgba(0, 0, 0, .5); }
+.spine.in-player:hover { transform: translateY(-8px); }
 .spine.out { transform: translateY(-40px); opacity: .25; }
 .spine-text {
   position: absolute; inset: 10px 0; display: block; text-align: start;

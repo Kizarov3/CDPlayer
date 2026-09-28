@@ -12,7 +12,7 @@ import { shortcutKey } from './keys.js';
 import { jogSeconds } from './jog.js';
 import * as panels from './panels.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
-import { openShelf, closeShelf, isShelfOpen, escapeShelf, setupShelf } from './shelf.js';
+import { openShelf, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
 import { SpotifySession, SpotifyTrackElement, isSpotifyUri, spotifyUpcoming, loadSpotifySdk } from './spotify-deck.js';
 
@@ -273,6 +273,7 @@ function resetToIdle(message) {
   state.index = -1; state.loadToken++;
   engine.stop();
   state.loadedPath = null; state.details = null; state.lyrics = null;
+  showInPlayer(null);
   setTrackTitle('Pick a track to get started.', null);
   $('track-source').textContent = 'YOUR MUSIC LIBRARY';
   document.title = 'CDPlayer';
@@ -298,6 +299,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   state.crossfadeStarted = false;
   if (state.loadedPath !== path) flushFoundSoon();
   state.loadedPath = path;
+  showInPlayer(path);
   $('tags-button').hidden = false;
   if (isSpotifyUri(path)) { progress.setWaveform(null); await loadSpotify(path, token, { autoPlay, startAt }); return; }
   progress.setWaveform(null);

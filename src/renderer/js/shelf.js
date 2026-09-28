@@ -7,9 +7,23 @@ import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './bookle
 import { stickersFor } from './shelf-stickers.js';
 
 const $ = (id) => document.getElementById(id);
-const shelf = { open: false, albums: [], loading: false, covers: new Map(), colors: new Map(), observer: null, caseOpen: null, app: null, generation: 0 };
+const shelf = { open: false, albums: [], loading: false, covers: new Map(), colors: new Map(), observer: null, caseOpen: null, app: null, generation: 0, inPlayer: null };
 
 export const isShelfOpen = () => shelf.open;
+
+// The album whose disc is in the player (a track of it loaded, playing or paused) stands a little proud of the others,
+// lit in the theme's colour.
+const IN_PLAYER = 'IN THE PLAYER';
+const holds = (a, path) => !!path && a.tracks.some((t) => t.path === path);
+const spineTitle = (a) => [a.artist, a.title, a.year, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ');
+/** The track now in the player (null: none), so its album's spine can show it. */
+export function showInPlayer(path) {
+  shelf.inPlayer = path || null;
+  for (const spine of document.querySelectorAll('#shelf-body .spine')) {
+    spine.classList.toggle('in-player', holds(spine.album, shelf.inPlayer));
+    spine.title = spineTitle(spine.album);
+  }
+}
 
 export async function openShelf(app) {
   if (shelf.open) return;
@@ -90,7 +104,7 @@ function render() {
   const now = Date.now();
   const spines = shown.map((a) => {
     const st = a.stickers = stickersFor(a, now);
-    const spine = el('button', { class: `spine${a.discs > 1 ? ' double' : ''}${st.obi ? ' obi' : ''}${st.isNew ? ' new' : ''}`, title: [a.artist, a.title, a.year].filter(Boolean).join(' · '), onClick: () => openCase(a, spine) },
+    const spine = el('button', { class: `spine${a.discs > 1 ? ' double' : ''}${st.obi ? ' obi' : ''}${st.isNew ? ' new' : ''}${holds(a, shelf.inPlayer) ? ' in-player' : ''}`, title: spineTitle(a), onClick: () => openCase(a, spine) },
       el('span', { class: 'spine-text' }, a.artist ? el('b', {}, a.artist) : null, a.artist ? ' · ' : null, a.title),
       st.obi ? el('span', { class: 'obi-cat' }, st.obi.catalog) : null,
       st.isNew ? el('span', { class: 'sticker-new' }, 'NEW') : null);
@@ -172,7 +186,7 @@ async function openCase(a, spine) {
     el('div', { class: 'case-info' },
       el('div', { class: 'case-title' }, a.title),
       el('div', { class: 'case-artist' }, [a.artist, a.year].filter(Boolean).join(' · ')),
-      el('div', { class: 'case-meta' }, `${a.tracks.length} ${a.tracks.length === 1 ? 'TRACK' : 'TRACKS'}${a.duration ? ` · ${app.formatTime(a.duration)}` : ''}${a.discs > 1 ? ` · ${a.discs} DISCS` : ''}`),
+      el('div', { class: 'case-meta' }, `${a.tracks.length} ${a.tracks.length === 1 ? 'TRACK' : 'TRACKS'}${a.duration ? ` · ${app.formatTime(a.duration)}` : ''}${a.discs > 1 ? ` · ${a.discs} DISCS` : ''}${holds(a, shelf.inPlayer) ? ` · ${IN_PLAYER}` : ''}`),
       el('div', { class: 'case-tracks scroll' }, tracks),
       el('div', { class: 'case-actions' },
         pill('BACK ON THE SHELF', () => closeCase()),
