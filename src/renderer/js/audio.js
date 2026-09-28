@@ -46,14 +46,18 @@ export class AudioEngine {
   }
   setEq(gains) { gains.forEach((g, i) => this.eq[i].gain.setTargetAtTime(g, this.ctx.currentTime, 0.02)); }
 
-  createDeck(url) {
-    const el = new Audio();
-    el.preload = 'auto';
-    el.src = url;
-    const source = this.ctx.createMediaElementSource(el);
+  /** A deck for `url` — or, given `element` (a Spotify track), one that plays through it, outside Web Audio. */
+  createDeck(url, element = null) {
+    const el = element || new Audio();
+    let source = null;
     const gain = this.ctx.createGain();
-    source.connect(gain);
-    gain.connect(this.input);
+    if (!element) {
+      el.preload = 'auto';
+      el.src = url;
+      source = this.ctx.createMediaElementSource(el);
+      source.connect(gain);
+      gain.connect(this.input);
+    }
     const deck = { el, source, gain, url, start: 0, end: null, endFired: false };
     el.addEventListener('ended', () => { if (this.onEnded) this.onEnded(deck); });
     return deck;
@@ -63,7 +67,7 @@ export class AudioEngine {
     try { deck.el.pause(); } catch { /* ignore */ }
     deck.el.removeAttribute('src');
     deck.el.load();
-    deck.source.disconnect();
+    if (deck.source) deck.source.disconnect();
     deck.gain.disconnect();
   }
 
@@ -73,12 +77,13 @@ export class AudioEngine {
    * Resolves once the new track's duration is known; rejects if it can't be decoded. `segment` ({ start, end } in
    * seconds, end null for "to the end of the file") plays only that part of the file.
    */
-  async load(url, { autoPlay = true, crossfadeSeconds = 0, segment = null } = {}) {
+  async load(url, { autoPlay = true, crossfadeSeconds = 0, segment = null, element = null } = {}) {
     this.cancelCrossfade();
     const outgoing = this.deck;
-    const doCrossfade = crossfadeSeconds > 0 && outgoing && !outgoing.el.paused;
+    // A Spotify track plays outside Web Audio, so there's nothing to fade — in or out.
+    const doCrossfade = crossfadeSeconds > 0 && !element && outgoing && outgoing.source && !outgoing.el.paused;
     if (!doCrossfade) { this.disposeDeck(outgoing); this.deck = null; }
-    const deck = this.createDeck(url);
+    const deck = this.createDeck(url, element);
     this.deck = deck;
     await new Promise((resolve, reject) => {
       const ok = () => { cleanup(); resolve(); };
