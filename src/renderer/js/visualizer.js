@@ -87,6 +87,15 @@ export class Visualizer {
     const { width: w, height: h } = c.getBoundingClientRect();
     if (!w || !h) return;
     if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+    // The bars, settled flat with nothing playing, don't move: drawn once, then left (the themes' scenery keeps moving).
+    let quiet = null;
+    if (!this.active && (this.mode === 'BARS' || !this.useSpectrum)) {
+      let top = 0;
+      for (let i = 0; i < this.n; i++) top = Math.max(top, this.spec[i], this.peaks[i]);
+      if (top < 0.001) quiet = `${c.width}x${c.height}|${this.mode}|${colors.accent}|${colors.accent2}`;
+    }
+    if (quiet && quiet === this.quietDrawn) return;
+    this.quietDrawn = quiet;
     const g = c.getContext('2d');
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, h);

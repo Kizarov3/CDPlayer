@@ -90,27 +90,38 @@ export class Disc {
     this.light.targetStrength = Math.max(0.35, Math.min(1, 1.25 - Math.hypot(dx, dy) / (c.r * 4)));
     this.light.movedAt = performance.now();
   }
-  // Eases the reflection toward the mouse (the short way round); left alone for a few seconds, it drifts slowly, so a
-  // spinning disc in CD View or Visualizer's idle still catches the light.
+  // Eases the reflection toward the mouse (the short way round); left alone for a few seconds, a spinning disc's drifts
+  // slowly, so it still catches the light in CD View or Visualizer's idle. Once there, it stops (and so does drawing).
   stepLight(now, dt) {
     const l = this.light;
-    if (now - l.movedAt > 4000) l.target += 0.00012 * dt;
+    if (this.spinning && now - l.movedAt > 4000) l.target += 0.00012 * dt;
     let delta = l.target - l.angle;
     delta = Math.atan2(Math.sin(delta), Math.cos(delta));
     const k = 1 - Math.exp(-dt / 140);
-    l.angle += delta * k;
-    l.strength += (l.targetStrength - l.strength) * k;
+    if (Math.abs(delta) < 1e-4) l.angle = l.target; else l.angle += delta * k;
+    if (Math.abs(l.targetStrength - l.strength) < 1e-4) l.strength = l.targetStrength; else l.strength += (l.targetStrength - l.strength) * k;
   }
 
   /**
    * The tilt shine: how a CD's surface splits light into two rainbow fans on opposite sides of the hole, lined up with
    * the light, plus a soft glare. Drawn over the disc face but not turned with it — reflections stay put while a disc
-   * spins. Rendered on its own canvas so the fans can fade out toward the hub and the rim.
+   * spins. Rendered once per size on its own canvas, facing the light at angle 0 (so the fans can fade out toward the
+   * hub and the rim), then turned to wherever the light is: the whole pattern just rotates with it.
    */
   drawShine(g, cx, cy, side, dpr) {
     const px = Math.max(1, Math.round(side * dpr));
-    if (!this.shine || this.shine.width !== px) { this.shine = new OffscreenCanvas(px, px); }
-    const s = this.shine.getContext('2d'), c = px / 2, { angle, strength } = this.light;
+    if (!this.shine || this.shine.width !== px) { this.shine = new OffscreenCanvas(px, px); this.renderShine(px); }
+    const { angle, strength } = this.light;
+    g.save();
+    g.beginPath(); g.arc(cx, cy, side / 2, 0, Math.PI * 2); g.clip();
+    g.globalCompositeOperation = 'screen';
+    g.globalAlpha *= 0.22 + 0.2 * strength;
+    g.translate(cx, cy); g.rotate(angle);
+    g.drawImage(this.shine, -side / 2, -side / 2, side, side);
+    g.restore();
+  }
+  renderShine(px) {
+    const s = this.shine.getContext('2d'), c = px / 2, angle = 0;
     s.setTransform(1, 0, 0, 1, 0, 0);
     s.globalCompositeOperation = 'source-over';
     s.clearRect(0, 0, px, px);
@@ -138,13 +149,6 @@ export class Disc {
     glare.addColorStop(0, 'rgba(255,255,255,0.35)'); glare.addColorStop(1, 'rgba(255,255,255,0)');
     s.fillStyle = glare;
     s.fillRect(0, 0, px, px);
-
-    g.save();
-    g.beginPath(); g.arc(cx, cy, side / 2, 0, Math.PI * 2); g.clip();
-    g.globalCompositeOperation = 'screen';
-    g.globalAlpha *= 0.22 + 0.2 * strength;
-    g.drawImage(this.shine, cx - side / 2, cy - side / 2, side, side);
-    g.restore();
   }
 
   /** Runs the tray motor out (true) or in (false); resolves when it's there. */
@@ -280,9 +284,6 @@ export class Disc {
     if (!r.width || !r.height) return null;
     const pw = Math.round(r.width * dpr), ph = Math.round(r.height * dpr);
     if (cnv.width !== pw || cnv.height !== ph) { cnv.width = pw; cnv.height = ph; }
-    const g = cnv.getContext('2d');
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.clearRect(0, 0, r.width, r.height);
     const tau = this.reading ? SPIN_TAU_MS * 3 : SPIN_TAU_MS;
     this.speed += ((this.spinning ? 1 : 0) - this.speed) * (1 - Math.exp(-dt / tau));
     if (this.speed < 0.002 && !this.spinning) this.speed = 0;
@@ -302,11 +303,28 @@ export class Disc {
 
     this.artT = Math.max(0, Math.min(1, this.artT + (this.artOpen ? 1 : -1) * (dt / ART_MS)));
     const art = mini || !this.cover ? 0 : easeInOutCubic(this.artT);
+    const eject = this.ejectProgress(now), wobble = this.wobbleOffset(now);
+    this.stepLight(now, dt);
     this.artRect = null;
+    if (!mini && this.cover && !(tray > 0)) {
+      const cs = side + 60, thumb = Math.round(side * 0.193), full = cs - 28, size = thumb + (full - thumb) * art;
+      this.artRect = { x: cx - cs / 2 + 14, y: cy - cs / 2 + 14, w: size, h: size };
+    }
+    if (!mini) { const cs = side + 60; bounds = { x: cx - cs / 2, y: cy - cs / 2, w: cs, h: cs }; }
+    // Nothing that shows has changed since the last frame (a paused disc, the light at rest): leave the canvas be —
+    // redrawing it 60 times a second anyway kept the GPU busy for nothing.
+    const l = this.light;
+    const look = [pw, ph, side, x, y, this.angle, this.speed, l.angle, l.strength, tray, art, eject, wobble, this.mode,
+      this.faceKey, this.coverVersion, this.lookingUp, this.label && this.label.title, this.label && this.label.artist,
+      this.discPresent, colors.accent, colors.accent2, colors.bg, dpr].join('|');
+    if (look === this.lastLook) return bounds;
+    this.lastLook = look;
+    const g = cnv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, r.width, r.height);
     let drawArt = null;
     if (!mini) {
       const cs = side + 60, caseX = cx - cs / 2, caseY = cy - cs / 2;
-      bounds = { x: caseX, y: caseY, w: cs, h: cs };
       g.fillStyle = 'rgba(255,255,255,0.055)';
       g.beginPath(); g.roundRect(caseX, caseY, cs, cs, 6); g.fill();
       g.strokeStyle = rgb(colors.accent, 0.37); g.lineWidth = 1.6; g.stroke();
@@ -320,7 +338,6 @@ export class Disc {
         // so it covers it on the way.
         const thumb = Math.round(side * 0.193), full = cs - 28;
         const size = thumb + (full - thumb) * art;
-        this.artRect = { x: caseX + 14, y: caseY + 14, w: size, h: size };
         drawArt = (cover) => {
           const x = caseX + 14, y = caseY + 14;
           g.fillStyle = 'rgba(0,0,0,0.47)';
@@ -360,10 +377,8 @@ export class Disc {
       g.strokeStyle = rgb(colors.accent, 0.35); g.stroke();
       g.restore();
     }
-    const eject = this.ejectProgress(now);
     g.save();
     if (!this.discPresent && tray > 0) g.globalAlpha = 0; // an empty tray
-    const wobble = this.wobbleOffset(now);
     g.translate(cx + wobble, cy + trayDy + wobble * 0.4); g.scale(trayScale, trayScale); g.translate(-cx, -cy);
     // As the full art opens, the disc sinks back a little and fades out underneath it.
     g.globalAlpha = 1 - art;
@@ -379,7 +394,6 @@ export class Disc {
     g.imageSmoothingQuality = 'high';
     g.drawImage(face.canvas, x, y, side, side);
     g.restore();
-    this.stepLight(now, dt);
     this.drawShine(g, cx, cy, side, dpr);
     if (this.speed < 0.99) { // a stopped disc sits a little darker, brightening as it gets up to speed
       g.fillStyle = `rgba(10,11,16,${(0.35 * (1 - this.speed)).toFixed(3)})`;
@@ -389,7 +403,6 @@ export class Disc {
     if (drawArt && tray < 1) { // the case's cover thumbnail steps aside while the tray is out
       g.save(); g.globalAlpha = 1 - tray; drawArt(this.cover); g.restore();
     }
-    if (tray > 0) this.artRect = null;
     return bounds;
   }
 

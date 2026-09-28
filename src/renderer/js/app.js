@@ -1262,8 +1262,10 @@ function updateProgressUi(force = false) {
   const dur = engine.duration, pos = engine.position;
   const v = dur ? Math.round((pos * 1000) / dur) : 0;
   progress.setValue(v);
-  $('elapsed').textContent = formatTime(pos);
+  setText($('elapsed'), formatTime(pos));
 }
+// Writing a label's text, even the same text, makes the page restyle and repaint it — every frame, for the clock.
+function setText(node, text) { if (node.textContent !== text) node.textContent = text; }
 
 // Playback logic that must keep running even while this window is hidden (Mini Mode) or minimized — where
 // requestAnimationFrame stops — so it runs on a plain timer instead of the frame loop.
@@ -1293,7 +1295,13 @@ function playbackTick() {
 }
 
 let last = performance.now(), idleCheck = 0;
+// While you're in another app, the window only needs to look alive: drawing it at 30 frames a second instead of 60
+// roughly halves what the spinning disc and visualizer cost. Watched — CDPlayer in front, or CD View, Visualizer Mode
+// or Karaoke on screen — it stays at full rate.
+const BACKGROUND_FRAME_MS = 1000 / 30;
 function frame(now) {
+  const watched = document.hasFocus() || state.cdView || state.visualizerMode || isKaraokeOpen();
+  if (!watched && now - last < BACKGROUND_FRAME_MS - 2) { requestAnimationFrame(frame); return; }
   const dt = Math.min(100, now - last); last = now;
   if (engine.deck && engine.playing) {
     updateProgressUi();
@@ -1309,12 +1317,15 @@ function frame(now) {
   watchForShake(now);
   stepDiscMorph(now);
   const discBounds = disc.frame(now, dt);
-  const exclusions = [];
-  if (discBounds) { const r = $('disc').getBoundingClientRect(); exclusions.push({ x: r.left + discBounds.x, y: r.top + discBounds.y, w: discBounds.w, h: discBounds.h }); }
-  for (const card of document.querySelectorAll('#overlays .card, #overlays .theme-menu')) {
-    const r = card.getBoundingClientRect(); exclusions.push({ x: r.left, y: r.top, w: r.width, h: r.height });
+  // Where the theme's particles mustn't go (the disc, open panels) — measured only for a theme that has them.
+  if (particles.mode !== 'NONE') {
+    const exclusions = [];
+    if (discBounds) { const r = $('disc').getBoundingClientRect(); exclusions.push({ x: r.left + discBounds.x, y: r.top + discBounds.y, w: discBounds.w, h: discBounds.h }); }
+    for (const card of document.querySelectorAll('#overlays .card, #overlays .theme-menu')) {
+      const r = card.getBoundingClientRect(); exclusions.push({ x: r.left, y: r.top, w: r.width, h: r.height });
+    }
+    particles.frame(dt, state.visualizerMode ? [] : exclusions);
   }
-  particles.frame(dt, state.visualizerMode ? [] : exclusions);
 
   if (now - idleCheck > 500) {
     idleCheck = now;

@@ -128,8 +128,12 @@ window.addEventListener('keydown', (e) => {
 
 // ---- Render loop -------------------------------------------------------------------------------------------------
 
+// The mini player floats over whatever you're doing: unless you're using it, 30 frames a second is plenty (and costs
+// about half what 60 does), as in the main window.
+const BACKGROUND_FRAME_MS = 1000 / 30;
 let last = performance.now();
 function frame(now) {
+  if (!document.hasFocus() && now - last < BACKGROUND_FRAME_MS - 2) { requestAnimationFrame(frame); return; }
   const dt = Math.min(100, now - last); last = now;
   disc.frame(now, dt);
   vis.draw(now);
