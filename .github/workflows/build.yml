@@ -29,6 +29,9 @@ jobs:
             dist: --linux
             smoke: xvfb-run -a dist/linux-unpacked/cdplayer --no-sandbox --disable-gpu
     runs-on: ${{ matrix.os }}
+    env:
+      # build/vmp-sign.js signs for Spotify's Widevine when this is set (it isn't on a fork's pull request)
+      EVS_ACCOUNT_NAME: ${{ secrets.EVS_ACCOUNT_NAME }}
     steps:
       - uses: actions/checkout@v4
       - name: Virtual display for the Linux smoke test
@@ -47,6 +50,18 @@ jobs:
           answer=$(echo '{"id":1,"op":"drives"}' | powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File src/main/win-cd/helper.ps1)
           echo "$answer"
           echo "$answer" | grep -q '"ok":true'
+      - uses: actions/setup-python@v5
+        if: runner.os != 'Linux' && env.EVS_ACCOUNT_NAME != ''
+        with:
+          python-version: '3.12'
+      - name: castLabs EVS login, for Spotify's Widevine signature (skipped without the secrets, as on a fork's PR)
+        if: runner.os != 'Linux' && env.EVS_ACCOUNT_NAME != ''
+        shell: bash
+        env:
+          EVS_PASSWD: ${{ secrets.EVS_PASSWD }}
+        run: |
+          python -m pip install --upgrade castlabs-evs
+          python -m castlabs_evs.account reauth -A "$EVS_ACCOUNT_NAME" -P "$EVS_PASSWD"
       - name: Package
         run: npx electron-builder ${{ matrix.dist }} --publish never
         env:
