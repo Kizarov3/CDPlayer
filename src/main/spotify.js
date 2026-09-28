@@ -103,19 +103,11 @@ async function resolveSpotifyLink(text) {
     const t = await fetchJson(`https://api.spotify.com/v1/tracks/${link.id}`, { headers: { Authorization: `Bearer ${token}` } });
     return { tracks: [{ title: t.name, artist: t.artists && t.artists[0] ? t.artists[0].name : '' }] };
   }
-  let token = null;
-  try { token = await getSpotifyUserToken(); } catch { token = null; }
-  if (!token) return { needsSignIn: true };
-  const tracks = [];
-  let url = `https://api.spotify.com/v1/playlists/${link.id}/tracks?limit=50&fields=${encodeURIComponent('items(track(name,artists(name))),next')}`;
-  for (let pages = 0; url && pages < 20; pages++) {
-    const json = await fetchJson(url, { headers: { Authorization: `Bearer ${token}` } });
-    for (const item of json.items || []) {
-      if (item.track && item.track.name) tracks.push({ title: item.track.name, artist: item.track.artists && item.track.artists[0] ? item.track.artists[0].name : '' });
-    }
-    url = json.next;
-  }
-  return { tracks };
+  const r = await discTracks({ kind: 'playlist', id: link.id });
+  if (r.error === 'SIGN_IN') return { needsSignIn: true };
+  if (r.error === 'NOT_SHARED') return { tracks: [] };
+  if (r.error) return { error: r.error };
+  return { tracks: r.tracks.map((t) => ({ title: t.title, artist: (t.artist || '').split(', ')[0] })) };
 }
 
 let signInInProgress = null;
@@ -160,6 +152,121 @@ function spotifySignIn() {
   return signInInProgress;
 }
 
+// ---- The user's library (the SPOTIFY panel) ----------------------------------------------------------------------
+
+const API = 'https://api.spotify.com/v1';
+class SpotifyError extends Error { constructor(code) { super(code); this.code = code; } }
+/** A Web API call as the signed-in user: refreshed once on a 401, then 'SIGN_IN'; no network → 'OFFLINE'. */
+async function userApi(pathAndQuery, init = {}) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let token;
+    try { token = await getSpotifyUserToken(); } catch (e) { throw new SpotifyError(e.status ? 'SIGN_IN' : 'OFFLINE'); }
+    if (!token) throw new SpotifyError('SIGN_IN');
+    try {
+      return await fetchJson(pathAndQuery.startsWith('http') ? pathAndQuery : `${API}${pathAndQuery}`, { ...init, headers: { Authorization: `Bearer ${token}`, ...(init.headers || {}) } });
+    } catch (e) {
+      if (e.status === 401 && attempt === 0) { forgetUserToken(); continue; }
+      if (e.status === 401) throw new SpotifyError('SIGN_IN');
+      if (!e.status) throw new SpotifyError('OFFLINE');
+      throw e;
+    }
+  }
+  throw new SpotifyError('SIGN_IN');
+}
+const asError = (e) => ({ error: e.code || (e.status ? `HTTP ${e.status}` : 'OFFLINE') });
+const nextOffset = (json) => { if (!json.next) return null; const n = Number(new URL(json.next).searchParams.get('offset')); return Number.isFinite(n) ? n : null; };
+const artistNames = (a) => (a || []).map((x) => x.name).filter(Boolean).join(', ');
+const biggest = (images) => { const list = (images || []).filter((i) => i && i.url); list.sort((a, b) => (b.width || 0) - (a.width || 0)); return list.length ? list[0].url : null; };
+const albumItem = (a) => ({ kind: 'album', id: a.id, name: a.name, owner: artistNames(a.artists), total: a.total_tracks || 0 });
+const playlistItem = (p) => ({ kind: 'playlist', id: p.id, name: p.name, owner: (p.owner && (p.owner.display_name || p.owner.id)) || '', total: ((p.items || p.tracks) || {}).total || 0 });
+
+async function savedAlbums(offset = 0) {
+  try {
+    const json = await userApi(`/me/albums?limit=50&offset=${offset}`);
+    return { items: (json.items || []).filter((i) => i && i.album).map((i) => albumItem(i.album)), next: nextOffset(json) };
+  } catch (e) { return asError(e); }
+}
+async function playlists(offset = 0) {
+  try {
+    const json = await userApi(`/me/playlists?limit=50&offset=${offset}`);
+    return { items: (json.items || []).filter(Boolean).map(playlistItem), next: nextOffset(json) };
+  } catch (e) { return asError(e); }
+}
+async function search(query) {
+  try {
+    const json = await userApi(`/search?q=${encodeURIComponent(query)}&type=album,playlist&limit=10`);
+    return { items: [...((json.albums || {}).items || []).filter(Boolean).map(albumItem), ...((json.playlists || {}).items || []).filter(Boolean).map(playlistItem)] };
+  } catch (e) { return asError(e); }
+}
+
+const discTrack = (t, album) => ({
+  uri: t.uri, title: t.name, artist: artistNames(t.artists) || album.artist, album: album.name,
+  durationMs: t.duration_ms || 0, cover: album.cover,
+});
+async function albumTracks(id) {
+  const a = await userApi(`/albums/${encodeURIComponent(id)}`);
+  const album = { name: a.name, artist: artistNames(a.artists), cover: biggest(a.images) };
+  const tracks = ((a.tracks || {}).items || []).map((t) => discTrack(t, album));
+  let url = (a.tracks || {}).next;
+  for (let pages = 0; url && pages < 20; pages++) {
+    const page = await userApi(url);
+    tracks.push(...(page.items || []).map((t) => discTrack(t, album)));
+    url = page.next;
+  }
+  return tracks;
+}
+async function playlistTracks(id) {
+  // February 2026: /items with each song under `item`; apps from before keep /tracks with `track`.
+  let url = `/playlists/${encodeURIComponent(id)}/items?limit=50`;
+  try { await userApi(url.replace('limit=50', 'limit=1')); } catch (e) { if (e.status === 404) url = `/playlists/${encodeURIComponent(id)}/tracks?limit=50`; else throw e; }
+  const tracks = [];
+  for (let pages = 0; url && pages < 40; pages++) {
+    const page = await userApi(url);
+    for (const entry of page.items || []) {
+      const t = entry && (entry.item || entry.track);
+      if (!t || entry.is_local || t.is_local || (t.type && t.type !== 'track') || !/^spotify:track:/.test(t.uri || '')) continue;
+      const album = { name: (t.album || {}).name || '', artist: '', cover: biggest((t.album || {}).images) };
+      tracks.push(discTrack(t, album));
+    }
+    url = page.next;
+  }
+  return tracks;
+}
+/** An album's or playlist's songs, as a disc. A playlist the user only follows comes back empty: 'NOT_SHARED'. */
+async function discTracks({ kind, id }) {
+  try {
+    const tracks = kind === 'album' ? await albumTracks(id) : await playlistTracks(id);
+    if (!tracks.length) return { error: kind === 'playlist' ? 'NOT_SHARED' : 'EMPTY' };
+    return { tracks };
+  } catch (e) {
+    if (kind === 'playlist' && (e.status === 403 || e.status === 404)) return { error: 'NOT_SHARED' };
+    return asError(e);
+  }
+}
+
+/** Plays `uris` in order on the SDK's device from `positionMs` into the first. Spotify answers 403 without Premium. */
+async function startPlayback({ deviceId, uris, positionMs }) {
+  try {
+    await userApi(`/me/player/play?device_id=${encodeURIComponent(deviceId)}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uris, position_ms: Math.max(0, Math.round(positionMs || 0)) }),
+    });
+    return { ok: true, status: 204 };
+  } catch (e) {
+    return { ok: false, status: e.status || (e.code === 'SIGN_IN' ? 401 : 0) };
+  }
+}
+
+/** A cover from Spotify's image host as a data URL (the page reads its pixels for the AUTO theme). */
+async function coverDataUrl(url) {
+  if (!/^https:\/\/i\.scdn\.co\/image\//.test(String(url))) return null;
+  try {
+    const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    if (!res.ok) return null;
+    const type = res.headers.get('content-type') || 'image/jpeg';
+    return `data:${type};base64,${Buffer.from(await res.arrayBuffer()).toString('base64')}`;
+  } catch { return null; }
+}
+
 function authorizeUrl(clientId, state) {
   return `https://accounts.spotify.com/authorize?response_type=code&client_id=${encodeURIComponent(clientId)}`
     + `&scope=${encodeURIComponent(SCOPES.join(' '))}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${state}`;
@@ -169,4 +276,5 @@ module.exports = {
   SCOPES, REDIRECT_URI, credentials, status, saveCredentials, authorizeUrl, resetForTests,
   getSpotifyAppToken, getSpotifyUserToken, accessToken, forgetUserToken, fetchJson,
   classifySpotifyLink, resolveSpotifyLink, spotifySignIn,
+  savedAlbums, playlists, search, discTracks, startPlayback, coverDataUrl,
 };
