@@ -217,6 +217,17 @@ handle('spotify:resolve', async (text) => {
   try { return await spotify.resolveSpotifyLink(text); } catch (e) { return { error: (e.message || 'LOOKUP FAILED').toUpperCase() }; }
 });
 handle('spotify:signIn', () => spotify.spotifySignIn());
+handle('spotify:status', () => spotify.status());
+handle('spotify:saveCredentials', (c) => spotify.saveCredentials(c));
+handle('spotify:accessToken', () => spotify.accessToken());
+handle('spotify:albums', (offset) => spotify.savedAlbums(offset));
+handle('spotify:playlists', (offset) => spotify.playlists(offset));
+handle('spotify:search', (query) => spotify.search(query));
+handle('spotify:discTracks', (which) => spotify.discTracks(which));
+handle('spotify:play', (request) => spotify.startPlayback(request));
+handle('spotify:cover', (url) => spotify.coverDataUrl(url));
+handle('spotify:drmReady', () => drmReady());
+handle('spotify:openDashboard', () => shell.openExternal('https://developer.spotify.com/dashboard'));
 
 handle('library:collect', async (items) => (await library.collectAudio(items)).sort(library.byName));
 handle('library:scan', async () => {
