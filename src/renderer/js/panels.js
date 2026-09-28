@@ -11,7 +11,7 @@ import { formatLyricsForDisplay } from './lyrics.js';
 const layer = () => document.getElementById('overlays');
 const panels = new Map(); // name -> { overlay, card, build }
 // Escape closes the closest thing first, in this order.
-const ESC_ORDER = ['onboarding', 'changelog', 'booklet', 'menu', 'lyrics', 'tags', 'eq', 'rip', 'history', 'spotify', 'search', 'settings'];
+const ESC_ORDER = ['onboarding', 'changelog', 'card', 'booklet', 'menu', 'lyrics', 'tags', 'eq', 'rip', 'history', 'spotify', 'search', 'settings'];
 
 function openPanel(name, build, { width } = {}) {
   let p = panels.get(name);
@@ -70,6 +70,54 @@ function sliderRow(label, slider, valueLabel) {
   const r = el('div', { class: 'setting-row slider-row' }, el('span', { class: 'row-label' }, label), wrap, valueLabel);
   requestAnimationFrame(() => slider.mount(wrap));
   return r;
+}
+
+// ---- The Now Playing card ----------------------------------------------------------------------------------------
+// P (or right-click the disc): the card as it will look, and which line of the lyrics goes on it — the one being sung,
+// another, or none — then COPY it to paste into a chat, or SAVE… it as a picture. ↑/↓ pick a line, Enter copies.
+// `render(i)` → a URL of the card with line i (-1: none); `copy(i)` / `save(i)` → true once done.
+
+export function showCard(app, { choices, render, copy, save }) {
+  let picked = choices.picked, shownUrl = null, drawing = 0;
+  const preview = el('img', { class: 'card-preview', alt: '' });
+  const rows = [
+    el('div', { class: 'list-row card-line none', onClick: () => pick(-1) }, el('span', { class: 'entry' }, '— WITHOUT LYRICS —')),
+    ...choices.lines.map((text, i) => el('div', { class: 'list-row card-line', title: text, onClick: () => pick(i) }, el('span', { class: 'entry' }, text))),
+  ];
+  const list = el('div', { class: 'scroll card-lines' }, rows);
+  async function redraw() {
+    const n = ++drawing, url = await render(picked);
+    if (n !== drawing || !isOpen('card')) { URL.revokeObjectURL(url); return; }
+    if (shownUrl) URL.revokeObjectURL(shownUrl);
+    preview.src = shownUrl = url;
+  }
+  function pick(i) {
+    picked = i;
+    rows.forEach((r, j) => r.classList.toggle('on', j - 1 === i));
+    rows[i + 1].scrollIntoView({ block: 'nearest' });
+    redraw();
+  }
+  let busy = false;
+  const finish = (action) => async () => {
+    if (busy) return;
+    busy = true;
+    try { if (await action(picked)) closePanel('card'); } finally { busy = false; }
+  };
+  const onKey = (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      pick(Math.max(-1, Math.min(choices.lines.length - 1, picked + (e.key === 'ArrowDown' ? 1 : -1))));
+    } else if (e.key === 'Enter') { e.preventDefault(); finish(copy)(); }
+  };
+  const p = openPanel('card', () => [
+    title('NOW PLAYING CARD'),
+    el('div', { class: 'card-pick' }, preview, list),
+    el('div', { class: 'close-row split' }, pill('CANCEL', () => closePanel('card')),
+      el('div', { class: 'card-actions' }, pill('SAVE…', finish(save), 'Save the card as a picture'), el('button', { class: 'pill on', onClick: finish(copy) }, 'COPY'))),
+  ], { width: 940 });
+  window.addEventListener('keydown', onKey);
+  p.onClose = () => { window.removeEventListener('keydown', onKey); drawing++; if (shownUrl) URL.revokeObjectURL(shownUrl); };
+  requestAnimationFrame(() => pick(picked));
 }
 
 // ---- Settings ----------------------------------------------------------------------------------------------------

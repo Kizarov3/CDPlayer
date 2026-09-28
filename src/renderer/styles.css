@@ -253,6 +253,16 @@ body.cd-view #cd-info { display: block !important; }
 .card h1 { margin: 0; font-size: 16px; color: rgb(var(--accent)); font-weight: bold; }
 .card .subtitle { margin-top: 6px; font-size: 11px; color: rgb(var(--muted)); }
 .card .close-row { display: flex; justify-content: flex-end; margin-top: 16px; }
+/* The Now Playing card: its preview beside the lyrics' lines to pick one from. */
+.card-pick { display: flex; gap: 22px; margin-top: 18px; align-items: flex-start; }
+.card-preview { flex: 0 0 auto; width: 520px; aspect-ratio: 1200 / 630; border-radius: 4px; background: rgba(0, 0, 0, .3); box-shadow: 0 8px 24px rgba(0, 0, 0, .45); }
+.card-lines { flex: 1 1 auto; min-width: 0; height: 273px; }
+.card-line { min-height: 28px; margin-bottom: 2px; padding: 0 8px; border-radius: 3px; }
+.card-line:hover { background: rgba(255, 255, 255, .06); }
+.card-line.on { color: rgb(var(--accent)); background: rgba(var(--accent), .12); }
+.card-line.none { color: rgb(var(--muted)); font-size: 10px; }
+.card-line.none.on { color: rgb(var(--accent)); }
+.card-actions { display: flex; gap: 8px; }
 .card .close-row.split { justify-content: space-between; }
 .copy-link {
   border: none; background: none; padding: 0; font: inherit; color: rgb(var(--accent2)); cursor: pointer;

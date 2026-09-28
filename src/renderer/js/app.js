@@ -11,7 +11,7 @@ import { parseLrc, currentLineIndex, heardPosition, playbackTimeFor, looksOnline
 import { shortcutKey } from './keys.js';
 import { jogSeconds } from './jog.js';
 import { dockIcon } from './dock-disc.js';
-import { drawCard, cardLyric, cardSubtitle } from './share-card.js';
+import { drawCard, lyricChoices, cardSubtitle } from './share-card.js';
 import * as panels from './panels.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
 import { openShelf, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer } from './shelf.js';
@@ -483,17 +483,22 @@ function applyCover(img) {
   refreshDockSoon();
 }
 
-// P, or right-click the disc: a picture of what's playing onto the clipboard, to paste into a chat (share-card.js).
-async function copyCard() {
+// P, or right-click the disc: a picture of what's playing (share-card.js), with a line of its lyrics picked in a panel,
+// copied to paste into a chat or saved.
+function shareCard() {
   if (!state.loadedPath) { setStatus('NOTHING PLAYING TO SHARE'); return; }
-  const song = {
-    cover: state.cover, title: state.titleText, artist: state.artistText, subtitle: cardSubtitle(state.details),
-    lyric: state.lyrics ? cardLyric(parseLrc(state.lyrics), lyricsPosition()) : null,
+  const song = { cover: state.cover, title: state.titleText, artist: state.artistText, subtitle: cardSubtitle(state.details) };
+  const choices = lyricChoices(state.lyrics, lyricsPosition());
+  const png = (i) => drawCard({ ...song, lyric: i >= 0 ? choices.lines[i] : null }, { ...colors });
+  const attempt = (work, done) => async (i) => {
+    try { if (!(await work(await png(i)))) return false; setStatus(done); return true; } catch { setStatus("COULDN'T MAKE THE CARD"); return false; }
   };
-  try {
-    await cdp.copyImage(await drawCard(song, colors));
-    setStatus('CARD COPIED · PASTE IT ANYWHERE');
-  } catch { setStatus("COULDN'T MAKE THE CARD"); }
+  panels.showCard(app, {
+    choices,
+    render: async (i) => URL.createObjectURL(new Blob([await png(i)], { type: 'image/png' })),
+    copy: attempt(async (bytes) => { await cdp.copyImage(bytes); return true; }, 'CARD COPIED · PASTE IT ANYWHERE'),
+    save: attempt((bytes) => cdp.saveCard(bytes, [song.artist, song.title].filter(Boolean).join(' - ')), 'CARD SAVED'),
+  });
 }
 
 // The Dock / taskbar icon shows the disc that's in (dock-disc.js), redrawn a moment after its cover or label settles.
@@ -1299,7 +1304,7 @@ function buildStaticUi() {
   disc.canGrab = () => !!engine.deck && !state.trayBusy;
   $('disc').addEventListener('contextmenu', async (e) => {
     e.preventDefault();
-    if (!state.miniMode && await cdp.discMenu(!!state.loadedPath) === 'card') copyCard();
+    if (!state.miniMode && await cdp.discMenu(!!state.loadedPath) === 'card') shareCard();
   });
   disc.onGrab = startJog;
   disc.onJog = turnJog;
@@ -1343,7 +1348,7 @@ function onKeyDown(e) {
   if (anyOverlayOpen()) return;
   const actions = {
     ArrowLeft: () => seek(-SKIP_SECONDS), ArrowRight: () => seek(SKIP_SECONDS), ArrowUp: () => adjustVolume(5), ArrowDown: () => adjustVolume(-5),
-    u: toggleMute, p: copyCard, ' ': toggle, k: toggle, j: previousTrack, l: nextTrack, f: toggleFullscreen, c: toggleCdView, v: toggleVisualizerMode, y: toggleKaraoke, e: toggleTray, s: toggleShelf,
+    u: toggleMute, p: shareCard, ' ': toggle, k: toggle, j: previousTrack, l: nextTrack, f: toggleFullscreen, c: toggleCdView, v: toggleVisualizerMode, y: toggleKaraoke, e: toggleTray, s: toggleShelf,
   };
   if (actions[key]) { e.preventDefault(); if (!e.repeat || key.startsWith('Arrow')) actions[key](); }
 }

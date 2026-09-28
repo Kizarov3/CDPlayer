@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('cdp', {
   playCount: invoke('plays:count'),
   dockDisc: invoke('dock:disc'),
   copyImage: invoke('clipboard:image'),
+  saveCard: invoke('dialog:saveCard'),
   discMenu: invoke('menu:disc'),
   findCover: invoke('online:cover'),
   findCoverUrl: invoke('online:coverUrl'),

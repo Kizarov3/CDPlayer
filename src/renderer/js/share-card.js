@@ -1,16 +1,32 @@
-// The "now playing" card (P, or right-click the disc): a picture of what's on, to paste into a chat — the album in its
-// jewel case, the song, its artist and album, and the line being sung, in the theme's colours on a wash of the cover.
+// The "now playing" card (P, or right-click the disc): a picture of what's on, to paste into a chat or save — the album
+// in its jewel case, the song, its artist and album, and a line of its lyrics (the one being sung, another picked, or
+// none), in the theme's colours on a wash of the cover.
 import { rgb, FONT } from './theme.js';
-import { currentLineIndex } from './lyrics.js';
+import { currentLineIndex, parseLrc } from './lyrics.js';
 
 const W = 1200, H = 630;
 const MARKER_FONT = '"Marker Felt", "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive';
 
-/** The line being sung at `position` (s) of timed lyrics ([{ time, text }]), or null in a break or before the first. */
-export function cardLyric(lines, position) {
-  const i = currentLineIndex(lines, position);
-  const text = i >= 0 ? String(lines[i].text || '').trim() : '';
-  return text || null;
+/**
+ * The lyrics' lines to pick one for the card from (blank lines, breaks and "[Chorus]" labels left out), and which is
+ * picked to start with: the one being sung at `position`, or -1 (none) in a break or for untimed lyrics.
+ */
+export function lyricChoices(raw, position) {
+  if (!raw) return { lines: [], picked: -1 };
+  const timed = parseLrc(raw);
+  if (timed.length) {
+    const lines = [], at = currentLineIndex(timed, position);
+    let picked = -1;
+    timed.forEach((l, i) => {
+      const text = String(l.text || '').trim();
+      if (!text) return;
+      if (i === at) picked = lines.length;
+      lines.push(text);
+    });
+    return { lines, picked };
+  }
+  const lines = String(raw).split(/\r\n|\r|\n/).map((l) => l.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
+  return { lines, picked: -1 };
 }
 
 /** "Album · Year" for what's known of them. */
@@ -81,25 +97,31 @@ export async function drawCard(song, colors) {
   g.fillStyle = gloss; g.fillRect(cx, cy, cs, cs);
   g.strokeStyle = 'rgba(255,255,255,0.18)'; g.lineWidth = 1.5; g.strokeRect(cx + 0.75, cy + 0.75, cs - 1.5, cs - 1.5);
 
-  // The words, right of the case.
+  // The words, right of the case, centred beside it: laid out first, to know how tall they stand.
   const tx = cx + cs + 70, tw = W - tx - 80;
-  let y = cy + 34;
-  g.textBaseline = 'alphabetic';
-  g.font = `bold 20px ${FONT}`; g.fillStyle = rgb(colors.accent);
-  g.fillText('NOW PLAYING', tx, y);
-  y += 66;
-  g.font = `bold 54px ${FONT}`; g.fillStyle = rgb(colors.text);
-  for (const l of wrap(g, song.title, tw, 2)) { g.fillText(l, tx, y); y += 62; }
-  if (song.artist) { g.font = `30px ${FONT}`; g.fillStyle = rgb(colors.accent2); g.fillText(wrap(g, song.artist, tw, 1)[0], tx, y); y += 40; }
-  if (song.subtitle) { g.font = `22px ${FONT}`; g.fillStyle = rgb(colors.muted); g.fillText(wrap(g, song.subtitle, tw, 1)[0], tx, y); y += 30; }
-  if (song.lyric) {
-    y += 34;
-    g.font = `italic 28px ${FONT}`;
-    const quoted = wrap(g, `“${song.lyric}”`, tw - 24, 3);
-    g.fillStyle = rgb(colors.accent); g.fillRect(tx, y - 28, 4, quoted.length * 38 - 4);
-    g.fillStyle = rgb(colors.text);
-    quoted.forEach((l, i) => g.fillText(l, tx + 24, y + i * 38));
+  const parts = []; // [font, colour, lines, line height, gap after]
+  parts.push([`bold 20px ${FONT}`, rgb(colors.accent), ['NOW PLAYING'], 30, 20]);
+  g.font = `bold 54px ${FONT}`;
+  parts.push([g.font, rgb(colors.text), wrap(g, song.title, tw, 2), 62, 6]);
+  if (song.artist) { g.font = `30px ${FONT}`; parts.push([g.font, rgb(colors.accent2), wrap(g, song.artist, tw, 1), 40, 0]); }
+  if (song.subtitle) { g.font = `22px ${FONT}`; parts.push([g.font, rgb(colors.muted), wrap(g, song.subtitle, tw, 1), 32, 0]); }
+  let quoted = null;
+  if (song.lyric) { g.font = `italic 28px ${FONT}`; quoted = wrap(g, `“${song.lyric}”`, tw - 24, 3); }
+  const textH = parts.reduce((h, [, , lines, lh, after]) => h + lines.length * lh + after, 0) + (quoted ? 34 + quoted.length * 38 : 0);
+  let y = cy + Math.max(0, (cs - textH) / 2);
+  g.textBaseline = 'top';
+  for (const [font, color, lines, lh, after] of parts) {
+    g.font = font; g.fillStyle = color;
+    for (const l of lines) { g.fillText(l, tx, y + (lh - parseInt(font.match(/(\d+)px/)[1], 10)) / 2); y += lh; }
+    y += after;
   }
+  if (quoted) {
+    y += 34;
+    g.fillStyle = rgb(colors.accent); g.fillRect(tx, y + 2, 4, quoted.length * 38 - 6);
+    g.font = `italic 28px ${FONT}`; g.fillStyle = rgb(colors.text);
+    quoted.forEach((l, i) => g.fillText(l, tx + 24, y + 5 + i * 38));
+  }
+  g.textBaseline = 'alphabetic';
   // Where it's from, small in the corner.
   g.font = `bold 16px ${FONT}`; g.fillStyle = rgb(colors.muted); g.textAlign = 'right';
   g.fillText('CDPlayer', W - 40, H - 32);

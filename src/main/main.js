@@ -211,9 +211,18 @@ handle('plays:add', (p) => {
 handle('plays:count', (p) => plays().get(p) || 0);
 // The now-playing card (share-card.js), onto the clipboard as a picture.
 handle('clipboard:image', (png) => clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]));
+// …or saved as a picture, named after the song, in the Pictures folder to start with. → true once saved.
+handle('dialog:saveCard', async (png, name) => {
+  const safe = String(name || 'Now Playing').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || 'Now Playing';
+  const r = await dialog.showSaveDialog(win, { title: 'Save the Card', defaultPath: path.join(app.getPath('pictures'), `${safe}.png`), filters: [{ name: 'PNG picture', extensions: ['png'] }] });
+  if (r.canceled || !r.filePath) return false;
+  const target = /\.png$/i.test(r.filePath) ? r.filePath : `${r.filePath}.png`;
+  fs.writeFileSync(target, Buffer.from(png));
+  return true;
+});
 // Right-clicking the disc: its menu → what was chosen ('card'), or null.
 handle('menu:disc', (loaded) => new Promise((resolve) => {
-  const menu = Menu.buildFromTemplate([{ label: 'Copy Now Playing Card', sublabel: 'P', enabled: !!loaded, click: () => resolve('card') }]);
+  const menu = Menu.buildFromTemplate([{ label: 'Now Playing Card…', sublabel: 'P', enabled: !!loaded, click: () => resolve('card') }]);
   menu.popup({ window: win, callback: () => setTimeout(() => resolve(null), 0) });
 }));
 // The Dock (macOS) or taskbar (Windows, Linux) icon: the disc that's in (drawn by dock-disc.js), or the app's own
