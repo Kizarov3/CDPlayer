@@ -10,6 +10,7 @@ import { openBooklet, closeBooklet } from './booklet.js';
 import { parseLrc, currentLineIndex, heardPosition, playbackTimeFor, looksOnlineFor, takesOnline } from './lyrics.js';
 import { shortcutKey } from './keys.js';
 import { jogSeconds } from './jog.js';
+import { insertNext, pinnedNext, afterRemove } from './play-next.js';
 import { dockIcon } from './dock-disc.js';
 import { drawCard, lyricChoices, cardSubtitle, quoteLines, MAX_QUOTE_LINES } from './share-card.js';
 import * as panels from './panels.js';
@@ -48,6 +49,7 @@ const state = {
   saveFound: false, // covers and lyrics found online are written into the song's file
   lyricsOffset: 0,  // ms the lyrics are moved by (+ later), on top of the output latency
   shelfSort: 'ARTIST', // how the shelf is sorted (shelf-order.js)
+  nextUp: null,        // { start, end }: the run of the queue put to PLAY NEXT (play-next.js)
   audioCd: null,    // the audio CD in the drive: { mount, tracks, name, album, artist, year }
   ripping: false,   // RIP is saving the disc into the music folder
   rip: null,        // the rip for its panel: { album, artist, year, folder, tracks, stages, sizes, done, percent, finished, ok, message }
@@ -137,6 +139,8 @@ function pumpDetails() {
 let shuffleCache = { index: NaN, size: -1, value: -1 };
 function nextIndex() {
   if (!state.queue.length) return -1;
+  const pinned = pinnedNext(state.index, state.nextUp, state.queue.length); // PLAY NEXT comes first, shuffled or not
+  if (pinned >= 0) return pinned;
   if (state.shuffle && state.queue.length > 1) {
     if (shuffleCache.index !== state.index || shuffleCache.size !== state.queue.length) {
       let next;
@@ -184,9 +188,11 @@ function renderQueue() {
     ensureDetails(p);
     const d = detailsCache.get(p);
     const remove = el('button', { class: 'glyph-x', title: 'Remove from queue', onClick: (e) => { e.stopPropagation(); removeFromQueue(i); } }, '×');
+    const next = !!state.nextUp && i > state.index && i >= state.nextUp.start && i < state.nextUp.end;
     const row = el('div', { class: `queue-row${i === state.index ? ' active' : ''}${i === drag.index ? ' dragging' : ''}`, title: `Play ${queueDisplay(p)}` },
       el('span', { class: 'num' }, `${i + 1}.`),
       el('span', { class: 'entry' }, queueDisplay(p)),
+      next ? el('span', { class: 'next-tag', title: 'Plays next' }, 'NEXT') : null,
       el('span', { class: 'east' }, el('span', { class: 'duration' }, formatDuration(d ? d.duration : 0)), remove));
     row.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || e.target === remove) return;
@@ -210,6 +216,7 @@ function setupQueueDrag() {
       const dir = drag.accumulated > 0 ? 1 : -1, target = drag.index + dir;
       if (target < 0 || target >= state.queue.length) break;
       drag.moved = true; changed = true;
+      state.nextUp = null; // reordered by hand: the order is the queue's now
       [state.queue[drag.index], state.queue[target]] = [state.queue[target], state.queue[drag.index]];
       if (state.index === drag.index) state.index = target; else if (state.index === target) state.index = drag.index;
       drag.index = target;
@@ -241,9 +248,22 @@ async function addToQueue(items, { sorted = false } = {}) {
   renderQueue(); saveQueueSoon();
   if (state.index < 0) { state.index = 0; load(state.queue[0]); }
 }
+/** PLAY NEXT: songs straight after the one playing (after any already put there), to play next even shuffled. */
+async function playNext(items, { sorted = false } = {}) {
+  if (!state.queue.length || state.index < 0 || spotifyDiscIn() || disc.trayOpen) { await addToQueue(items, { sorted }); return; }
+  const songs = sorted ? items : await cdp.collectAudio(items);
+  if (!songs.length) { setStatus('NO SUPPORTED AUDIO FOUND'); return; }
+  const r = insertNext(state.queue, state.index, state.nextUp, songs);
+  state.queue = r.queue; state.nextUp = r.nextUp;
+  shuffleCache.index = NaN;
+  setStatus(songs.length === 1 ? 'PLAYS NEXT' : `${songs.length} TO PLAY NEXT`);
+  spotifyResync();
+  renderQueue(); saveQueueSoon();
+}
 function removeFromQueue(i) {
   if (i < 0 || i >= state.queue.length) return;
   state.queue.splice(i, 1);
+  state.nextUp = afterRemove(state.nextUp, i);
   if (!state.queue.length) resetToIdle('QUEUE EMPTY');
   else if (i === state.index) { state.index = Math.min(i, state.queue.length - 1); load(state.queue[state.index]); }
   else if (i < state.index) state.index--;
@@ -260,7 +280,7 @@ function clearQueue() {
     queue: state.queue, index: state.index, position: engine.position, playing: engine.playing,
     timer: setTimeout(() => { undoClear = null; renderQueue(); }, UNDO_CLEAR_SECONDS * 1000),
   };
-  state.queue = [];
+  state.nextUp = null; state.queue = [];
   resetToIdle('QUEUE CLEARED');
   renderQueue(); saveQueueSoon();
 }
@@ -268,7 +288,7 @@ function undoClearQueue() {
   if (!undoClear || state.queue.length) return;
   const u = undoClear;
   clearTimeout(u.timer); undoClear = null;
-  state.queue = u.queue; state.index = u.index;
+  state.nextUp = null; state.queue = u.queue; state.index = u.index;
   renderQueue(); saveQueueSoon();
   setStatus('QUEUE RESTORED');
   if (state.index >= 0) load(state.queue[state.index], { autoPlay: u.playing, startAt: u.position });
@@ -740,7 +760,7 @@ function spotifyResync() {
 /** DISCONNECT SPOTIFY: a Spotify disc comes out, and the player closes. */
 function stopSpotify() {
   if (spotifySession) spotifySession.disconnect();
-  if (spotifyDiscIn()) { state.queue = []; resetToIdle('SPOTIFY DISCONNECTED'); renderQueue(); saveQueueSoon(); }
+  if (spotifyDiscIn()) { state.nextUp = null; state.queue = []; resetToIdle('SPOTIFY DISCONNECTED'); renderQueue(); saveQueueSoon(); }
   spotifyTracks.clear();
 }
 async function playSpotifyDisc(tracks, name) {
@@ -807,7 +827,7 @@ function onAudioCdGone({ mount, tracks }) {
   const gone = new Set(tracks);
   if (!state.queue.some((p) => gone.has(p))) return;
   const current = state.loadedPath;
-  state.queue = state.queue.filter((p) => !gone.has(p));
+  state.nextUp = null; state.queue = state.queue.filter((p) => !gone.has(p));
   if (gone.has(current)) resetToIdle('DISC EJECTED');
   else state.index = state.queue.indexOf(current);
   renderQueue();
@@ -876,7 +896,7 @@ async function insertDisc(paths, { status, start = 0 } = {}) {
 }
 // Music dropped (or picked) while the tray is out: that's the new disc — it replaces the queue, loaded but not playing.
 function putDiscOnTray(paths, start = 0, status = 'DISC ON THE TRAY · PRESS E OR PLAY TO CLOSE') {
-  state.queue = paths.slice();
+  state.nextUp = null; state.queue = paths.slice();
   state.index = Math.max(0, Math.min(start, paths.length - 1));
   shuffleCache.index = NaN;
   disc.discPresent = true;
@@ -1459,7 +1479,7 @@ function frame(now) {
 
 export const app = {
   state, engine, disc, THEMES, BUILTIN_EQ_PRESETS, cdp,
-  setStatus, queueDisplay, displayName, formatTime, load, addToQueue, appendAndPlay, seekTo,
+  setStatus, queueDisplay, displayName, formatTime, load, addToQueue, playNext, appendAndPlay, seekTo,
   detailsFor: (p) => detailsCache.get(p),
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) { state.index = i; load(state.queue[i]); } },
   coverSource: () => { const s = $('track-source').textContent; return /COVER ART|ALBUM ART/.test(s) ? s.split(' · ')[0].replace(/ COVER ART$/, '').replace('EMBEDDED ALBUM ART', 'In the file') : null; },
@@ -1534,7 +1554,7 @@ async function start() {
   if (s.miniMode) setMiniMode(true);
 
   if (saved.queue) {
-    state.queue = saved.queue.paths;
+    state.nextUp = null; state.queue = saved.queue.paths;
     state.index = saved.queue.index;
     renderQueue();
     // Restored ready-to-play at the saved position, but not auto-started.

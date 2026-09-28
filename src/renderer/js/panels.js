@@ -479,8 +479,9 @@ function buildTags(app) {
 export function showHistory(app) { openPanel('history', () => buildHistory(app), { width: 480 }); }
 export function refreshHistoryIfOpen(app) { if (isOpen('history')) refreshPanel('history'); }
 function trackRow(app, path, label, onPlay) {
+  const next = pill('NEXT', (e) => { e.stopPropagation(); app.playNext([path], { sorted: true }); }, 'Play it next, after the song playing');
   const add = pill('ADD', (e) => { e.stopPropagation(); app.addToQueue([path], { sorted: true }); }, 'Add to queue');
-  return el('div', { class: 'list-row', title: `Play ${label}`, onClick: onPlay }, el('span', { class: 'entry' }, label), add);
+  return el('div', { class: 'list-row', title: `Play ${label}`, onClick: onPlay }, el('span', { class: 'entry' }, label), next, add);
 }
 function buildHistory(app) {
   const h = app.state.history;

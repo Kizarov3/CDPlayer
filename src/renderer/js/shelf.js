@@ -2,7 +2,8 @@
 // spine in the colours of its cover, a double album twice as thick. Click one and the case slides out and turns to
 // show its front: the cover, the tracklist, and PLAY, which puts it in the player (the tray comes out, the disc goes
 // in, the tray closes and it plays). Click the case's cover and the album's booklet lifts out of it. Or pick a spine up
-// and carry it out: the shelf fades so the player shows through, and it goes in on the disc or at the end of the queue.
+// and carry it out: the shelf fades so the player shows through, and it goes in on the disc or at the end of the queue
+// (with ⇧ held, to play next).
 import { el, pill, anim } from './widgets.js';
 import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './booklet.js';
 import { stickersFor } from './shelf-stickers.js';
@@ -191,7 +192,7 @@ function pressSpine(e, spine) {
     if (!drag) return;
     shelf.dragged = true; // the click that follows isn't "open the case"
     setTimeout(() => { shelf.dragged = false; }, 0);
-    putDown(drag, ev.type === 'pointerup' ? targetAt(ev.clientX, ev.clientY) : null);
+    putDown(drag, ev.type === 'pointerup' ? targetAt(ev.clientX, ev.clientY) : null, ev.shiftKey);
   };
   window.addEventListener('pointermove', move);
   window.addEventListener('pointerup', up);
@@ -237,13 +238,13 @@ function showDropTarget(target) {
     Object.assign(ring.style, { left: `${q.left - 6}px`, top: `${q.top - 6}px`, width: `${q.width + 12}px`, height: `${q.height + 12}px`, borderRadius: '10px' });
   }
 }
-function putDown(drag, target) {
+function putDown(drag, target, next = false) {
   const { spine, ghost } = drag;
   const a = spine.album;
   showDropTarget(null);
   const back = () => { ghost.remove(); spine.classList.remove('lifted'); $('shelf').classList.remove('carrying'); };
   if (target === 'disc') { back(); play(a, 0); return; }
-  if (target === 'queue') { back(); shelf.app.addToQueue(a.tracks.map((t) => t.path), { sorted: true }); return; }
+  if (target === 'queue') { back(); shelf.app[next ? 'playNext' : 'addToQueue'](a.tracks.map((t) => t.path), { sorted: true }); return; } // ⇧: to play next
   // Let go anywhere else: it goes back in its place on the shelf.
   if (!anim.enabled) { back(); return; }
   ghost.animate([{ transform: ghost.style.transform }, { transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.3,.7,.3,1)' }).onfinish = back;
@@ -281,6 +282,7 @@ async function openCase(a, spine) {
       el('div', { class: 'case-actions' },
         pill('BACK ON THE SHELF', () => closeCase()),
         el('span', { class: 'grow' }),
+        pill('PLAY NEXT', () => { app.playNext(a.tracks.map((t) => t.path), { sorted: true }); closeCase(); }, 'Play the album next, after the song playing'),
         pill('ADD TO QUEUE', () => { app.addToQueue(a.tracks.map((t) => t.path), { sorted: true }); closeCase(); }, 'Add every track to the end of the queue'),
         el('button', { class: 'pill on', onClick: () => play(a, 0) }, 'PLAY'))));
   const layer = el('div', { class: 'case-layer', onClick: (e) => { if (e.target === layer) closeCase(); } }, card);

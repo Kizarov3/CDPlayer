@@ -149,6 +149,7 @@ body.cd-view #cd-info { display: block !important; }
 }
 .queue-row .num { flex: 0 0 20px; text-align: right; opacity: .7; }
 .queue-row .entry { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.queue-row .next-tag { flex: 0 0 auto; padding: 1px 5px; border-radius: 3px; font-size: 8px; letter-spacing: .06em; color: rgb(var(--accent2)); border: 1px solid rgba(var(--accent2), .5); }
 .queue-row .east { flex: 0 0 auto; min-width: 54px; text-align: right; padding-right: 6px; position: relative; }
 .queue-row .glyph-x { display: none; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
 .queue-row:hover .duration { visibility: hidden; }

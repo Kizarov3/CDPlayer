@@ -87,6 +87,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - Drag any row up or down to reorder the queue, even the one currently playing
 - **Clear Queue** — with a few seconds to change your mind: the button turns into **UNDO CLEAR** (or press ⌘Z / Ctrl+Z) — "Up next" preview and live queue position (e.g. `QUEUE 3 / 10`)
 - The queue, current track, and exact playback position are saved when you close the app and restored next launch — ready to play, not auto-started
+- **PLAY NEXT** (on a shelf case, **NEXT** in Search and History, or ⇧ while dropping a spine on the queue) puts songs straight after the one playing — marked NEXT — and they play next and in order even shuffled; asked again, they go after the ones already waiting
 - Save the queue as a standard `.m3u` playlist, or load one back in
 - **Search** recursively scans your last-used music folder by filename, filtering live as you type
 - Paste a Spotify track or playlist link into Search to queue every matching song you already have locally (nothing is streamed; playlist links need a one-time Spotify sign-in — see [Spotify setup](#spotify-optional))
