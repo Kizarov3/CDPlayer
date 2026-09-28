@@ -20,7 +20,7 @@ test('reads a settings.txt written by the Java version', () => {
   assert.deepStrictEqual(s, {
     volume: 70, crossfade: 5, mono: true, animations: false, theme: 'OCEAN', eq: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
     waveform: false, miniMode: false, bounds: { x: 10, y: 20, width: 1200, height: 900 }, ambient: false, discord: true,
-    discNoise: false, saveFound: false, lyricsOffset: 0,
+    discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST',
   });
 });
 
@@ -116,4 +116,12 @@ test('lyrics offset is the 14th settings line, in steps of 50 ms within ±500', 
   assert.strictEqual(store.readSettings().lyricsOffset, 500);
   fs.writeFileSync(path.join(home, 'settings.txt'), '70\n0\n0\n1\nRED\n0,0,0,0,0,0,0,0,0,0\n1\n0\n\n1\n1\n0\n0\n130\n');
   assert.strictEqual(store.readSettings().lyricsOffset, 150);
+});
+
+test('how the shelf is sorted is the 15th settings line; anything unknown is by artist', () => {
+  store.writeSettings({ ...store.DEFAULT_SETTINGS, shelfSort: 'YEAR' });
+  assert.strictEqual(fs.readFileSync(path.join(home, 'settings.txt'), 'utf8').split('\n')[14], 'YEAR');
+  assert.strictEqual(store.readSettings().shelfSort, 'YEAR');
+  fs.writeFileSync(path.join(home, 'settings.txt'), '70\n0\n0\n1\nRED\n0,0,0,0,0,0,0,0,0,0\n1\n0\n\n1\n1\n0\n0\n0\nWHATEVER\n');
+  assert.strictEqual(store.readSettings().shelfSort, 'ARTIST');
 });

@@ -475,6 +475,18 @@ body.cd-view #cd-info { display: block !important; }
 }
 .spine .sticker-new { top: 4px; left: 50%; width: 22px; height: 22px; margin-left: -11px; font-size: 6px; transform: rotate(-12deg); z-index: 1; }
 .spine.new:not(.obi) .spine-text { top: 30px; }
+/* A divider card between the shelf's sections (shelf-order.js): plain cardboard, a little shorter than the cases, the
+   section written at its top. */
+.shelf-divider {
+  position: relative; align-self: flex-end; width: 24px; height: 176px; margin: 0 3px; border-radius: 3px 3px 1px 1px;
+  background: linear-gradient(to right, rgba(255, 255, 255, .35) 0 1px, transparent 1px calc(100% - 2px), rgba(0, 0, 0, .2) calc(100% - 2px)), rgb(214, 200, 172);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, .5); color: rgb(70, 56, 40);
+}
+.shelf-divider span {
+  position: absolute; top: 8px; left: 0; right: 0; bottom: 8px; overflow: hidden; white-space: nowrap;
+  writing-mode: vertical-rl; line-height: 24px; font-size: 9px; font-weight: bold; letter-spacing: .08em;
+}
+.shelf-divider.short span { writing-mode: horizontal-tb; text-align: center; font-size: 14px; }
 .shelf-empty { display: flex; flex-direction: column; align-items: center; gap: 16px; padding-top: 18vh; font-size: 14px; color: rgb(var(--muted)); }
 .case-layer { position: absolute; inset: 0; background: rgba(0, 0, 0, .6); display: grid; place-items: center; perspective: 1400px; }
 .case-card {

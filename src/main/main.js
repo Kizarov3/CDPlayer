@@ -279,7 +279,13 @@ handle('tags:write', async (p, changes) => {
   if (result.ok) { metadata.forget(p); shelf.forget(p); }
   return result;
 });
-handle('shelf:albums', () => shelf.scanAlbums((done, total) => { if (win) win.webContents.send('shelf-progress', { done, total }); }));
+handle('shelf:albums', async () => {
+  const result = await shelf.scanAlbums((done, total) => { if (win) win.webContents.send('shelf-progress', { done, total }); });
+  // How many times each album's songs have been played, for the shelf's MOST PLAYED order.
+  const counts = plays();
+  for (const a of result.albums) a.plays = a.tracks.reduce((n, t) => n + (counts.get(t.path) || 0), 0);
+  return result;
+});
 handle('shelf:cover', (firstTrack) => shelf.albumCover(firstTrack));
 handle('shelf:coverFull', (firstTrack) => shelf.albumCoverFull(firstTrack));
 handle('dialog:pickMusicFolder', async () => {

@@ -5,6 +5,7 @@
 import { el, pill, anim } from './widgets.js';
 import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './booklet.js';
 import { stickersFor } from './shelf-stickers.js';
+import { arrange, SORTS } from './shelf-order.js';
 
 const $ = (id) => document.getElementById(id);
 const shelf = { open: false, albums: [], loading: false, covers: new Map(), colors: new Map(), observer: null, caseOpen: null, app: null, generation: 0, inPlayer: null };
@@ -14,6 +15,7 @@ export const isShelfOpen = () => shelf.open;
 // The album whose disc is in the player (a track of it loaded, playing or paused) stands a little proud of the others,
 // lit in the theme's colour.
 const IN_PLAYER = 'IN THE PLAYER';
+const SORT_LABELS = { ARTIST: 'ARTIST', NEW: 'NEW', PLAYED: 'MOST PLAYED', YEAR: 'YEAR' };
 const holds = (a, path) => !!path && a.tracks.some((t) => t.path === path);
 const spineTitle = (a) => [a.artist, a.title, a.year, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ');
 /** The track now in the player (null: none), so its album's spine can show it. */
@@ -58,6 +60,12 @@ export function setupShelf(app) {
   $('shelf-close').addEventListener('click', closeShelf);
   $('shelf-folder').addEventListener('click', pickFolder);
   $('shelf-filter').addEventListener('input', render);
+  $('shelf-sort').addEventListener('click', () => {
+    const { state } = shelf.app;
+    shelf.app.setShelfSort(SORTS[(SORTS.indexOf(state.shelfSort) + 1) % SORTS.length]);
+    render();
+    $('shelf-body').scrollTop = 0;
+  });
   app.cdp.onShelfProgress(({ done, total }) => { if (shelf.loading) $('shelf-count').textContent = `READING YOUR MUSIC · ${done} / ${total}`; });
 }
 
@@ -101,8 +109,10 @@ function render() {
   shelf.observer = new IntersectionObserver((entries) => {
     for (const e of entries) if (e.isIntersecting) { shelf.observer.unobserve(e.target); loadCover(e.target.album, e.target); }
   }, { root: body, rootMargin: '200px' });
-  const now = Date.now();
-  const spines = shown.map((a) => {
+  const now = Date.now(), sort = shelf.app.state.shelfSort;
+  $('shelf-sort').textContent = `SORT: ${SORT_LABELS[sort] || sort}`;
+  const items = arrange(shown, sort).map((a) => {
+    if (a.divider) return el('div', { class: `shelf-divider${[...a.divider].length <= 2 ? ' short' : ''}`, 'aria-hidden': 'true' }, el('span', {}, a.divider));
     const st = a.stickers = stickersFor(a, now);
     const spine = el('button', { class: `spine${a.discs > 1 ? ' double' : ''}${st.obi ? ' obi' : ''}${st.isNew ? ' new' : ''}${holds(a, shelf.inPlayer) ? ' in-player' : ''}`, title: spineTitle(a), onClick: () => openCase(a, spine) },
       el('span', { class: 'spine-text' }, a.artist ? el('b', {}, a.artist) : null, a.artist ? ' · ' : null, a.title),
@@ -113,7 +123,7 @@ function render() {
     shelf.observer.observe(spine);
     return spine;
   });
-  body.replaceChildren(el('div', { class: 'shelf-rows' }, spines));
+  body.replaceChildren(el('div', { class: 'shelf-rows' }, items));
 }
 
 // A spine before its cover has loaded gets a colour of its own from its name, so the shelf never looks blank.

@@ -45,6 +45,7 @@ const state = {
   trayBusy: false, // the tray is moving or the disc is being read: transport presses wait
   saveFound: false, // covers and lyrics found online are written into the song's file
   lyricsOffset: 0,  // ms the lyrics are moved by (+ later), on top of the output latency
+  shelfSort: 'ARTIST', // how the shelf is sorted (shelf-order.js)
   audioCd: null,    // the audio CD in the drive: { mount, tracks, name, album, artist, year }
   ripping: false,   // RIP is saving the disc into the music folder
   rip: null,        // the rip for its panel: { album, artist, year, folder, tracks, stages, sizes, done, percent, finished, ok, message }
@@ -1167,7 +1168,7 @@ function appendAndPlay(p) {
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset };
+  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -1423,6 +1424,7 @@ export const app = {
   coverSource: () => { const s = $('track-source').textContent; return /COVER ART|ALBUM ART/.test(s) ? s.split(' · ')[0].replace(/ COVER ART$/, '').replace('EMBEDDED ALBUM ART', 'In the file') : null; },
   switchTheme, setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise,
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
+  setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
   saveEq: () => cdp.saveEqPresets(state.customPresets),
   lyricsLines: () => (state.lyrics ? parseLrc(state.lyrics) : []),
   openKaraoke: () => toggleKaraoke(),
@@ -1476,6 +1478,7 @@ async function start() {
   setDiscNoise(!!s.discNoise);
   state.saveFound = !!s.saveFound;
   state.lyricsOffset = s.lyricsOffset || 0;
+  state.shelfSort = s.shelfSort || 'ARTIST';
   setEq(s.eq);
   const themeIndex = Math.max(0, THEMES.findIndex((t) => t.name === s.theme));
   state.themeIndex = -1;

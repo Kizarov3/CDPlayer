@@ -63,6 +63,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - Click the case's cover and the album's **booklet** lifts out: its whole tracklist, every song's lyrics (found online as you read), the credits and the back cover
 - An album with no art of its own (a Music.app library keeps its artwork to itself) gets its cover found online; album names that differ only in punctuation are one album
 - What's on the shelf is remembered, so only new or changed files are read the next time
+- **SORT** stands it by artist, newest in your music folder, most played or year, with cardboard divider cards between the letters, months or decades, like a record shop's
 - Some cases are Japanese editions, with an **obi** round the spine and a yen price; others still wear a shop's price sticker; and an album that turned up in your music folder in the last two weeks has a **NEW** sticker
 
 <p align="center">
