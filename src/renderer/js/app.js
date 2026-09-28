@@ -10,6 +10,7 @@ import { openBooklet, closeBooklet } from './booklet.js';
 import { parseLrc, currentLineIndex, heardPosition, playbackTimeFor, looksOnlineFor, takesOnline } from './lyrics.js';
 import { shortcutKey } from './keys.js';
 import { jogSeconds } from './jog.js';
+import { dockFrames } from './dock-disc.js';
 import * as panels from './panels.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
 import { openShelf, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer } from './shelf.js';
@@ -91,6 +92,7 @@ const formatDuration = (sec) => (sec > 0 ? formatTime(sec) : '--:--');
 function setTrackTitle(name, artist) {
   state.titleText = name; state.artistText = artist;
   disc.setLabel(state.loadedPath ? name : null, artist); // written on the disc when it has no cover
+  refreshDockSoon();
   fitText($('track-title'), name, 456, 34, 20, true);
   fitText($('cd-title'), name, 860, 30, 18, true);
   const has = !!(artist && artist.trim());
@@ -477,6 +479,22 @@ function applyCover(img) {
   disc.setCover(img);
   onCoverChanged();
   pushMini(true);
+  refreshDockSoon();
+}
+
+// The Dock / taskbar icon shows the disc that's in (dock-disc.js), redrawn a moment after its cover or label settles.
+let dockTimer = null, dockKey = null;
+function refreshDockSoon() {
+  clearTimeout(dockTimer);
+  dockTimer = setTimeout(async () => {
+    const key = state.loadedPath ? `${disc.coverVersion || 0}|${disc.cover ? '' : JSON.stringify(disc.label)}` : null;
+    if (key === dockKey) return;
+    dockKey = key;
+    if (!key) { cdp.dockDisc(null); return; }
+    const face = disc.renderFace(disc.faceCache ? disc.faceCache.side : 380, window.devicePixelRatio || 1);
+    const frames = await dockFrames(face.canvas);
+    if (dockKey === key) cdp.dockDisc(frames);
+  }, 400);
 }
 function onCoverChanged() {
   const backdrop = $('backdrop'), art = $('backdrop-art');
@@ -494,6 +512,7 @@ function onCoverChanged() {
 
 function setPlaying(playing) {
   disc.spinning = playing;
+  cdp.dockPlaying(playing);
   noise.setPlaying(playing);
   playButton.setGlyph(playing ? 'PAUSE' : 'PLAY'); pulse(playButton, true);
   if (playing) spotifyTrouble = null;
