@@ -10,7 +10,7 @@ import { openBooklet, closeBooklet } from './booklet.js';
 import { parseLrc, currentLineIndex, heardPosition, playbackTimeFor, looksOnlineFor, takesOnline } from './lyrics.js';
 import { shortcutKey } from './keys.js';
 import { jogSeconds } from './jog.js';
-import { dockFrames } from './dock-disc.js';
+import { dockIcon } from './dock-disc.js';
 import * as panels from './panels.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
 import { openShelf, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer } from './shelf.js';
@@ -492,8 +492,8 @@ function refreshDockSoon() {
     dockKey = key;
     if (!key) { cdp.dockDisc(null); return; }
     const face = disc.renderFace(disc.faceCache ? disc.faceCache.side : 380, window.devicePixelRatio || 1);
-    const frames = await dockFrames(face.canvas);
-    if (dockKey === key) cdp.dockDisc(frames);
+    const png = await dockIcon(face.canvas);
+    if (dockKey === key) cdp.dockDisc(png);
   }, 400);
 }
 function onCoverChanged() {
@@ -512,7 +512,6 @@ function onCoverChanged() {
 
 function setPlaying(playing) {
   disc.spinning = playing;
-  cdp.dockPlaying(playing);
   noise.setPlaying(playing);
   playButton.setGlyph(playing ? 'PAUSE' : 'PLAY'); pulse(playButton, true);
   if (playing) spotifyTrouble = null;

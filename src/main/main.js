@@ -209,26 +209,16 @@ handle('plays:add', (p) => {
   return n;
 });
 handle('plays:count', (p) => plays().get(p) || 0);
-// The Dock (macOS) or taskbar (Windows, Linux) icon: the disc that's in, turning at 8 frames a second while it plays
-// (the frames come from dock-disc.js), or the app's own icon when nothing is.
-let dockFrames = null, dockAt = 0, dockPlaying = false, dockTimer = null, plainIcon = null;
-function setAppIcon(img) {
+// The Dock (macOS) or taskbar (Windows, Linux) icon: the disc that's in (drawn by dock-disc.js), or the app's own
+// icon when nothing is.
+let dockShowsDisc = false;
+handle('dock:disc', (png) => {
+  if (!png && !dockShowsDisc) return;
+  dockShowsDisc = !!png;
+  const img = png ? nativeImage.createFromBuffer(Buffer.from(png)) : nativeImage.createFromPath(path.join(__dirname, '..', 'renderer', 'icon.png'));
   if (process.platform === 'darwin') app.dock.setIcon(img);
   else if (win && !win.isDestroyed()) win.setIcon(img);
-}
-function showDock() {
-  clearInterval(dockTimer); dockTimer = null;
-  if (!dockFrames) { setAppIcon(plainIcon = plainIcon || nativeImage.createFromPath(path.join(__dirname, '..', 'renderer', 'icon.png'))); return; }
-  setAppIcon(dockFrames[dockAt]);
-  if (dockPlaying) dockTimer = setInterval(() => { dockAt = (dockAt + 1) % dockFrames.length; setAppIcon(dockFrames[dockAt]); }, 125);
-}
-handle('dock:disc', (frames) => {
-  const had = !!dockFrames;
-  dockFrames = frames && frames.length ? frames.map((b) => nativeImage.createFromBuffer(Buffer.from(b))) : null;
-  dockAt = 0;
-  if (dockFrames || had) showDock();
 });
-handle('dock:playing', (playing) => { if (dockPlaying !== !!playing) { dockPlaying = !!playing; if (dockFrames) showDock(); } });
 handle('online:cover', (query) => online.findCover(query));
 handle('online:coverUrl', (query) => online.findCoverUrl(query));
 handle('online:lyrics', (details) => online.findLyrics(details));
