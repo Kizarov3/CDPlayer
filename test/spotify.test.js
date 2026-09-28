@@ -193,7 +193,10 @@ test('starting playback: the whole list to the SDK device, at the position', asy
   assert.strictEqual(req.init.method, 'PUT');
   assert.deepStrictEqual(JSON.parse(req.init.body), { uris: ['spotify:track:a', 'spotify:track:b'], position_ms: 1234 });
   answer({ ...TOKEN, 'https://api.spotify.com/v1/me/player/play': { status: 403, body: { error: { reason: 'PREMIUM_REQUIRED' } } } });
-  assert.deepStrictEqual(await spotify.startPlayback({ deviceId: 'd', uris: ['spotify:track:a'], positionMs: 0 }), { ok: false, status: 403 });
+  assert.deepStrictEqual(await spotify.startPlayback({ deviceId: 'd', uris: ['spotify:track:a'], positionMs: 0 }), { ok: false, status: 403, reason: 'PREMIUM_REQUIRED' });
+  // A track Spotify won't play is a 403 too, with another reason.
+  answer({ ...TOKEN, 'https://api.spotify.com/v1/me/player/play': { status: 403, body: { error: { message: 'Player command failed: Restriction violated', reason: 'UNKNOWN' } } } });
+  assert.deepStrictEqual(await spotify.startPlayback({ deviceId: 'd', uris: ['spotify:track:a'], positionMs: 0 }), { ok: false, status: 403, reason: 'UNKNOWN' });
 });
 
 test('covers are only fetched from Spotify’s image host', async () => {

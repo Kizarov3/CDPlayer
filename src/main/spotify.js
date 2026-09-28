@@ -21,7 +21,12 @@ const tokens = { app: null, appExpiry: 0, user: null, userExpiry: 0 };
 
 async function fetchJson(url, init = {}) {
   const res = await fetch(url, { ...init, headers: { 'User-Agent': USER_AGENT, ...(init.headers || {}) }, signal: AbortSignal.timeout(TIMEOUT_MS) });
-  if (!res.ok) { const err = new Error(`HTTP ${res.status}`); err.status = res.status; throw err; }
+  if (!res.ok) {
+    const err = new Error(`HTTP ${res.status}`);
+    err.status = res.status;
+    err.reason = await res.json().then((j) => (j && j.error && j.error.reason) || null, () => null);
+    throw err;
+  }
   return res.status === 204 ? null : res.json();
 }
 
@@ -252,7 +257,9 @@ async function startPlayback({ deviceId, uris, positionMs }) {
     });
     return { ok: true, status: 204 };
   } catch (e) {
-    return { ok: false, status: e.status || (e.code === 'SIGN_IN' ? 401 : 0) };
+    // A 403 is PREMIUM_REQUIRED without Premium, or "Restriction violated" for a track Spotify won't play.
+    const status = e.status || (e.code === 'SIGN_IN' ? 401 : 0);
+    return status === 403 ? { ok: false, status, reason: e.reason || null } : { ok: false, status };
   }
 }
 
