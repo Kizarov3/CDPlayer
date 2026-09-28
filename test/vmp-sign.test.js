@@ -30,3 +30,16 @@ test('Linux has no VMP, and without an EVS login nothing is signed', async () =>
 test('the afterSign entry point is the Windows step', () => {
   assert.strictEqual(typeof afterSign, 'function');
 });
+
+test("a universal Mac build: each architecture's castLabs .sig files go before merging (they differ), the merged app is signed", async () => {
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const temp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cdplayer-vmp-')), 'mac-universal-arm64-temp');
+  const res = path.join(temp, 'CDPlayer.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources');
+  fs.mkdirSync(res, { recursive: true });
+  fs.writeFileSync(path.join(res, 'Electron Framework.sig'), 'arm64 signature');
+  fs.writeFileSync(path.join(res, 'Info.plist'), 'keep');
+  assert.deepStrictEqual(await run('afterPack', 'darwin', temp, {}), []); // with or without an EVS login
+  assert.ok(!fs.existsSync(path.join(res, 'Electron Framework.sig')));
+  assert.ok(fs.existsSync(path.join(res, 'Info.plist')));
+  fs.rmSync(path.dirname(temp), { recursive: true, force: true });
+});
