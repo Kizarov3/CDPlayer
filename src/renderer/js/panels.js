@@ -779,6 +779,11 @@ export function showOnboarding(app) {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.9.2', changes: [
+    '<b>Spotify on Windows plays</b>: pressing play on a Spotify disc no longer ends in &ldquo;couldn&rsquo;t reach Spotify&rdquo; &mdash; and if Spotify still won&rsquo;t play, SHOW LOG in SPOTIFY opens a log of what happened',
+    '<b>Sign in with the right account</b>: CONNECT SPOTIFY now always asks which Spotify account, with &ldquo;Not you?&rdquo; to switch',
+    '<b>Lighter on your computer</b>: paused, CDPlayer now uses about a fifth of the processor it did, and much less while you&rsquo;re in another app',
+  ] },
   { version: '2.9.1', changes: [
     '<b>Spotify on Windows</b>: CDPlayer couldn&rsquo;t reach Spotify on PCs whose antivirus checks secure connections, or behind a proxy &mdash; it now connects the way your browser does. Covers, lyrics and update checks there are fixed too',
     'If Spotify still can&rsquo;t be reached, CDPlayer now says why',
