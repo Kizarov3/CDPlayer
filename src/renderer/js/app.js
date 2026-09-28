@@ -551,40 +551,53 @@ function seekTo(seconds) {
 // ---- Turning the disc by hand -----------------------------------------------------------------------------------
 // Grab the disc and turn it: the song moves with it (jog.js) — clockwise forward — further the harder it's turned, and
 // a disc let go with a spin coasts on. While it turns you hear snatches of the song, the way a CD player sounds as it
-// searches; once it's still, the song plays on from there, or stays paused if it was. A Spotify track moves too, but
-// silently: its audio is protected.
+// searches; once it's still, the song plays on from there, or stays paused if it was. Spotify's audio is protected, so
+// there are no snatches of it to play: a playing Spotify track keeps playing instead, jumping to where the disc has got
+// to a few times a second, and goes quiet while the disc is held still.
 
-let jog = null; // { wasPlaying, target, audible, sentAt }
-const JOG_SEEK_MS = 80, JOG_SPOTIFY_SEEK_MS = 300;
+let jog = null; // { wasPlaying, target, audible, sentAt, unsent, stillTimer }
+const JOG_SEEK_MS = 80, JOG_SPOTIFY_SEEK_MS = 300, JOG_STILL_MS = 150;
+// A playing Spotify track pauses once the disc has been held still a moment, and plays on as soon as it turns again.
+function holdStillSoon() {
+  if (!jog || jog.audible || !jog.wasPlaying) return;
+  clearTimeout(jog.stillTimer);
+  jog.stillTimer = setTimeout(() => { if (jog && engine.playing) engine.pause(); }, JOG_STILL_MS);
+}
 function startJog() {
   engine.cancelCrossfade();
-  jog = { wasPlaying: engine.playing, target: engine.position, audible: !spotifyActive(), sentAt: 0 };
-  if (engine.playing) engine.pause();
+  jog = { wasPlaying: engine.playing, target: engine.position, audible: !spotifyActive(), sentAt: 0, unsent: false };
+  if (jog.audible && engine.playing) engine.pause();
   noise.setPlaying(false);
   setStatus('SEARCHING');
+  holdStillSoon();
 }
 function turnJog(radians, ms) {
   if (!jog || !engine.deck) return;
+  holdStillSoon();
   const dur = engine.duration;
+  if (!jog.audible && !jog.unsent) jog.target = engine.position; // a Spotify track played on while the disc was held still
   jog.target = Math.max(0, Math.min(Math.max(0, dur - 0.5), jog.target + jogSeconds(radians, ms)));
+  jog.unsent = true;
   const now = performance.now();
   if (now - jog.sentAt < (jog.audible ? JOG_SEEK_MS : JOG_SPOTIFY_SEEK_MS)) {
     progress.setValue(dur ? Math.round((jog.target * 1000) / dur) : 0);
     setText($('elapsed'), formatTime(jog.target));
     return;
   }
-  jog.sentAt = now;
+  jog.sentAt = now; jog.unsent = false;
   engine.seek(jog.target);
   if (jog.audible) engine.blip();
+  else if (jog.wasPlaying && !engine.playing) engine.play();
   updateProgressUi(true);
 }
 async function endJog() {
   const j = jog;
   if (!j) return;
   jog = null;
+  clearTimeout(j.stillTimer);
   if (j.audible) engine.endBlips();
   if (!engine.deck) return;
-  seekTo(j.target);
+  if (j.audible || j.unsent) seekTo(j.target);
   if (j.wasPlaying) { await engine.play(); setPlaying(engine.playing); } else setPlaying(false);
 }
 /** Lets go of the disc without playing on (a new song, the tray opening) → whether it was playing before the grab. */
@@ -592,6 +605,7 @@ function dropJog() {
   const j = jog;
   if (!j) return false;
   jog = null;
+  clearTimeout(j.stillTimer);
   if (j.audible) engine.endBlips();
   disc.drop();
   return j.wasPlaying;
@@ -1362,7 +1376,7 @@ function frame(now) {
   const watched = document.hasFocus() || state.cdView || state.visualizerMode || isKaraokeOpen();
   if (!watched && now - last < BACKGROUND_FRAME_MS - 2) { requestAnimationFrame(frame); return; }
   const dt = Math.min(100, now - last); last = now;
-  if (engine.deck && engine.playing) {
+  if (engine.deck && engine.playing && !jog) { // turning the disc, the seek bar shows where it has got to (turnJog)
     updateProgressUi();
     panels.updateLyricsSync(app);
   }
