@@ -750,7 +750,8 @@ function buildSpotify(app) {
     Object.assign(sp, { lists: { ALBUMS: null, PLAYLISTS: null }, next: { ALBUMS: 0, PLAYLISTS: 0 }, query: '', found: null, status: 'SPOTIFY DISCONNECTED' });
     refreshPanel('spotify');
   }, 'Sign CDPlayer out of Spotify. Your Client ID and Secret stay, so connecting again is one click.');
-  const connectedFoot = el('div', { class: 'close-row split' }, el('div', { class: 'row-pills' }, disconnect, changeAppPill()), pill('CLOSE', () => closePanel('spotify')));
+  const showLog = pill('SHOW LOG', () => app.cdp.showSpotifyLog(), 'The Spotify log: each step of connecting and playing, to send along if Spotify won’t play');
+  const connectedFoot = el('div', { class: 'close-row split' }, el('div', { class: 'row-pills' }, disconnect, changeAppPill(), showLog), pill('CLOSE', () => closePanel('spotify')));
   return [title('SPOTIFY'), gap(12), tabs, gap(10), field, drm, gap(10), el('div', { class: 'scroll' }, rows), status, connectedFoot];
 }
 

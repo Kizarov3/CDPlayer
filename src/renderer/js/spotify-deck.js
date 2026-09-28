@@ -35,8 +35,9 @@ const OVERRUN_MS = 1500;    // no word from Spotify this long past the end: fini
 const STALE_MS = 3000;      // after a request, an unknown track this far from where it was asked for is still the old one
 
 export class SpotifySession {
-  constructor({ loadPlayer, getToken, startPlayback, drmReady = null, now = () => Date.now(), wait = (ms) => new Promise((r) => setTimeout(r, ms)), volume = 1, name = 'CDPlayer', connectTimeoutMs = 15000 }) {
-    Object.assign(this, { loadPlayer, getToken, startPlayback, drmReady, now, wait, volume, name, connectTimeoutMs });
+  // `log(text)`: each step of connecting and playing, for the Spotify log (what went wrong where, on a PC we can't see).
+  constructor({ loadPlayer, getToken, startPlayback, drmReady = null, now = () => Date.now(), wait = (ms) => new Promise((r) => setTimeout(r, ms)), volume = 1, name = 'CDPlayer', connectTimeoutMs = 15000, log = () => {} }) {
+    Object.assign(this, { loadPlayer, getToken, startPlayback, drmReady, now, wait, volume, name, connectTimeoutMs, log });
     this.listeners = new Set();
     this.player = null; this.deviceId = null; this.ready = null;
     this.currentUri = null; this.lost = false;
@@ -52,17 +53,21 @@ export class SpotifySession {
     this.ready = (async () => {
       if (!this.player) {
         // Widevine comes down on first run; without it the SDK can only fail, so say so rather than try.
-        if (this.drmReady && !(await this.drmReady().catch(() => false))) { this.emit({ type: 'error', reason: 'unsupported' }); return { ok: false, reason: 'unsupported' }; }
+        const drm = this.drmReady ? await this.drmReady().catch(() => false) : true;
+        this.log(`widevine ${drm ? 'ready' : 'NOT ready'}`);
+        if (!drm) { this.emit({ type: 'error', reason: 'unsupported' }); return { ok: false, reason: 'unsupported' }; }
         let Player;
-        try { Player = await this.loadPlayer(); } catch { Player = null; }
-        if (!Player) { this.emit({ type: 'error', reason: 'offline' }); return { ok: false, reason: 'offline' }; }
+        try { Player = await this.loadPlayer(); } catch (e) { Player = null; this.log(`player script failed to load${e && e.message ? `: ${e.message}` : ''}`); }
+        if (!Player) { this.emit({ type: 'error', reason: 'sdk' }); return { ok: false, reason: 'sdk' }; }
+        this.log('player script loaded');
         this.createPlayer(Player);
       }
       return new Promise((resolve) => {
         this.settle = resolve;
         // A player that never says ready (no network, Spotify not registering it) mustn't leave PLAY waiting forever.
-        this.connectTimer = setTimeout(() => this.fail('offline'), this.connectTimeoutMs);
-        this.player.connect().then((ok) => { if (!ok) this.fail('unsupported'); }, () => this.fail('unsupported'));
+        this.connectTimer = setTimeout(() => { this.log(`player not ready after ${this.connectTimeoutMs / 1000} s`); this.fail('notready'); }, this.connectTimeoutMs);
+        this.log('connecting the player');
+        this.player.connect().then((ok) => { this.log(`player.connect() → ${ok}`); if (!ok) this.fail('unsupported'); }, (e) => { this.log(`player.connect() threw ${e && e.message}`); this.fail('unsupported'); });
       });
     })();
     this.ready.then((r) => { if (!r.ok) this.ready = null; }); // a failed connection can be tried again
@@ -72,13 +77,14 @@ export class SpotifySession {
   // disconnecting closes this one and connecting again reopens it.
   createPlayer(Player) {
     const player = this.player = new Player({ name: this.name, volume: this.volume, getOAuthToken: (cb) => this.giveToken(cb) });
-    player.addListener('ready', ({ device_id }) => { this.deviceId = device_id; this.resolveConnect({ ok: true }); });
-    player.addListener('not_ready', () => { this.deviceId = null; });
-    player.addListener('initialization_error', () => this.fail('unsupported'));
+    const said = (e) => (e && e.message ? `: ${e.message}` : '');
+    player.addListener('ready', ({ device_id }) => { this.log('player ready'); this.deviceId = device_id; this.resolveConnect({ ok: true }); });
+    player.addListener('not_ready', () => { this.log('player not_ready'); this.deviceId = null; });
+    player.addListener('initialization_error', (e) => { this.log(`initialization_error${said(e)}`); this.fail('unsupported'); });
     // Spotify refuses the empty token we had to give while offline: that's the network, not a sign-out.
-    player.addListener('authentication_error', () => (this.tokenError === 'OFFLINE' ? this.fail('offline', this.tokenDetail) : this.fail('auth')));
-    player.addListener('account_error', () => this.fail('premium'));
-    player.addListener('playback_error', () => this.onPlaybackError());
+    player.addListener('authentication_error', (e) => { this.log(`authentication_error${said(e)} (token: ${this.tokenError || 'ok'})`); if (this.tokenError === 'OFFLINE') this.fail('offline', this.tokenDetail); else this.fail('auth'); });
+    player.addListener('account_error', (e) => { this.log(`account_error${said(e)}`); this.fail('premium'); });
+    player.addListener('playback_error', (e) => { this.log(`playback_error${said(e)}`); this.onPlaybackError(); });
     player.addListener('player_state_changed', (s) => this.onState(s));
   }
   /** The token for the SDK: { token } or { error } from the main process (a plain string is accepted too). */
@@ -120,6 +126,7 @@ export class SpotifySession {
     this.pos = { ms: positionMs, at: this.now(), paused: false };
     const request = { deviceId: this.deviceId, uris: this.sent, positionMs: Math.round(positionMs) };
     let r = await this.startPlayback(request);
+    this.log(`play ${this.sent.length} track(s) → ${r.ok ? 'ok' : `status ${r.status}${r.reason ? ` ${r.reason}` : ''}${r.detail ? ` ${r.detail}` : ''}`}`);
     if (gen !== this.gen) return false;
     if (!r.ok && r.status === 404) {
       await this.wait(1000);

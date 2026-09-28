@@ -19,14 +19,14 @@ function httpFetch(url, init) {
  * Why a request got no answer, briefly, for a status line: Chromium's net::ERR_… code ("ERR_CERT_AUTHORITY_INVALID",
  * "ERR_PROXY_CONNECTION_FAILED"), a timeout, or Node's error code. null when there's nothing more to say.
  */
+// A request that got no answer: fetch rejects with a TypeError ("fetch failed"), net.fetch with net::ERR_…, or it timed out.
+const isNetworkFailure = (e) => !!e && (e.name === 'TypeError' || e.name === 'TimeoutError' || e.name === 'AbortError' || /net::ERR_/.test(e.message || ''));
 function networkErrorCode(e) {
-  if (!e) return null;
+  if (!isNetworkFailure(e)) return null;
   if (e.name === 'TimeoutError' || e.name === 'AbortError') return 'TIMED OUT';
-  // Only a request that got no answer: fetch rejects with a TypeError ("fetch failed"), net.fetch with net::ERR_….
-  if (e.name !== 'TypeError' && !/net::ERR_/.test(e.message || '')) return null;
   const text = `${e.message || ''} ${(e.cause && (e.cause.code || e.cause.message)) || ''}`;
   const m = /\b(ERR_[A-Z_]+)\b/.exec(text) || /\b(E[A-Z]{3,}|CERT_[A-Z_]+|UNABLE_TO_[A-Z_]+|SELF_SIGNED_[A-Z_]+|DEPTH_ZERO_[A-Z_]+)\b/.exec(text);
   return m ? m[1] : null;
 }
 
-module.exports = { httpFetch, networkErrorCode };
+module.exports = { httpFetch, networkErrorCode, isNetworkFailure };

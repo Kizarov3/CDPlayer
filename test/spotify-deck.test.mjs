@@ -250,8 +250,8 @@ test('no player script (offline) is an error, and connecting can be tried again'
   const session = new SpotifySession({ loadPlayer: async () => { if (fail) throw new Error('sdk'); return FakePlayer; }, getToken: async () => 't', startPlayback: async () => ({ ok: true }) });
   const events = [];
   session.on((e) => events.push(e));
-  assert.deepStrictEqual(await session.connect(), { ok: false, reason: 'offline' });
-  assert.deepStrictEqual(events.at(-1), { type: 'error', reason: 'offline' });
+  assert.deepStrictEqual(await session.connect(), { ok: false, reason: 'sdk' });
+  assert.deepStrictEqual(events.at(-1), { type: 'error', reason: 'sdk' });
   fail = false;
   assert.deepStrictEqual(await session.connect(), { ok: true });
 });
@@ -358,8 +358,8 @@ test('a player that never says ready gives up after a while, so the next PLAY ca
   const events = [];
   const session = new SpotifySession({ loadPlayer: async () => SilentPlayer, getToken: async () => 't', startPlayback: async () => ({ ok: true, status: 204 }), wait: async () => {}, connectTimeoutMs: 20 });
   session.on((e) => events.push(e));
-  assert.deepStrictEqual(await session.connect(), { ok: false, reason: 'offline' });
-  assert.deepStrictEqual(events, [{ type: 'error', reason: 'offline' }]);
+  assert.deepStrictEqual(await session.connect(), { ok: false, reason: 'notready' });
+  assert.deepStrictEqual(events, [{ type: 'error', reason: 'notready' }]);
   assert.deepStrictEqual(await session.connect(), { ok: true });
 });
 

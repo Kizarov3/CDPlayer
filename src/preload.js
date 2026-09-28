@@ -40,6 +40,8 @@ contextBridge.exposeInMainWorld('cdp', {
   spotifyPlay: invoke('spotify:play'),
   spotifyCover: invoke('spotify:cover'),
   spotifyDrmReady: invoke('spotify:drmReady'),
+  spotifyLog: invoke('spotify:log'),
+  showSpotifyLog: invoke('spotify:showLog'),
   openSpotifyDashboard: invoke('spotify:openDashboard'),
 
   collectAudio: invoke('library:collect'),

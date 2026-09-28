@@ -228,6 +228,36 @@ handle('spotify:discTracks', (which) => spotify.discTracks(which));
 handle('spotify:play', (request) => spotify.startPlayback(request));
 handle('spotify:cover', (url) => spotify.coverDataUrl(url));
 handle('spotify:drmReady', () => drmReady());
+// The Spotify log: each step of connecting and playing (never a token), in spotify-log.txt in the data folder, so a
+// failure on someone's PC can be traced. Each session starts with the app, the system and Widevine's state.
+const SPOTIFY_LOG = 'spotify-log.txt', SPOTIFY_LOG_MAX = 256 * 1024;
+let spotifyLogStarted = false;
+function widevineState() {
+  try {
+    const all = components && typeof components.status === 'function' ? components.status() : null;
+    const wv = all && Object.values(all).find((c) => /widevine/i.test(`${c.title || ''}`));
+    return wv ? `${wv.status || '?'} ${wv.version || ''}`.trim() : all ? 'not listed' : 'no components';
+  } catch (e) { return `unknown (${e.message})`; }
+}
+function spotifyLog(text) {
+  try {
+    const file = store.file(SPOTIFY_LOG);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    let head = '';
+    if (!spotifyLogStarted) {
+      spotifyLogStarted = true;
+      head = `\n--- CDPlayer ${APP_VERSION} · ${process.platform} ${process.arch} ${require('os').release()} · Electron ${process.versions.electron} · Widevine ${widevineState()}\n`;
+    }
+    fs.appendFileSync(file, `${head}${new Date().toISOString()} ${String(text).replace(/[\r\n]+/g, ' ').slice(0, 400)}\n`);
+    if (fs.statSync(file).size > SPOTIFY_LOG_MAX) { const all = fs.readFileSync(file); fs.writeFileSync(file, all.subarray(all.length - SPOTIFY_LOG_MAX / 2)); }
+  } catch { /* the log is a nicety */ }
+}
+handle('spotify:log', (text) => spotifyLog(text));
+handle('spotify:showLog', () => {
+  const file = store.file(SPOTIFY_LOG);
+  if (!fs.existsSync(file)) spotifyLog('(log opened before anything was played)');
+  shell.showItemInFolder(file);
+});
 handle('spotify:openDashboard', () => shell.openExternal('https://developer.spotify.com/dashboard'));
 
 handle('library:collect', async (items) => (await library.collectAudio(items)).sort(library.byName));

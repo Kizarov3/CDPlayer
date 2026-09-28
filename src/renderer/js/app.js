@@ -598,6 +598,8 @@ const SPOTIFY_ERRORS = {
   unsupported: "SPOTIFY PLAYBACK ISN'T SUPPORTED ON THIS SYSTEM",
   auth: 'SPOTIFY SIGNED OUT · CONNECT AGAIN UNDER SPOTIFY',
   offline: "COULDN'T REACH SPOTIFY",
+  sdk: "COULDN'T LOAD SPOTIFY'S PLAYER",
+  notready: "SPOTIFY'S PLAYER DIDN'T START",
   playback: "COULDN'T PLAY THAT TRACK ON SPOTIFY",
 };
 let spotifySession = null;
@@ -609,6 +611,7 @@ function spotify() {
     getToken: () => cdp.spotifyAccessToken(),
     startPlayback: (request) => cdp.spotifyPlay(request),
     drmReady: () => cdp.spotifyDrmReady(),
+    log: (text) => cdp.spotifyLog(text),
     volume: state.volume / 100,
   });
   spotifySession.on(onSpotifyEvent);

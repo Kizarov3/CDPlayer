@@ -7,7 +7,7 @@
  * spotify.txt: line 1 Client ID, line 2 Client Secret, line 3 the refresh token from "Connect Spotify", line 4 the
  * scopes it was granted. The Java version wrote the first three; a token without line 4 predates playback.
  */
-const { httpFetch, networkErrorCode } = require('./http');
+const { httpFetch, networkErrorCode, isNetworkFailure } = require('./http');
 const http = require('http');
 const crypto = require('crypto');
 const { shell } = require('electron');
@@ -29,7 +29,10 @@ async function fetchJson(url, init = {}) {
     err.reason = await res.json().then((j) => (j && j.error && j.error.reason) || null, () => null);
     throw err;
   }
-  return res.status === 204 ? null : res.json();
+  // Player commands answer 204, or 202 ("accepted": a device still waking up) or 200 — with an empty body. Reading
+  // that as JSON failed, and a play Spotify had accepted came back as "couldn't reach Spotify".
+  const text = await res.text();
+  return text.trim() ? JSON.parse(text) : null;
 }
 
 function credentials() {
@@ -186,7 +189,15 @@ function spotifySignIn() {
 // ---- The user's library (the SPOTIFY panel) ----------------------------------------------------------------------
 
 const API = 'https://api.spotify.com/v1';
-class SpotifyError extends Error { constructor(code, cause) { super(code); this.code = code; this.detail = cause ? networkErrorCode(cause) : null; } }
+// cause: what went wrong underneath — the network's reason when there is one, else its own message, briefly (an answer
+// that couldn't be read says so, rather than passing for a dropped connection).
+class SpotifyError extends Error {
+  constructor(code, cause) {
+    super(code); this.code = code;
+    if (!cause) this.detail = null;
+    else this.detail = isNetworkFailure(cause) ? networkErrorCode(cause) : String(cause.message || '').toUpperCase().slice(0, 60) || null;
+  }
+}
 /** A Web API call as the signed-in user: refreshed once on a 401, then 'SIGN_IN'; no network → 'OFFLINE'. */
 async function userApi(pathAndQuery, init = {}) {
   for (let attempt = 0; attempt < 2; attempt++) {

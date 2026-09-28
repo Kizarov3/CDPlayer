@@ -22,9 +22,10 @@ function answer(routes) {
   global.fetch = async (url, init = {}) => {
     requests.push({ url: String(url), init });
     const key = Object.keys(routes).find((k) => String(url).startsWith(k));
-    if (!key) return { ok: false, status: 404, json: async () => ({}) };
+    if (!key) return new Response('{}', { status: 404 });
     const r = typeof routes[key] === 'function' ? routes[key](String(url), init) : routes[key];
-    return { ok: (r.status || 200) < 400, status: r.status || 200, json: async () => r.body };
+    const status = r.status || 200;
+    return new Response(r.body === undefined || status === 204 ? null : JSON.stringify(r.body), { status });
   };
 }
 test.beforeEach(() => { spotify.resetForTests(); try { fs.unlinkSync(file); } catch { /* none yet */ } });
@@ -239,4 +240,28 @@ test('the library refusing a fresh token twice also asks to reconnect', async ()
   answer({ ...TOKEN, 'https://api.spotify.com/v1/me/albums': { status: 401, body: {} } });
   assert.deepStrictEqual(await spotify.savedAlbums(0), { error: 'SIGN_IN' });
   assert.strictEqual(spotify.status().reconnectNeeded, true);
+});
+
+test('Spotify accepting a play with 202 and no body is a start, not "couldn\'t reach Spotify"', async () => {
+  connected();
+  // Real responses: a 202 (or 204, or 200) whose body is empty can't be read as JSON.
+  global.fetch = async (url) => (String(url).startsWith('https://accounts.spotify.com')
+    ? new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }), { status: 200, headers: { 'content-type': 'application/json' } })
+    : new Response(null, { status: 202 }));
+  assert.deepStrictEqual(await spotify.startPlayback({ deviceId: 'd', uris: ['spotify:track:a'], positionMs: 0 }), { ok: true, status: 204 });
+  global.fetch = async (url) => (String(url).startsWith('https://accounts.spotify.com')
+    ? new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }), { status: 200 })
+    : new Response('', { status: 200 }));
+  assert.deepStrictEqual(await spotify.startPlayback({ deviceId: 'd', uris: ['spotify:track:a'], positionMs: 0 }), { ok: true, status: 204 });
+});
+
+test('an answer that isn\'t a dropped connection says what it was, instead of passing for one', async () => {
+  connected();
+  global.fetch = async (url) => (String(url).startsWith('https://accounts.spotify.com')
+    ? new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }), { status: 200 })
+    : new Response('<html>not json</html>', { status: 200 }));
+  const r = await spotify.startPlayback({ deviceId: 'd', uris: ['spotify:track:a'], positionMs: 0 });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.status, 0);
+  assert.match(r.detail, /JSON|UNEXPECTED TOKEN/);
 });
