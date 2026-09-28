@@ -59,11 +59,11 @@ const safePath = (p) => typeof p === 'string' && !/[\r\n]/.test(p);
 
 // settings.txt — one value per line, in the Java app's order: volume, crossfade, mono, animations, theme, EQ
 // gains, waveform, mini mode, window bounds, ambient background, then Discord status, disc noise and saving found
-// art & lyrics into files, the lyrics offset in ms and how the shelf is sorted (CDPlayer 2 only). Missing trailing
+// art & lyrics into files, the lyrics offset in ms, how the shelf is sorted and disc wear (CDPlayer 2 only). Missing trailing
 // lines keep their defaults.
 const DEFAULT_SETTINGS = {
   volume: 100, crossfade: 0, mono: false, animations: true, theme: 'RED', eq: new Array(10).fill(0),
-  waveform: true, miniMode: false, bounds: null, ambient: true, discord: true, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST',
+  waveform: true, miniMode: false, bounds: null, ambient: true, discord: true, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true,
 };
 const SHELF_SORTS = ['ARTIST', 'NEW', 'PLAYED', 'YEAR'];
 function readSettings() {
@@ -92,6 +92,7 @@ function readSettings() {
   s.saveFound = l.length >= 13 && l[12].trim() === '1';
   if (l.length >= 14 && l[13].trim()) s.lyricsOffset = Math.max(-500, Math.min(500, Math.round(int(l[13], 0) / 50) * 50));
   if (l.length >= 15 && SHELF_SORTS.includes(l[14].trim())) s.shelfSort = l[14].trim();
+  s.discWear = l.length < 16 || l[15].trim() !== '0';
   return s;
 }
 function writeSettings(s) {
@@ -99,7 +100,7 @@ function writeSettings(s) {
   const b = s.bounds ? `${s.bounds.x},${s.bounds.y},${s.bounds.width},${s.bounds.height}` : '';
   const content = [s.volume, s.crossfade, s.mono ? 1 : 0, s.animations ? 1 : 0, s.theme, eq, s.waveform ? 1 : 0,
     s.miniMode ? 1 : 0, b, s.ambient ? 1 : 0, s.discord === false ? 0 : 1, s.discNoise ? 1 : 0, s.saveFound ? 1 : 0, s.lyricsOffset || 0,
-    SHELF_SORTS.includes(s.shelfSort) ? s.shelfSort : 'ARTIST'].join('\n') + '\n';
+    SHELF_SORTS.includes(s.shelfSort) ? s.shelfSort : 'ARTIST', s.discWear === false ? 0 : 1].join('\n') + '\n';
   return writeText(FILES.settings, content);
 }
 

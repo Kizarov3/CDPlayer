@@ -144,9 +144,28 @@ function scanAlbums(onProgress) {
     }
     await Promise.all(Array.from({ length: CONCURRENCY }, worker));
     store.writeText(CACHE_FILE, JSON.stringify({ version: CACHE_VERSION, folder, tracks: fresh }));
-    return { folder, name: path.basename(folder), albums: groupAlbums(tracks) };
+    const albums = groupAlbums(tracks);
+    onShelf = byTrack(albums);
+    return { folder, name: path.basename(folder), albums };
   })().finally(() => { running = null; });
   return running;
+}
+
+// Which shelf album each track is on (its tracks' paths), from the last read of the shelf — or, before the shelf has
+// been opened this time, from its cache. For disc wear, which counts the plays of a disc's whole album.
+let onShelf = null;
+function byTrack(albums) {
+  const map = new Map();
+  for (const a of albums) { const paths = a.tracks.map((t) => t.path); for (const p of paths) map.set(p, paths); }
+  return map;
+}
+/** The paths of the tracks on the same shelf album as `p` (itself included), or null when it isn't on the shelf. */
+function albumTracks(p) {
+  if (!onShelf) {
+    const folder = store.readLastPath(), cached = folder ? readCache(folder) : null;
+    onShelf = byTrack(cached ? groupAlbums(Object.entries(cached).map(([tp, e]) => ({ path: tp, info: e.info, added: e.added }))) : []);
+  }
+  return onShelf.get(p) || null;
 }
 
 // ---- Covers ---------------------------------------------------------------------------------------------------
@@ -244,4 +263,4 @@ async function albumCoverFull(firstTrack) {
 /** A file's tags changed: its album's cover thumbnail is made again next time. */
 function forget(filePath) { thumbs.delete(filePath); }
 
-module.exports = { scanAlbums, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };
+module.exports = { scanAlbums, albumTracks, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };

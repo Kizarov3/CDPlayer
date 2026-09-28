@@ -138,3 +138,21 @@ test('an album was added when its newest track was', () => {
   assert.strictEqual(a.added, 300);
   assert.strictEqual(groupAlbums([t('/m/y/1.mp3', { album: 'C' })])[0].added, null);
 });
+
+test('the tracks of the shelf album a song is on, from the shelf\'s cache; a song not on the shelf has none', () => {
+  const store = require('../src/main/store');
+  const music = fs.mkdtempSync(path.join(home, 'music-'));
+  store.writeLastPath(music);
+  const info = (album, disc) => ({ title: 't', artist: 'Korn', album, albumArtist: 'Korn', year: '1998', track: 1, disc, duration: 60 });
+  const tracks = {
+    [`${music}/Korn/FtL/CD1/01.flac`]: { stamp: 'x', info: info('Follow the Leader', 1), added: 1 },
+    [`${music}/Korn/FtL/CD2/01.flac`]: { stamp: 'x', info: info('Follow the Leader', 2), added: 1 },
+    [`${music}/Korn/Issues/01.flac`]: { stamp: 'x', info: info('Issues', 1), added: 1 },
+  };
+  fs.writeFileSync(path.join(home, 'shelf-cache.json'), JSON.stringify({ version: 1, folder: music, tracks }));
+  delete require.cache[require.resolve('../src/main/shelf')];
+  const { albumTracks } = require('../src/main/shelf');
+  assert.deepStrictEqual(albumTracks(`${music}/Korn/FtL/CD2/01.flac`).sort(), [`${music}/Korn/FtL/CD1/01.flac`, `${music}/Korn/FtL/CD2/01.flac`]);
+  assert.deepStrictEqual(albumTracks(`${music}/Korn/Issues/01.flac`), [`${music}/Korn/Issues/01.flac`]);
+  assert.strictEqual(albumTracks('/Downloads/song.mp3'), null);
+});

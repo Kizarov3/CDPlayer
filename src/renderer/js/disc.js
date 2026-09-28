@@ -4,6 +4,7 @@
 // disc; clicking the art puts it back in the corner. Grab the disc and turn it to move through the song (jog.js).
 import { colors, rgb, FONT } from './theme.js';
 import { angleDelta, coast, releaseVelocity } from './jog.js';
+import { random } from './disc-wear.js';
 
 const SIZES = {
   normal: { cap: 380, margin: 40 },
@@ -18,6 +19,7 @@ const MARKER_FONT = '"Marker Felt", "Segoe Print", "Bradley Hand", "Comic Sans M
 // A real disc, as fractions of its radius: the clear plastic around the hole, the mirror band around that (where the
 // stamped matrix number sits), and the printed label from there out to the rim.
 const CLEAR_R = 0.27, LABEL_R = 0.36;
+const WEAR_MIN_SIDE = 150; // too small to see (Mini Mode): no wear drawn
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
 const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
@@ -36,6 +38,7 @@ export class Disc {
     this.cover = null;         // HTMLImageElement
     this.lookingUp = false;
     this.label = null;         // { title, artist }: handwritten on a disc that has no cover, like a burned CD-R
+    this.wear = null;          // the scratches, scuffs and prints of a much-played disc (disc-wear.js), or null
     this.faceCache = null;
     this.faceKey = '';
     this.ejectStart = -1;
@@ -97,6 +100,9 @@ export class Disc {
   setLabel(title, artist) {
     const label = title ? { title, artist: artist || '' } : null;
     if (JSON.stringify(label) !== JSON.stringify(this.label)) this.label = label;
+  }
+  setWear(wear) {
+    if ((wear && wear.key) !== (this.wear && this.wear.key)) { this.wear = wear; this.glint = null; }
   }
   setCover(img) {
     this.cover = img; this.coverVersion = (this.coverVersion || 0) + 1;
@@ -252,7 +258,7 @@ export class Disc {
 
   renderFace(side, dpr) {
     const label = this.cover || !this.label ? '' : `${this.label.title}\n${this.label.artist}`;
-    const key = `${side}|${dpr}|${colors.bg}|${this.coverVersion || 0}|${this.lookingUp}|${label}`;
+    const key = `${side}|${dpr}|${colors.bg}|${this.coverVersion || 0}|${this.lookingUp}|${label}|${this.wear ? this.wear.key : ''}`;
     if (this.faceCache && (this.faceKey === key || (this.suppressRebuild && this.faceCache.side === side))) return this.faceCache;
     const scale = dpr * (dpr >= 2 ? 1 : 2); // supersample on low-DPI screens for a clean rim
     const px = Math.max(1, Math.round(side * scale));
@@ -280,6 +286,7 @@ export class Disc {
         g.fillText('…', c, c + c * 0.62);
       }
     }
+    if (this.wear && side >= WEAR_MIN_SIDE) this.drawWear(g, c, side);
     g.lineWidth = 1.6; g.strokeStyle = 'rgba(255,255,255,0.63)';
     g.beginPath(); g.arc(c, c, c - 0.8, 0, Math.PI * 2); g.stroke();
     g.lineWidth = 2; g.strokeStyle = 'rgba(0,0,0,0.47)';
@@ -291,6 +298,103 @@ export class Disc {
     this.faceCache = { canvas: face, side };
     this.faceKey = key;
     return this.faceCache;
+  }
+
+  // Disc wear (disc-wear.js), on the face so it turns with the disc: hairline scratches, rubbed patches, scratches
+  // worn round the way it spins, greasy thumbprints and nicks out of the rim.
+  drawWear(g, c, side) {
+    const w = this.wear, at = (r, a) => [c + Math.cos(a) * r * c, c + Math.sin(a) * r * c];
+    g.save();
+    g.lineCap = 'round';
+    for (const s of w.scratches) this.traceScratch(g, c, s, (path) => {
+      g.lineWidth = s.w; g.strokeStyle = `rgba(0,0,0,${(s.alpha * 0.45).toFixed(3)})`; g.stroke(path);
+      g.lineWidth = s.w * 0.6; g.strokeStyle = `rgba(255,255,255,${s.alpha.toFixed(3)})`; g.stroke(path);
+    });
+    for (const s of w.rings) {
+      g.lineWidth = s.w; g.strokeStyle = `rgba(255,255,255,${s.alpha.toFixed(3)})`;
+      g.beginPath(); g.arc(c, c, s.r * c, s.a, s.a + s.span); g.stroke();
+    }
+    for (const s of w.scuffs) {
+      const rnd = random(s.seed), [x, y] = at(s.r, s.a), spread = s.size * c;
+      g.lineWidth = Math.max(0.5, side / 900);
+      g.strokeStyle = `rgba(255,255,255,${s.alpha.toFixed(3)})`;
+      g.beginPath();
+      for (let i = 0; i < s.lines; i++) {
+        const px = x + (rnd() - 0.5) * spread, py = y + (rnd() - 0.5) * spread;
+        const dir = s.a + Math.PI / 2 + (rnd() - 0.5) * 0.8, len = spread * (0.15 + rnd() * 0.35);
+        g.moveTo(px - Math.cos(dir) * len / 2, py - Math.sin(dir) * len / 2);
+        g.lineTo(px + Math.cos(dir) * len / 2, py + Math.sin(dir) * len / 2);
+      }
+      g.stroke();
+    }
+    for (const s of w.prints) {
+      const [x, y] = at(s.r, s.a), size = s.size * c;
+      const smudge = g.createRadialGradient(x, y, 0, x, y, size * 1.1);
+      smudge.addColorStop(0, `rgba(255,255,255,${(s.alpha * 0.55).toFixed(3)})`); smudge.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = smudge;
+      g.beginPath(); g.arc(x, y, size * 1.1, 0, Math.PI * 2); g.fill();
+      g.lineWidth = Math.max(0.5, (size / s.ridges) * 0.4);
+      g.strokeStyle = `rgba(255,255,255,${s.alpha.toFixed(3)})`;
+      // Broken, uneven ridges fading out toward the edge of the print, not a neat target.
+      const rnd = random(s.seed);
+      for (let i = 1; i <= s.ridges; i++) {
+        const rx = (size * (i + (rnd() - 0.5) * 0.4)) / s.ridges, fade = 1 - (i / s.ridges) * 0.6;
+        for (let k = 0; k < 3; k++) {
+          const from = rnd() * Math.PI * 2, span = 0.5 + rnd() * 1.4;
+          g.globalAlpha = fade * (0.5 + rnd() * 0.5);
+          g.beginPath(); g.ellipse(x, y, rx, rx * 0.72, s.rot, from, from + span); g.stroke();
+        }
+      }
+      g.globalAlpha = 1;
+    }
+    for (const s of w.chips) {
+      const [x, y] = at(1, s.a), r = s.size * c;
+      g.globalCompositeOperation = 'destination-out';
+      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+      g.globalCompositeOperation = 'source-over';
+      g.lineWidth = 1; g.strokeStyle = 'rgba(255,255,255,0.45)';
+      g.beginPath(); g.arc(x, y, r, s.a + Math.PI * 0.55, s.a + Math.PI * 1.45); g.stroke();
+    }
+    g.restore();
+  }
+  // A hairline scratch: centered on its spot, across the way the disc turns, very slightly bent.
+  traceScratch(g, c, s, stroke) {
+    const x = c + Math.cos(s.a) * s.r * c, y = c + Math.sin(s.a) * s.r * c;
+    const dir = s.a + Math.PI / 2 + s.tilt, half = (s.len * c) / 2;
+    const dx = Math.cos(dir) * half, dy = Math.sin(dir) * half, bend = s.bend * c;
+    const path = new Path2D();
+    path.moveTo(x - dx, y - dy);
+    path.quadraticCurveTo(x - dy / half * bend, y + dx / half * bend, x + dx, y + dy);
+    stroke(path);
+  }
+  // Scratches catch the light: where the tilt shine's fans fall on them, they flash white. Drawn with the disc turned,
+  // but lit only along the fans, which stay put with the light (see drawShine).
+  drawGlint(g, cx, cy, side, dpr) {
+    const px = Math.max(1, Math.round(side * dpr));
+    if (!this.glint || this.glint.width !== px) {
+      this.glint = new OffscreenCanvas(px, px);
+      const s = this.glint.getContext('2d'), c = side / 2;
+      s.scale(px / side, px / side); s.lineCap = 'round'; s.strokeStyle = '#fff';
+      for (const sc of this.wear.scratches) this.traceScratch(s, c, sc, (path) => { s.lineWidth = sc.w * 1.2; s.stroke(path); });
+      for (const r of this.wear.rings) { s.lineWidth = r.w * 1.2; s.beginPath(); s.arc(c, c, r.r * c, r.a, r.a + r.span); s.stroke(); }
+      this.glintWork = new OffscreenCanvas(px, px);
+    }
+    const work = this.glintWork, w = work.getContext('2d'), c = px / 2, { angle, strength } = this.light;
+    w.setTransform(1, 0, 0, 1, 0, 0);
+    w.globalCompositeOperation = 'source-over';
+    w.clearRect(0, 0, px, px);
+    w.translate(c, c); w.rotate(this.angle); w.drawImage(this.glint, -c, -c); w.setTransform(1, 0, 0, 1, 0, 0);
+    const fans = w.createConicGradient(angle - 0.2, c, c);
+    for (const mid of [0, 0.5]) {
+      fans.addColorStop(mid, 'rgba(0,0,0,0)'); fans.addColorStop(mid + 0.032, 'rgba(0,0,0,1)'); fans.addColorStop(mid + 0.064, 'rgba(0,0,0,0)');
+    }
+    w.globalCompositeOperation = 'destination-in';
+    w.fillStyle = fans; w.fillRect(0, 0, px, px);
+    g.save();
+    g.globalCompositeOperation = 'screen';
+    g.globalAlpha *= 0.25 + 0.45 * strength;
+    g.drawImage(work, cx - side / 2, cy - side / 2, side, side);
+    g.restore();
   }
 
   // Brushed-silver data side: a conic sweep of greys with a faint rainbow tint, between radii r0 and r1.
@@ -467,6 +571,7 @@ export class Disc {
     g.drawImage(face.canvas, x, y, side, side);
     g.restore();
     this.drawShine(g, cx, cy, side, dpr);
+    if (this.wear && side >= WEAR_MIN_SIDE) this.drawGlint(g, cx, cy, side, dpr);
     if (this.speed < 0.99) { // a stopped disc sits a little darker, brightening as it gets up to speed
       g.fillStyle = `rgba(10,11,16,${(0.35 * (1 - this.speed)).toFixed(3)})`;
       g.beginPath(); g.arc(cx, cy, side / 2, 0, Math.PI * 2); g.fill();

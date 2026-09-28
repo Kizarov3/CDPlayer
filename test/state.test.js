@@ -20,7 +20,7 @@ test('reads a settings.txt written by the Java version', () => {
   assert.deepStrictEqual(s, {
     volume: 70, crossfade: 5, mono: true, animations: false, theme: 'OCEAN', eq: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
     waveform: false, miniMode: false, bounds: { x: 10, y: 20, width: 1200, height: 900 }, ambient: false, discord: true,
-    discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST',
+    discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true,
   });
 });
 
@@ -124,4 +124,12 @@ test('how the shelf is sorted is the 15th settings line; anything unknown is by 
   assert.strictEqual(store.readSettings().shelfSort, 'YEAR');
   fs.writeFileSync(path.join(home, 'settings.txt'), '70\n0\n0\n1\nRED\n0,0,0,0,0,0,0,0,0,0\n1\n0\n\n1\n1\n0\n0\n0\nWHATEVER\n');
   assert.strictEqual(store.readSettings().shelfSort, 'ARTIST');
+});
+
+test('disc wear is the 16th settings line, on unless turned off', () => {
+  fs.writeFileSync(path.join(home, 'settings.txt'), '70\n0\n0\n1\nRED\n0,0,0,0,0,0,0,0,0,0\n1\n0\n\n1\n1\n0\n0\n0\nARTIST\n');
+  assert.strictEqual(store.readSettings().discWear, true);
+  store.writeSettings({ ...store.DEFAULT_SETTINGS, discWear: false });
+  assert.strictEqual(fs.readFileSync(path.join(home, 'settings.txt'), 'utf8').split('\n')[15], '0');
+  assert.strictEqual(store.readSettings().discWear, false);
 });

@@ -183,6 +183,7 @@ function buildSettings(app) {
   const mini = toggle(s.miniMode, () => app.setMiniMode(!s.miniMode));
   const discord = toggle(s.discord, () => { app.setDiscord(!s.discord); setToggle(discord, s.discord); });
   const discNoise = toggle(s.discNoise, () => { app.setDiscNoise(!s.discNoise); setToggle(discNoise, s.discNoise); });
+  const discWear = toggle(s.discWear, () => { app.setDiscWear(!s.discWear); setToggle(discWear, s.discWear); });
   const saveFound = toggle(s.saveFound, () => { app.setSaveFound(!s.saveFound); setToggle(saveFound, s.saveFound); });
   // A Spotify disc plays outside Web Audio: the EQ, crossfade and mono can't shape it.
   const forSpotify = app.spotifyActive();
@@ -201,6 +202,8 @@ function buildSettings(app) {
     row('THEME', themeButton),
     row('WAVEFORM', waveform),
     row('AMBIENT BACKGROUND', ambient),
+    row('DISC WEAR', discWear),
+    hint('A disc played a lot looks it: scratches from ten plays of its album, fingerprints from fifty, chips from a hundred.'),
     row('ANIMATIONS', animations), gap(18),
     section('PLAYBACK'),
     sliderRow('SLEEP TIMER', sleep, sleepValue),

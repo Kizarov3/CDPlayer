@@ -15,6 +15,7 @@ import { dockIcon } from './dock-disc.js';
 import { drawCard, lyricChoices, cardSubtitle, quoteLines, MAX_QUOTE_LINES } from './share-card.js';
 import * as panels from './panels.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
+import { wearFor } from './disc-wear.js';
 import { openShelf, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
 import { SpotifySession, SpotifyTrackElement, isSpotifyUri, spotifyUpcoming, loadSpotifySdk } from './spotify-deck.js';
@@ -44,7 +45,7 @@ export const BUILTIN_EQ_PRESETS = [
 
 const state = {
   queue: [], index: -1, shuffle: false, repeat: 'OFF',
-  volume: 100, volumeBeforeMute: -1, crossfade: 0, mono: false, waveform: true, ambient: true, miniMode: false, discord: true, discNoise: false,
+  volume: 100, volumeBeforeMute: -1, crossfade: 0, mono: false, waveform: true, ambient: true, miniMode: false, discord: true, discNoise: false, discWear: true,
   trayBusy: false, // the tray is moving or the disc is being read: transport presses wait
   saveFound: false, // covers and lyrics found online are written into the song's file
   lyricsOffset: 0,  // ms the lyrics are moved by (+ later), on top of the output latency
@@ -297,6 +298,7 @@ function resetToIdle(message) {
   state.index = -1; state.loadToken++;
   engine.stop();
   state.loadedPath = null; state.details = null; state.lyrics = null;
+  disc.setWear(null);
   showInPlayer(null);
   setTrackTitle('Pick a track to get started.', null);
   $('track-source').textContent = 'YOUR MUSIC LIBRARY';
@@ -365,6 +367,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   state.details = details; state.detailsPath = path;
   detailsCache.set(path, { ...details, cover: undefined, duration: details.duration || engine.duration });
   setTrackTitle(details.title, details.artist);
+  updateWear();
   fadeInNowPlaying();
   const ext = details.quality || details.ext || extension(path);
   const canLookUp = !details.cover && !!details.title && !details.unnamed;
@@ -526,7 +529,7 @@ let dockTimer = null, dockKey = null;
 function refreshDockSoon() {
   clearTimeout(dockTimer);
   dockTimer = setTimeout(async () => {
-    const key = state.loadedPath ? `${disc.coverVersion || 0}|${disc.cover ? '' : JSON.stringify(disc.label)}` : null;
+    const key = state.loadedPath ? `${disc.coverVersion || 0}|${disc.cover ? '' : JSON.stringify(disc.label)}|${disc.wear ? disc.wear.key : ''}` : null;
     if (key === dockKey) return;
     dockKey = key;
     if (!key) { cdp.dockDisc(null); return; }
@@ -791,6 +794,7 @@ async function loadSpotify(path, token, { autoPlay, startAt }) {
   const details = { title: t.title, artist: t.artist, album: t.album, lyrics: null, cover: null, coverUrl: t.cover, duration: t.durationMs / 1000, ext: 'SPOTIFY' };
   state.details = details; state.detailsPath = path;
   setTrackTitle(details.title, details.artist);
+  updateWear();
   fadeInNowPlaying();
   $('track-source').textContent = `SPOTIFY${t.album ? ` · ${t.album.toUpperCase()}` : ''}`;
   state.lyrics = null; state.lyricsSource = null;
@@ -871,6 +875,7 @@ async function refreshLoadedDetails() {
   state.details = d; state.detailsPath = path;
   detailsCache.set(path, { ...d, cover: undefined });
   setTrackTitle(d.title, d.artist);
+  updateWear();
   if (d.cover) { await setCover(d.cover); $('track-source').textContent = `AUDIO CD · MUSICBRAINZ COVER ART · ${d.quality || d.ext || extension(path)}`; }
   updateMediaSession();
   renderQueue();
@@ -955,6 +960,18 @@ function findDiscordCover(d) {
 }
 function setDiscord(on) { state.discord = on; pushDiscord(); saveSettingsSoon(); }
 function setDiscNoise(on) { state.discNoise = on; noise.setEnabled(on); noise.setPlaying(engine.playing); saveSettingsSoon(); }
+// Disc wear (disc-wear.js): the disc that's in gets the scratches of however many times its album has been played.
+// Worked out as a song goes in, so new marks turn up on the next song rather than in the middle of one.
+async function updateWear() {
+  const path = state.loadedPath, d = state.details;
+  if (!path || !d || !state.discWear) { disc.setWear(null); return; }
+  const plays = await cdp.albumPlays(path).catch(() => 0);
+  if (state.loadedPath !== path || state.details !== d) return;
+  const artist = (d.credits && d.credits.albumArtist) || d.artist || '';
+  disc.setWear(state.discWear ? wearFor(plays, d.album ? `${artist}\n${d.album}` : path) : null);
+  refreshDockSoon();
+}
+function setDiscWear(on) { state.discWear = on; updateWear(); saveSettingsSoon(); }
 
 function setupMediaSession() {
   if (!('mediaSession' in navigator)) return;
@@ -1225,7 +1242,7 @@ function appendAndPlay(p) {
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort };
+  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -1483,7 +1500,7 @@ export const app = {
   detailsFor: (p) => detailsCache.get(p),
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) { state.index = i; load(state.queue[i]); } },
   coverSource: () => { const s = $('track-source').textContent; return /COVER ART|ALBUM ART/.test(s) ? s.split(' · ')[0].replace(/ COVER ART$/, '').replace('EMBEDDED ALBUM ART', 'In the file') : null; },
-  switchTheme, setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise,
+  switchTheme, setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise, setDiscWear,
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
   saveEq: () => cdp.saveEqPresets(state.customPresets),
@@ -1537,6 +1554,7 @@ async function start() {
   state.ambient = s.ambient;
   state.discord = s.discord !== false;
   setDiscNoise(!!s.discNoise);
+  state.discWear = s.discWear !== false;
   state.saveFound = !!s.saveFound;
   state.lyricsOffset = s.lyricsOffset || 0;
   state.shelfSort = s.shelfSort || 'ARTIST';

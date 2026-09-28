@@ -209,6 +209,11 @@ handle('plays:add', (p) => {
   return n;
 });
 handle('plays:count', (p) => plays().get(p) || 0);
+// Plays of the whole album a track is on (as the shelf groups it), or of the track alone when it isn't on the shelf.
+handle('plays:album', (p) => {
+  const counts = plays();
+  return (shelf.albumTracks(p) || [p]).reduce((n, t) => n + (counts.get(t) || 0), 0);
+});
 // The now-playing card (share-card.js), onto the clipboard as a picture.
 handle('clipboard:image', (png) => clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]));
 // …or saved as a picture, named after the song, in the Pictures folder to start with. → true once saved.
