@@ -166,7 +166,32 @@ function scheduleQueueRender() {
 }
 
 const drag = { index: -1, lastY: 0, accumulated: 0, moved: false };
+// The disc that's in, for its data side (disc-data.js): the songs of the playing one's album that stand together in the
+// queue around it — or just the playing song, when its album isn't known.
+let discStart = 0;
+function updateDiscData() {
+  const i = state.index, here = state.loadedPath && detailsCache.get(state.loadedPath);
+  if (i < 0 || !here) { disc.setData(null); return; }
+  const same = (p) => { const d = detailsCache.get(p); return !!(here.album && d && d.album === here.album); };
+  let a = i, b = i;
+  while (a > 0 && same(state.queue[a - 1])) a--;
+  while (b < state.queue.length - 1 && same(state.queue[b + 1])) b++;
+  discStart = a;
+  const paths = state.queue.slice(a, b + 1);
+  disc.setData({
+    durations: paths.map((p) => (p === state.loadedPath && engine.duration) || (detailsCache.get(p) || {}).duration || 240),
+    titles: paths.map((p) => (detailsCache.get(p) || {}).title || displayName(p)),
+  });
+}
+function discPosition() {
+  const d = disc.data;
+  if (!d) return 0;
+  const k = state.index - discStart, track = d.layout.tracks[k];
+  return track ? track.start + engine.position : 0;
+}
+
 function renderQueue() {
+  updateDiscData();
   const list = $('queue-list');
   if (undoClear && state.queue.length) { clearTimeout(undoClear.timer); undoClear = null; } // new songs since: keep them
   const clearButton = $('clear-queue-button');
@@ -1346,6 +1371,8 @@ function buildStaticUi() {
   disc.onJog = turnJog;
   disc.onJogEnd = endJog;
   disc.onArtClick = (from) => { if (!spotifyActive()) openBooklet(app, from); };
+  disc.position = discPosition;
+  disc.onTrackPick = (k) => { const i = discStart + k; if (i === state.index) return; state.index = i; load(state.queue[i]); };
   engine.onEnded = trackFinished;
   engine.onCrossfadeDone = () => { if (engine.playing) setStatus('NOW SPINNING'); };
   setupQueueDrag();
@@ -1384,7 +1411,7 @@ function onKeyDown(e) {
   if (anyOverlayOpen()) return;
   const actions = {
     ArrowLeft: () => seek(-SKIP_SECONDS), ArrowRight: () => seek(SKIP_SECONDS), ArrowUp: () => adjustVolume(5), ArrowDown: () => adjustVolume(-5),
-    u: toggleMute, p: shareCard, ' ': toggle, k: toggle, j: previousTrack, l: nextTrack, f: toggleFullscreen, c: toggleCdView, v: toggleVisualizerMode, y: toggleKaraoke, e: toggleTray, s: toggleShelf,
+    u: toggleMute, p: shareCard, b: () => disc.flip(), ' ': toggle, k: toggle, j: previousTrack, l: nextTrack, f: toggleFullscreen, c: toggleCdView, v: toggleVisualizerMode, y: toggleKaraoke, e: toggleTray, s: toggleShelf,
   };
   if (actions[key]) { e.preventDefault(); if (!e.repeat || key.startsWith('Arrow')) actions[key](); }
 }

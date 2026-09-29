@@ -5,6 +5,7 @@
 import { colors, rgb, FONT } from './theme.js';
 import { angleDelta, coast, releaseVelocity } from './jog.js';
 import { random } from './disc-wear.js';
+import { discLayout, radiusAt, trackAt, R0 } from './disc-data.js';
 
 const SIZES = {
   normal: { cap: 380, margin: 40 },
@@ -15,6 +16,7 @@ const EJECT_OUT = 300, EJECT_HOLD = 180, EJECT_BACK = 320;
 const TRAY_MS = 650;     // the tray motor, one way
 const SPIN_TAU_MS = 260; // how quickly the disc gets up to speed or winds down (READING spins up slower)
 const ART_MS = 340;
+const FLIP_MS = 460;     // turning the disc over
 const MARKER_FONT = '"Marker Felt", "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive';
 // A real disc, as fractions of its radius: the clear plastic around the hole, the mirror band around that (where the
 // stamped matrix number sits), and the printed label from there out to the rim.
@@ -39,6 +41,10 @@ export class Disc {
     this.lookingUp = false;
     this.label = null;         // { title, artist }: handwritten on a disc that has no cover, like a burned CD-R
     this.wear = null;          // the scratches, scuffs and prints of a much-played disc (disc-wear.js), or null
+    // The data side (disc-data.js): B, or the ⟲ on the case, turns the disc over to the rings its tracks are written in,
+    // with the laser where it's reading. data: { layout, titles, key }; position() → seconds into the disc.
+    this.data = null; this.position = null; this.onTrackPick = null;
+    this.flipped = false; this.flipT = 0; this.flipRect = null; this.dataFace = null;
     this.faceCache = null;
     this.faceKey = '';
     this.ejectStart = -1;
@@ -63,6 +69,7 @@ export class Disc {
     this.fling = 0;      // rad/ms: let go with a spin
     this.jogging = false;
     canvas.addEventListener('pointerdown', (e) => {
+      this.downAt = { x: e.clientX, y: e.clientY };
       if (e.button !== 0 || !this.grabbable(e)) return;
       if (this.fling) { this.fling = 0; this.grab(e); } // caught while coasting
       else this.press = { id: e.pointerId, x: e.clientX, y: e.clientY };
@@ -82,6 +89,10 @@ export class Disc {
     canvas.addEventListener('dblclick', (e) => { if (this.mode !== 'mini' && !this.artOpen && !this.overArt(e)) this.startEject(); });
     canvas.addEventListener('click', (e) => {
       if (this.mode === 'mini') { if (this.onMiniClick) this.onMiniClick(); return; }
+      if (this.overFlip(e)) { this.flip(); return; }
+      // On the data side, a click (not the end of a turn by hand) on a track's ring plays that track.
+      const d = this.downAt, still = !d || Math.hypot(e.clientX - d.x, e.clientY - d.y) < 5;
+      if (still && this.showingData()) { const i = this.trackUnder(e); if (i >= 0 && this.onTrackPick) this.onTrackPick(i); return; }
       if (!this.overArt(e)) return;
       // The full-size art is the booklet's front cover: clicking it opens the booklet (booklet.js), which puts the
       // art back in the corner when it closes. Without a booklet handler it just goes back, as before.
@@ -91,12 +102,36 @@ export class Disc {
       } else this.artOpen = !this.artOpen;
     });
     canvas.addEventListener('mousemove', (e) => {
-      const over = this.mode !== 'mini' && this.overArt(e);
-      canvas.style.cursor = this.held ? 'grabbing' : over ? 'pointer' : this.grabbable(e) ? 'grab' : '';
-      canvas.title = over ? (this.artOpen ? (this.onArtClick ? 'Open the booklet' : 'Back to the disc') : 'Show the full album art') : '';
+      const over = this.mode !== 'mini' && this.overArt(e), flip = this.overFlip(e);
+      const track = !over && !flip && this.showingData() ? this.trackUnder(e) : -1;
+      canvas.style.cursor = this.held ? 'grabbing' : over || flip || track >= 0 ? 'pointer' : this.grabbable(e) ? 'grab' : '';
+      canvas.title = flip ? `Turn the disc over (B)` : track >= 0 ? `${track + 1}. ${this.data.titles[track] || ''}`
+        : over ? (this.artOpen ? (this.onArtClick ? 'Open the booklet' : 'Back to the disc') : 'Show the full album art') : '';
     });
   }
   setMode(mode) { this.mode = mode; }
+  /** The tracks on the disc that's in: { durations (s), titles }, or null. A different disc comes in face up. */
+  setData(data) {
+    const key = data ? JSON.stringify([data.durations, data.titles]) : '';
+    if (key === (this.data && this.data.key)) return;
+    const another = !this.data || !data || this.data.titles.join('\n') !== data.titles.join('\n');
+    this.data = data ? { layout: discLayout(data.durations), titles: data.titles, key } : null;
+    this.dataFace = null;
+    if (another) this.flipped = false; // another disc comes in face up (the same one, better timed, stays as it is)
+  }
+  /** Turns the disc over (or to `side`: true for the data side). */
+  flip(side = !this.flipped) { this.flipped = !!side && !!this.data; }
+  showingData() { return !!this.data && this.flipT >= 1 && this.mode !== 'mini' && !this.artOpen; }
+  overFlip(e) {
+    const r = this.flipRect;
+    return !!(r && e.offsetX >= r.x - r.r && e.offsetX <= r.x + r.r && e.offsetY >= r.y - r.r && e.offsetY <= r.y + r.r);
+  }
+  // Which track's ring the pointer is over (the disc turns, but its rings are circles: only the distance matters).
+  trackUnder(e) {
+    const c = this.center;
+    if (!c || !this.data) return -1;
+    return trackAt(this.data.layout, Math.hypot(e.clientX - c.x, e.clientY - c.y) / c.r);
+  }
   setLabel(title, artist) {
     const label = title ? { title, artist: artist || '' } : null;
     if (JSON.stringify(label) !== JSON.stringify(this.label)) this.label = label;
@@ -404,6 +439,47 @@ export class Disc {
     g.restore();
   }
 
+  /** The data side: bare silver, the written area a shade darker, a faint ring where each track begins. Cached. */
+  renderDataFace(side, dpr) {
+    const key = `${side}|${dpr}|${colors.bg}|${this.data.key}`;
+    if (this.dataFace && this.dataFace.key === key) return this.dataFace;
+    const scale = dpr * (dpr >= 2 ? 1 : 2), px = Math.max(1, Math.round(side * scale));
+    const face = new OffscreenCanvas(px, px), g = face.getContext('2d');
+    g.scale(scale, scale);
+    const c = side / 2, { layout } = this.data;
+    this.drawSilver(g, c, 0, c);
+    g.fillStyle = 'rgba(46,44,70,0.16)'; // where it's written
+    g.beginPath(); g.arc(c, c, layout.end * c, 0, Math.PI * 2); g.arc(c, c, R0 * c, 0, Math.PI * 2, true); g.fill('evenodd');
+    // Each track a band, every other one a touch darker, with a thin gap between them where the silence is.
+    layout.tracks.forEach((t, i) => {
+      if (i % 2) {
+        g.fillStyle = 'rgba(30,30,50,0.09)';
+        g.beginPath(); g.arc(c, c, t.r1 * c, 0, Math.PI * 2); g.arc(c, c, t.r0 * c, 0, Math.PI * 2, true); g.fill('evenodd');
+      }
+      if (!i) return;
+      g.lineWidth = Math.max(1.2, side / 260); g.strokeStyle = 'rgba(16,16,28,0.34)';
+      g.beginPath(); g.arc(c, c, t.r0 * c, 0, Math.PI * 2); g.stroke();
+    });
+    g.lineWidth = Math.max(1, side / 400); g.strokeStyle = 'rgba(20,20,34,0.22)';
+    g.beginPath(); g.arc(c, c, layout.end * c, 0, Math.PI * 2); g.stroke(); // the end of the written area
+    this.drawHub(g, c, side, false);
+    g.lineWidth = 1.6; g.strokeStyle = 'rgba(255,255,255,0.63)';
+    g.beginPath(); g.arc(c, c, c - 0.8, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = rgb(colors.bg);
+    g.beginPath(); g.arc(c, c, side / 22, 0, Math.PI * 2); g.fill();
+    this.dataFace = { key, canvas: face, side };
+    return this.dataFace;
+  }
+  // The laser under the disc, where it's reading: a red point on the radius to the right, glowing.
+  drawLaser(g, cx, cy, side) {
+    if (!this.position) return;
+    const r = radiusAt(this.data.layout, this.position()) * (side / 2), x = cx + r, y = cy;
+    const glow = g.createRadialGradient(x, y, 0, x, y, side / 30);
+    glow.addColorStop(0, 'rgba(255,60,60,0.95)'); glow.addColorStop(0.35, 'rgba(255,40,40,0.45)'); glow.addColorStop(1, 'rgba(255,0,0,0)');
+    g.fillStyle = glow;
+    g.beginPath(); g.arc(x, y, side / 30, 0, Math.PI * 2); g.fill();
+  }
+
   // Brushed-silver data side: a conic sweep of greys with a faint rainbow tint, between radii r0 and r1.
   drawSilver(g, c, r0, r1) {
     const cone = g.createConicGradient(0.6, c, c);
@@ -472,6 +548,7 @@ export class Disc {
       if (!this.fling) this.endJog();
     } else if (!this.jogging) this.angle += 0.045 * this.speed * (dt / 16);
     this.stepTray(dt);
+    this.flipT = Math.max(0, Math.min(1, this.flipT + (this.flipped ? 1 : -1) * (dt / FLIP_MS)));
 
     const mini = this.mode === 'mini';
     const tray = mini ? 0 : easeInOutCubic(this.trayT);
@@ -499,7 +576,8 @@ export class Disc {
     const l = this.light;
     const look = [pw, ph, side, x, y, this.angle, this.speed, l.angle, l.strength, tray, art, eject, wobble, this.mode,
       this.faceKey, this.coverVersion, this.lookingUp, this.label && this.label.title, this.label && this.label.artist,
-      this.discPresent, colors.accent, colors.accent2, colors.bg, dpr].join('|');
+      this.discPresent, colors.accent, colors.accent2, colors.bg, dpr, this.flipT, this.data && this.data.key,
+      this.flipT > 0 && this.data && this.position ? Math.round(radiusAt(this.data.layout, this.position()) * 2000) : 0].join('|');
     if (look === this.lastLook) return bounds;
     this.lastLook = look;
     const g = cnv.getContext('2d');
@@ -568,17 +646,21 @@ export class Disc {
     g.translate(cx + side * 0.14 * eject, cy - side * 0.42 * eject);
     g.scale(1 - 0.08 * art, (1 - 0.08 * art) * (1 - 0.22 * eject));
     g.translate(-cx, -cy);
+    // Turning over: the disc narrows to its edge and widens again showing its other side.
+    const flip = easeInOutCubic(this.flipT), dataSide = !!this.data && flip >= 0.5;
+    g.translate(cx, cy); g.scale(Math.max(0.02, Math.abs(Math.cos(Math.PI * flip))), 1); g.translate(-cx, -cy);
     const pad = Math.max(4, side / 90);
     g.fillStyle = 'rgba(0,0,0,0.35)';
     g.beginPath(); g.arc(cx, cy, side / 2 + pad, 0, Math.PI * 2); g.fill();
-    const face = this.renderFace(side, dpr);
+    const face = dataSide ? this.renderDataFace(side, dpr) : this.renderFace(side, dpr);
     g.save();
     g.translate(cx, cy); g.rotate(this.angle); g.translate(-cx, -cy);
     g.imageSmoothingQuality = 'high';
     g.drawImage(face.canvas, x, y, side, side);
     g.restore();
     this.drawShine(g, cx, cy, side, dpr);
-    if (this.wear && side >= WEAR_MIN_SIDE) this.drawGlint(g, cx, cy, side, dpr);
+    if (this.wear && side >= WEAR_MIN_SIDE && !dataSide) this.drawGlint(g, cx, cy, side, dpr);
+    if (dataSide) this.drawLaser(g, cx, cy, side);
     if (this.speed < 0.99) { // a stopped disc sits a little darker, brightening as it gets up to speed
       g.fillStyle = `rgba(10,11,16,${(0.35 * (1 - this.speed)).toFixed(3)})`;
       g.beginPath(); g.arc(cx, cy, side / 2, 0, Math.PI * 2); g.fill();
@@ -587,8 +669,20 @@ export class Disc {
     if (drawArt && tray < 1) { // the case's cover thumbnail steps aside while the tray is out
       g.save(); g.globalAlpha = 1 - tray; drawArt(this.cover); g.restore();
     }
+    // The ⟲ in the case's corner that turns the disc over.
+    this.flipRect = null;
+    if (!mini && this.data && !(tray > 0) && !(art > 0)) {
+      const cs = side + 60, r = 11, bx = cx + cs / 2 - 22, by = cy + cs / 2 - 22;
+      this.flipRect = { x: bx, y: by, r };
+      g.save();
+      g.fillStyle = 'rgba(0,0,0,0.45)'; g.strokeStyle = rgb(colors.accent, 0.6); g.lineWidth = 1.2;
+      g.beginPath(); g.arc(bx, by, r, 0, Math.PI * 2); g.fill(); g.stroke();
+      g.fillStyle = rgb(colors.accent2); g.font = `bold 13px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText('⟲', bx, by + 1);
+      g.restore();
+    }
     return bounds;
   }
 
-  get animating() { return this.spinning || this.speed > 0 || this.trayT > 0 || this.ejectStart >= 0 || this.jogging; }
+  get animating() { return this.spinning || this.speed > 0 || this.trayT > 0 || this.ejectStart >= 0 || this.jogging || this.flipT !== (this.flipped ? 1 : 0); }
 }

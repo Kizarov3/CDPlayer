@@ -105,6 +105,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - **Disc noise** (Settings, off by default): the sounds of a real player — a faint hiss under the music, the tray motor, the disc spinning up — and shaking the window makes the song skip
 - The disc catches the light like a real CD: rainbow reflections that follow your mouse around the window, as if you were tilting it under a lamp
 - **Disc wear** (Settings, on by default): a disc that's been played a lot looks it — hairline scratches from ten plays of its album, scratches worn round the way it spins and a thumbprint from fifty, nicks out of the rim from a hundred. Every disc keeps its own marks, and the scratches flash as they pass under the light
+- **The other side** (`B`, or the ⟲ in the case's corner): turn the disc over to its silver data side, where each track is a ring written from the middle out — as wide as the song is long — and a red laser point reads where the music is. Point at a ring to see its song, click it to play it
 - **Turn the disc by hand**: grab it and turn it like a DJ's jog wheel — clockwise forward, anticlockwise back, further the harder you turn it — and let go with a spin to send it coasting. You hear snatches of the song as it goes, like a CD player searching; once it's still, the song plays on from there
 - Click the little cover in the jewel case's corner to open the album art full-size in place of the disc
 - **The booklet**: click the full-size art and the CD booklet lifts out of the case and opens, printed in the album's own colours — the tracklist (click a track to play it), the lyrics with the line being sung highlighted, the credits (written by, producer, label, catalog number, release date…), how many times you've played the song, and a back cover with the small print and a real barcode when the file has one. ← / → turn the pages; Esc puts it back
@@ -176,6 +177,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 | `Y` | Toggle Karaoke Mode |
 | `E` | Open / close the disc tray |
 | `S` | The CD shelf |
+| `B` | Turn the disc over to its data side: a ring for each track, the laser where it's playing |
 | `P` | Now Playing card: pick lines of the lyrics, then copy or save it |
 | `Esc` | Close whatever's open, or leave fullscreen / CD view / Visualizer Mode / Mini Mode |
 
