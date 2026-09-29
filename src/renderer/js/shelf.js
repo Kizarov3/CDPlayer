@@ -56,6 +56,7 @@ export function closeShelf() {
   closeCase(true);
   shelf.open = false;
   shelf.openBoxes.clear();
+  stopLookups();
   const root = $('shelf');
   if (anim.enabled) root.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140 }).onfinish = () => { if (!shelf.open) root.hidden = true; };
   else root.hidden = true;
@@ -130,6 +131,7 @@ function render() {
   shelf.shown = shown;
   if (shelf.boxObserver) shelf.boxObserver.disconnect();
   shelf.onScreen.clear();
+  if (sort !== 'ARTIST') stopLookups();
   const boxes = sort === 'ARTIST' ? boxesFor({ albums: shelf.albums, shown, discogs: shelf.discogs, hidden: shelf.hidden, open: shelf.openBoxes, query }) : new Map();
   const items = withMissing(arrange(shown, sort), boxes).map((a) => {
     if (a.box) return boxCard(a.box);
@@ -288,6 +290,13 @@ function boxCard(box) {
   if (box.state === 'loading') watchBox(card);
   return card;
 }
+// No more looking up discographies (the shelf closed, or isn't by artist): whoever was waiting is dropped.
+function stopLookups() {
+  clearTimeout(shelf.wantTimer);
+  if (!shelf.asking) return;
+  shelf.asking = false;
+  shelf.app.cdp.wantDiscography([]).catch(() => {});
+}
 // A box that's waiting: once it's on screen, MusicBrainz is asked about its artist (a moment after scrolling stops).
 function watchBox(card) {
   if (!shelf.boxObserver) {
@@ -295,6 +304,7 @@ function watchBox(card) {
       for (const e of entries) { if (e.isIntersecting) shelf.onScreen.add(e.target.box); else shelf.onScreen.delete(e.target.box); }
       clearTimeout(shelf.wantTimer);
       shelf.wantTimer = setTimeout(() => {
+        shelf.asking = shelf.onScreen.size > 0;
         shelf.app.cdp.wantDiscography([...shelf.onScreen].map((b) => ({ artist: b.artist, mbid: b.mbid }))).catch(() => {});
       }, 250);
     }, { root: $('shelf-body'), rootMargin: '200px' });
@@ -327,7 +337,11 @@ async function openGhostCase(group, artist, spine) {
       el('span', { class: 'no' }, String(i + 1).padStart(2, '0')), el('span', { class: 'name' }, t.title),
       el('span', { class: 'time' }, t.length ? app.formatTime(t.length) : ''))));
   }).catch(() => tracks.replaceChildren(el('div', { class: 'case-track' }, el('span', { class: 'name' }, "COULDN'T REACH MUSICBRAINZ"))));
-  const spotifyButton = pill('PLAY ON SPOTIFY', () => playMissingOnSpotify(group, artist), 'Find it on Spotify and play it as a disc');
+  const spotifyButton = pill('PLAY ON SPOTIFY', async () => {
+    if (spotifyButton.disabled) return; // already looking: one disc, not two
+    spotifyButton.disabled = true;
+    try { await playMissingOnSpotify(group, artist); } finally { spotifyButton.disabled = false; }
+  }, 'Find it on Spotify and play it as a disc');
   spotifyButton.hidden = true;
   app.cdp.spotifyStatus().then((s) => { spotifyButton.hidden = !(s && s.connected); }).catch(() => {});
   const card = el('div', { class: 'case-card ghost' }, front,

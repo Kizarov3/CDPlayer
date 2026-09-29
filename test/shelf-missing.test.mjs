@@ -102,6 +102,10 @@ test('the edition to list: the one with the most of your songs on it, then the s
   assert.strictEqual(pickEdition([deluxe, original, other], ['airbag', 'Lucky!']), original);
   assert.strictEqual(pickEdition([original, deluxe], ['Airbag', 'Pearly*']), deluxe);
   assert.strictEqual(pickEdition([], ['Airbag']), null);
+  // A deluxe edition with a live disc has your songs twice: they still count once each.
+  const regular = [tr('Given Up'), tr('Bleed It Out'), tr('Shadow of the Day')];
+  const liveDeluxe = [...regular, tr('Given Up'), tr('Bleed It Out'), tr('Faint'), tr('Numb')];
+  assert.strictEqual(pickEdition([liveDeluxe, regular], ['Bleed It Out', 'Given Up']), regular);
 });
 
 test('the full tracklist: yours where they are, the ones you haven\'t in their place, your extras at the end', () => {

@@ -44,7 +44,8 @@ function createDiscography({ mbFetch, read = () => store.readText(CACHE_FILE), w
       const json = await mbFetch(`release-group?artist=${id}&release-group-status=website-default&type=album&limit=${PAGE}&offset=${offset}&fmt=json`);
       const page = json['release-groups'] || [];
       groups.push(...page.map(toGroup));
-      if (page.length < PAGE || groups.length >= (json['release-group-count'] || 0)) return groups;
+      // A short page is the last; a full one may not be, whatever the count says (and 3000 is plenty for anyone).
+      if (page.length < PAGE || offset >= 3000) return groups;
     }
   }
 

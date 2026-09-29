@@ -193,11 +193,12 @@ function writeNotes(notes) {
 
 // missing-hidden.txt — a MusicBrainz release-group ID per line: missing albums the user said NOT INTERESTED to, so
 // they don't stand on the shelf again. CDPlayer 2 only.
+const GROUP_ID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 function readHiddenMissing() {
-  return new Set(lines(readText(FILES.hiddenMissing)).map((l) => l.trim()).filter(Boolean));
+  return new Set(lines(readText(FILES.hiddenMissing)).map((l) => l.trim()).filter((id) => GROUP_ID.test(id)));
 }
 function writeHiddenMissing(ids) {
-  const body = [...ids].filter(Boolean);
+  const body = [...ids].filter((id) => GROUP_ID.test(String(id)));
   return writeText(FILES.hiddenMissing, body.join('\n') + (body.length ? '\n' : ''));
 }
 

@@ -86,6 +86,16 @@ test('every page is read, and a short page ends it even if the count says more',
   assert.deepStrictEqual(net.asked.map((q) => /offset=(\d+)/.exec(q)[1]), ['0', '100', '200']);
 });
 
+test('a full page means there may be more, whatever the count says', async () => {
+  const many = Array.from({ length: 150 }, (_, i) => group(`g${i}`, `Album ${i}`));
+  const { d, net } = make([[/^release-group\?artist=aaaa/, (q) => {
+    const offset = Number(/offset=(\d+)/.exec(q)[1]);
+    return { 'release-group-count': 100, 'release-groups': many.slice(offset, offset + 100) }; // the count is off
+  }]]);
+  assert.strictEqual((await d.discographyFor({ artist: 'A', mbid: U('a') })).groups.length, 150);
+  assert.strictEqual(net.asked.length, 2);
+});
+
 test('offline: nothing cached, so it is asked again next time', async () => {
   const { d, saved } = make([[/^artist\?query=/, new Error('ENOTFOUND')]]);
   await assert.rejects(d.discographyFor({ artist: 'Korn', mbid: null }));

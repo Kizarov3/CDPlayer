@@ -160,10 +160,11 @@ test('notes.txt: a note per album, any text in it; an empty note takes it off', 
   assert.deepStrictEqual(store.readNotes(), new Map());
 });
 
-test('missing-hidden.txt: the release groups said NOT INTERESTED to, one per line', () => {
-  store.writeHiddenMissing(new Set(['rg-1', 'rg-2']));
-  assert.strictEqual(fs.readFileSync(path.join(home, 'missing-hidden.txt'), 'utf8'), 'rg-1\nrg-2\n');
-  assert.deepStrictEqual(store.readHiddenMissing(), new Set(['rg-1', 'rg-2']));
-  fs.writeFileSync(path.join(home, 'missing-hidden.txt'), '\n  rg-3  \n\n');
-  assert.deepStrictEqual(store.readHiddenMissing(), new Set(['rg-3']));
+test('missing-hidden.txt: the release groups said NOT INTERESTED to, one per line, only real IDs', () => {
+  const a = 'b1392450-e666-3926-a536-22c65f834433', b = '163339ab-813b-3d29-bba8-e1d5acf63cab';
+  store.writeHiddenMissing(new Set([a, b, 'junk', `${a}\nevil`]));
+  assert.strictEqual(fs.readFileSync(path.join(home, 'missing-hidden.txt'), 'utf8'), `${a}\n${b}\n`);
+  assert.deepStrictEqual(store.readHiddenMissing(), new Set([a, b]));
+  fs.writeFileSync(path.join(home, 'missing-hidden.txt'), `\n  ${b}  \nrg-3\n\n`);
+  assert.deepStrictEqual(store.readHiddenMissing(), new Set([b]));
 });

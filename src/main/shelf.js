@@ -95,10 +95,14 @@ function groupAlbums(tracks) {
     || String(a.year || '').localeCompare(String(b.year || '')) || sortName(a.title).localeCompare(sortName(b.title), undefined, { numeric: true }));
 }
 
+// The shelf's cache for `folder`. One from an older CDPlayer that read tags differently: every track's tags are read
+// again (no stamp matches), but when it first turned up is kept — otherwise the whole shelf would look newly added.
 function readCache(folder) {
   try {
     const c = JSON.parse(store.readText(CACHE_FILE) || '');
-    if (c && c.version === CACHE_VERSION && c.folder === folder && c.tracks) return c.tracks;
+    if (!c || c.folder !== folder || !c.tracks) return null;
+    if (c.version === CACHE_VERSION) return c.tracks;
+    return Object.fromEntries(Object.entries(c.tracks).map(([p, e]) => [p, { ...e, stamp: null }]));
   } catch { /* none yet, or unreadable: start over */ }
   return null;
 }
@@ -272,4 +276,4 @@ async function albumCoverFull(firstTrack) {
 /** A file's tags changed: its album's cover thumbnail is made again next time. */
 function forget(filePath) { thumbs.delete(filePath); }
 
-module.exports = { scanAlbums, albumTracks, touchedAt, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };
+module.exports = { scanAlbums, albumTracks, touchedAt, readCache, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };

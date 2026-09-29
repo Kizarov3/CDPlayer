@@ -93,7 +93,7 @@ export function pickEdition(editions, owned) {
   const have = new Set(owned.map(sameName));
   let best = null, bestHits = -1;
   for (const tracks of editions) {
-    const hits = tracks.filter((t) => have.has(sameName(t.title))).length;
+    const hits = new Set(tracks.map((t) => sameName(t.title)).filter((t) => have.has(t))).size; // each of yours once
     if (hits > bestHits || (hits === bestHits && tracks.length < best.length)) { best = tracks; bestHits = hits; }
   }
   return best;

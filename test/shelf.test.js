@@ -182,3 +182,18 @@ test('sameName: how the shelf compares names', () => {
   assert.strictEqual(sameName('Three Dollar Bill, Yall$'), sameName("THREE DOLLAR BILL Y'ALL$"));
   assert.strictEqual(sameName('!!!'), '!!!');
 });
+
+test('an older shelf cache is read again, but when each track first turned up is kept', () => {
+  const store = require('../src/main/store');
+  const music = fs.mkdtempSync(path.join(home, 'music-'));
+  store.writeLastPath(music);
+  const p = `${music}/Korn/Issues/01.flac`;
+  fs.writeFileSync(path.join(home, 'shelf-cache.json'), JSON.stringify({ version: 1, folder: music, tracks: { [p]: { stamp: '10:20', info: { title: 'x' }, added: 12345 } } }));
+  delete require.cache[require.resolve('../src/main/shelf')];
+  const { readCache } = require('../src/main/shelf');
+  const cached = readCache(music);
+  assert.ok(cached, 'still found: nothing looks newly added');
+  assert.strictEqual(cached[p].added, 12345);
+  assert.strictEqual(cached[p].stamp, null, 'its tags are read again');
+  assert.strictEqual(readCache('/some/other/folder'), null);
+});
