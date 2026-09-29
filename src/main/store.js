@@ -30,7 +30,7 @@ const file = (name) => path.join(dataDir(), name);
 const FILES = {
   queue: 'queue.txt', onboarded: 'onboarded', lastVersion: 'lastversion.txt', lastPath: 'lastpath.txt',
   settings: 'settings.txt', eqPresets: 'eq-presets.txt', history: 'history.txt', spotify: 'spotify.txt',
-  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt',
+  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt',
 };
 
 function readText(name) {
@@ -191,6 +191,16 @@ function writeNotes(notes) {
   return writeText(FILES.notes, body.join('\n') + (body.length ? '\n' : ''));
 }
 
+// missing-hidden.txt — a MusicBrainz release-group ID per line: missing albums the user said NOT INTERESTED to, so
+// they don't stand on the shelf again. CDPlayer 2 only.
+function readHiddenMissing() {
+  return new Set(lines(readText(FILES.hiddenMissing)).map((l) => l.trim()).filter(Boolean));
+}
+function writeHiddenMissing(ids) {
+  const body = [...ids].filter(Boolean);
+  return writeText(FILES.hiddenMissing, body.join('\n') + (body.length ? '\n' : ''));
+}
+
 const HISTORY_LIMIT = 50;
 function readHistory() {
   return lines(readText(FILES.history)).map((p) => p.trim()).filter((p) => p && entryExists(p)).slice(0, HISTORY_LIMIT);
@@ -230,6 +240,6 @@ const writeLastVersion = (v) => writeText(FILES.lastVersion, v);
 module.exports = {
   dataDir, file, FILES, readText, writeText, isFile, isDir,
   readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, writeQueue, readHistory, writeHistory, HISTORY_LIMIT,
-  readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readDust, writeDust, readNotes, writeNotes,
+  readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readDust, writeDust, readNotes, writeNotes, readHiddenMissing, writeHiddenMissing,
   readEqPresets, writeEqPresets, readLastPath, writeLastPath, isOnboarded, markOnboarded, readLastVersion, writeLastVersion,
 };
