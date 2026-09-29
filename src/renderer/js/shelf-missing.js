@@ -39,13 +39,48 @@ export function withMissing(items, boxes) {
     out.push(x);
     const box = after.get(i);
     if (!box) return;
-    if (box.open) for (const ghost of box.missing) out.push({ ghost, artist: box.artist });
+    if (box.open) for (const ghost of box.places || box.missing) out.push({ ghost, artist: box.artist });
     out.push({ box });
   });
   return out;
 }
 
-export const boxLabel = (box) => (box.state !== 'found' ? '…' : box.missing.length ? `+${box.missing.length} MISSING` : 'COMPLETE ★');
+/**
+ * The boxes for the artists among the albums `shown`: Map(key → { key, artist, mbid, state, missing, places, open }).
+ * `missing` is everything they don't have (what the box counts); `places` only those the filter `query` lets stand.
+ * An artist MusicBrainz doesn't know gets no box; one still being looked up gets a waiting one.
+ */
+export function boxesFor({ albums, shown, discogs, hidden, open, query }) {
+  const boxes = new Map();
+  const showing = new Set(shown.map((a) => sameName(a.artist)));
+  const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
+  for (const [key, w] of artistsWanting(albums)) {
+    if (!showing.has(key)) continue;
+    const d = discogs.get(key);
+    if (d && d.state === 'unknown') continue;
+    const missing = d ? missingFor(d.groups, w.owned, hidden) : [];
+    const places = missing.filter((g) => { const text = `${w.artist} ${g.title} ${g.year || ''}`.toLowerCase(); return words.every((x) => text.includes(x)); });
+    boxes.set(key, { key, artist: w.artist, mbid: w.mbid, state: d ? 'found' : 'loading', missing, places, open: open.has(key) });
+  }
+  return boxes;
+}
+
+/**
+ * Redraws of the shelf as discographies come in: one for a burst of answers (`later` runs it a moment on), and none
+ * while `busy()` — a case out, a spine being carried — since a redraw would pull the shelf out from under it; it's
+ * tried again a moment later.
+ */
+export function renderGate({ render, busy, later = (fn) => setTimeout(fn, 200) }) {
+  let waiting = false;
+  const fire = () => {
+    if (busy()) { later(fire); return; }
+    waiting = false;
+    render();
+  };
+  return { request() { if (!waiting) { waiting = true; later(fire); } } };
+}
+
+export const boxLabel =(box) => (box.state !== 'found' ? '…' : box.missing.length ? `+${box.missing.length} MISSING` : 'COMPLETE ★');
 
 const SECONDARY = { Live: 'LIVE', Compilation: 'COMP', Soundtrack: 'OST', Remix: 'REMIX' };
 /** What a place's label says it is: LIVE, COMP, OST, REMIX, EP, SINGLE — nothing for a studio album. */

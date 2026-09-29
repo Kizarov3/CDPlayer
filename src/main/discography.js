@@ -13,6 +13,7 @@ const CACHE_FILE = 'discography.json';
 const DAY = 86400e3, FOUND_DAYS = 30, UNKNOWN_DAYS = 7, PAGE = 100;
 const artistKey = sameName;
 const phrase = (text) => `"${String(text).replace(/[\\"]/g, '\\$&')}"`;
+const MBID = /[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}/i;
 
 const toGroup = (g) => ({
   id: g.id, title: g.title, type: g['primary-type'] || null, secondary: g['secondary-types'] || [],
@@ -27,8 +28,11 @@ function createDiscography({ mbFetch, read = () => store.readText(CACHE_FILE), w
   };
 
   async function findArtist({ artist, mbid }) {
-    if (mbid) return mbid;
-    const json = await mbFetch(`artist?query=${encodeURIComponent(`artist:${phrase(artist)}`)}&fmt=json&limit=25`);
+    // The tag's ID, when it holds one (a collaboration's tag holds several, "id1, id2": the first); anything else
+    // isn't trusted into a request, and the artist is looked for by name. Aliases too: "Kino" is Кино's.
+    const id = MBID.exec(String(mbid || ''));
+    if (id) return id[0].toLowerCase();
+    const json = await mbFetch(`artist?query=${encodeURIComponent(`artist:${phrase(artist)} OR alias:${phrase(artist)}`)}&fmt=json&limit=25`);
     const want = sameName(artist);
     const same = (a) => sameName(a.name) === want || (a.aliases || []).some((al) => sameName(al.name) === want);
     const hit = (json.artists || []).find(same);

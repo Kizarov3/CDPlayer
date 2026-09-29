@@ -11,7 +11,7 @@ import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './bookle
 import { stickersFor } from './shelf-stickers.js';
 import { arrange, SORTS, matchesFilter } from './shelf-order.js';
 import { stickyNote, noteLook } from './shelf-notes.js';
-import { artistsWanting, missingFor, withMissing, boxLabel, typeLabel, isSlim, sameName } from './shelf-missing.js';
+import { withMissing, boxLabel, typeLabel, isSlim, sameName, boxesFor, renderGate } from './shelf-missing.js';
 import { dustLevel, pickOne, Wiper } from './shelf-dust.js';
 
 const $ = (id) => document.getElementById(id);
@@ -19,6 +19,9 @@ const shelf = { open: false, albums: [], loading: false, covers: new Map(), colo
   discogs: new Map(), openBoxes: new Set(), hidden: new Set(), boxObserver: null, wantTimer: null, onScreen: new Set() };
 
 export const isShelfOpen = () => shelf.open;
+// Discographies arriving redraw the shelf — once for a burst, and not while a case is out, a spine is carried or one
+// is about to be pulled out (a redraw would take the shelf out from under them).
+const redraw = renderGate({ render: () => { if (shelf.open) render(); }, busy: () => !!shelf.caseOpen || shelf.pulling || $('shelf').classList.contains('carrying') });
 
 // The album whose disc is in the player (a track of it loaded, playing or paused) stands a little proud of the others,
 // lit in the theme's colour.
@@ -79,7 +82,7 @@ export function setupShelf(app) {
   });
   app.cdp.onDiscography(({ key, state, groups }) => {
     shelf.discogs.set(key, { state, groups });
-    if (shelf.open && shelf.app.state.shelfSort === 'ARTIST') render();
+    if (shelf.open && shelf.app.state.shelfSort === 'ARTIST') redraw.request();
   });
   app.cdp.onShelfProgress(({ done, total }) => { if (shelf.loading) $('shelf-count').textContent = `READING YOUR MUSIC · ${done} / ${total}`; });
 }
@@ -127,7 +130,7 @@ function render() {
   shelf.shown = shown;
   if (shelf.boxObserver) shelf.boxObserver.disconnect();
   shelf.onScreen.clear();
-  const boxes = sort === 'ARTIST' ? missingBoxes(shown, query) : new Map();
+  const boxes = sort === 'ARTIST' ? boxesFor({ albums: shelf.albums, shown, discogs: shelf.discogs, hidden: shelf.hidden, open: shelf.openBoxes, query }) : new Map();
   const items = withMissing(arrange(shown, sort), boxes).map((a) => {
     if (a.box) return boxCard(a.box);
     if (a.ghost) return ghostSpine(a.ghost, a.artist);
@@ -273,20 +276,6 @@ function putDown(drag, target, next = false) {
 
 // ---- Missing albums (shelf-missing.js) -------------------------------------------------------------------------
 
-// The boxes for the artists shown: their discography when it's known, or waiting for it.
-function missingBoxes(shown, query) {
-  const boxes = new Map();
-  const wanting = artistsWanting(shelf.albums);
-  const showing = new Set(shown.map((a) => sameName(a.artist)));
-  for (const [key, w] of wanting) {
-    if (!showing.has(key)) continue;
-    const d = shelf.discogs.get(key);
-    if (d && d.state === 'unknown') continue;
-    const missing = d ? missingFor(d.groups, w.owned, shelf.hidden).filter((g) => matchesFilter({ artist: w.artist, title: g.title, year: g.year }, query)) : [];
-    boxes.set(key, { key, artist: w.artist, mbid: w.mbid, state: d ? 'found' : 'loading', missing, open: shelf.openBoxes.has(key) });
-  }
-  return boxes;
-}
 function boxCard(box) {
   const card = el('button', { class: `missing-box${box.state === 'found' && !box.missing.length ? ' complete' : ''}${box.open ? ' open' : ''}`,
     title: box.state !== 'found' ? `Looking up ${box.artist} on MusicBrainz…` : box.missing.length ? `${box.artist}: releases you don't have — click to ${box.open ? 'close' : 'show them'}` : `You have everything ${box.artist} has released`,
@@ -430,7 +419,8 @@ function pullOne() {
   const spine = [...document.querySelectorAll('#shelf-body .spine')].find((s) => s.album === a);
   if (!spine) return;
   spine.scrollIntoView({ block: 'center', inline: 'nearest', behavior: anim.enabled ? 'smooth' : 'auto' });
-  setTimeout(() => { if (shelf.open) openCase(a, spine); }, anim.enabled ? 450 : 0);
+  shelf.pulling = true; // no redraw till it's out: the spine must still be the one on the shelf
+  setTimeout(async () => { try { if (shelf.open) await openCase(a, spine); } finally { shelf.pulling = false; } }, anim.enabled ? 450 : 0);
 }
 
 // ---- The case, pulled out and turned to its front ----------------------------------------------------------------

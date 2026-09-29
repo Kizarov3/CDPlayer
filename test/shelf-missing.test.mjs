@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import { createRequire } from 'node:module';
-import { sameName, artistsWanting, missingFor, withMissing, boxLabel, typeLabel, isSlim } from '../src/renderer/js/shelf-missing.js';
+import { sameName, artistsWanting, missingFor, withMissing, boxLabel, typeLabel, isSlim, boxesFor, renderGate } from '../src/renderer/js/shelf-missing.js';
 
 const require = createRequire(import.meta.url);
 const main = require('../src/main/same-name');
@@ -59,4 +59,39 @@ test('a place is labelled with what it is; a single\'s case is slim', () => {
   assert.strictEqual(typeLabel(g('a', 'A', { type: 'Single', secondary: ['Live'] })), 'LIVE');
   assert.strictEqual(isSlim(g('a', 'A', { type: 'Single' })), true);
   assert.strictEqual(isSlim(g('a', 'A', { type: 'EP' })), false);
+});
+
+test('a filter narrows which places stand, never what the box counts', () => {
+  const albums = [album('Radiohead', 'OK Computer'), album('Radiohead', 'Kid A'), album('Korn', 'Issues'), album('Korn', 'Untouchables')];
+  const discogs = new Map([
+    [sameName('Radiohead'), { state: 'found', groups: [g('p', 'Pablo Honey', { year: '1993' }), g('b', 'The Bends', { year: '1995' })] }],
+    [sameName('Korn'), { state: 'unknown', groups: [] }],
+  ]);
+  const shown = albums.filter((a) => /computer/i.test(a.title));
+  const boxes = boxesFor({ albums, shown, discogs, hidden: new Set(), open: new Set([sameName('Radiohead')]), query: 'computer' });
+  const box = boxes.get(sameName('Radiohead'));
+  assert.strictEqual(boxLabel(box), '+2 MISSING');
+  assert.deepStrictEqual(box.places, []);
+  assert.deepStrictEqual(boxesFor({ albums, shown: albums, discogs, hidden: new Set(), open: new Set([sameName('Radiohead')]), query: 'bends' }).get(sameName('Radiohead')).places.map((x) => x.id), ['b']);
+  assert.ok(!boxes.has(sameName('Korn')), 'unknown to MusicBrainz, and not shown: no box');
+  const waiting = boxesFor({ albums, shown: albums, discogs: new Map(), hidden: new Set(), open: new Set(), query: '' });
+  assert.strictEqual(boxLabel(waiting.get(sameName('Korn'))), '…');
+});
+
+test('the shelf is redrawn once for a burst of answers, and not while a case is out or a spine carried', () => {
+  const timers = [];
+  let busy = false, renders = 0;
+  const gate = renderGate({ render: () => { renders++; }, busy: () => busy, later: (fn) => timers.push(fn) });
+  gate.request(); gate.request(); gate.request();
+  assert.strictEqual(timers.length, 1, 'one redraw asked for a burst');
+  busy = true;
+  timers.shift()();
+  assert.strictEqual(renders, 0, 'not while busy');
+  assert.strictEqual(timers.length, 1, 'tried again later');
+  busy = false;
+  timers.shift()();
+  assert.strictEqual(renders, 1);
+  gate.request();
+  timers.shift()();
+  assert.strictEqual(renders, 2);
 });
