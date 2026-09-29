@@ -605,6 +605,10 @@ body.cd-view #cd-info { display: block !important; }
 }
 .sticky-note:hover .note-peel { opacity: 1; }
 .case-front .sticker-new { top: 14px; right: 14px; width: 54px; height: 54px; font-size: 14px; letter-spacing: .04em; transform: rotate(14deg); z-index: 2; }
+/* A missing album's ghost case: see-through, with a dashed edge. */
+.case-card.ghost { background: rgba(var(--card), .82); border: 1.5px dashed rgba(255, 255, 255, .35); }
+.case-card.ghost .case-cover { opacity: .75; }
+.ghost-cover { border: 1.5px dashed rgba(255, 255, 255, .35); background: rgba(255, 255, 255, .03); }
 .sticker-price {
   position: absolute; right: 16px; bottom: 16px; z-index: 2; pointer-events: none; padding: 5px 9px 4px;
   background: rgb(252, 250, 244); color: rgb(30, 30, 34); font-size: 13px; font-weight: bold; letter-spacing: .02em;

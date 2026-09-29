@@ -321,7 +321,60 @@ function ghostSpine(group, artist) {
   spine.ghost = group;
   return spine;
 }
-function openGhostCase() {}
+// A missing album's ghost case: see-through, its cover from the Cover Art Archive and its tracklist from MusicBrainz,
+// to play on Spotify (when connected), look up on MusicBrainz, or never see again.
+async function openGhostCase(group, artist, spine) {
+  if (shelf.caseOpen) return;
+  const { app } = shelf;
+  const from = spine.getBoundingClientRect();
+  const blank = el('div', { class: 'case-cover cdr ghost-cover' }, el('div', { class: 'marker' }, group.title), el('div', { class: 'marker small' }, artist));
+  const front = el('div', { class: 'case-front' }, blank);
+  // Fetched by main (the page may only show pictures it already has, as data).
+  app.cdp.coverFromUrl(`https://coverartarchive.org/release-group/${group.id}/front-250`).then((src) => {
+    if (!src || !blank.isConnected) return;
+    blank.replaceWith(el('img', { class: 'case-cover', src, alt: '' }));
+  }).catch(() => {});
+  const tracks = el('div', { class: 'case-tracks scroll' }, el('div', { class: 'case-track' }, el('span', { class: 'name' }, '…')));
+  app.cdp.missingTracklist(group.id).then((list) => {
+    tracks.replaceChildren(...list.map((t, i) => el('div', { class: 'case-track' },
+      el('span', { class: 'no' }, String(i + 1).padStart(2, '0')), el('span', { class: 'name' }, t.title),
+      el('span', { class: 'time' }, t.length ? app.formatTime(t.length) : ''))));
+  }).catch(() => tracks.replaceChildren(el('div', { class: 'case-track' }, el('span', { class: 'name' }, "COULDN'T REACH MUSICBRAINZ"))));
+  const spotifyButton = pill('PLAY ON SPOTIFY', () => playMissingOnSpotify(group, artist), 'Find it on Spotify and play it as a disc');
+  spotifyButton.hidden = true;
+  app.cdp.spotifyStatus().then((s) => { spotifyButton.hidden = !(s && s.connected); }).catch(() => {});
+  const type = typeLabel(group) || (group.type || 'ALBUM').toUpperCase();
+  const card = el('div', { class: 'case-card ghost' }, front,
+    el('div', { class: 'case-info' },
+      el('div', { class: 'case-title' }, group.title),
+      el('div', { class: 'case-artist' }, [artist, group.year, type].filter(Boolean).join(' · ')),
+      el('div', { class: 'case-meta' }, 'NOT IN YOUR COLLECTION'),
+      tracks,
+      el('div', { class: 'case-actions' },
+        pill('BACK ON THE SHELF', () => closeCase()),
+        pill('NOT INTERESTED', () => hideMissing(group), 'Never show this one on the shelf again'),
+        el('span', { class: 'grow' }),
+        pill('MUSICBRAINZ', () => app.cdp.openMusicBrainz(group.id), 'Open its page on MusicBrainz'),
+        spotifyButton)));
+  showCase(card, spine, from, hashColor(group.title + artist));
+}
+function hideMissing(group) {
+  shelf.hidden.add(group.id);
+  shelf.app.cdp.hideMissing(group.id).catch(() => {});
+  closeCase(true);
+  render();
+}
+// Spotify's copy of a missing album: the first album found whose title is the same, put in as a disc.
+async function playMissingOnSpotify(group, artist) {
+  const { app } = shelf;
+  const found = await app.cdp.spotifySearch(`album:${group.title} artist:${artist}`).catch(() => ({ error: 'OFFLINE' }));
+  const hit = (found.items || []).find((i) => i.kind === 'album' && sameName(i.name) === sameName(group.title));
+  if (!hit) { app.setStatus('NOT ON SPOTIFY'); return; }
+  const disc = await app.cdp.spotifyDiscTracks({ kind: 'album', id: hit.id }).catch(() => ({ error: 'OFFLINE' }));
+  if (!disc.tracks) { app.setStatus('NOT ON SPOTIFY'); return; }
+  closeCase(true);
+  app.playSpotifyDisc(disc.tracks, hit.name);
+}
 
 // The corner of an album's sticky note, showing above its spine.
 function showNoteTab(spine) {
@@ -428,14 +481,17 @@ async function openCase(a, spine) {
         pill('PLAY NEXT', () => { app.playNext(a.tracks.map((t) => t.path), { sorted: true }); closeCase(); }, 'Play the album next, after the song playing'),
         pill('ADD TO QUEUE', () => { app.addToQueue(a.tracks.map((t) => t.path), { sorted: true }); closeCase(); }, 'Add every track to the end of the queue'),
         el('button', { class: 'pill on', onClick: () => play(a, 0) }, 'PLAY'))));
+  showCase(card, spine, from, shelf.colors.get(a.id) || hashColor(a.title + a.artist));
+}
+
+// A case pulled out of the shelf: slides up off it, then turns towards you from its spine to its front.
+function showCase(card, spine, from, color) {
   const layer = el('div', { class: 'case-layer', onClick: (e) => { if (e.target === layer) closeCase(); } }, card);
-  const c = shelf.colors.get(a.id) || hashColor(a.title + a.artist);
-  card.style.setProperty('--spine', `${c[0]}, ${c[1]}, ${c[2]}`);
+  card.style.setProperty('--spine', `${color[0]}, ${color[1]}, ${color[2]}`);
   $('shelf').append(layer);
   shelf.caseOpen = { layer, card, spine };
   spine.classList.add('out');
   if (!anim.enabled) return;
-  // Slides up off the shelf, then turns towards you from its spine to its front, growing into place.
   const to = card.getBoundingClientRect();
   const sx = from.width / to.width, sy = from.height / to.height;
   card.animate([
