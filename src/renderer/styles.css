@@ -520,7 +520,7 @@ body.cd-view #cd-info { display: block !important; }
 }
 .shelf-divider.short span { writing-mode: horizontal-tb; text-align: center; font-size: 14px; }
 /* Missing albums (shelf-missing.js): after an artist's albums, a see-through box saying how many of their releases
-   you don't have; open, their places stand before it — dashed, see-through cases with the title and what it is. */
+   you don't have; open, their places stand before it — dashed, see-through cases with the title and year. */
 .missing-box {
   position: relative; align-self: flex-end; width: 26px; height: 176px; margin: 0 3px; padding: 0; cursor: pointer;
   border: 1.5px dashed rgba(214, 200, 172, .55); border-radius: 3px; background: rgba(214, 200, 172, .08); color: rgb(214, 200, 172);
@@ -536,13 +536,6 @@ body.cd-view #cd-info { display: block !important; }
   outline: 1.5px dashed rgba(255, 255, 255, .6); outline-offset: -2px;
 }
 .spine.ghost:hover { opacity: .7; }
-.spine.ghost.slim { width: 18px; }
-.spine.ghost.slim .spine-text { line-height: 18px; font-size: 8px; }
-.ghost-type {
-  position: absolute; left: 0; right: 0; bottom: 6px; writing-mode: vertical-rl; line-height: inherit;
-  font-size: 7px; font-weight: bold; letter-spacing: .08em;
-}
-.spine.ghost .spine-text { bottom: 44px; }
 /* Carrying a spine off the shelf: the shelf all but disappears, so the player shows through to drop it on. */
 #shelf { transition: background-color 160ms ease, opacity 160ms ease; }
 #shelf.carrying { opacity: .06; pointer-events: none; }

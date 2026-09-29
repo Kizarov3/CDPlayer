@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import { createRequire } from 'node:module';
-import { sameName, artistsWanting, missingFor, withMissing, boxLabel, typeLabel, isSlim, boxesFor, renderGate } from '../src/renderer/js/shelf-missing.js';
+import { sameName, artistsWanting, missingFor, withMissing, boxLabel, boxesFor, renderGate } from '../src/renderer/js/shelf-missing.js';
 
 const require = createRequire(import.meta.url);
 const main = require('../src/main/same-name');
@@ -48,17 +48,14 @@ test('what a box says', () => {
   assert.strictEqual(boxLabel({ state: 'found', missing: [] }), 'COMPLETE ★');
 });
 
-test('a place is labelled with what it is; a single\'s case is slim', () => {
-  assert.strictEqual(typeLabel(g('a', 'A')), '');
-  assert.strictEqual(typeLabel(g('a', 'A', { secondary: ['Live'] })), 'LIVE');
-  assert.strictEqual(typeLabel(g('a', 'A', { secondary: ['Compilation'] })), 'COMP');
-  assert.strictEqual(typeLabel(g('a', 'A', { secondary: ['Soundtrack'] })), 'OST');
-  assert.strictEqual(typeLabel(g('a', 'A', { secondary: ['Remix'] })), 'REMIX');
-  assert.strictEqual(typeLabel(g('a', 'A', { type: 'EP' })), 'EP');
-  assert.strictEqual(typeLabel(g('a', 'A', { type: 'Single' })), 'SINGLE');
-  assert.strictEqual(typeLabel(g('a', 'A', { type: 'Single', secondary: ['Live'] })), 'LIVE');
-  assert.strictEqual(isSlim(g('a', 'A', { type: 'Single' })), true);
-  assert.strictEqual(isSlim(g('a', 'A', { type: 'EP' })), false);
+test('only studio albums are missing: no EPs, singles, live records, compilations, soundtracks or remixes', () => {
+  const groups = [
+    g('s', 'Studio', { year: '1995' }),
+    g('e', 'An EP', { type: 'EP' }), g('x', 'A Single', { type: 'Single' }), g('b', 'Broadcast', { type: 'Broadcast' }),
+    g('l', 'Live Album', { secondary: ['Live'] }), g('c', 'Best Of', { secondary: ['Compilation'] }),
+    g('o', 'Soundtrack', { secondary: ['Soundtrack'] }), g('r', 'Remixes', { secondary: ['Remix'] }),
+  ];
+  assert.deepStrictEqual(missingFor(groups, [], new Set()).map((x) => x.id), ['s']);
 });
 
 test('a filter narrows which places stand, never what the box counts', () => {

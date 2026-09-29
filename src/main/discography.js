@@ -1,7 +1,7 @@
 'use strict';
 /**
- * Artists' discographies from MusicBrainz, for the shelf's missing albums: every official release group of an album
- * artist (albums of all kinds, EPs and singles), found by the MusicBrainz ID in the tags or else by name. Looked up
+ * Artists' discographies from MusicBrainz, for the shelf's missing albums: every official album of an album artist
+ * (studio albums, plus live and other albums, which the shelf leaves out), found by the MusicBrainz ID in the tags or else by name. Looked up
  * one artist at a time, only for the artists the shelf has on screen, and kept in discography.json — for 30 days,
  * or a week for an artist MusicBrainz doesn't know. All through online.js's mbFetch, which keeps CDPlayer to
  * MusicBrainz's one request a second.
@@ -41,7 +41,7 @@ function createDiscography({ mbFetch, read = () => store.readText(CACHE_FILE), w
   async function releaseGroups(id) {
     const groups = [];
     for (let offset = 0; ; offset += PAGE) {
-      const json = await mbFetch(`release-group?artist=${id}&release-group-status=website-default&limit=${PAGE}&offset=${offset}&fmt=json`);
+      const json = await mbFetch(`release-group?artist=${id}&release-group-status=website-default&type=album&limit=${PAGE}&offset=${offset}&fmt=json`);
       const page = json['release-groups'] || [];
       groups.push(...page.map(toGroup));
       if (page.length < PAGE || groups.length >= (json['release-group-count'] || 0)) return groups;

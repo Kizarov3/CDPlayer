@@ -11,7 +11,7 @@ import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './bookle
 import { stickersFor } from './shelf-stickers.js';
 import { arrange, SORTS, matchesFilter } from './shelf-order.js';
 import { stickyNote, noteLook } from './shelf-notes.js';
-import { withMissing, boxLabel, typeLabel, isSlim, sameName, boxesFor, renderGate } from './shelf-missing.js';
+import { withMissing, boxLabel, sameName, boxesFor, renderGate } from './shelf-missing.js';
 import { dustLevel, pickOne, Wiper } from './shelf-dust.js';
 
 const $ = (id) => document.getElementById(id);
@@ -302,11 +302,9 @@ function watchBox(card) {
   shelf.boxObserver.observe(card);
 }
 function ghostSpine(group, artist) {
-  const type = typeLabel(group);
-  const spine = el('button', { class: `spine ghost${isSlim(group) ? ' slim' : ''}`, title: [artist, group.title, group.year, type].filter(Boolean).join(' · '),
+  const spine = el('button', { class: 'spine ghost', title: [artist, group.title, group.year].filter(Boolean).join(' · '),
     onClick: () => openGhostCase(group, artist, spine) },
-    el('span', { class: 'spine-text' }, group.title, group.year ? ` · ${group.year}` : ''),
-    type ? el('span', { class: 'ghost-type' }, type) : null);
+    el('span', { class: 'spine-text' }, group.title, group.year ? ` · ${group.year}` : ''));
   spine.ghost = group;
   return spine;
 }
@@ -332,11 +330,10 @@ async function openGhostCase(group, artist, spine) {
   const spotifyButton = pill('PLAY ON SPOTIFY', () => playMissingOnSpotify(group, artist), 'Find it on Spotify and play it as a disc');
   spotifyButton.hidden = true;
   app.cdp.spotifyStatus().then((s) => { spotifyButton.hidden = !(s && s.connected); }).catch(() => {});
-  const type = typeLabel(group) || (group.type || 'ALBUM').toUpperCase();
   const card = el('div', { class: 'case-card ghost' }, front,
     el('div', { class: 'case-info' },
       el('div', { class: 'case-title' }, group.title),
-      el('div', { class: 'case-artist' }, [artist, group.year, type].filter(Boolean).join(' · ')),
+      el('div', { class: 'case-artist' }, [artist, group.year].filter(Boolean).join(' · ')),
       el('div', { class: 'case-meta' }, 'NOT IN YOUR COLLECTION'),
       tracks,
       el('div', { class: 'case-actions' },

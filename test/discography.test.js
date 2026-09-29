@@ -34,7 +34,7 @@ function make(routes, { cache = '', now = 1000 * DAY } = {}) {
   return { d, net, answers, saved: () => saved };
 }
 
-test('by the MusicBrainz ID from the tags: no search, every official release group', async () => {
+test('by the MusicBrainz ID from the tags: no search, every official album', async () => {
   const { d, net } = make([[/^release-group\?artist=aaaa/, { 'release-group-count': 2, 'release-groups': [group('rg1', 'OK Computer'), group('rg2', 'Creep', { 'primary-type': 'Single', 'first-release-date': '' })] }]]);
   const r = await d.discographyFor({ artist: 'Radiohead', mbid: U('a') });
   assert.strictEqual(r.state, 'found');
@@ -44,6 +44,7 @@ test('by the MusicBrainz ID from the tags: no search, every official release gro
   ]);
   assert.strictEqual(net.asked.length, 1);
   assert.match(net.asked[0], /release-group-status=website-default/);
+  assert.match(net.asked[0], /&type=album&/, 'albums only: fewer pages to read');
 });
 
 test('by name: the result whose name, or one of its aliases, is the same', async () => {

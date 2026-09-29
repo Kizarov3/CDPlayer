@@ -1,15 +1,19 @@
 # Missing albums on the shelf
 
-Date: 2026-09-29 · Status: draft for review
+Date: 2026-09-29 · Status: approved; revised 2026-09-29 — studio albums only
 
 ## Goal
 
 On the shelf, sorted by artist, each artist you have a few albums of gets a box after them saying how many of their
-releases you don't have: **+47 MISSING**. Click it and their missing releases stand on the shelf as empty, see-through
+studio albums you don't have: **+5 MISSING**. Click it and their missing releases stand on the shelf as empty, see-through
 places, oldest first. Click one and a ghost case comes out, with its cover and tracklist, to play it on Spotify, look
 it up on MusicBrainz, or say you're not interested and never see it again.
 
-What the user said: count every official release — albums of every kind (studio, live, compilations, soundtracks,
+Revision (after trying it): **studio albums only** — MusicBrainz primary type Album with no secondary type; live
+records, compilations, soundtracks, remixes, EPs and singles are left out, so there are no type labels or slim single
+cases. The request asks for `type=album` (fewer pages); the shelf keeps only those with no secondary type.
+
+Originally: count every official release — albums of every kind (studio, live, compilations, soundtracks,
 remixes), EPs **and singles**; one collapsed box per artist that opens on a click; a ghost case with PLAY ON SPOTIFY,
 MUSICBRAINZ and NOT INTERESTED; look discographies up lazily, as an artist's spines come into view (like covers).
 Approved each part of this design in turn.
