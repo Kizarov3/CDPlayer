@@ -59,3 +59,34 @@ export function sameAlbum(a, b) {
   const name = (s) => { const low = String(s || '').toLowerCase(); return low.replace(/[^\p{L}\p{N}]+/gu, '') || low.trim(); };
   return !!a && !!b && name(a) === name(b);
 }
+
+// ---- The owner's marks, in pen: what a well-used booklet collects -----------------------------------------------
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const DAY_MS = 86400000;
+function ago(then, now) {
+  const start = (t) => new Date(t).setHours(0, 0, 0, 0);
+  const days = Math.round((start(now) - start(then)) / DAY_MS);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days} days ago`;
+  if (days < 365) { const m = Math.floor(days / 30); return `${m} ${m === 1 ? 'month' : 'months'} ago`; }
+  const y = Math.floor(days / 365);
+  return `${y} ${y === 1 ? 'year' : 'years'} ago`;
+}
+
+/**
+ * An album's songs' plays, and when each was first and last played (ms, or null) → the owner's pen marks: tally marks
+ * beside each song ({ fives, ones }, or { times: '×47' } past twenty; null for none), the favourite (the most played,
+ * three plays or more; -1 for none) to circle, and notes for the back cover ('1st spin: 12 Mar 2024', 'last: today').
+ */
+export function ownerMarks({ plays, first, last, now = Date.now() }) {
+  const tallies = plays.map((n) => (!n ? null : n > 20 ? { times: `×${n}` } : { fives: Math.floor(n / 5), ones: n % 5 }));
+  let favorite = -1;
+  plays.forEach((n, i) => { if (n >= 3 && (favorite < 0 || n > plays[favorite])) favorite = i; });
+  const known = (list) => list.filter(Boolean);
+  const notes = [];
+  if (known(first).length) { const d = new Date(Math.min(...known(first))); notes.push(`1st spin: ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`); }
+  if (known(last).length) notes.push(`last: ${ago(Math.max(...known(last)), now)}`);
+  return { tallies, favorite, notes };
+}

@@ -202,18 +202,30 @@ handle('meta:details', (p, opts) => metadata.getDetails(p, opts));
 // Play counts, kept in memory and written a moment after the last change.
 let playCounts = null, playsTimer = null;
 const plays = () => (playCounts = playCounts || store.readPlayCounts());
-let lastPlayed = null;
+let lastPlayed = null, firstPlayed = null;
 const playedAt = () => (lastPlayed = lastPlayed || store.readLastPlayed());
-function writePlays() { playsTimer = null; store.writePlayCounts(playCounts); if (lastPlayed) store.writeLastPlayed(lastPlayed); }
+const firstPlayedAt = () => (firstPlayed = firstPlayed || store.readFirstPlayed());
+function writePlays() {
+  playsTimer = null;
+  store.writePlayCounts(playCounts);
+  if (lastPlayed) store.writeLastPlayed(lastPlayed);
+  if (firstPlayed) store.writeFirstPlayed(firstPlayed);
+}
 handle('plays:add', (p) => {
   const counts = plays(), n = (counts.get(p) || 0) + 1;
   counts.delete(p); counts.set(p, n); // most recently played last, so the oldest drop off first
-  const times = playedAt();
+  const times = playedAt(), firsts = firstPlayedAt();
   times.delete(p); times.set(p, Date.now());
+  if (!firsts.has(p)) firsts.set(p, Date.now());
   clearTimeout(playsTimer); playsTimer = setTimeout(writePlays, 1000);
   return n;
 });
 handle('plays:count', (p) => plays().get(p) || 0);
+// When each of `paths` was first and last played (ms, or null), for the booklet's pen marks.
+handle('plays:times', (paths) => {
+  const list = Array.isArray(paths) ? paths : [], first = firstPlayedAt(), last = playedAt();
+  return { first: list.map((p) => first.get(p) || null), last: list.map((p) => last.get(p) || null) };
+});
 // Plays of the whole album a track is on (as the shelf groups it), or of the track alone when it isn't on the shelf,
 // and what names that disc (its shelf album, or the track) — the same for every song on it.
 handle('plays:album', (p) => {

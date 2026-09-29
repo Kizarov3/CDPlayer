@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { albumCredits, albumSummary, albumSmallPrint, sameAlbum } from '../src/renderer/js/booklet-content.js';
+import { albumCredits, albumSummary, albumSmallPrint, sameAlbum, ownerMarks } from '../src/renderer/js/booklet-content.js';
 
 const song = (credits, extra = {}) => ({ title: 'x', artist: 'Limp Bizkit', duration: 200, quality: 'AAC · 256 KBPS', credits, ...extra });
 
@@ -48,4 +48,34 @@ test('the same album whatever its punctuation or capitals, as on the shelf', () 
   assert.ok(sameAlbum('OK Computer', 'ok computer'));
   assert.ok(!sameAlbum('OK Computer', 'OK Computer OKNOTOK 1997 2017'));
   assert.ok(!sameAlbum('Kid A', null));
+});
+
+const DAY = 86400000, NOW = new Date(2026, 8, 29, 18, 0).getTime();
+
+test('tally marks in the margin: bundles of five, then just ×N past twenty', () => {
+  const m = (n) => ownerMarks({ plays: [n], first: [null], last: [null], now: NOW }).tallies[0];
+  assert.strictEqual(m(0), null);
+  assert.deepStrictEqual(m(1), { fives: 0, ones: 1 });
+  assert.deepStrictEqual(m(5), { fives: 1, ones: 0 });
+  assert.deepStrictEqual(m(20), { fives: 4, ones: 0 });
+  assert.deepStrictEqual(m(47), { times: '×47' });
+});
+
+test('the favourite: the most played song, three plays or more, the first of a tie', () => {
+  const fav = (plays) => ownerMarks({ plays, first: plays.map(() => null), last: plays.map(() => null), now: NOW }).favorite;
+  assert.strictEqual(fav([1, 2, 2]), -1);
+  assert.strictEqual(fav([3, 9, 4]), 1);
+  assert.strictEqual(fav([5, 2, 5]), 0);
+  assert.strictEqual(fav([]), -1);
+});
+
+test('the first spin and the last, in words', () => {
+  const notes = (first, last) => ownerMarks({ plays: first.map(() => 1), first, last, now: NOW }).notes;
+  const march = new Date(2024, 2, 12, 20, 0).getTime();
+  assert.deepStrictEqual(notes([march, march + 5 * DAY], [NOW - 2 * 3600000, NOW - 3 * DAY]), ['1st spin: 12 Mar 2024', 'last: today']);
+  assert.deepStrictEqual(notes([null], [NOW - 30 * 3600000]), ['last: yesterday']);
+  assert.deepStrictEqual(notes([null], [NOW - 3 * DAY]), ['last: 3 days ago']);
+  assert.deepStrictEqual(notes([null], [NOW - 70 * DAY]), ['last: 2 months ago']);
+  assert.deepStrictEqual(notes([null], [NOW - 800 * DAY]), ['last: 2 years ago']);
+  assert.deepStrictEqual(notes([null], [null]), []);
 });

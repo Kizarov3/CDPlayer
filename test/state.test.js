@@ -176,3 +176,9 @@ test('wrap.txt: since when new albums come shrink-wrapped, and the ones unwrappe
   store.writeWrap({ since: 700, torn: new Set([id]) });
   assert.deepStrictEqual(store.readWrap(), { since: 700, torn: new Set([id]) });
 });
+
+test('firstplayed.txt: when each track was first played, kept like lastplayed.txt', () => {
+  store.writeFirstPlayed(new Map([['/m/a.mp3', 1000], ['/m/b.flac', 2000]]));
+  assert.strictEqual(fs.readFileSync(path.join(home, 'firstplayed.txt'), 'utf8'), '1000\t/m/a.mp3\n2000\t/m/b.flac\n');
+  assert.deepStrictEqual([...store.readFirstPlayed()], [['/m/a.mp3', 1000], ['/m/b.flac', 2000]]);
+});

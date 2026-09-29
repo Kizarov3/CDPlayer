@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('cdp', {
   details: invoke('meta:details'),
   addPlay: invoke('plays:add'),
   playCount: invoke('plays:count'),
+  playTimes: invoke('plays:times'),
   albumPlays: invoke('plays:album'),
   wipeAlbum: invoke('dust:wipe'),
   setNote: invoke('notes:set'),

@@ -61,7 +61,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - Albums come from the tags (album artist and album, so a set split into `CD1`/`CD2` folders is one album), or the folder for untagged music; covers from a `cover.jpg`/`folder.jpg` beside the files or the art inside them
 - Click a spine and the case slides out and turns to its front: the cover and tracklist, **PLAY** (the tray comes out, the disc goes in, the tray closes and it plays — or click a track to start there) and **ADD TO QUEUE**
 - Or pick a spine up and carry it off the shelf: the shelf fades so the player shows through — drop it on the disc to play it, or on the queue to add it
-- Click the case's cover and the album's **booklet** lifts out: its whole tracklist, every song's lyrics (found online as you read), the credits and the back cover
+- Click the case's cover and the album's **booklet** lifts out: its whole tracklist, every song's lyrics (found online as you read), the credits and the back cover — marked in pen as you play it: tally marks beside each song, your favourite circled, and on the back cover when you first spun it and when you last did
 - An album with no art of its own (a Music.app library keeps its artwork to itself) gets its cover found online; album names that differ only in punctuation are one album
 - What's on the shelf is remembered, so only new or changed files are read the next time
 - **SORT** stands it by artist, newest in your music folder, most played or year, with cardboard divider cards between the letters, months or decades, like a record shop's

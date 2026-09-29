@@ -728,6 +728,24 @@ body.cd-view #cd-info { display: block !important; }
 .booklet .track .name { flex: 1 1 auto; min-width: 0; font-weight: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .booklet .track .time { flex: none; font-size: .82em; color: var(--b-muted); font-weight: normal; }
 .booklet .track.current .name, .booklet .track.current .no { color: var(--b-accent2); font-weight: bold; }
+/* The owner's pen marks (booklet-content.js ownerMarks): tallies of plays beside each song, the favourite circled
+   with a star in the margin, and a note on the back cover — in light ballpoint ink, readable on any print. */
+.booklet { --ink: rgba(150, 192, 255, .92); }
+.booklet .pen { font-family: "Bradley Hand", "Segoe Print", "Marker Felt", "Comic Sans MS", cursive; color: var(--ink); font-weight: normal; }
+.booklet .tally { display: inline-block; margin-left: .7em; font-size: .95em; letter-spacing: .06em; }
+.booklet .tally .five { position: relative; margin-right: .35em; }
+.booklet .tally .five::after { content: ""; position: absolute; left: -.15em; right: -.15em; top: 50%; border-top: 1.5px solid var(--ink); transform: rotate(-22deg); }
+.booklet .track.favorite { position: relative; }
+.booklet .track.favorite .name { padding: .3em 0 .3em .5em; margin: -.3em 0 -.3em -.5em; } /* room for the circle */
+.booklet .track.favorite .title { position: relative; padding: 0 .4em; margin-left: -.4em; }
+.booklet .track.favorite .title::after {
+  content: ""; position: absolute; inset: -.1em 0; border: 1.5px solid var(--ink); border-radius: 50%; transform: rotate(-3deg); pointer-events: none;
+}
+.booklet .track.favorite::before { content: "✱"; position: absolute; left: -1.3em; color: var(--ink); font-size: 1.1em; }
+.booklet .pen-notes {
+  position: absolute; right: 8%; bottom: 14%; transform: rotate(-6deg); text-align: right; line-height: 1.35;
+  font: 1.15em "Bradley Hand", "Segoe Print", "Marker Felt", "Comic Sans MS", cursive; color: var(--ink);
+}
 .booklet .lyric { font-size: 1.05em; font-weight: normal; line-height: 1.5; color: var(--b-ink); transition: color 200ms; }
 .booklet .lyric.gap { height: .7em; }
 .booklet .lyric.now { color: var(--b-accent2); font-weight: bold; }

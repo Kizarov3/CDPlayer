@@ -8,7 +8,7 @@ import { el, anim } from './widgets.js';
 import { deriveAutoTheme, rgb } from './theme.js';
 import { parseLrc, formatLyricsForDisplay, currentLineIndex } from './lyrics.js';
 import { paginate, leavesFor, ean13 } from './booklet-layout.js';
-import { albumCredits, albumSummary, albumSmallPrint, sameAlbum } from './booklet-content.js';
+import { albumCredits, albumSummary, albumSmallPrint, sameAlbum, ownerMarks } from './booklet-content.js';
 
 const LIFT_MS = 420, TURN_MS = 650;
 const layer = () => document.getElementById('overlays');
@@ -261,6 +261,8 @@ async function songContent(app) {
 export async function albumBooklet(app, album, cover, { play, onClose = () => {} }) {
   const details = await Promise.all(album.tracks.map((t) => app.cdp.details(t.path, { withCover: false }).catch(() => null)));
   const plays = await Promise.all(album.tracks.map((t) => app.cdp.playCount(t.path).catch(() => 0)));
+  const times = await app.cdp.playTimes(album.tracks.map((t) => t.path)).catch(() => ({ first: [], last: [] }));
+  const marks = ownerMarks({ plays, first: album.tracks.map((t, i) => times.first[i] || null), last: album.tracks.map((t, i) => times.last[i] || null) });
   const small = albumSmallPrint(details);
   const playing = () => album.tracks.findIndex((t) => t.path === app.state.loadedPath);
   const found = album.tracks.map((t, i) => (details[i] && details[i].lyrics) || null);
@@ -270,13 +272,14 @@ export async function albumBooklet(app, album, cover, { play, onClose = () => {}
       title: album.title, sub: [album.artist, album.year].filter(Boolean).join(' · '),
       rows: album.tracks.map((t, i) => ({
         name: t.title, time: t.duration ? app.formatTime(t.duration) : '', current: i === playing(), tip: `Play ${t.title}`, play: () => play(i),
+        tally: marks.tallies[i], favorite: i === marks.favorite,
       })),
     },
     lyrics: [],
     credits: { sub: album.title, none: 'No credits in these files’ tags.', rows: albumCredits(details), summaryTitle: 'THIS ALBUM', summary: albumSummary({ details, plays, discs: album.discs }) },
     back: {
       title: album.title, artist: album.artist, names: album.tracks.map((t) => t.title), count: album.tracks.length,
-      total: album.tracks.reduce((s, t) => s + (t.duration || 0), 0), ...small,
+      total: album.tracks.reduce((s, t) => s + (t.duration || 0), 0), ...small, notes: marks.notes,
     },
     // The playing song's lines are highlighted as they're sung — with the lyrics the player has for it.
     liveLyrics: () => { const i = playing(); return i >= 0 ? app.state.lyrics || found[i] : null; },
@@ -333,9 +336,9 @@ function insidePages(content, spread, size) {
   // Tracklist.
   const { tracks } = content;
   pages.push(...layout('tracks', (n) => heading(n ? `${tracks.title} (cont.)` : tracks.title, n ? null : tracks.sub), tracks.rows.map((t, k) => () => {
-    const row = el('div', { class: `track${t.current ? ' current' : ''}`, 'data-play': k, title: t.tip },
+    const row = el('div', { class: `track${t.current ? ' current' : ''}${t.favorite ? ' favorite' : ''}`, 'data-play': k, title: t.tip },
       el('span', { class: 'no' }, String(k + 1).padStart(2, '0')),
-      el('span', { class: 'name' }, t.name),
+      el('span', { class: 'name' }, el('span', { class: 'title' }, t.name), t.tally ? tallyMarks(t.tally, k) : null),
       el('span', { class: 'time' }, t.time));
     row.addEventListener('click', (e) => { e.stopPropagation(); t.play(); });
     return row;
@@ -365,6 +368,14 @@ function insidePages(content, spread, size) {
   return pages;
 }
 
+// Tally marks in pen beside a song: bundles of four strokes crossed by a fifth, then the odd ones — or "×47".
+function tallyMarks(tally, k) {
+  const pen = el('span', { class: 'pen tally', style: `transform: rotate(${((k * 37) % 7) - 3}deg)` });
+  if (tally.times) { pen.textContent = tally.times; return pen; }
+  for (let i = 0; i < tally.fives; i++) pen.append(el('span', { class: 'five' }, '||||'));
+  if (tally.ones) pen.append(el('span', {}, '|'.repeat(tally.ones)));
+  return pen;
+}
 function backCover(content) {
   const b = content.back;
   const code = ean13(b.barcode);
@@ -377,7 +388,8 @@ function backCover(content) {
       b.copyright ? el('div', {}, /[©℗]/.test(b.copyright) ? b.copyright : `℗ © ${b.copyright}`) : null,
       b.label || b.catalog ? el('div', {}, [b.label, b.catalog].filter(Boolean).join(' · ')) : null,
       code ? barcode(code) : null,
-      el('div', { class: 'made-with' }, 'PLAYED ON CDPLAYER')));
+      el('div', { class: 'made-with' }, 'PLAYED ON CDPLAYER')),
+    b.notes && b.notes.length ? el('div', { class: 'pen-notes' }, b.notes.map((n) => el('div', {}, n))) : null);
   page.dataset.key = 'back';
   return page;
 }

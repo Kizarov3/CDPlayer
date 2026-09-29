@@ -30,7 +30,7 @@ const file = (name) => path.join(dataDir(), name);
 const FILES = {
   queue: 'queue.txt', onboarded: 'onboarded', lastVersion: 'lastversion.txt', lastPath: 'lastpath.txt',
   settings: 'settings.txt', eqPresets: 'eq-presets.txt', history: 'history.txt', spotify: 'spotify.txt',
-  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt',
+  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt', firstPlayed: 'firstplayed.txt',
 };
 
 function readText(name) {
@@ -143,18 +143,23 @@ function writePlayCounts(counts) {
 }
 
 // lastplayed.txt — "ms<TAB>path" per line: when each track was last played (for dust on the shelf). CDPlayer 2 only.
-function readLastPlayed() {
+function readTimes(file) {
   const times = new Map();
-  for (const line of lines(readText(FILES.lastPlayed))) {
+  for (const line of lines(readText(file))) {
     const tab = line.indexOf('\t'), t = Number(line.slice(0, tab)), p = line.slice(tab + 1).trim();
     if (tab > 0 && t > 0 && p) times.set(p, t);
   }
   return times;
 }
-function writeLastPlayed(times) {
+function writeTimes(file, times) {
   const entries = [...times].filter(([p]) => safePath(p)).slice(-PLAYS_LIMIT); // the most recently played are last
-  return writeText(FILES.lastPlayed, entries.map(([p, t]) => `${t}\t${p}`).join('\n') + (entries.length ? '\n' : ''));
+  return writeText(file, entries.map(([p, t]) => `${t}\t${p}`).join('\n') + (entries.length ? '\n' : ''));
 }
+const readLastPlayed = () => readTimes(FILES.lastPlayed);
+const writeLastPlayed = (times) => writeTimes(FILES.lastPlayed, times);
+// firstplayed.txt — the same, for when each track was first played (for the booklet's "1st spin"). CDPlayer 2 only.
+const readFirstPlayed = () => readTimes(FILES.firstPlayed);
+const writeFirstPlayed = (times) => writeTimes(FILES.firstPlayed, times);
 
 // dust.txt — "since <ms>": when dust started gathering on the shelf (so an update doesn't find it all dusty at once),
 // then "ms<TAB>album id" (JSON: an id has line breaks in it) for each album wiped clean. CDPlayer 2 only.
@@ -256,6 +261,6 @@ const writeLastVersion = (v) => writeText(FILES.lastVersion, v);
 module.exports = {
   dataDir, file, FILES, readText, writeText, isFile, isDir,
   readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, writeQueue, readHistory, writeHistory, HISTORY_LIMIT,
-  readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readDust, writeDust, readNotes, writeNotes, readHiddenMissing, writeHiddenMissing, readWrap, writeWrap,
+  readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readFirstPlayed, writeFirstPlayed, readDust, writeDust, readNotes, writeNotes, readHiddenMissing, writeHiddenMissing, readWrap, writeWrap,
   readEqPresets, writeEqPresets, readLastPath, writeLastPath, isOnboarded, markOnboarded, readLastVersion, writeLastVersion,
 };
