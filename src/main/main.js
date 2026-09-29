@@ -380,6 +380,9 @@ handle('notes:set', (id, text) => {
 });
 handle('dust:wipe', (id) => { const d = dust(), t = Date.now(); d.wiped.set(id, t); store.writeDust(d); return t; });
 handle('shelf:cover', (firstTrack) => shelf.albumCover(firstTrack));
+// The colours the shelf worked out from covers (spines, and SORT: COLOR), kept between launches.
+handle('shelf:colors', () => store.readShelfColors());
+handle('shelf:saveColors', (colors) => { if (colors && typeof colors === 'object') store.writeShelfColors(colors); });
 handle('shelf:coverFull', (firstTrack) => shelf.albumCoverFull(firstTrack));
 handle('dialog:pickMusicFolder', async () => {
   const r = await dialog.showOpenDialog(win, { title: 'Your Music Folder', defaultPath: dialogDefaultPath(), properties: ['openDirectory'] });

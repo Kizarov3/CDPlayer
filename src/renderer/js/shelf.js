@@ -10,7 +10,8 @@
 import { el, pill, anim } from './widgets.js';
 import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './booklet.js';
 import { stickersFor } from './shelf-stickers.js';
-import { arrange, SORTS, matchesFilter } from './shelf-order.js';
+import { arrange, SORTS, matchesFilter, dominantColor } from './shelf-order.js';
+import { hash } from './disc-wear.js';
 import { stickyNote, noteLook } from './shelf-notes.js';
 import { receiptFor } from './shelf-receipt.js';
 import { withMissing, boxLabel, sameName, boxesFor, renderGate, groupOf, pickEdition, fullTracklist } from './shelf-missing.js';
@@ -18,7 +19,7 @@ import { dustLevel, pickOne, Wiper } from './shelf-dust.js';
 
 const $ = (id) => document.getElementById(id);
 const shelf = { open: false, albums: [], loading: false, covers: new Map(), colors: new Map(), observer: null, caseOpen: null, app: null, generation: 0, inPlayer: null,
-  discogs: new Map(), openBoxes: new Set(), hidden: new Set(), boxObserver: null, wantTimer: null, onScreen: new Set() };
+  discogs: new Map(), openBoxes: new Set(), noCover: new Set(), colorCache: {}, hidden: new Set(), boxObserver: null, wantTimer: null, onScreen: new Set() };
 
 export const isShelfOpen = () => shelf.open;
 // Discographies arriving redraw the shelf — once for a burst, and not while a case is out, a spine is carried or one
@@ -28,7 +29,7 @@ const redraw = renderGate({ render: () => { if (shelf.open) render(); }, busy: (
 // The album whose disc is in the player (a track of it loaded, playing or paused) stands a little proud of the others,
 // lit in the theme's colour.
 const IN_PLAYER = 'IN THE PLAYER';
-const SORT_LABELS = { ARTIST: 'ARTIST', NEW: 'NEW', PLAYED: 'MOST PLAYED', YEAR: 'YEAR' };
+const SORT_LABELS = { ARTIST: 'ARTIST', NEW: 'NEW', PLAYED: 'MOST PLAYED', YEAR: 'YEAR', COLOR: 'COLOR' };
 const holds = (a, path) => !!path && a.tracks.some((t) => t.path === path);
 const spineTitle = (a) => [a.artist, a.title, a.year, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ') + (a.note ? `\n\n${a.note}` : '');
 /** The track now in the player (null: none), so its album's spine can show it. */
@@ -105,6 +106,12 @@ async function load() {
   if (generation !== shelf.generation) return;
   shelf.loading = false;
   shelf.albums = result.albums;
+  // Colours worked out before: spines in them at once, and a colour-sorted shelf ready.
+  shelf.colorCache = await shelf.app.cdp.shelfColors().catch(() => ({})) || {};
+  for (const a of shelf.albums) {
+    const c = shelf.colorCache[a.id];
+    if (c) { shelf.colors.set(a.id, c.spine); a.color = c.main; }
+  }
   shelf.hidden = new Set(result.hiddenMissing || []);
   shelf.folderName = result.name || null;
   render();
@@ -130,6 +137,7 @@ function render() {
   }, { root: body, rootMargin: '200px' });
   const now = Date.now(), sort = shelf.app.state.shelfSort;
   $('shelf-sort').textContent = `SORT: ${SORT_LABELS[sort] || sort}`;
+  if (sort === 'COLOR') { if (shelf.fillCount) shelf.fillCount(); fillColors(shown); }
   shelf.shown = shown;
   if (shelf.boxObserver) shelf.boxObserver.disconnect();
   shelf.onScreen.clear();
@@ -193,12 +201,48 @@ async function coverFor(a) {
 }
 async function loadCover(a, spine) {
   const url = await coverFor(a);
-  if (!url || shelf.colors.has(a.id)) { if (shelf.colors.has(a.id)) paintSpine(spine, a); return; }
+  if (url) await colorsFor(a, url);
+  if (shelf.colors.has(a.id)) paintSpine(spine, a);
+}
+// An album's colours from its cover — the spine's (its average) and the one it's filed under by colour (its most
+// common vivid one) — worked out once per cover and kept (shelf-colors.json).
+async function colorsFor(a, url) {
+  const key = hash(url), known = (shelf.colorCache || {})[a.id];
+  if (known && known.key === key) return;
   const img = new Image();
   img.src = url;
   try { await img.decode(); } catch { return; }
-  shelf.colors.set(a.id, averageColor(img));
-  paintSpine(spine, a);
+  const c = document.createElement('canvas');
+  c.width = c.height = 16;
+  c.getContext('2d').drawImage(img, 0, 0, 16, 16);
+  const main = dominantColor(c.getContext('2d').getImageData(0, 0, 16, 16).data), spine = averageColor(img);
+  shelf.colors.set(a.id, spine);
+  a.color = main;
+  shelf.colorCache = { ...(shelf.colorCache || {}), [a.id]: { key, spine, main } };
+  clearTimeout(shelf.colorsTimer);
+  shelf.colorsTimer = setTimeout(() => shelf.app.cdp.saveShelfColors(shelf.colorCache).catch(() => {}), 1000);
+}
+// SORT: COLOR needs every album's colour, not only those whose spines have been on screen: the rest are worked out
+// now, with the count in the header, and the shelf stands in rainbow order once they're all in.
+async function fillColors(shown) {
+  if (shelf.filling) return;
+  const todo = shown.filter((a) => !a.color && !shelf.noCover.has(a.id));
+  if (!todo.length) return;
+  shelf.filling = true;
+  const generation = shelf.generation;
+  let done = 0;
+  const count = () => { $('shelf-count').textContent = `SORTING BY COLOR · ${done} / ${todo.length}`; };
+  shelf.fillCount = count; // a redraw meanwhile shows it again
+  count();
+  for (const a of todo) {
+    if (generation !== shelf.generation || !shelf.open || shelf.app.state.shelfSort !== 'COLOR') break;
+    const url = await coverFor(a);
+    if (url) await colorsFor(a, url); else shelf.noCover.add(a.id);
+    done++; count();
+  }
+  shelf.filling = false;
+  shelf.fillCount = null;
+  if (generation === shelf.generation && shelf.open && shelf.app.state.shelfSort === 'COLOR') redraw.request();
 }
 
 // ---- A spine carried off the shelf, onto the disc or the queue ---------------------------------------------------

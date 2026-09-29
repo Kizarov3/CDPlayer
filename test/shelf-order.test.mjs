@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { arrange, SORTS } from '../src/renderer/js/shelf-order.js';
+import { arrange, SORTS, dominantColor, colorBand } from '../src/renderer/js/shelf-order.js';
 
 const DAY = 86400000;
 const album = (artist, title, extra = {}) => ({ id: `${artist}/${title}`, artist, title, year: null, added: null, plays: 0, ...extra });
 const show = (items) => items.map((x) => (x.divider ? `[${x.divider}]` : x.title));
 
 test('four ways to sort, in the order the button goes round', () => {
-  assert.deepStrictEqual(SORTS, ['ARTIST', 'NEW', 'PLAYED', 'YEAR']);
+  assert.deepStrictEqual(SORTS, ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR']);
 });
 
 test('by artist: the order the shelf already has, a letter card where the letter changes, "The" ignored, digits under #', () => {
@@ -33,4 +33,40 @@ test('year: oldest first, a card for each decade, no year at the end', () => {
   const albums = [album('A', 'Ninety-nine', { year: '1999' }), album('B', 'Undated'), album('C', 'Eighty-two', { year: '1982' }), album('D', 'Ninety', { year: '1990' }), album('E', 'Two thousand', { year: '2000' })];
   assert.deepStrictEqual(show(arrange(albums, 'YEAR')),
     ['[1980s]', 'Eighty-two', '[1990s]', 'Ninety', 'Ninety-nine', '[2000s]', 'Two thousand', '[NO YEAR]', 'Undated']);
+});
+
+// A w×h RGBA image from a list of [r, g, b] pixels.
+const image = (pixels) => Uint8ClampedArray.from(pixels.flatMap(([r, g, b]) => [r, g, b, 255]));
+
+test('the colour an album is filed under: its most common vivid colour, not the muddy average', () => {
+  const cover = image([...Array(40).fill([20, 20, 22]), ...Array(15).fill([220, 30, 30]), ...Array(9).fill([30, 60, 210])]);
+  const [r, g, b] = dominantColor(cover);
+  assert.ok(r > 180 && g < 80 && b < 80, `${r},${g},${b}`);
+  const grey = image(Array(64).fill([128, 128, 130]));
+  assert.deepStrictEqual(dominantColor(grey), [128, 128, 130]);
+});
+
+test('colour bands round the rainbow, and black & white', () => {
+  assert.strictEqual(colorBand([220, 30, 30]).band, 'RED');
+  assert.strictEqual(colorBand([230, 20, 60]).band, 'RED'); // crimson, past 345°
+  assert.strictEqual(colorBand([240, 140, 20]).band, 'ORANGE');
+  assert.strictEqual(colorBand([230, 210, 40]).band, 'YELLOW');
+  assert.strictEqual(colorBand([40, 180, 60]).band, 'GREEN');
+  assert.strictEqual(colorBand([30, 170, 210]).band, 'BLUE');
+  assert.strictEqual(colorBand([30, 60, 210]).band, 'BLUE');
+  assert.strictEqual(colorBand([140, 40, 200]).band, 'PURPLE');
+  assert.strictEqual(colorBand([128, 128, 130]).band, 'B&W');
+  assert.strictEqual(colorBand([10, 12, 30]).band, 'B&W'); // nearly black
+  assert.strictEqual(colorBand(null).band, 'B&W');
+});
+
+test('SORT: COLOR stands the shelf in rainbow order, a card for each colour, black & white last from light to dark', () => {
+  const list = [
+    album('A', 'Blue', { color: [30, 60, 210] }), album('B', 'Black', { color: [15, 15, 15] }),
+    album('C', 'Red', { color: [220, 30, 30] }), album('D', 'White', { color: [240, 240, 240] }),
+    album('E', 'Green', { color: [40, 180, 60] }), album('F', 'Crimson', { color: [230, 20, 60] }),
+    album('G', 'No cover', { color: null }),
+  ];
+  assert.deepStrictEqual(show(arrange(list, 'COLOR')), ['[RED]', 'Crimson', 'Red', '[GREEN]', 'Green', '[BLUE]', 'Blue', '[B&W]', 'White', 'No cover', 'Black']);
+  assert.deepStrictEqual(SORTS, ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR']);
 });

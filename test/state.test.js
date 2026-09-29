@@ -182,3 +182,18 @@ test('firstplayed.txt: when each track was first played, kept like lastplayed.tx
   assert.strictEqual(fs.readFileSync(path.join(home, 'firstplayed.txt'), 'utf8'), '1000\t/m/a.mp3\n2000\t/m/b.flac\n');
   assert.deepStrictEqual([...store.readFirstPlayed()], [['/m/a.mp3', 1000], ['/m/b.flac', 2000]]);
 });
+
+test('the shelf can be sorted by colour, and that is remembered', () => {
+  store.writeSettings({ ...store.DEFAULT_SETTINGS, shelfSort: 'COLOR' });
+  assert.strictEqual(store.readSettings().shelfSort, 'COLOR');
+});
+
+test('shelf-colors.json: each album\'s spine and sorting colours, with the cover they came from', () => {
+  fs.rmSync(path.join(home, 'shelf-colors.json'), { force: true });
+  assert.deepStrictEqual(store.readShelfColors(), {});
+  const colors = { 'korn\nissues\n': { key: 123, spine: [1, 2, 3], main: [200, 30, 30] } };
+  store.writeShelfColors(colors);
+  assert.deepStrictEqual(store.readShelfColors(), colors);
+  fs.writeFileSync(path.join(home, 'shelf-colors.json'), 'not json');
+  assert.deepStrictEqual(store.readShelfColors(), {});
+});

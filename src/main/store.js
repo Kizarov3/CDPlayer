@@ -30,7 +30,7 @@ const file = (name) => path.join(dataDir(), name);
 const FILES = {
   queue: 'queue.txt', onboarded: 'onboarded', lastVersion: 'lastversion.txt', lastPath: 'lastpath.txt',
   settings: 'settings.txt', eqPresets: 'eq-presets.txt', history: 'history.txt', spotify: 'spotify.txt',
-  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt', firstPlayed: 'firstplayed.txt',
+  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt', firstPlayed: 'firstplayed.txt', shelfColors: 'shelf-colors.json',
 };
 
 function readText(name) {
@@ -65,7 +65,7 @@ const DEFAULT_SETTINGS = {
   volume: 100, crossfade: 0, mono: false, animations: true, theme: 'RED', eq: new Array(10).fill(0),
   waveform: true, miniMode: false, bounds: null, ambient: true, discord: true, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true,
 };
-const SHELF_SORTS = ['ARTIST', 'NEW', 'PLAYED', 'YEAR'];
+const SHELF_SORTS = ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR'];
 function readSettings() {
   const l = lines(readText(FILES.settings));
   const s = { ...DEFAULT_SETTINGS, eq: DEFAULT_SETTINGS.eq.slice() };
@@ -222,6 +222,13 @@ function writeWrap({ since, torn }) {
   return writeText(FILES.wrap, [`since ${since || Date.now()}`, ...[...torn].map((id) => JSON.stringify(id))].join('\n') + '\n');
 }
 
+// shelf-colors.json — each album's colours as the shelf worked them out from its cover: { [album id]: { key (of the
+// cover they came from), spine: [r, g, b], main: [r, g, b] } }, so a colour-sorted shelf stands at once. CDPlayer 2 only.
+function readShelfColors() {
+  try { const c = JSON.parse(readText(FILES.shelfColors) || ''); return c && c.version === 1 && c.colors ? c.colors : {}; } catch { return {}; }
+}
+const writeShelfColors = (colors) => writeText(FILES.shelfColors, JSON.stringify({ version: 1, colors }));
+
 const HISTORY_LIMIT = 50;
 function readHistory() {
   return lines(readText(FILES.history)).map((p) => p.trim()).filter((p) => p && entryExists(p)).slice(0, HISTORY_LIMIT);
@@ -261,6 +268,6 @@ const writeLastVersion = (v) => writeText(FILES.lastVersion, v);
 module.exports = {
   dataDir, file, FILES, readText, writeText, isFile, isDir,
   readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, writeQueue, readHistory, writeHistory, HISTORY_LIMIT,
-  readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readFirstPlayed, writeFirstPlayed, readDust, writeDust, readNotes, writeNotes, readHiddenMissing, writeHiddenMissing, readWrap, writeWrap,
+  readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readFirstPlayed, writeFirstPlayed, readDust, writeDust, readNotes, writeNotes, readHiddenMissing, writeHiddenMissing, readWrap, writeWrap, readShelfColors, writeShelfColors,
   readEqPresets, writeEqPresets, readLastPath, writeLastPath, isOnboarded, markOnboarded, readLastVersion, writeLastVersion,
 };
