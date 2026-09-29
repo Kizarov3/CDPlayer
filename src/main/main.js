@@ -325,8 +325,18 @@ handle('shelf:albums', async () => {
   for (const a of result.albums) a.touched = shelf.touchedAt(a, touch);
   const notes = store.readNotes();
   for (const a of result.albums) a.note = notes.get(a.id) || null;
+  result.hiddenMissing = [...store.readHiddenMissing()];
   return result;
 });
+// Missing albums (discography.js): each artist's official releases from MusicBrainz, for the artists on screen.
+const discography = require('./discography').createDiscography({
+  mbFetch: (q) => require('./online').mbFetch(q),
+  onAnswer: (answer) => { if (win) win.webContents.send('discography', answer); },
+});
+handle('discography:want', (artists) => discography.want(Array.isArray(artists) ? artists.slice(0, 200) : []));
+handle('discography:tracklist', (groupId) => discography.tracklist(groupId));
+handle('discography:hide', (groupId) => { const hidden = store.readHiddenMissing(); hidden.add(String(groupId)); store.writeHiddenMissing(hidden); });
+handle('discography:open', (groupId) => { if (/^[0-9a-f-]{36}$/.test(groupId)) shell.openExternal(`https://musicbrainz.org/release-group/${groupId}`); });
 // Dust on the shelf: gathering since the first time the shelf was read with it, wiped album by album.
 let dustState = null;
 function dust() {

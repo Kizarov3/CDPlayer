@@ -11,10 +11,12 @@ import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './bookle
 import { stickersFor } from './shelf-stickers.js';
 import { arrange, SORTS, matchesFilter } from './shelf-order.js';
 import { stickyNote, noteLook } from './shelf-notes.js';
+import { artistsWanting, missingFor, withMissing, boxLabel, typeLabel, isSlim, sameName } from './shelf-missing.js';
 import { dustLevel, pickOne, Wiper } from './shelf-dust.js';
 
 const $ = (id) => document.getElementById(id);
-const shelf = { open: false, albums: [], loading: false, covers: new Map(), colors: new Map(), observer: null, caseOpen: null, app: null, generation: 0, inPlayer: null };
+const shelf = { open: false, albums: [], loading: false, covers: new Map(), colors: new Map(), observer: null, caseOpen: null, app: null, generation: 0, inPlayer: null,
+  discogs: new Map(), openBoxes: new Set(), hidden: new Set(), boxObserver: null, wantTimer: null, onScreen: new Set() };
 
 export const isShelfOpen = () => shelf.open;
 
@@ -28,6 +30,7 @@ const spineTitle = (a) => [a.artist, a.title, a.year, holds(a, shelf.inPlayer) ?
 export function showInPlayer(path) {
   shelf.inPlayer = path || null;
   for (const spine of document.querySelectorAll('#shelf-body .spine')) {
+    if (!spine.album) continue; // a missing album's place
     spine.classList.toggle('in-player', holds(spine.album, shelf.inPlayer));
     spine.title = spineTitle(spine.album);
   }
@@ -49,6 +52,7 @@ export function closeShelf() {
   closeBooklet(); // an album's booklet, open over its case
   closeCase(true);
   shelf.open = false;
+  shelf.openBoxes.clear();
   const root = $('shelf');
   if (anim.enabled) root.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140 }).onfinish = () => { if (!shelf.open) root.hidden = true; };
   else root.hidden = true;
@@ -73,6 +77,10 @@ export function setupShelf(app) {
     render();
     $('shelf-body').scrollTop = 0;
   });
+  app.cdp.onDiscography(({ key, state, groups }) => {
+    shelf.discogs.set(key, { state, groups });
+    if (shelf.open && shelf.app.state.shelfSort === 'ARTIST') render();
+  });
   app.cdp.onShelfProgress(({ done, total }) => { if (shelf.loading) $('shelf-count').textContent = `READING YOUR MUSIC · ${done} / ${total}`; });
 }
 
@@ -91,6 +99,7 @@ async function load() {
   if (generation !== shelf.generation) return;
   shelf.loading = false;
   shelf.albums = result.albums;
+  shelf.hidden = new Set(result.hiddenMissing || []);
   shelf.folderName = result.name || null;
   render();
 }
@@ -116,7 +125,12 @@ function render() {
   const now = Date.now(), sort = shelf.app.state.shelfSort;
   $('shelf-sort').textContent = `SORT: ${SORT_LABELS[sort] || sort}`;
   shelf.shown = shown;
-  const items = arrange(shown, sort).map((a) => {
+  if (shelf.boxObserver) shelf.boxObserver.disconnect();
+  shelf.onScreen.clear();
+  const boxes = sort === 'ARTIST' ? missingBoxes(shown, query) : new Map();
+  const items = withMissing(arrange(shown, sort), boxes).map((a) => {
+    if (a.box) return boxCard(a.box);
+    if (a.ghost) return ghostSpine(a.ghost, a.artist);
     if (a.divider) return el('div', { class: `shelf-divider${[...a.divider].length <= 2 ? ' short' : ''}`, 'aria-hidden': 'true' }, el('span', {}, a.divider));
     const st = a.stickers = stickersFor(a, now);
     const spine = el('button', { class: `spine${a.discs > 1 ? ' double' : ''}${st.obi ? ' obi' : ''}${st.isNew ? ' new' : ''}${holds(a, shelf.inPlayer) ? ' in-player' : ''}`, title: spineTitle(a), onClick: () => { if (!shelf.dragged) openCase(a, spine); } },
@@ -256,6 +270,58 @@ function putDown(drag, target, next = false) {
   if (!anim.enabled) { back(); return; }
   ghost.animate([{ transform: ghost.style.transform }, { transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.3,.7,.3,1)' }).onfinish = back;
 }
+
+// ---- Missing albums (shelf-missing.js) -------------------------------------------------------------------------
+
+// The boxes for the artists shown: their discography when it's known, or waiting for it.
+function missingBoxes(shown, query) {
+  const boxes = new Map();
+  const wanting = artistsWanting(shelf.albums);
+  const showing = new Set(shown.map((a) => sameName(a.artist)));
+  for (const [key, w] of wanting) {
+    if (!showing.has(key)) continue;
+    const d = shelf.discogs.get(key);
+    if (d && d.state === 'unknown') continue;
+    const missing = d ? missingFor(d.groups, w.owned, shelf.hidden).filter((g) => matchesFilter({ artist: w.artist, title: g.title, year: g.year }, query)) : [];
+    boxes.set(key, { key, artist: w.artist, mbid: w.mbid, state: d ? 'found' : 'loading', missing, open: shelf.openBoxes.has(key) });
+  }
+  return boxes;
+}
+function boxCard(box) {
+  const card = el('button', { class: `missing-box${box.state === 'found' && !box.missing.length ? ' complete' : ''}${box.open ? ' open' : ''}`,
+    title: box.state !== 'found' ? `Looking up ${box.artist} on MusicBrainz…` : box.missing.length ? `${box.artist}: releases you don't have — click to ${box.open ? 'close' : 'show them'}` : `You have everything ${box.artist} has released`,
+    onClick: () => {
+      if (box.state !== 'found' || !box.missing.length) return;
+      if (shelf.openBoxes.has(box.key)) shelf.openBoxes.delete(box.key); else shelf.openBoxes.add(box.key);
+      render();
+    } }, el('span', {}, boxLabel(box)));
+  card.box = box;
+  if (box.state === 'loading') watchBox(card);
+  return card;
+}
+// A box that's waiting: once it's on screen, MusicBrainz is asked about its artist (a moment after scrolling stops).
+function watchBox(card) {
+  if (!shelf.boxObserver) {
+    shelf.boxObserver = new IntersectionObserver((entries) => {
+      for (const e of entries) { if (e.isIntersecting) shelf.onScreen.add(e.target.box); else shelf.onScreen.delete(e.target.box); }
+      clearTimeout(shelf.wantTimer);
+      shelf.wantTimer = setTimeout(() => {
+        shelf.app.cdp.wantDiscography([...shelf.onScreen].map((b) => ({ artist: b.artist, mbid: b.mbid }))).catch(() => {});
+      }, 250);
+    }, { root: $('shelf-body'), rootMargin: '200px' });
+  }
+  shelf.boxObserver.observe(card);
+}
+function ghostSpine(group, artist) {
+  const type = typeLabel(group);
+  const spine = el('button', { class: `spine ghost${isSlim(group) ? ' slim' : ''}`, title: [artist, group.title, group.year, type].filter(Boolean).join(' · '),
+    onClick: () => openGhostCase(group, artist, spine) },
+    el('span', { class: 'spine-text' }, group.title, group.year ? ` · ${group.year}` : ''),
+    type ? el('span', { class: 'ghost-type' }, type) : null);
+  spine.ghost = group;
+  return spine;
+}
+function openGhostCase() {}
 
 // The corner of an album's sticky note, showing above its spine.
 function showNoteTab(spine) {
