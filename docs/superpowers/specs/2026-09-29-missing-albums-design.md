@@ -9,6 +9,10 @@ studio albums you don't have: **+5 MISSING**. Click it and their missing release
 places, oldest first. Click one and a ghost case comes out, with its cover and tracklist, to play it on Spotify, look
 it up on MusicBrainz, or say you're not interested and never see it again.
 
+Second revision: a box for **every** album artist (one album is enough, not Various Artists); and a real case's tracklist
+comes from MusicBrainz — of up to five official editions, the one with most of your songs (then the shortest) — with the
+songs you don't have in grey, in their place.
+
 Revision (after trying it): **studio albums only** — MusicBrainz primary type Album with no secondary type; live
 records, compilations, soundtracks, remixes, EPs and singles are left out, so there are no type labels or slim single
 cases. The request asks for `type=album` (fewer pages); the shelf keeps only those with no secondary type.

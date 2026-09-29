@@ -11,7 +11,7 @@ import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './bookle
 import { stickersFor } from './shelf-stickers.js';
 import { arrange, SORTS, matchesFilter } from './shelf-order.js';
 import { stickyNote, noteLook } from './shelf-notes.js';
-import { withMissing, boxLabel, sameName, boxesFor, renderGate } from './shelf-missing.js';
+import { withMissing, boxLabel, sameName, boxesFor, renderGate, groupOf, pickEdition, fullTracklist } from './shelf-missing.js';
 import { dustLevel, pickOne, Wiper } from './shelf-dust.js';
 
 const $ = (id) => document.getElementById(id);
@@ -322,8 +322,8 @@ async function openGhostCase(group, artist, spine) {
     blank.replaceWith(el('img', { class: 'case-cover', src, alt: '' }));
   }).catch(() => {});
   const tracks = el('div', { class: 'case-tracks scroll' }, el('div', { class: 'case-track' }, el('span', { class: 'name' }, '…')));
-  app.cdp.missingTracklist(group.id).then((list) => {
-    tracks.replaceChildren(...list.map((t, i) => el('div', { class: 'case-track' },
+  app.cdp.missingTracklist(group.id).then((editions) => {
+    tracks.replaceChildren(...(editions[0] || []).map((t, i) => el('div', { class: 'case-track' },
       el('span', { class: 'no' }, String(i + 1).padStart(2, '0')), el('span', { class: 'name' }, t.title),
       el('span', { class: 'time' }, t.length ? app.formatTime(t.length) : ''))));
   }).catch(() => tracks.replaceChildren(el('div', { class: 'case-track' }, el('span', { class: 'name' }, "COULDN'T REACH MUSICBRAINZ"))));
@@ -427,10 +427,26 @@ async function openCase(a, spine) {
   const { app } = shelf;
   const from = spine.getBoundingClientRect();
   const cover = await coverFor(a);
-  const tracks = a.tracks.map((t, i) => el('div', { class: 'case-track', title: `Play from here`, onClick: () => play(a, i) },
-    el('span', { class: 'no' }, String(t.track || i + 1).padStart(2, '0')),
+  const trackRow = (t, i, no = t.track || i + 1) => el('div', { class: 'case-track', title: `Play from here`, onClick: () => play(a, i) },
+    el('span', { class: 'no' }, no ? String(no).padStart(2, '0') : ''),
     el('span', { class: 'name' }, t.title, a.artist === 'Various Artists' && t.artist ? el('span', { class: 'by' }, ` · ${t.artist}`) : null),
-    el('span', { class: 'time' }, t.duration ? app.formatTime(t.duration) : '')));
+    el('span', { class: 'time' }, t.duration ? app.formatTime(t.duration) : ''));
+  const tracks = a.tracks.map((t, i) => trackRow(t, i));
+  const trackList = el('div', { class: 'case-tracks scroll' }, tracks);
+  // The album's whole tracklist from MusicBrainz, once its artist's discography is known: the songs you don't have
+  // stand in their place, in grey.
+  const group = groupOf(a, shelf.discogs);
+  if (group) {
+    app.cdp.missingTracklist(group.id).then((editions) => {
+      const edition = pickEdition(editions, a.tracks.map((t) => t.title));
+      if (!edition || !trackList.isConnected) return;
+      const rows = fullTracklist(edition, a.tracks);
+      if (rows.every((r) => r.have)) return; // nothing missing: as it was
+      trackList.replaceChildren(...rows.map((r) => (r.have ? trackRow(r.have, a.tracks.indexOf(r.have), r.no) : el('div', { class: 'case-track missing', title: 'Not in your collection' },
+        el('span', { class: 'no' }, String(r.no).padStart(2, '0')), el('span', { class: 'name' }, r.title),
+        el('span', { class: 'time' }, r.length ? app.formatTime(r.length) : '')))));
+    }).catch(() => {});
+  }
   const front = cover ? el('img', { class: 'case-cover', src: cover, alt: '' })
     : el('div', { class: 'case-cover cdr' }, el('div', { class: 'marker' }, a.title), a.artist ? el('div', { class: 'marker small' }, a.artist) : null);
   front.title = 'Open the booklet';
@@ -460,7 +476,7 @@ async function openCase(a, spine) {
       el('div', { class: 'case-title' }, a.title),
       el('div', { class: 'case-artist' }, [a.artist, a.year].filter(Boolean).join(' · ')),
       el('div', { class: 'case-meta' }, `${a.tracks.length} ${a.tracks.length === 1 ? 'TRACK' : 'TRACKS'}${a.duration ? ` · ${app.formatTime(a.duration)}` : ''}${a.discs > 1 ? ` · ${a.discs} DISCS` : ''}${holds(a, shelf.inPlayer) ? ` · ${IN_PLAYER}` : ''}`),
-      el('div', { class: 'case-tracks scroll' }, tracks),
+      trackList,
       el('div', { class: 'case-actions' },
         pill('BACK ON THE SHELF', () => closeCase()),
         addNote,

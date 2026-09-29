@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import { createRequire } from 'node:module';
-import { sameName, artistsWanting, missingFor, withMissing, boxLabel, boxesFor, renderGate } from '../src/renderer/js/shelf-missing.js';
+import { sameName, artistsWanting, missingFor, withMissing, boxLabel, boxesFor, renderGate, pickEdition, fullTracklist, groupOf } from '../src/renderer/js/shelf-missing.js';
 
 const require = createRequire(import.meta.url);
 const main = require('../src/main/same-name');
@@ -15,14 +15,14 @@ test('names are compared as the shelf does in main', () => {
   }
 });
 
-test('a box for an album artist with two albums or more, not Various Artists', () => {
+test('a box for every album artist on the shelf, one album is enough, but not Various Artists', () => {
   const wanting = artistsWanting([
     album('Radiohead', 'OK Computer', { artistMbid: 'a74b' }), album('Radiohead', 'Kid A'),
     album('Korn', 'Issues'),
     album('Various Artists', 'Now 1'), album('Various Artists', 'Now 2'),
     album(null, 'Untitled'), album(null, 'Untitled 2'),
   ]);
-  assert.deepStrictEqual([...wanting.keys()], [sameName('Radiohead')]);
+  assert.deepStrictEqual([...wanting.keys()], [sameName('Radiohead'), sameName('Korn')]);
   assert.deepStrictEqual(wanting.get(sameName('Radiohead')), { key: sameName('Radiohead'), artist: 'Radiohead', mbid: 'a74b', owned: ['OK Computer', 'Kid A'] });
 });
 
@@ -91,4 +91,31 @@ test('the shelf is redrawn once for a burst of answers, and not while a case is 
   gate.request();
   timers.shift()();
   assert.strictEqual(renders, 2);
+});
+
+const tr = (title, length = 200) => ({ title, length });
+
+test('the edition to list: the one with the most of your songs on it, then the shortest', () => {
+  const original = [tr('Airbag'), tr('Paranoid Android'), tr('Lucky')];
+  const deluxe = [...original, tr('Polyethylene'), tr('Pearly*')];
+  const other = [tr('Something Else')];
+  assert.strictEqual(pickEdition([deluxe, original, other], ['airbag', 'Lucky!']), original);
+  assert.strictEqual(pickEdition([original, deluxe], ['Airbag', 'Pearly*']), deluxe);
+  assert.strictEqual(pickEdition([], ['Airbag']), null);
+});
+
+test('the full tracklist: yours where they are, the ones you haven\'t in their place, your extras at the end', () => {
+  const edition = [tr('Airbag', 284), tr('Paranoid Android', 383), tr('Lucky', 259)];
+  const owned = [{ path: '/a', title: 'Lucky' }, { path: '/b', title: 'Airbag' }, { path: '/c', title: 'Bonus Demo' }];
+  assert.deepStrictEqual(fullTracklist(edition, owned).map((r) => [r.no, r.title, r.have ? r.have.path : null]), [
+    [1, 'Airbag', '/b'], [2, 'Paranoid Android', null], [3, 'Lucky', '/a'], [null, 'Bonus Demo', '/c'],
+  ]);
+  assert.strictEqual(fullTracklist(edition, owned)[1].length, 383);
+});
+
+test('an album\'s release group, from its artist\'s discography', () => {
+  const discogs = new Map([[sameName('Radiohead'), { state: 'found', groups: [g('ok', 'OK Computer'), g('ka', 'Kid A')] }]]);
+  assert.strictEqual(groupOf(album('Radiohead', 'Ok Computer!'), discogs).id, 'ok');
+  assert.strictEqual(groupOf(album('Radiohead', 'Airbag EP'), discogs), null);
+  assert.strictEqual(groupOf(album('Korn', 'Issues'), discogs), null);
 });

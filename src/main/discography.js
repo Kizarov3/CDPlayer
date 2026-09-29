@@ -79,13 +79,15 @@ function createDiscography({ mbFetch, read = () => store.readText(CACHE_FILE), w
   }
 
   const tracklists = new Map();
-  /** A release group's tracks, from its first official release: [{ title, length (s) }]. Kept for the session. */
+  /**
+   * A release group's editions — up to five of its official releases, each as its tracks [{ title, length (s) }] —
+   * for the shelf to list the one that fits (a ghost case: the first). Kept for the session.
+   */
   function tracklist(groupId) {
     if (!tracklists.has(groupId)) {
-      const asked = mbFetch(`release?release-group=${encodeURIComponent(groupId)}&status=official&inc=recordings&limit=1&fmt=json`).then((json) => {
-        const release = (json.releases || [])[0];
-        return release ? (release.media || []).flatMap((m) => (m.tracks || []).map((t) => ({ title: t.title, length: t.length ? t.length / 1000 : 0 }))) : [];
-      });
+      const asked = mbFetch(`release?release-group=${encodeURIComponent(groupId)}&status=official&inc=recordings&limit=5&fmt=json`).then((json) =>
+        (json.releases || []).map((release) => (release.media || []).flatMap((m) => (m.tracks || []).map((t) => ({ title: t.title, length: t.length ? t.length / 1000 : 0 }))))
+          .filter((tracks) => tracks.length));
       tracklists.set(groupId, asked);
       asked.catch(() => tracklists.delete(groupId));
     }

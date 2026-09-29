@@ -619,6 +619,9 @@ body.cd-view #cd-info { display: block !important; }
 .case-track .no { flex: 0 0 20px; color: rgb(var(--muted)); font-size: 10px; }
 .case-track .name { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .case-track .by { color: rgb(var(--muted)); }
+/* A song of the album you don't have (from MusicBrainz): in its place, greyed, not to be played. */
+.case-track.missing { cursor: default; color: rgb(var(--muted)); opacity: .55; }
+.case-track.missing:hover { background: none; }
 .case-track .time { color: rgb(var(--muted)); font-size: 10px; }
 .case-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; align-items: center; } /* a row, or two when it can't fit */
 

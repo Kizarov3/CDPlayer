@@ -7,7 +7,7 @@ const VARIOUS = 'various artists';
 /** How the shelf compares names ("OK Computer" = "ok computer!") — the same as main/shelf.js's sameName. */
 export const sameName = (s) => { const low = String(s || '').toLowerCase(); return low.replace(/[^\p{L}\p{N}]+/gu, '') || low.trim(); };
 
-/** Shelf albums → the artists who get a box: Map(key → { key, artist, mbid, owned: their album titles }). */
+/** Shelf albums → the artists who get a box (every album artist but Various Artists): Map(key → { key, artist, mbid, owned: their album titles }). */
 export function artistsWanting(albums) {
   const by = new Map();
   for (const a of albums) {
@@ -18,7 +18,6 @@ export function artistsWanting(albums) {
     entry.owned.push(a.title);
     entry.mbid = entry.mbid || a.artistMbid || null;
   }
-  for (const [key, entry] of by) if (entry.owned.length < 2) by.delete(key);
   return by;
 }
 
@@ -83,4 +82,35 @@ export function renderGate({ render, busy, later = (fn) => setTimeout(fn, 200) }
   return { request() { if (!waiting) { waiting = true; later(fire); } } };
 }
 
-export const boxLabel =(box) => (box.state !== 'found' ? '…' : box.missing.length ? `+${box.missing.length} MISSING` : 'COMPLETE ★');
+/** An album on the shelf → its release group in its artist's discography (by title, as the shelf compares names), or null. */
+export function groupOf(album, discogs) {
+  const d = album.artist && discogs.get(sameName(album.artist));
+  return (d && d.groups.find((g) => sameName(g.title) === sameName(album.title))) || null;
+}
+
+/** Of an album's editions (tracklists), the one with the most of `owned` (song titles) on it; on a tie, the shortest. */
+export function pickEdition(editions, owned) {
+  const have = new Set(owned.map(sameName));
+  let best = null, bestHits = -1;
+  for (const tracks of editions) {
+    const hits = tracks.filter((t) => have.has(sameName(t.title))).length;
+    if (hits > bestHits || (hits === bestHits && tracks.length < best.length)) { best = tracks; bestHits = hits; }
+  }
+  return best;
+}
+
+/**
+ * An album's whole tracklist, in the edition's order: [{ no, title, length, have }], `have` being your track (from
+ * `owned`, [{ path, title, … }]) or null for a song you don't have. Your songs the edition hasn't come last, no number.
+ */
+export function fullTracklist(edition, owned) {
+  const left = [...owned];
+  const rows = edition.map((t, i) => {
+    const at = left.findIndex((o) => sameName(o.title) === sameName(t.title));
+    const have = at >= 0 ? left.splice(at, 1)[0] : null;
+    return { no: i + 1, title: t.title, length: t.length, have };
+  });
+  return [...rows, ...left.map((o) => ({ no: null, title: o.title, length: o.duration || 0, have: o }))];
+}
+
+export const boxLabel = (box) => (box.state !== 'found' ? '…' : box.missing.length ? `+${box.missing.length} MISSING` : 'COMPLETE ★');

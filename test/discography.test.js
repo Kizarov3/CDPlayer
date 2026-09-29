@@ -101,12 +101,18 @@ test('the queue: one at a time, answers told; an artist scrolled away before its
   assert.deepStrictEqual(answers.map((a) => a.key), [artistKey('A'), artistKey('D')]);
 });
 
-test('a release group\'s tracklist, from its first official release', async () => {
-  const { d, net } = make([[/^release\?release-group=rg1/, { releases: [{ media: [{ tracks: [{ title: 'Airbag', length: 284400 }] }, { tracks: [{ title: 'Lucky', length: null }] }] }] }]]);
-  assert.deepStrictEqual(await d.tracklist('rg1'), [{ title: 'Airbag', length: 284.4 }, { title: 'Lucky', length: 0 }]);
+test('a release group\'s editions, each a tracklist, from up to five official releases', async () => {
+  const { d, net } = make([[/^release\?release-group=rg1/, { releases: [
+    { media: [{ tracks: [{ title: 'Airbag', length: 284400 }] }, { tracks: [{ title: 'Lucky', length: null }] }] },
+    { media: [{ tracks: [{ title: 'Airbag', length: 284400 }] }] },
+  ] }]]);
+  assert.deepStrictEqual(await d.tracklist('rg1'), [
+    [{ title: 'Airbag', length: 284.4 }, { title: 'Lucky', length: 0 }],
+    [{ title: 'Airbag', length: 284.4 }],
+  ]);
   await d.tracklist('rg1');
   assert.strictEqual(net.asked.length, 1, 'kept for the session');
-  assert.match(net.asked[0], /status=official&inc=recordings/);
+  assert.match(net.asked[0], /status=official&inc=recordings&limit=5/);
 });
 
 test('the search looks at aliases too, so "Kino" finds Кино and not only bands named Kino', async () => {
