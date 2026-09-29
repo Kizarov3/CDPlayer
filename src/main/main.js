@@ -326,6 +326,9 @@ handle('shelf:albums', async () => {
   for (const a of result.albums) a.touched = shelf.touchedAt(a, touch);
   const notes = store.readNotes();
   for (const a of result.albums) a.note = notes.get(a.id) || null;
+  // …and which came in shrink-wrap (new since wrapping began, not played yet, not unwrapped by hand).
+  const w = wrap();
+  for (const a of result.albums) a.wrapped = shelf.isWrapped(a, w);
   result.hiddenMissing = [...store.readHiddenMissing()];
   return result;
 });
@@ -338,6 +341,16 @@ handle('discography:want', (artists) => discography.want(Array.isArray(artists) 
 handle('discography:tracklist', (groupId) => discography.tracklist(groupId));
 handle('discography:hide', (groupId) => { const hidden = store.readHiddenMissing(); hidden.add(String(groupId)); store.writeHiddenMissing(hidden); });
 handle('discography:open', (groupId) => { if (/^[0-9a-f-]{36}$/.test(groupId)) shell.openExternal(`https://musicbrainz.org/release-group/${groupId}`); });
+// Shrink-wrap on new albums: from the first time the shelf was read with it; unwrapped album by album.
+let wrapState = null;
+function wrap() {
+  if (!wrapState) {
+    wrapState = store.readWrap();
+    if (!wrapState.since) { wrapState.since = Date.now(); store.writeWrap(wrapState); }
+  }
+  return wrapState;
+}
+handle('wrap:tear', (id) => { const w = wrap(); if (typeof id === 'string' && !w.torn.has(id)) { w.torn.add(id); store.writeWrap(w); } });
 // Dust on the shelf: gathering since the first time the shelf was read with it, wiped album by album.
 let dustState = null;
 function dust() {

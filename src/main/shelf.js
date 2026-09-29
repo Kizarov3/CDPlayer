@@ -172,6 +172,10 @@ function touchedAt(album, { lastPlayed, wiped, since }) {
   for (const track of album.tracks) t = Math.max(t, lastPlayed.get(track.path) || 0);
   return t || null;
 }
+/** Whether an album comes shrink-wrapped: it turned up after wrapping began, and it hasn't been played or unwrapped. */
+function isWrapped(album, { since, torn }) {
+  return !!since && !!album.added && album.added > since && !album.plays && !torn.has(album.id);
+}
 /** The shelf album `p` is on — { id, paths: its tracks, `p` included } — or null when it isn't on the shelf. */
 function albumOf(p) {
   if (!onShelf) {
@@ -277,4 +281,4 @@ async function albumCoverFull(firstTrack) {
 /** A file's tags changed: its album's cover thumbnail is made again next time. */
 function forget(filePath) { thumbs.delete(filePath); onShelf = null; } // its tags changed: it may be on another album now
 
-module.exports = { scanAlbums, albumOf, albumTracks, touchedAt, readCache, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };
+module.exports = { scanAlbums, albumOf, albumTracks, touchedAt, isWrapped, readCache, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };

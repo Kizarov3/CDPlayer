@@ -30,7 +30,7 @@ const file = (name) => path.join(dataDir(), name);
 const FILES = {
   queue: 'queue.txt', onboarded: 'onboarded', lastVersion: 'lastversion.txt', lastPath: 'lastpath.txt',
   settings: 'settings.txt', eqPresets: 'eq-presets.txt', history: 'history.txt', spotify: 'spotify.txt',
-  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt',
+  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt',
 };
 
 function readText(name) {
@@ -202,6 +202,21 @@ function writeHiddenMissing(ids) {
   return writeText(FILES.hiddenMissing, body.join('\n') + (body.length ? '\n' : ''));
 }
 
+// wrap.txt — "since <ms>": when new albums began coming shrink-wrapped (those on the shelf before are unwrapped), then
+// the IDs (JSON: an ID has line breaks in it) of albums unwrapped by hand before they were played. CDPlayer 2 only.
+function readWrap() {
+  const wrap = { since: null, torn: new Set() };
+  for (const line of lines(readText(FILES.wrap))) {
+    const since = /^since (\d+)$/.exec(line.trim());
+    if (since) { wrap.since = Number(since[1]); continue; }
+    try { const id = JSON.parse(line); if (typeof id === 'string') wrap.torn.add(id); } catch { /* a broken line */ }
+  }
+  return wrap;
+}
+function writeWrap({ since, torn }) {
+  return writeText(FILES.wrap, [`since ${since || Date.now()}`, ...[...torn].map((id) => JSON.stringify(id))].join('\n') + '\n');
+}
+
 const HISTORY_LIMIT = 50;
 function readHistory() {
   return lines(readText(FILES.history)).map((p) => p.trim()).filter((p) => p && entryExists(p)).slice(0, HISTORY_LIMIT);
@@ -241,6 +256,6 @@ const writeLastVersion = (v) => writeText(FILES.lastVersion, v);
 module.exports = {
   dataDir, file, FILES, readText, writeText, isFile, isDir,
   readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, writeQueue, readHistory, writeHistory, HISTORY_LIMIT,
-  readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readDust, writeDust, readNotes, writeNotes, readHiddenMissing, writeHiddenMissing,
+  readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readDust, writeDust, readNotes, writeNotes, readHiddenMissing, writeHiddenMissing, readWrap, writeWrap,
   readEqPresets, writeEqPresets, readLastPath, writeLastPath, isOnboarded, markOnboarded, readLastVersion, writeLastVersion,
 };

@@ -168,3 +168,11 @@ test('missing-hidden.txt: the release groups said NOT INTERESTED to, one per lin
   fs.writeFileSync(path.join(home, 'missing-hidden.txt'), `\n  ${b}  \nrg-3\n\n`);
   assert.deepStrictEqual(store.readHiddenMissing(), new Set([b]));
 });
+
+test('wrap.txt: since when new albums come shrink-wrapped, and the ones unwrapped by hand', () => {
+  fs.rmSync(path.join(home, 'wrap.txt'), { force: true });
+  assert.deepStrictEqual(store.readWrap(), { since: null, torn: new Set() });
+  const id = 'korn\nissues\n';
+  store.writeWrap({ since: 700, torn: new Set([id]) });
+  assert.deepStrictEqual(store.readWrap(), { since: 700, torn: new Set([id]) });
+});

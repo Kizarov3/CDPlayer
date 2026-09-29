@@ -5,7 +5,8 @@
 // and carry it out: the shelf fades so the player shows through, and it goes in on the disc or at the end of the queue
 // (with ⇧ held, to play next). An album left unplayed gathers dust (shelf-dust.js): rub the mouse over its spine to
 // wipe it. PULL ONE takes one off the shelf at random, the dustier the likelier. A case can have a sticky note on it
-// (shelf-notes.js), whose corner shows above its spine.
+// (shelf-notes.js), whose corner shows above its spine. A new album comes in shrink-wrap until it's played or
+// unwrapped by hand, dragging the film off its case.
 import { el, pill, anim } from './widgets.js';
 import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './booklet.js';
 import { stickersFor } from './shelf-stickers.js';
@@ -141,7 +142,8 @@ function render() {
     const spine = el('button', { class: `spine${a.discs > 1 ? ' double' : ''}${st.obi ? ' obi' : ''}${st.isNew ? ' new' : ''}${holds(a, shelf.inPlayer) ? ' in-player' : ''}`, title: spineTitle(a), onClick: () => { if (!shelf.dragged) openCase(a, spine); } },
       el('span', { class: 'spine-text' }, a.artist ? el('b', {}, a.artist) : null, a.artist ? ' · ' : null, a.title),
       st.obi ? el('span', { class: 'obi-cat' }, st.obi.catalog) : null,
-      st.isNew ? el('span', { class: 'sticker-new' }, 'NEW') : null);
+      st.isNew ? el('span', { class: 'sticker-new' }, 'NEW') : null,
+      a.wrapped ? el('span', { class: 'spine-film' }) : null);
     spine.album = a;
     showNoteTab(spine);
     spine.addEventListener('pointerdown', (e) => pressSpine(e, spine));
@@ -387,6 +389,55 @@ function showNoteTab(spine) {
   tab.style.transform = `rotate(${tilt * 1.5}deg)`;
 }
 
+// ---- Shrink-wrap -----------------------------------------------------------------------------------------------
+
+// The film over a new album's case: take hold of it and drag it across; past 40% of the way it tears off, short of
+// that it springs back.
+function caseFilm(a) {
+  const film = el('div', { class: 'case-film', title: 'Drag across to unwrap it' }, el('span', { class: 'film-tab' }));
+  film.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || !a.wrapped) return;
+    e.preventDefault(); e.stopPropagation();
+    try { film.setPointerCapture(e.pointerId); } catch { /* gone */ }
+    const x0 = e.clientX, w = film.getBoundingClientRect().width;
+    film.classList.add('pulling');
+    const move = (ev) => {
+      const dx = ev.clientX - x0;
+      film.style.transform = `translateX(${dx * 0.5}px) rotate(${(dx / w) * 5}deg)`;
+    };
+    const up = (ev) => {
+      film.removeEventListener('pointermove', move);
+      film.removeEventListener('pointerup', up);
+      film.removeEventListener('pointercancel', up);
+      film.classList.remove('pulling');
+      if (ev.type === 'pointerup' && Math.abs(ev.clientX - x0) > w * 0.4) { tearFilm(film, a, false, Math.sign(ev.clientX - x0)); return; }
+      const from = film.style.transform;
+      film.style.transform = '';
+      if (anim.enabled && from) film.animate([{ transform: from }, { transform: 'none' }], { duration: 260, easing: 'cubic-bezier(.3,1.6,.5,1)' });
+    };
+    film.addEventListener('pointermove', move);
+    film.addEventListener('pointerup', up);
+    film.addEventListener('pointercancel', up);
+  });
+  return film;
+}
+// Unwraps the album: remembered, its spine loses its film, and the film flies off the case. → when it's gone.
+function tearFilm(film, a, quick = false, dir = 1) {
+  if (!a.wrapped) return Promise.resolve();
+  a.wrapped = false;
+  shelf.app.cdp.tearWrap(a.id).catch(() => {});
+  const spine = spineFor(a);
+  if (spine) { const f = spine.querySelector('.spine-film'); if (f) f.remove(); }
+  if (!anim.enabled) { film.remove(); return Promise.resolve(); }
+  const from = film.style.transform || 'none';
+  return new Promise((resolve) => {
+    film.animate([
+      { transform: from, opacity: 1 },
+      { transform: `translate(${dir * 60}%, 20%) rotate(${dir * 24}deg) scale(.9)`, opacity: 0 },
+    ], { duration: quick ? 220 : 380, easing: 'cubic-bezier(.4,0,.8,.6)', fill: 'forwards' }).onfinish = () => { film.remove(); resolve(); };
+  });
+}
+
 // ---- Dust -------------------------------------------------------------------------------------------------------
 
 function setDust(spine, level) {
@@ -449,7 +500,7 @@ async function openCase(a, spine) {
   if (!shelf.open || shelf.caseOpen) return;
   if (!spine.isConnected) spine = spineFor(a) || spine; // the shelf was redrawn meanwhile
   const from = spine.getBoundingClientRect();
-  const trackRow = (t, i, no = t.track || i + 1) => el('div', { class: 'case-track', title: `Play from here`, onClick: () => play(a, i) },
+  const trackRow = (t, i, no = t.track || i + 1) => el('div', { class: 'case-track', title: `Play from here`, onClick: () => (a.wrapped && film ? tearFilm(film, a, true).then(() => play(a, i)) : play(a, i)) },
     el('span', { class: 'no' }, no ? String(no).padStart(2, '0') : ''),
     el('span', { class: 'name' }, t.title, a.artist === 'Various Artists' && t.artist ? el('span', { class: 'by' }, ` · ${t.artist}`) : null),
     el('span', { class: 'time' }, t.duration ? app.formatTime(t.duration) : ''));
@@ -472,7 +523,10 @@ async function openCase(a, spine) {
   const front = cover ? el('img', { class: 'case-cover', src: cover, alt: '' })
     : el('div', { class: 'case-cover cdr' }, el('div', { class: 'marker' }, a.title), a.artist ? el('div', { class: 'marker small' }, a.artist) : null);
   front.title = 'Open the booklet';
-  front.addEventListener('click', () => openAlbumBooklet(a, front));
+  front.addEventListener('click', () => {
+    if (a.wrapped) { if (film && anim.enabled) film.animate([{ transform: 'none' }, { transform: 'translateX(-4px)' }, { transform: 'translateX(3px)' }, { transform: 'none' }], { duration: 240 }); return; } // unwrap it first
+    openAlbumBooklet(a, front);
+  });
   const st = a.stickers || stickersFor(a);
   // The sticky note: on the front when there is one; + NOTE sticks a blank one on to write.
   const saveNote = (text) => {
@@ -482,6 +536,9 @@ async function openCase(a, spine) {
     const spine = spineFor(a);
     if (spine) { showNoteTab(spine); spine.title = spineTitle(a); }
   };
+  // Shrink-wrap: dragged off by hand, or torn off at once by PLAY, PLAY NEXT or ADD TO QUEUE (or a track clicked).
+  const film = a.wrapped ? caseFilm(a) : null;
+  const unwrapped = (then) => () => (a.wrapped && film ? tearFilm(film, a, true).then(then) : then());
   const addNote = pill('+ NOTE', () => { addNote.hidden = true; caseFront.append(stickyNote({ id: a.id, text: '', onSave: saveNote })); }, 'Stick a note on the case');
   addNote.hidden = !!a.note;
   const caseFront = el('div', { class: 'case-front' }, front,
@@ -491,6 +548,7 @@ async function openCase(a, spine) {
         el('div', { class: 'obi-foot' }, el('div', {}, st.obi.catalog), el('div', {}, st.price))) : null,
       !st.obi && st.price ? el('div', { class: 'sticker-price' }, st.price) : null,
       st.isNew ? el('div', { class: 'sticker-new' }, 'NEW') : null,
+      film,
       a.note ? stickyNote({ id: a.id, text: a.note, onSave: saveNote }) : null);
   const card = el('div', { class: 'case-card' },
     caseFront,
@@ -503,9 +561,9 @@ async function openCase(a, spine) {
         pill('BACK ON THE SHELF', () => closeCase()),
         addNote,
         el('span', { class: 'grow' }),
-        pill('PLAY NEXT', () => { app.playNext(a.tracks.map((t) => t.path), { sorted: true }); closeCase(); }, 'Play the album next, after the song playing'),
-        pill('ADD TO QUEUE', () => { app.addToQueue(a.tracks.map((t) => t.path), { sorted: true }); closeCase(); }, 'Add every track to the end of the queue'),
-        el('button', { class: 'pill on', onClick: () => play(a, 0) }, 'PLAY'))));
+        pill('PLAY NEXT', unwrapped(() => { app.playNext(a.tracks.map((t) => t.path), { sorted: true }); closeCase(); }), 'Play the album next, after the song playing'),
+        pill('ADD TO QUEUE', unwrapped(() => { app.addToQueue(a.tracks.map((t) => t.path), { sorted: true }); closeCase(); }), 'Add every track to the end of the queue'),
+        el('button', { class: 'pill on', onClick: unwrapped(() => play(a, 0)) }, 'PLAY'))));
   showCase(card, spine, from, shelf.colors.get(a.id) || hashColor(a.title + a.artist));
 }
 

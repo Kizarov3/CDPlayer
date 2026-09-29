@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('cdp', {
   albumPlays: invoke('plays:album'),
   wipeAlbum: invoke('dust:wipe'),
   setNote: invoke('notes:set'),
+  tearWrap: invoke('wrap:tear'),
   wantDiscography: invoke('discography:want'),
   missingTracklist: invoke('discography:tracklist'),
   hideMissing: invoke('discography:hide'),

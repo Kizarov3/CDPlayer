@@ -217,3 +217,15 @@ test('a track\'s shelf album: its id (the same for every song of it, whoever eac
   shelf.forget(a);
   assert.deepStrictEqual(shelf.albumOf(a).paths, [a], 'read again after a tag edit');
 });
+
+test('an album comes shrink-wrapped when it turned up after wrapping began and hasn\'t been played or unwrapped', () => {
+  const { isWrapped } = require('../src/main/shelf');
+  const wrap = { since: 1000, torn: new Set(['torn']) };
+  const album = (extra) => ({ id: 'a', added: 2000, plays: 0, ...extra });
+  assert.strictEqual(isWrapped(album(), wrap), true);
+  assert.strictEqual(isWrapped(album({ added: 500 }), wrap), false, 'on the shelf before: already unwrapped');
+  assert.strictEqual(isWrapped(album({ added: null }), wrap), false);
+  assert.strictEqual(isWrapped(album({ plays: 1 }), wrap), false, 'played');
+  assert.strictEqual(isWrapped(album({ id: 'torn' }), wrap), false, 'unwrapped by hand');
+  assert.strictEqual(isWrapped(album(), { since: null, torn: new Set() }), false);
+});
