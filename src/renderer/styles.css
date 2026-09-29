@@ -500,6 +500,27 @@ body.cd-view #cd-info { display: block !important; }
   mask-image: linear-gradient(to bottom, #000 55%, transparent);
   transition: height 260ms ease, opacity 260ms ease;
 }
+/* The receipt tucked in behind the cover (shelf-receipt.js): thermal paper, its edge peeking out underneath; pulled
+   out, it lies over the case, a little askew. */
+.receipt {
+  position: absolute; left: 12%; bottom: -18px; width: 46%; z-index: 0; box-sizing: border-box; padding: 14px 12px 20px;
+  background: rgb(246, 244, 236); color: rgba(40, 40, 46, .82); cursor: pointer;
+  font: 10px/1.45 "SF Mono", Menlo, Consolas, monospace; letter-spacing: .02em; text-transform: uppercase;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .35);
+  -webkit-mask: linear-gradient(#000, #000) top / 100% calc(100% - 6px) no-repeat, conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / 10px 6px repeat-x;
+  transition: transform 340ms cubic-bezier(.3,.8,.3,1), z-index 0s 340ms;
+}
+.receipt:hover:not(.out) { transform: translateY(6px); }
+.receipt.out { z-index: 6; transform: translateY(-62%) rotate(-3deg); transition: transform 340ms cubic-bezier(.3,.8,.3,1), z-index 0s; }
+.rc-shop { text-align: center; font-weight: bold; font-size: 12px; letter-spacing: .08em; }
+.rc-center { text-align: center; }
+.rc-small { font-size: 8px; margin-top: 6px; }
+.rc-rule { border-top: 1px dashed rgba(40, 40, 46, .45); margin: 6px 0; }
+.rc-row { display: flex; justify-content: space-between; gap: 8px; }
+.rc-item { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: none; }
+.rc-bars { display: flex; justify-content: center; height: 28px; margin-top: 6px; }
+.rc-bars i { display: block; height: 100%; background: rgba(30, 30, 36, .85); }
+
 /* Shrink-wrap on a new album: a glossy film over its spine, and over its case with a red tab to pull. */
 .spine-film {
   position: absolute; inset: 0; z-index: 1; pointer-events: none; border-radius: 1px;

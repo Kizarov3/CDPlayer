@@ -12,6 +12,7 @@ import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './bookle
 import { stickersFor } from './shelf-stickers.js';
 import { arrange, SORTS, matchesFilter } from './shelf-order.js';
 import { stickyNote, noteLook } from './shelf-notes.js';
+import { receiptFor } from './shelf-receipt.js';
 import { withMissing, boxLabel, sameName, boxesFor, renderGate, groupOf, pickEdition, fullTracklist } from './shelf-missing.js';
 import { dustLevel, pickOne, Wiper } from './shelf-dust.js';
 
@@ -389,6 +390,26 @@ function showNoteTab(spine) {
   tab.style.transform = `rotate(${tilt * 1.5}deg)`;
 }
 
+// ---- The receipt ------------------------------------------------------------------------------------------------
+
+// The receipt behind a case's cover (shelf-receipt.js): its edge peeks out under the cover; click it and it's pulled
+// out and laid over the case, click again and it goes back.
+function receiptSlip(a, stickers) {
+  const r = receiptFor(a, stickers);
+  if (!r) return null;
+  const row = (left, right) => el('div', { class: 'rc-row' }, el('span', {}, left), el('span', {}, right));
+  const bars = el('div', { class: 'rc-bars' }, ...[...r.barcode].map((d) => el('i', { style: `width:${1 + (Number(d) % 3)}px;margin-right:${1 + (Number(d) % 2)}px` })));
+  const slip = el('div', { class: 'receipt', title: 'The receipt' },
+    el('div', { class: 'rc-shop' }, r.shop), el('div', { class: 'rc-center' }, r.address),
+    el('div', { class: 'rc-rule' }), row(r.date, r.time), el('div', { class: 'rc-rule' }),
+    el('div', { class: 'rc-item' }, r.item), row('CD × 1', r.price),
+    el('div', { class: 'rc-rule' }), row('TOTAL', r.total), row(r.paid, ''),
+    el('div', { class: 'rc-rule' }), el('div', { class: 'rc-center' }, `NO. ${r.number}`), bars,
+    el('div', { class: 'rc-center rc-small' }, 'THANK YOU · NO REFUNDS ON OPENED CDs'));
+  slip.addEventListener('click', (e) => { e.stopPropagation(); slip.classList.toggle('out'); });
+  return slip;
+}
+
 // ---- Shrink-wrap -----------------------------------------------------------------------------------------------
 
 // The film over a new album's case: take hold of it and drag it across; past 40% of the way it tears off, short of
@@ -541,7 +562,7 @@ async function openCase(a, spine) {
   const unwrapped = (then) => () => (a.wrapped && film ? tearFilm(film, a, true).then(then) : then());
   const addNote = pill('+ NOTE', () => { addNote.hidden = true; caseFront.append(stickyNote({ id: a.id, text: '', onSave: saveNote })); }, 'Stick a note on the case');
   addNote.hidden = !!a.note;
-  const caseFront = el('div', { class: 'case-front' }, front,
+  const caseFront = el('div', { class: 'case-front' }, receiptSlip(a, st), front,
       st.obi ? el('div', { class: 'case-obi' },
         el('div', { class: 'obi-top' }, 'CD'),
         el('div', { class: 'obi-title' }, a.title),
