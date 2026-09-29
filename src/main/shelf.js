@@ -13,9 +13,10 @@ const store = require('./store');
 const library = require('./library');
 const metadata = require('./metadata');
 const cue = require('./cue');
+const { sameName } = require('./same-name');
 
 const CACHE_FILE = 'shelf-cache.json';
-const CACHE_VERSION = 1; // bump when trackInfo() reads files differently, so old entries are read again
+const CACHE_VERSION = 2; // bump when trackInfo() reads files differently, so old entries are read again
 const CONCURRENCY = 6;
 const COVER_FILE = /^(cover|folder|front|album|albumart|albumartlarge)\.(jpe?g|png|webp)$/i;
 const DISC_FOLDER = /^(cd|disc|disk)\s*\d+$/i;
@@ -44,7 +45,7 @@ async function trackInfo(p) {
   return {
     title: d.title, artist: d.artist || null, album: d.album || null, albumArtist: c.albumArtist || null,
     year: year ? year[0] : null, track: ref ? ref.number : (c.track && c.track.no) || null,
-    disc: (c.disc && c.disc.no) || discFromFolder(p) || 1, duration: d.duration || 0,
+    disc: (c.disc && c.disc.no) || discFromFolder(p) || 1, duration: d.duration || 0, artistMbid: c.albumArtistMbid || null,
   };
 }
 
@@ -53,8 +54,6 @@ async function trackInfo(p) {
  * or its tracks' artist when they share one, or "Various Artists". Its tracks are in disc, then track, then file
  * order; `discs` counts the discs (a double album gets a double-width case on the shelf).
  */
-// A name as the shelf compares it: "Three Dollar Bill, Yall$" and "THREE DOLLAR BILL Y'ALL$" are the same album.
-const sameName = (s) => { const low = String(s || '').toLowerCase(); return low.replace(/[^\p{L}\p{N}]+/gu, '') || low.trim(); };
 
 function groupAlbums(tracks) {
   // A song with no album artist belongs with the same-named album in its folder that has one (a song whose tags were
@@ -83,6 +82,7 @@ function groupAlbums(tracks) {
       id: g.id, title: g.title, folder: g.folder,
       artist: albumArtist || (artists.size === 1 ? [...artists][0] : artists.size ? 'Various Artists' : null),
       year: years[0] || null,
+      artistMbid: g.items.map((t) => t.info.artistMbid).find(Boolean) || null,
       discs: Math.max(1, ...g.items.map((t) => t.info.disc || 1)),
       duration: g.items.reduce((s, t) => s + (t.info.duration || 0), 0),
       added: g.items.reduce((m, t) => (t.added && (m === null || t.added > m) ? t.added : m), null), // its newest track (a NEW sticker)

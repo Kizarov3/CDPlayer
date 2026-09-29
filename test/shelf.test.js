@@ -149,7 +149,7 @@ test('the tracks of the shelf album a song is on, from the shelf\'s cache; a son
     [`${music}/Korn/FtL/CD2/01.flac`]: { stamp: 'x', info: info('Follow the Leader', 2), added: 1 },
     [`${music}/Korn/Issues/01.flac`]: { stamp: 'x', info: info('Issues', 1), added: 1 },
   };
-  fs.writeFileSync(path.join(home, 'shelf-cache.json'), JSON.stringify({ version: 1, folder: music, tracks }));
+  fs.writeFileSync(path.join(home, 'shelf-cache.json'), JSON.stringify({ version: 2, folder: music, tracks }));
   delete require.cache[require.resolve('../src/main/shelf')];
   const { albumTracks } = require('../src/main/shelf');
   assert.deepStrictEqual(albumTracks(`${music}/Korn/FtL/CD2/01.flac`).sort(), [`${music}/Korn/FtL/CD1/01.flac`, `${music}/Korn/FtL/CD2/01.flac`]);
@@ -165,4 +165,20 @@ test('an album was last touched when it turned up, a song of it was played or it
   assert.strictEqual(touchedAt({ ...album, added: null }, none), 50);
   assert.strictEqual(touchedAt(album, { ...none, lastPlayed: new Map([['/b', 400], ['/zzz', 9000]]) }), 400);
   assert.strictEqual(touchedAt(album, { ...none, lastPlayed: new Map([['/b', 400]]), wiped: new Map([['x', 700]]) }), 700);
+});
+
+test('an album knows its album artist\'s MusicBrainz ID when a track\'s tags have it', () => {
+  const [a] = groupAlbums([
+    t('/m/r/ok/1.mp3', { album: 'OK Computer', artist: 'Radiohead', albumArtist: 'Radiohead' }),
+    t('/m/r/ok/2.mp3', { album: 'OK Computer', artist: 'Radiohead', albumArtist: 'Radiohead', artistMbid: 'a74b1b7f' }),
+  ]);
+  assert.strictEqual(a.artistMbid, 'a74b1b7f');
+  assert.strictEqual(groupAlbums([t('/m/x/1.mp3', { album: 'X', artist: 'Y' })])[0].artistMbid, null);
+});
+
+test('sameName: how the shelf compares names', () => {
+  const { sameName } = require('../src/main/same-name');
+  assert.strictEqual(sameName('OK Computer'), sameName('ok computer!'));
+  assert.strictEqual(sameName('Three Dollar Bill, Yall$'), sameName("THREE DOLLAR BILL Y'ALL$"));
+  assert.strictEqual(sameName('!!!'), '!!!');
 });
