@@ -627,7 +627,7 @@ body.cd-view #cd-info { display: block !important; }
 .case-track .name { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .case-track .by { color: rgb(var(--muted)); }
 .case-track .time { color: rgb(var(--muted)); font-size: 10px; }
-.case-actions { display: flex; gap: 8px; align-items: center; }
+.case-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; align-items: center; } /* a row, or two when it can't fit */
 
 /* ---- Canvases layered over everything ---- */
 #particles { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 30; pointer-events: none; }
