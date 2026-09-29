@@ -3,6 +3,13 @@
 // before the albums not played yet), or by year (a card for each decade).
 
 export const SORTS = ['ARTIST', 'NEW', 'PLAYED', 'YEAR'];
+
+/** Whether an album shows for what's typed in the shelf's filter: every word somewhere in its artist, title, year or note. */
+export function matchesFilter(album, query) {
+  const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
+  const text = `${album.artist || ''} ${album.title} ${album.year || ''} ${album.note || ''}`.toLowerCase();
+  return words.every((w) => text.includes(w));
+}
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
 // The letter an artist is filed under: "The Beatles" under B, "Björk" under B, "311" under #, no artist under ?.

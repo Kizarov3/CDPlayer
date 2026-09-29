@@ -30,7 +30,7 @@ const file = (name) => path.join(dataDir(), name);
 const FILES = {
   queue: 'queue.txt', onboarded: 'onboarded', lastVersion: 'lastversion.txt', lastPath: 'lastpath.txt',
   settings: 'settings.txt', eqPresets: 'eq-presets.txt', history: 'history.txt', spotify: 'spotify.txt',
-  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt',
+  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt',
 };
 
 function readText(name) {
@@ -173,6 +173,24 @@ function writeDust({ since, wiped }) {
   return writeText(FILES.dust, [`since ${since || Date.now()}`, ...body].join('\n') + '\n');
 }
 
+// notes.txt — "album id<TAB>note" per line, both as JSON (either can have line breaks in it): the sticky notes on
+// albums on the shelf. An empty note isn't kept. CDPlayer 2 only.
+function readNotes() {
+  const notes = new Map();
+  for (const line of lines(readText(FILES.notes))) {
+    const tab = line.indexOf('\t');
+    try {
+      const id = JSON.parse(line.slice(0, tab)), text = JSON.parse(line.slice(tab + 1));
+      if (tab > 0 && typeof id === 'string' && typeof text === 'string' && text) notes.set(id, text);
+    } catch { /* a broken line */ }
+  }
+  return notes;
+}
+function writeNotes(notes) {
+  const body = [...notes].filter(([, text]) => text).map(([id, text]) => `${JSON.stringify(id)}\t${JSON.stringify(text)}`);
+  return writeText(FILES.notes, body.join('\n') + (body.length ? '\n' : ''));
+}
+
 const HISTORY_LIMIT = 50;
 function readHistory() {
   return lines(readText(FILES.history)).map((p) => p.trim()).filter((p) => p && entryExists(p)).slice(0, HISTORY_LIMIT);
@@ -212,6 +230,6 @@ const writeLastVersion = (v) => writeText(FILES.lastVersion, v);
 module.exports = {
   dataDir, file, FILES, readText, writeText, isFile, isDir,
   readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, writeQueue, readHistory, writeHistory, HISTORY_LIMIT,
-  readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readDust, writeDust,
+  readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readDust, writeDust, readNotes, writeNotes,
   readEqPresets, writeEqPresets, readLastPath, writeLastPath, isOnboarded, markOnboarded, readLastVersion, writeLastVersion,
 };

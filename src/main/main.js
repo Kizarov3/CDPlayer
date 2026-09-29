@@ -323,6 +323,8 @@ handle('shelf:albums', async () => {
   // …and when each was last played or wiped, for its dust.
   const touch = { ...dust(), lastPlayed: playedAt() };
   for (const a of result.albums) a.touched = shelf.touchedAt(a, touch);
+  const notes = store.readNotes();
+  for (const a of result.albums) a.note = notes.get(a.id) || null;
   return result;
 });
 // Dust on the shelf: gathering since the first time the shelf was read with it, wiped album by album.
@@ -334,6 +336,12 @@ function dust() {
   }
   return dustState;
 }
+// A sticky note on an album; an empty one peels it off.
+handle('notes:set', (id, text) => {
+  const notes = store.readNotes();
+  if (text) notes.set(id, text); else notes.delete(id);
+  store.writeNotes(notes);
+});
 handle('dust:wipe', (id) => { const d = dust(), t = Date.now(); d.wiped.set(id, t); store.writeDust(d); return t; });
 handle('shelf:cover', (firstTrack) => shelf.albumCover(firstTrack));
 handle('shelf:coverFull', (firstTrack) => shelf.albumCoverFull(firstTrack));

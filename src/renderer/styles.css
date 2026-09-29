@@ -500,6 +500,12 @@ body.cd-view #cd-info { display: block !important; }
   mask-image: linear-gradient(to bottom, #000 55%, transparent);
   transition: height 260ms ease, opacity 260ms ease;
 }
+/* The corner of a sticky note (shelf-notes.js) poking up above a spine. */
+.note-tab {
+  position: absolute; top: -9px; left: 50%; width: 22px; height: 16px; margin-left: -11px; z-index: 3; pointer-events: none;
+  background: linear-gradient(to bottom, rgb(var(--note)), rgba(var(--note), .88)); box-shadow: 0 1px 2px rgba(0, 0, 0, .45);
+}
+.spine.double .note-tab { width: 34px; margin-left: -17px; }
 .dust-mote { position: fixed; z-index: 40; pointer-events: none; border-radius: 50%; background: rgb(200, 194, 182); }
 /* A divider card between the shelf's sections (shelf-order.js): plain cardboard, a little shorter than the cases, the
    section written at its top. */
@@ -554,6 +560,26 @@ body.cd-view #cd-info { display: block !important; }
 .obi-title { flex: 1 1 auto; min-height: 0; margin: 12px 0; writing-mode: vertical-rl; font-size: 13px; font-weight: bold; letter-spacing: .08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .obi-foot { padding: 0 2px 10px; text-align: center; font-size: 7px; white-space: nowrap; line-height: 1.5; color: rgb(90, 80, 70); }
 .obi-foot div:last-child { font-size: 10px; font-weight: bold; color: rgb(38, 32, 28); }
+/* A sticky note on the case's front: a square of coloured paper, a little curled at its foot, written on in marker. */
+.sticky-note {
+  position: absolute; left: 21%; bottom: 22px; width: 36%; aspect-ratio: 1; z-index: 3; box-sizing: border-box; /* clear of an obi and a price sticker */
+  padding: 12px 12px 10px; cursor: text;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, .06) 0 10%, transparent 10%), linear-gradient(160deg, rgb(var(--note)), rgba(var(--note), .9) 70%, rgb(var(--note)));
+  box-shadow: 0 1px 1px rgba(0, 0, 0, .2), 0 10px 14px -6px rgba(0, 0, 0, .55);
+  border-bottom-right-radius: 18px 6px;
+  color: rgb(34, 38, 84); font: 17px/1.2 "Marker Felt", "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive;
+}
+.note-text { width: 100%; height: 100%; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; }
+.note-field {
+  width: 100%; height: 100%; margin: 0; padding: 0; border: none; outline: none; resize: none; background: transparent;
+  color: inherit; font: inherit;
+}
+.note-field::placeholder { color: rgba(34, 38, 84, .4); }
+.note-peel {
+  position: absolute; top: 2px; right: 4px; width: 18px; height: 18px; padding: 0; border: none; background: none; cursor: pointer;
+  font: 16px/1 sans-serif; color: rgba(34, 38, 84, .55); opacity: 0; transition: opacity 120ms;
+}
+.sticky-note:hover .note-peel { opacity: 1; }
 .case-front .sticker-new { top: 14px; right: 14px; width: 54px; height: 54px; font-size: 14px; letter-spacing: .04em; transform: rotate(14deg); z-index: 2; }
 .sticker-price {
   position: absolute; right: 16px; bottom: 16px; z-index: 2; pointer-events: none; padding: 5px 9px 4px;

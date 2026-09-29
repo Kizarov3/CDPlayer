@@ -149,3 +149,13 @@ test('dust.txt: since when dust has gathered, and when each album was wiped', ()
   store.writeDust({ since: 500, wiped: new Map([[id, 900]]) });
   assert.deepStrictEqual(store.readDust(), { since: 500, wiped: new Map([[id, 900]]) });
 });
+
+test('notes.txt: a note per album, any text in it; an empty note takes it off', () => {
+  const id = 'tool\nlateralus\n', other = 'korn\nissues\n';
+  store.writeNotes(new Map([[id, 'For the long drive\n\tnorth — «ночью»'], [other, 'lend to Sam']]));
+  assert.deepStrictEqual(store.readNotes(), new Map([[id, 'For the long drive\n\tnorth — «ночью»'], [other, 'lend to Sam']]));
+  store.writeNotes(new Map([[id, ''], [other, 'lend to Sam']]));
+  assert.deepStrictEqual(store.readNotes(), new Map([[other, 'lend to Sam']]));
+  fs.writeFileSync(path.join(home, 'notes.txt'), 'garbage\n"x"\t\n');
+  assert.deepStrictEqual(store.readNotes(), new Map());
+});

@@ -4,11 +4,13 @@
 // in, the tray closes and it plays). Click the case's cover and the album's booklet lifts out of it. Or pick a spine up
 // and carry it out: the shelf fades so the player shows through, and it goes in on the disc or at the end of the queue
 // (with ⇧ held, to play next). An album left unplayed gathers dust (shelf-dust.js): rub the mouse over its spine to
-// wipe it. PULL ONE takes one off the shelf at random, the dustier the likelier.
+// wipe it. PULL ONE takes one off the shelf at random, the dustier the likelier. A case can have a sticky note on it
+// (shelf-notes.js), whose corner shows above its spine.
 import { el, pill, anim } from './widgets.js';
 import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './booklet.js';
 import { stickersFor } from './shelf-stickers.js';
-import { arrange, SORTS } from './shelf-order.js';
+import { arrange, SORTS, matchesFilter } from './shelf-order.js';
+import { stickyNote, noteLook } from './shelf-notes.js';
 import { dustLevel, pickOne, Wiper } from './shelf-dust.js';
 
 const $ = (id) => document.getElementById(id);
@@ -21,7 +23,7 @@ export const isShelfOpen = () => shelf.open;
 const IN_PLAYER = 'IN THE PLAYER';
 const SORT_LABELS = { ARTIST: 'ARTIST', NEW: 'NEW', PLAYED: 'MOST PLAYED', YEAR: 'YEAR' };
 const holds = (a, path) => !!path && a.tracks.some((t) => t.path === path);
-const spineTitle = (a) => [a.artist, a.title, a.year, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ');
+const spineTitle = (a) => [a.artist, a.title, a.year, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ') + (a.note ? `\n\n${a.note}` : '');
 /** The track now in the player (null: none), so its album's spine can show it. */
 export function showInPlayer(path) {
   shelf.inPlayer = path || null;
@@ -103,13 +105,10 @@ function render() {
       pill('CHOOSE YOUR MUSIC FOLDER…', pickFolder)));
     return;
   }
-  const words = $('shelf-filter').value.toLowerCase().split(/\s+/).filter(Boolean);
-  const shown = shelf.albums.filter((a) => {
-    const text = `${a.artist || ''} ${a.title} ${a.year || ''}`.toLowerCase();
-    return words.every((w) => text.includes(w));
-  });
+  const query = $('shelf-filter').value, filtering = !!query.trim();
+  const shown = shelf.albums.filter((a) => matchesFilter(a, query));
   const n = shelf.albums.length;
-  $('shelf-count').textContent = `${shelf.folderName.toUpperCase()} · ${n} ${n === 1 ? 'ALBUM' : 'ALBUMS'}${words.length ? ` · ${shown.length} SHOWN` : ''}`;
+  $('shelf-count').textContent = `${shelf.folderName.toUpperCase()} · ${n} ${n === 1 ? 'ALBUM' : 'ALBUMS'}${filtering ? ` · ${shown.length} SHOWN` : ''}`;
   if (!n) { body.replaceChildren(el('div', { class: 'shelf-empty' }, el('div', {}, 'No music in this folder yet.'), pill('CHOOSE ANOTHER FOLDER…', pickFolder))); return; }
   shelf.observer = new IntersectionObserver((entries) => {
     for (const e of entries) if (e.isIntersecting) { shelf.observer.unobserve(e.target); loadCover(e.target.album, e.target); }
@@ -125,6 +124,7 @@ function render() {
       st.obi ? el('span', { class: 'obi-cat' }, st.obi.catalog) : null,
       st.isNew ? el('span', { class: 'sticker-new' }, 'NEW') : null);
     spine.album = a;
+    showNoteTab(spine);
     spine.addEventListener('pointerdown', (e) => pressSpine(e, spine));
     spine.addEventListener('pointermove', (e) => rubSpine(e, spine));
     spine.addEventListener('pointerleave', () => { spine.wiper = null; });
@@ -257,6 +257,17 @@ function putDown(drag, target, next = false) {
   ghost.animate([{ transform: ghost.style.transform }, { transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.3,.7,.3,1)' }).onfinish = back;
 }
 
+// The corner of an album's sticky note, showing above its spine.
+function showNoteTab(spine) {
+  const a = spine.album;
+  let tab = spine.querySelector('.note-tab');
+  if (!a.note) { if (tab) tab.remove(); return; }
+  if (!tab) { tab = el('span', { class: 'note-tab' }); spine.append(tab); }
+  const { color, tilt } = noteLook(a.id);
+  tab.style.setProperty('--note', color);
+  tab.style.transform = `rotate(${tilt * 1.5}deg)`;
+}
+
 // ---- Dust -------------------------------------------------------------------------------------------------------
 
 function setDust(spine, level) {
@@ -319,14 +330,26 @@ async function openCase(a, spine) {
   front.title = 'Open the booklet';
   front.addEventListener('click', () => openAlbumBooklet(a, front));
   const st = a.stickers || stickersFor(a);
-  const card = el('div', { class: 'case-card' },
-    el('div', { class: 'case-front' }, front,
+  // The sticky note: on the front when there is one; + NOTE sticks a blank one on to write.
+  const saveNote = (text) => {
+    a.note = text || null;
+    app.cdp.setNote(a.id, text).catch(() => {});
+    addNote.hidden = !!a.note;
+    const spine = [...document.querySelectorAll('#shelf-body .spine')].find((s) => s.album === a);
+    if (spine) { showNoteTab(spine); spine.title = spineTitle(a); }
+  };
+  const addNote = pill('+ NOTE', () => { addNote.hidden = true; caseFront.append(stickyNote({ id: a.id, text: '', onSave: saveNote })); }, 'Stick a note on the case');
+  addNote.hidden = !!a.note;
+  const caseFront = el('div', { class: 'case-front' }, front,
       st.obi ? el('div', { class: 'case-obi' },
         el('div', { class: 'obi-top' }, 'CD'),
         el('div', { class: 'obi-title' }, a.title),
         el('div', { class: 'obi-foot' }, el('div', {}, st.obi.catalog), el('div', {}, st.price))) : null,
       !st.obi && st.price ? el('div', { class: 'sticker-price' }, st.price) : null,
-      st.isNew ? el('div', { class: 'sticker-new' }, 'NEW') : null),
+      st.isNew ? el('div', { class: 'sticker-new' }, 'NEW') : null,
+      a.note ? stickyNote({ id: a.id, text: a.note, onSave: saveNote }) : null);
+  const card = el('div', { class: 'case-card' },
+    caseFront,
     el('div', { class: 'case-info' },
       el('div', { class: 'case-title' }, a.title),
       el('div', { class: 'case-artist' }, [a.artist, a.year].filter(Boolean).join(' · ')),
@@ -334,6 +357,7 @@ async function openCase(a, spine) {
       el('div', { class: 'case-tracks scroll' }, tracks),
       el('div', { class: 'case-actions' },
         pill('BACK ON THE SHELF', () => closeCase()),
+        addNote,
         el('span', { class: 'grow' }),
         pill('PLAY NEXT', () => { app.playNext(a.tracks.map((t) => t.path), { sorted: true }); closeCase(); }, 'Play the album next, after the song playing'),
         pill('ADD TO QUEUE', () => { app.addToQueue(a.tracks.map((t) => t.path), { sorted: true }); closeCase(); }, 'Add every track to the end of the queue'),
