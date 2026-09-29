@@ -2,15 +2,11 @@
 // marker ("lend to Sam", "for the long drive"). Its colour and tilt come from the album, so they're the same every
 // time; its corner shows above the spine on the shelf. Click it to change it; wipe it out, or ×, to peel it off.
 
+import { hash } from './disc-wear.js';
+
 export const NOTE_MAX = 140;
 export const NOTE_COLORS = ['255, 234, 128', '255, 184, 204', '176, 216, 255', '204, 240, 164'];
 
-// FNV-1a: a spread-out number from a name, the same in every run.
-function hash(text) {
-  let h = 0x811c9dc5;
-  for (const ch of String(text)) { h ^= ch.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
-  return h;
-}
 
 /** An album's note paper: { color: 'r, g, b', tilt: degrees, 1–4 either way }. */
 export function noteLook(id) {
@@ -65,7 +61,7 @@ export function stickyNote({ id, text, onSave }) {
       done = true;
       if (keep) save(field.value);
       else if (current) show();
-      else note.remove(); // a blank note let go of unwritten
+      else { note.remove(); onSave(''); } // a blank note let go of unwritten: + NOTE comes back
     };
     field.addEventListener('keydown', (e) => {
       e.stopPropagation(); // typing isn't shortcuts, and Esc leaves the note, not the case

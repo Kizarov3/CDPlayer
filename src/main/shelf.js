@@ -155,12 +155,12 @@ function scanAlbums(onProgress) {
   return running;
 }
 
-// Which shelf album each track is on (its tracks' paths), from the last read of the shelf — or, before the shelf has
+// Which shelf album each track is on ({ id, paths }), from the last read of the shelf — or, before the shelf has
 // been opened this time, from its cache. For disc wear, which counts the plays of a disc's whole album.
 let onShelf = null;
 function byTrack(albums) {
   const map = new Map();
-  for (const a of albums) { const paths = a.tracks.map((t) => t.path); for (const p of paths) map.set(p, paths); }
+  for (const a of albums) { const album = { id: a.id, paths: a.tracks.map((t) => t.path) }; for (const p of album.paths) map.set(p, album); }
   return map;
 }
 /**
@@ -172,14 +172,15 @@ function touchedAt(album, { lastPlayed, wiped, since }) {
   for (const track of album.tracks) t = Math.max(t, lastPlayed.get(track.path) || 0);
   return t || null;
 }
-/** The paths of the tracks on the same shelf album as `p` (itself included), or null when it isn't on the shelf. */
-function albumTracks(p) {
+/** The shelf album `p` is on — { id, paths: its tracks, `p` included } — or null when it isn't on the shelf. */
+function albumOf(p) {
   if (!onShelf) {
     const folder = store.readLastPath(), cached = folder ? readCache(folder) : null;
     onShelf = byTrack(cached ? groupAlbums(Object.entries(cached).map(([tp, e]) => ({ path: tp, info: e.info, added: e.added }))) : []);
   }
   return onShelf.get(p) || null;
 }
+const albumTracks = (p) => { const a = albumOf(p); return a ? a.paths : null; };
 
 // ---- Covers ---------------------------------------------------------------------------------------------------
 
@@ -274,6 +275,6 @@ async function albumCoverFull(firstTrack) {
 }
 
 /** A file's tags changed: its album's cover thumbnail is made again next time. */
-function forget(filePath) { thumbs.delete(filePath); }
+function forget(filePath) { thumbs.delete(filePath); onShelf = null; } // its tags changed: it may be on another album now
 
-module.exports = { scanAlbums, albumTracks, touchedAt, readCache, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };
+module.exports = { scanAlbums, albumOf, albumTracks, touchedAt, readCache, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };

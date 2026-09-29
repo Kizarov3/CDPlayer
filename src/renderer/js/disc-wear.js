@@ -4,7 +4,7 @@
 // marks every time it goes in, and playing it more only adds new ones next to them.
 
 // FNV-1a: a spread-out number from a name, the same in every run.
-function hash(text) {
+export function hash(text) {
   let h = 0x811c9dc5;
   for (const ch of String(text)) { h ^= ch.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
   return h;

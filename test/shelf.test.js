@@ -197,3 +197,23 @@ test('an older shelf cache is read again, but when each track first turned up is
   assert.strictEqual(cached[p].stamp, null, 'its tags are read again');
   assert.strictEqual(readCache('/some/other/folder'), null);
 });
+
+test('a track\'s shelf album: its id (the same for every song of it, whoever each credits) and its tracks; forgotten after a tag edit', () => {
+  const store = require('../src/main/store');
+  const music = fs.mkdtempSync(path.join(home, 'music-'));
+  store.writeLastPath(music);
+  const info = (artist) => ({ title: 't', artist, album: 'Collab Album', albumArtist: null, year: '2001', track: 1, disc: 1, duration: 60 });
+  const a = `${music}/X/Collab Album/01.flac`, b = `${music}/X/Collab Album/02.flac`;
+  const write = (tracks) => fs.writeFileSync(path.join(home, 'shelf-cache.json'), JSON.stringify({ version: 2, folder: music, tracks }));
+  write({ [a]: { stamp: 'x', info: info('X'), added: 1 }, [b]: { stamp: 'x', info: info('X feat. Y'), added: 1 } });
+  delete require.cache[require.resolve('../src/main/shelf')];
+  const shelf = require('../src/main/shelf');
+  const one = shelf.albumOf(a), two = shelf.albumOf(b);
+  assert.ok(one && one.id);
+  assert.strictEqual(one.id, two.id, 'one disc, one seed');
+  assert.deepStrictEqual(one.paths.sort(), [a, b]);
+  assert.strictEqual(shelf.albumOf('/elsewhere.mp3'), null);
+  write({ [a]: { stamp: 'x', info: { ...info('X'), album: 'Renamed' }, added: 1 } });
+  shelf.forget(a);
+  assert.deepStrictEqual(shelf.albumOf(a).paths, [a], 'read again after a tag edit');
+});

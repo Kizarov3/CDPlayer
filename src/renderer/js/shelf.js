@@ -424,10 +424,13 @@ function puff(x, y, level) {
 
 // PULL ONE: an album off the shelf at random — of those shown, the dustier the likelier — brought into view and
 // pulled out.
+// An album's spine on the shelf as it stands now (a redraw makes new ones), or null.
+const spineFor = (a) => [...document.querySelectorAll('#shelf-body .spine')].find((s) => s.album === a) || null;
+
 function pullOne() {
-  if (shelf.caseOpen || !shelf.shown || !shelf.shown.length) return;
+  if (shelf.caseOpen || shelf.opening || shelf.pulling || !shelf.shown || !shelf.shown.length) return;
   const a = pickOne(shelf.shown);
-  const spine = [...document.querySelectorAll('#shelf-body .spine')].find((s) => s.album === a);
+  const spine = spineFor(a);
   if (!spine) return;
   spine.scrollIntoView({ block: 'center', inline: 'nearest', behavior: anim.enabled ? 'smooth' : 'auto' });
   shelf.pulling = true; // no redraw till it's out: the spine must still be the one on the shelf
@@ -437,10 +440,15 @@ function pullOne() {
 // ---- The case, pulled out and turned to its front ----------------------------------------------------------------
 
 async function openCase(a, spine) {
-  if (shelf.caseOpen) return;
+  if (shelf.caseOpen || shelf.opening) return;
   const { app } = shelf;
+  // One case at a time, even while the first one's cover is still being fetched.
+  shelf.opening = true;
+  let cover;
+  try { cover = await coverFor(a); } finally { shelf.opening = false; }
+  if (!shelf.open || shelf.caseOpen) return;
+  if (!spine.isConnected) spine = spineFor(a) || spine; // the shelf was redrawn meanwhile
   const from = spine.getBoundingClientRect();
-  const cover = await coverFor(a);
   const trackRow = (t, i, no = t.track || i + 1) => el('div', { class: 'case-track', title: `Play from here`, onClick: () => play(a, i) },
     el('span', { class: 'no' }, no ? String(no).padStart(2, '0') : ''),
     el('span', { class: 'name' }, t.title, a.artist === 'Various Artists' && t.artist ? el('span', { class: 'by' }, ` · ${t.artist}`) : null),
@@ -471,7 +479,7 @@ async function openCase(a, spine) {
     a.note = text || null;
     app.cdp.setNote(a.id, text).catch(() => {});
     addNote.hidden = !!a.note;
-    const spine = [...document.querySelectorAll('#shelf-body .spine')].find((s) => s.album === a);
+    const spine = spineFor(a);
     if (spine) { showNoteTab(spine); spine.title = spineTitle(a); }
   };
   const addNote = pill('+ NOTE', () => { addNote.hidden = true; caseFront.append(stickyNote({ id: a.id, text: '', onSave: saveNote })); }, 'Stick a note on the case');

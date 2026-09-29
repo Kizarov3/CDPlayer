@@ -295,13 +295,14 @@ export class Disc {
     g.fillStyle = rgb(colors.bg);
     g.beginPath(); g.arc(c, c, hole / 2, 0, Math.PI * 2); g.fill();
     g.lineWidth = 1; g.strokeStyle = 'rgba(255,255,255,0.235)'; g.stroke();
+    if (this.wear && side >= WEAR_MIN_SIDE) this.drawChips(g, c);
     this.faceCache = { canvas: face, side };
     this.faceKey = key;
     return this.faceCache;
   }
 
   // Disc wear (disc-wear.js), on the face so it turns with the disc: hairline scratches, rubbed patches, scratches
-  // worn round the way it spins, greasy thumbprints and nicks out of the rim.
+  // worn round the way it spins and greasy thumbprints (and, once the rim is drawn, nicks out of it: drawChips).
   drawWear(g, c, side) {
     const w = this.wear, at = (r, a) => [c + Math.cos(a) * r * c, c + Math.sin(a) * r * c];
     g.save();
@@ -347,8 +348,13 @@ export class Disc {
       }
       g.globalAlpha = 1;
     }
-    for (const s of w.chips) {
-      const [x, y] = at(1, s.a), r = s.size * c;
+    g.restore();
+  }
+  // Nicks out of the rim: cut after the rim's own lines are drawn, so they break them.
+  drawChips(g, c) {
+    g.save();
+    for (const s of this.wear.chips) {
+      const x = c + Math.cos(s.a) * c, y = c + Math.sin(s.a) * c, r = s.size * c;
       g.globalCompositeOperation = 'destination-out';
       g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
       g.globalCompositeOperation = 'source-over';
@@ -370,7 +376,8 @@ export class Disc {
   // Scratches catch the light: where the tilt shine's fans fall on them, they flash white. Drawn with the disc turned,
   // but lit only along the fans, which stay put with the light (see drawShine).
   drawGlint(g, cx, cy, side, dpr) {
-    const px = Math.max(1, Math.round(side * dpr));
+    // Worked out at half the screen's resolution — it's a blur of light, and this runs every frame the disc turns.
+    const px = Math.max(1, Math.round((side * dpr) / 2));
     if (!this.glint || this.glint.width !== px) {
       this.glint = new OffscreenCanvas(px, px);
       const s = this.glint.getContext('2d'), c = side / 2;

@@ -964,11 +964,10 @@ function setDiscNoise(on) { state.discNoise = on; noise.setEnabled(on); noise.se
 // Worked out as a song goes in, so new marks turn up on the next song rather than in the middle of one.
 async function updateWear() {
   const path = state.loadedPath, d = state.details;
-  if (!path || !d || !state.discWear) { disc.setWear(null); return; }
-  const plays = await cdp.albumPlays(path).catch(() => 0);
+  if (!path || !d || !state.discWear) { disc.setWear(null); refreshDockSoon(); return; }
+  const album = await cdp.albumPlays(path).catch(() => null);
   if (state.loadedPath !== path || state.details !== d) return;
-  const artist = (d.credits && d.credits.albumArtist) || d.artist || '';
-  disc.setWear(state.discWear ? wearFor(plays, d.album ? `${artist}\n${d.album}` : path) : null);
+  disc.setWear(state.discWear && album ? wearFor(album.plays, album.disc) : null);
   refreshDockSoon();
 }
 function setDiscWear(on) { state.discWear = on; updateWear(); saveSettingsSoon(); }

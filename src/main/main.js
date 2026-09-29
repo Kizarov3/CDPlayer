@@ -214,10 +214,11 @@ handle('plays:add', (p) => {
   return n;
 });
 handle('plays:count', (p) => plays().get(p) || 0);
-// Plays of the whole album a track is on (as the shelf groups it), or of the track alone when it isn't on the shelf.
+// Plays of the whole album a track is on (as the shelf groups it), or of the track alone when it isn't on the shelf,
+// and what names that disc (its shelf album, or the track) — the same for every song on it.
 handle('plays:album', (p) => {
-  const counts = plays();
-  return (shelf.albumTracks(p) || [p]).reduce((n, t) => n + (counts.get(t) || 0), 0);
+  const counts = plays(), album = shelf.albumOf(p);
+  return { plays: (album ? album.paths : [p]).reduce((n, t) => n + (counts.get(t) || 0), 0), disc: album ? album.id : p };
 });
 // The now-playing card (share-card.js), onto the clipboard as a picture.
 handle('clipboard:image', (png) => clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]));
