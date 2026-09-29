@@ -173,7 +173,9 @@ function hashColor(text) {
   return [40 + (h % 60), 40 + ((h >> 8) % 60), 50 + ((h >> 16) % 60)];
 }
 function paintSpine(spine, a) {
-  const c = shelf.colors.get(a.id) || hashColor(a.title + a.artist);
+  // Sorted by colour, a spine wears its cover's main colour, so the shelf reads as a rainbow; otherwise its average.
+  const byColor = shelf.app && shelf.app.state.shelfSort === 'COLOR' && a.color;
+  const c = byColor ? a.color : shelf.colors.get(a.id) || hashColor(a.title + a.artist);
   const light = (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) > 150;
   spine.style.setProperty('--spine', `${c[0]}, ${c[1]}, ${c[2]}`);
   spine.style.setProperty('--ink', light ? '20, 20, 24' : '240, 240, 244');
