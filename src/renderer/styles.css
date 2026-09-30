@@ -447,6 +447,10 @@ body.cd-view #cd-info { display: block !important; }
   transition: transform 140ms ease, box-shadow 140ms ease;
 }
 .spine.double { width: 52px; }
+/* Spines, cards and boxes off screen aren't laid out or painted at all: with thousands of albums on the shelf, that's
+   what keeps filtering, sorting and scrolling quick. */
+.spine, .shelf-divider, .missing-box { content-visibility: auto; contain-intrinsic-size: auto 30px auto 196px; overflow-clip-margin: 14px; } /* room for a note's corner above */
+.shelf-divider, .missing-box { contain-intrinsic-size: auto 26px auto 176px; }
 .spine:hover { transform: translateY(-8px); box-shadow: 0 10px 16px rgba(0, 0, 0, .55); }
 .spine.in-player { transform: translateY(-12px); box-shadow: 0 0 0 2px rgb(var(--accent)), 0 0 22px rgba(var(--accent), .6), 0 12px 16px rgba(0, 0, 0, .55); }
 .spine.in-player:hover { transform: translateY(-16px); }

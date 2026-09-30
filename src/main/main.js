@@ -379,7 +379,7 @@ handle('notes:set', (id, text) => {
   store.writeNotes(notes);
 });
 handle('dust:wipe', (id) => { const d = dust(), t = Date.now(); d.wiped.set(id, t); store.writeDust(d); return t; });
-handle('shelf:cover', (firstTrack) => shelf.albumCover(firstTrack));
+handle('shelf:cover', (firstTrack, opts) => shelf.albumCover(firstTrack, { online: !(opts && opts.online === false) }));
 // The colours the shelf worked out from covers (spines, and SORT: COLOR), kept between launches.
 handle('shelf:colors', () => store.readShelfColors());
 handle('shelf:saveColors', (colors) => { if (colors && typeof colors === 'object') store.writeShelfColors(colors); });

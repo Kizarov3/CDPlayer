@@ -181,24 +181,18 @@ function paintSpine(spine, a) {
   spine.style.setProperty('--ink', light ? '20, 20, 24' : '240, 240, 244');
 }
 
-// The cover's average colour (of its middle, where the art usually is), for the spine.
-function averageColor(img) {
-  const c = document.createElement('canvas');
-  c.width = c.height = 8;
-  const g = c.getContext('2d');
-  const s = Math.min(img.naturalWidth, img.naturalHeight);
-  g.drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, 8, 8);
-  const d = g.getImageData(0, 0, 8, 8).data;
+// The cover's average colour, for the spine, from its pixels (RGBA).
+function averageOf(d) {
   let r = 0, gr = 0, b = 0;
   for (let i = 0; i < d.length; i += 4) { r += d[i]; gr += d[i + 1]; b += d[i + 2]; }
   const n = d.length / 4;
   return [Math.round(r / n), Math.round(gr / n), Math.round(b / n)];
 }
 
-async function coverFor(a) {
+async function coverFor(a, { online = true } = {}) {
   if (shelf.covers.has(a.id)) return shelf.covers.get(a.id);
-  const url = await shelf.app.cdp.shelfCover(a.tracks[0].path).catch(() => null);
-  shelf.covers.set(a.id, url);
+  const url = await shelf.app.cdp.shelfCover(a.tracks[0].path, { online }).catch(() => null);
+  if (url || online) shelf.covers.set(a.id, url); // nothing on this computer: the web may still have one
   return url;
 }
 async function loadCover(a, spine) {
@@ -208,19 +202,25 @@ async function loadCover(a, spine) {
 }
 // An album's colours from its cover — the spine's (its average) and the one it's filed under by colour (its most
 // common vivid one) — worked out once per cover and kept (shelf-colors.json).
+// One small canvas kept in the CPU's memory for all of them (reading pixels back off the GPU, per spine, made the
+// shelf stutter as it scrolled).
+let pixelCanvas = null;
 async function colorsFor(a, url) {
-  const key = hash(url), known = (shelf.colorCache || {})[a.id];
+  const key = hash(url), known = shelf.colorCache[a.id];
   if (known && known.key === key) return;
   const img = new Image();
   img.src = url;
-  try { await img.decode(); } catch { return; }
-  const c = document.createElement('canvas');
-  c.width = c.height = 16;
-  c.getContext('2d').drawImage(img, 0, 0, 16, 16);
-  const main = dominantColor(c.getContext('2d').getImageData(0, 0, 16, 16).data), spine = averageColor(img);
+  try { await img.decode(); } catch { shelf.noCover.add(a.id); return; } // an unreadable cover: filed with B&W
+  if (!pixelCanvas) pixelCanvas = new OffscreenCanvas(16, 16);
+  const g = pixelCanvas.getContext('2d', { willReadFrequently: true });
+  const s = Math.min(img.naturalWidth, img.naturalHeight);
+  g.clearRect(0, 0, 16, 16);
+  g.drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, 16, 16);
+  const pixels = g.getImageData(0, 0, 16, 16).data;
+  const main = dominantColor(pixels), spine = averageOf(pixels);
   shelf.colors.set(a.id, spine);
   a.color = main;
-  shelf.colorCache = { ...(shelf.colorCache || {}), [a.id]: { key, spine, main } };
+  shelf.colorCache[a.id] = { key, spine, main };
   clearTimeout(shelf.colorsTimer);
   shelf.colorsTimer = setTimeout(() => shelf.app.cdp.saveShelfColors(shelf.colorCache).catch(() => {}), 1000);
 }
@@ -236,12 +236,19 @@ async function fillColors(shown) {
   const count = () => { $('shelf-count').textContent = `SORTING BY COLOR · ${done} / ${todo.length}`; };
   shelf.fillCount = count; // a redraw meanwhile shows it again
   count();
-  for (const a of todo) {
-    if (generation !== shelf.generation || !shelf.open || shelf.app.state.shelfSort !== 'COLOR') break;
-    const url = await coverFor(a);
-    if (url) await colorsFor(a, url); else shelf.noCover.add(a.id);
-    done++; count();
-  }
+  // Four at a time, and only covers on this computer (not a web lookup for every album in the library).
+  let next = 0;
+  const worker = async () => {
+    while (next < todo.length) {
+      if (generation !== shelf.generation || !shelf.open || shelf.app.state.shelfSort !== 'COLOR') return;
+      const a = todo[next++];
+      const url = await coverFor(a, { online: false });
+      if (url) await colorsFor(a, url); else shelf.noCover.add(a.id);
+      done++; count();
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  for (const a of todo) if (!a.color && generation === shelf.generation) shelf.noCover.add(a.id); // never asked about again: no loop
   shelf.filling = false;
   shelf.fillCount = null;
   if (generation === shelf.generation && shelf.open && shelf.app.state.shelfSort === 'COLOR') redraw.request();

@@ -1489,6 +1489,10 @@ function frame(now) {
   }
   // Both visualizers draw from the frequency spectrum (Visualizer Mode's only while it's showing); paused, they
   // settle back down.
+  // The shelf covers the player (unless a spine is being carried over it): nothing of the player is drawn under it —
+  // measuring the disc there made the whole shelf lay itself out again every frame.
+  const underShelf = isShelfOpen() && !$('shelf').classList.contains('carrying');
+  if (underShelf) { requestAnimationFrame(frame); return; }
   visualizer.setSpectrum(engine.playing ? engine.spectrum(visualizer.n) : null, dt);
   if (state.visualizerMode) bigVisualizer.setSpectrum(engine.playing ? engine.spectrum(bigVisualizer.n) : null, dt);
   visualizer.draw(now);

@@ -232,7 +232,9 @@ async function onlineCover(query, { find = (q) => require('./online').findAlbumC
  * An album's cover, small: a cover/folder image beside its files, or else the art inside its first track, or else
  * the cover found online for it.
  */
-async function albumCover(firstTrack) {
+// `online: false` looks only on this computer (and remembers nothing when there's nothing here), for sorting the
+// whole shelf by colour without asking the web about every album.
+async function albumCover(firstTrack, { online = true } = {}) {
   if (thumbs.get(firstTrack) !== undefined) return thumbs.get(firstTrack);
   let thumb = null;
   const dirs = [...new Set([path.dirname(sourceOf(firstTrack)), albumFolder(firstTrack)])];
@@ -246,6 +248,7 @@ async function albumCover(firstTrack) {
     try {
       const d = await metadata.getDetails(firstTrack, { withCover: true });
       if (d.cover) thumb = toThumb(nativeImage.createFromDataURL(d.cover));
+      else if (!online) return null;
       else {
         const query = { artist: (d.credits && d.credits.albumArtist) || d.artist, album: d.album };
         thumb = await onlineCover(query, { shrink: (c) => toThumb(nativeImage.createFromDataURL(c)) });
