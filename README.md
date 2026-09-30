@@ -156,8 +156,9 @@ The first time it opens, CDPlayer shows a short guide — five cards: putting mu
 </p>
 
 **Settings**
-- Theme, Equalizer, Crossfade, Sleep Timer, Lyrics Offset, Mono Audio, Waveform, Ambient Background, Disc Wear, Animations, Mini Mode and Discord Status in one dialog
+- Theme, Equalizer, Output, Crossfade, Sleep Timer, Lyrics Offset, Mono Audio, Waveform, Ambient Background, Disc Wear, Animations, Mini Mode and Discord Status in one dialog
 - **Help**: the first-run guide again, the FAQ and the keyboard shortcuts
+- **Output**: play through the speakers, headphones or AirPods you pick, switched without a pause; unplug them and the sound goes to the system's output, and back to them when they're plugged in again
 - **Ambient Background** washes the window with a blurred glow of the current cover art
 - **Sleep Timer** pauses playback after up to 120 minutes, with a live countdown in the header (click it to cancel)
 - Everything — volume, crossfade, mono, EQ, theme, waveform, animations, window size and position — persists across launches

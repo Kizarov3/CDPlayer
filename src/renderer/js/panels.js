@@ -5,6 +5,7 @@ import { THEMES } from './theme.js';
 import { EQ_FREQUENCIES } from './audio.js';
 import { el, pill, toggle, setToggle, Slider, anim } from './widgets.js';
 import { GUIDE, FAQ, SHORTCUTS } from './help.js';
+import { outputName } from './output.js';
 import { catSvg } from './glyphs.js';
 import { isBookletOpen, closeBooklet } from './booklet.js';
 import { formatLyricsForDisplay } from './lyrics.js';
@@ -158,6 +159,13 @@ function buildSettings(app) {
     el('span', { class: 'swatch' }), el('span', {}, THEMES[s.themeIndex].name));
   presetButton = pill(presetName(app), () => showPresetMenu(app), 'Switch to another equalizer preset');
   const eqButton = pill('EQ', () => showEq(app), 'Adjust the 10 bands, or save your own preset');
+  // Where the sound goes: the button names it; the menu lists what's plugged in now.
+  const outputButton = pill('…', async () => {
+    const devices = await app.listOutputs(), now = app.engine.outputId || '';
+    showMenu(outputButton, [{ label: 'SYSTEM DEFAULT', current: !now, pick: () => app.setOutput(null).then(() => refreshSettingsIfOpen(app)) },
+      ...devices.map((d) => ({ label: outputName(d), current: d.deviceId === now, pick: () => app.setOutput(d).then(() => refreshSettingsIfOpen(app)) }))]);
+  }, 'Where the sound comes out: speakers, headphones, AirPods…');
+  app.currentOutputName().then((name) => { outputButton.textContent = name; });
 
   const crossfadeValue = el('span', { class: 'row-value' }, s.crossfade ? `${s.crossfade}S` : 'OFF');
   const crossfade = new Slider({ min: 0, max: 15, value: s.crossfade, onInput: (v) => { crossfadeValue.textContent = v ? `${v}S` : 'OFF'; app.setCrossfade(v); } });
@@ -195,6 +203,7 @@ function buildSettings(app) {
     section('SOUND'),
     unavailable(row('EQUALIZER', el('div', { class: 'row-pills' }, presetButton, eqButton))),
     unavailable(sliderRow('CROSSFADE', crossfade, crossfadeValue)),
+    unavailable(row('OUTPUT', outputButton)),
     unavailable(row('MONO AUDIO', mono)),
     hint('Sums the left and right channels together — for a single speaker or one earbud.'),
     row('DISC NOISE', discNoise),

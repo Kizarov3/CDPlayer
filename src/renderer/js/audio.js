@@ -241,6 +241,11 @@ export class AudioEngine {
    * A band's loudness is its average power, tilted up 3 dB per octave above 1 kHz (music gets quieter towards the
    * treble, so without it the right half would barely move), mapped from −78…−18 dB.
    */
+  /** Plays through the output device `id` ('' for the system default), without a pause. → false if it can't. */
+  async setOutput(id) {
+    if (!this.ctx.setSinkId) return false;
+    try { await this.ctx.setSinkId(id || ''); this.outputId = id || ''; return true; } catch { return false; }
+  }
   spectrum(count) {
     if (!this.playing) return null;
     const bins = this.analyser.frequencyBinCount;

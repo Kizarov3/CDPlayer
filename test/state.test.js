@@ -20,7 +20,7 @@ test('reads a settings.txt written by the Java version', () => {
   assert.deepStrictEqual(s, {
     volume: 70, crossfade: 5, mono: true, animations: false, theme: 'OCEAN', eq: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
     waveform: false, miniMode: false, bounds: { x: 10, y: 20, width: 1200, height: 900 }, ambient: false, discord: true,
-    discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true,
+    discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null,
   });
 });
 
@@ -196,4 +196,12 @@ test('shelf-colors.json: each album\'s spine and sorting colours, with the cover
   assert.deepStrictEqual(store.readShelfColors(), colors);
   fs.writeFileSync(path.join(home, 'shelf-colors.json'), 'not json');
   assert.deepStrictEqual(store.readShelfColors(), {});
+});
+
+test('the audio output is the 17th settings line: its id and name; none by default', () => {
+  fs.writeFileSync(path.join(home, 'settings.txt'), '70\n0\n0\n1\nRED\n0,0,0,0,0,0,0,0,0,0\n1\n0\n\n1\n1\n0\n0\n0\nARTIST\n1\n');
+  assert.strictEqual(store.readSettings().output, null);
+  store.writeSettings({ ...store.DEFAULT_SETTINGS, output: { id: 'air2', label: 'AirPods Pro' } });
+  assert.strictEqual(fs.readFileSync(path.join(home, 'settings.txt'), 'utf8').split('\n')[16], 'air2\tAirPods Pro');
+  assert.deepStrictEqual(store.readSettings().output, { id: 'air2', label: 'AirPods Pro' });
 });

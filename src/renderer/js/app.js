@@ -16,6 +16,7 @@ import { drawCard, lyricChoices, cardSubtitle, quoteLines, MAX_QUOTE_LINES } fro
 import * as panels from './panels.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
 import { wearFor } from './disc-wear.js';
+import { pickOutput, outputName } from './output.js';
 import { openShelf, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
 import { SpotifySession, SpotifyTrackElement, isSpotifyUri, spotifyUpcoming, loadSpotifySdk } from './spotify-deck.js';
@@ -987,6 +988,30 @@ function findDiscordCover(d) {
 }
 function setDiscord(on) { state.discord = on; pushDiscord(); saveSettingsSoon(); }
 function setDiscNoise(on) { state.discNoise = on; noise.setEnabled(on); noise.setPlaying(engine.playing); saveSettingsSoon(); }
+// ---- Where the sound goes (Settings → OUTPUT; output.js) ----------------------------------------------------------
+
+/** The outputs there are now: [{ deviceId, label }], not the system's 'default' and 'communications' aliases. */
+async function listOutputs() {
+  const all = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+  return all.filter((d) => d.kind === 'audiooutput' && d.deviceId !== 'default' && d.deviceId !== 'communications');
+}
+// Plays through the chosen output when it's there, the system default when it isn't; `announce` says so when that
+// changes by itself (headphones unplugged, AirPods back out of their case).
+async function applyOutput(announce) {
+  const devices = await listOutputs(), id = pickOutput(devices, state.output);
+  if (id === (engine.outputId || '')) return;
+  if (!(await engine.setOutput(id)) || !announce) return;
+  const device = devices.find((d) => d.deviceId === id);
+  setStatus(device ? `PLAYING ON ${outputName(device)}` : 'OUTPUT: SYSTEM DEFAULT');
+}
+/** Settings → OUTPUT: a device ({ deviceId, label }), or null for the system default. */
+async function setOutput(device) {
+  state.output = device ? { id: device.deviceId, label: device.label } : null;
+  await applyOutput(false);
+  saveSettingsSoon();
+}
+const currentOutputName = async () => outputName((await listOutputs()).find((d) => d.deviceId === engine.outputId) || null);
+
 // Disc wear (disc-wear.js): the disc that's in gets the scratches of however many times its album has been played.
 // Worked out as a song goes in, so new marks turn up on the next song rather than in the middle of one.
 async function updateWear() {
@@ -1268,7 +1293,7 @@ function appendAndPlay(p) {
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort };
+  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -1532,7 +1557,7 @@ export const app = {
   detailsFor: (p) => detailsCache.get(p),
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) { state.index = i; load(state.queue[i]); } },
   coverSource: () => { const s = $('track-source').textContent; return /COVER ART|ALBUM ART/.test(s) ? s.split(' · ')[0].replace(/ COVER ART$/, '').replace('EMBEDDED ALBUM ART', 'In the file') : null; },
-  switchTheme, setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise, setDiscWear,
+  switchTheme, setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setOutput, listOutputs, currentOutputName,
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
   saveEq: () => cdp.saveEqPresets(state.customPresets),
@@ -1587,6 +1612,9 @@ async function start() {
   state.discord = s.discord !== false;
   setDiscNoise(!!s.discNoise);
   state.discWear = s.discWear !== false;
+  state.output = s.output || null;
+  applyOutput(false);
+  navigator.mediaDevices.addEventListener('devicechange', () => applyOutput(true));
   state.saveFound = !!s.saveFound;
   state.lyricsOffset = s.lyricsOffset || 0;
   state.shelfSort = s.shelfSort || 'ARTIST';
