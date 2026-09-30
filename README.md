@@ -4,7 +4,7 @@ CDPlayer is a desktop music player that recreates the tactile feel of a physical
 
 **Download it, open it, and it plays.** MP3, M4A (AAC *and* Apple Lossless), FLAC, WAV, AIFF, AU, OGG and Opus all work out of the box on macOS, Windows and Linux. There is nothing else to install — no FFmpeg, no Java.
 
-Put a real CD in the drive and play it, or **rip it to FLAC** in one click. Browse your albums spine-out on **the CD shelf**, open an album's **booklet**, and sing along with **karaoke** that lights up each word as it's sung.
+Put a real CD in the drive and play it, or **rip it to FLAC** in one click. Browse your albums spine-out on **the CD shelf** — where albums you've left alone gather dust, new ones come shrink-wrapped, and the albums you're missing stand as see-through places — open an album's **booklet**, marked in pen as you play it, and sing along with **karaoke** that lights up each word as it's sung. Discs wear with play, and turn over to show their tracks.
 
 <p align="center">
   <img src="docs/screenshots/main-red.jpg" width="49%" alt="CDPlayer main window, RED theme, playing a ripped OK Computer">
@@ -30,6 +30,12 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - **macOS:** if you see *"CDPlayer can't be opened because Apple cannot check it"*, right-click the app in Applications → **Open** → **Open**. (Or: System Settings → Privacy & Security → **Open Anyway**.) Only needed once.
 - **Windows:** if SmartScreen says *"Windows protected your PC"*, click **More info** → **Run anyway**. Only needed once.
 - **Linux:** nothing extra.
+
+The first time it opens, CDPlayer shows a short guide — five cards: putting music on, the disc, the shelf, lyrics, and making it yours. It's always there again in **Settings → HELP**, with a **FAQ** (also [below](#faq)) and every **keyboard shortcut** (or press `?`).
+
+<p align="center">
+  <img src="docs/screenshots/guide.jpg" width="60%" alt="The first-run guide: WELCOME TO CDPLAYER, the first of five cards">
+</p>
 
 ## Features
 
@@ -70,14 +76,19 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - **The receipt**: tucked behind every case's cover, the till receipt from the (made-up) record shop it was bought at, the day it turned up in your music folder, for the price on its sticker — click its edge to pull it out
 - **Sticky notes**: **+ NOTE** on a case sticks a note on its front, written in marker ("lend to Sam", "for the long drive") — click it to change it, × to peel it off. Its corner shows above the spine, and the shelf's search finds albums by their notes too
 - **Missing albums**: sorted by artist, every artist on the shelf gets a box after their albums — **+5 MISSING** — counting their studio albums you don't have, from [MusicBrainz](https://musicbrainz.org) (not live records, compilations, EPs or singles). Click it and they stand on the shelf as see-through places, oldest first; click one for its cover and tracklist, **PLAY ON SPOTIFY**, **MUSICBRAINZ**, or **NOT INTERESTED** to never see it again. Looked up as artists scroll into view, and kept for a month. And a case you pull out lists the album's whole tracklist, the songs you don't have in grey
+- **Getting about**: an index down the shelf's right edge jumps to a letter, month, decade or colour, whichever way it's sorted, and **⌖ IN THE PLAYER** goes to the album whose disc is in
 - Some cases are Japanese editions, with an **obi** round the spine and a yen price; others still wear a shop's price sticker; and an album that turned up in your music folder in the last two weeks has a **NEW** sticker
 
 <p align="center">
-  <img src="docs/screenshots/shelf.jpg" width="49%" alt="The CD shelf: every album spine-out, in the colours of its cover">
-  <img src="docs/screenshots/shelf-case.jpg" width="49%" alt="A case pulled out of the shelf: the cover, the tracklist, PLAY and ADD TO QUEUE">
+  <img src="docs/screenshots/shelf.jpg" width="49%" alt="The CD shelf sorted by artist: dusty spines, new albums shrink-wrapped, a sticky note's corner, +N MISSING boxes and the index down the side">
+  <img src="docs/screenshots/shelf-case.jpg" width="49%" alt="A case pulled out: a sticky note and the receipt on its cover, the songs you don't have in grey">
 </p>
 <p align="center">
-  <img src="docs/screenshots/booklet.jpg" width="70%" alt="An album's booklet: the tracklist and the first song's lyrics">
+  <img src="docs/screenshots/missing-albums.jpg" width="49%" alt="A missing album's ghost case: Korn's Untouchables, its cover and tracklist, NOT INTERESTED and MUSICBRAINZ">
+  <img src="docs/screenshots/shelf-color.jpg" width="49%" alt="The shelf sorted by colour, round the rainbow">
+</p>
+<p align="center">
+  <img src="docs/screenshots/booklet.jpg" width="70%" alt="An album's booklet marked in pen: tally marks for each song's plays, the favourite circled, and the lyrics">
 </p>
 
 **Spotify** (Premium)
@@ -126,6 +137,10 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 - **Discord status**: while a song plays, your Discord profile shows *Listening to* the artist, with the song, a progress bar and the cover (when CDPlayer found it online). It talks only to the Discord app on your computer, clears when you pause, and can be turned off in Settings
 
 <p align="center">
+  <img src="docs/screenshots/disc-wear.jpg" width="49%" alt="A much-played disc in CD view: scratches, scuffs and a thumbprint over its cover art">
+  <img src="docs/screenshots/disc-data-side.jpg" width="49%" alt="The disc turned over (B): a ring for each track, the red laser where it's playing">
+</p>
+<p align="center">
   <img src="docs/screenshots/karaoke.jpg" width="70%" alt="Karaoke Mode: the line being sung, filling in word by word, a duet's singers on either side">
 </p>
 
@@ -142,13 +157,14 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 
 **Settings**
 - Theme, Equalizer, Crossfade, Sleep Timer, Lyrics Offset, Mono Audio, Waveform, Ambient Background, Disc Wear, Animations, Mini Mode and Discord Status in one dialog
+- **Help**: the first-run guide again, the FAQ and the keyboard shortcuts
 - **Ambient Background** washes the window with a blurred glow of the current cover art
 - **Sleep Timer** pauses playback after up to 120 minutes, with a live countdown in the header (click it to cancel)
 - Everything — volume, crossfade, mono, EQ, theme, waveform, animations, window size and position — persists across launches
 - **Animations** toggle turns every hover fade, pulse and transition off at once
 
 <p align="center">
-  <img src="docs/screenshots/settings.jpg" width="55%" alt="CDPlayer Settings dialog">
+  <img src="docs/screenshots/settings.jpg" width="55%" alt="CDPlayer Settings, down to its HELP section: the guide, the FAQ and the keyboard shortcuts">
 </p>
 
 **Themes**
@@ -181,6 +197,32 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 | `P` | Now Playing card: pick lines of the lyrics, then copy or save it |
 | `?` | These keyboard shortcuts |
 | `Esc` | Close whatever's open, or leave fullscreen / CD view / Visualizer Mode / Mini Mode |
+
+## FAQ
+
+**My Mac (or Windows) won’t open it — is it safe?**<br>
+CDPlayer isn’t signed with a paid Apple or Microsoft certificate, so the first time your system asks. On a Mac: right-click CDPlayer in Applications → Open → Open. On Windows: More info → Run anyway. Only once.
+
+**Why is there no cover or lyrics for a song?**<br>
+CDPlayer uses what’s in the file, and otherwise looks it up online by the song’s artist and title. A file named “Track 01” with no tags can’t be found: fix its name with TAGS, which can fill in the details from MusicBrainz.
+
+**Where is my data kept?**<br>
+In ~/.cdplayer on Mac and Linux, %LOCALAPPDATA%\CDPlayer on Windows: your queue, history, settings, notes and play counts, as small text files. Your music itself is never changed unless you save tags or found art into it.
+
+**How do I choose the folder my music is in?**<br>
+Open the SHELF and click FOLDER… (the first time, it asks). The shelf shows the albums in that folder and everything under it. Songs outside it still play — drop them on the window.
+
+**Why doesn’t the equalizer work on Spotify?**<br>
+Spotify’s audio is protected, so it plays outside CDPlayer’s sound engine: the equalizer, crossfade, mono, visualizer and waveform can’t reach it. Your own files get all of them.
+
+**What are the see-through “missing” albums on my shelf?**<br>
+Those are missing albums: sorted by artist, each artist’s studio albums you don’t have stand as see-through places, from MusicBrainz. Click one to see it, or NOT INTERESTED to hide it for good.
+
+**Does CDPlayer send anything over the internet?**<br>
+Only lookups: covers and lyrics by artist and title, album details from MusicBrainz, and a check for a new version on GitHub. No account, no tracking, nothing about you. Spotify talks to Spotify only if you connect it.
+
+**Why are some albums dusty, or wrapped in plastic?**<br>
+An album nobody has played in a month gathers dust (rub the mouse over its spine to wipe it); one new in your music folder comes shrink-wrapped until you play it or pull the film off its case.
 
 ## Coming from the Java version?
 
