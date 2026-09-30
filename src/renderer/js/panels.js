@@ -698,7 +698,7 @@ const SPOTIFY_MESSAGES = {
   SIGN_IN: 'CONNECT SPOTIFY AGAIN', OFFLINE: "COULDN'T REACH SPOTIFY",
   NOT_SHARED: 'SPOTIFY ONLY SHARES THE SONGS OF PLAYLISTS YOU OWN OR COLLABORATE ON', EMPTY: 'NOTHING TO PLAY ON THAT ONE',
 };
-const sp = { account: null, editing: false, drm: null, tab: 'ALBUMS', lists: { ALBUMS: null, PLAYLISTS: null }, next: { ALBUMS: 0, PLAYLISTS: 0 }, query: '', found: null, status: '', searchTimer: null };
+const sp = { account: null, editing: false, step: 0, trouble: null, drm: null, tab: 'ALBUMS', lists: { ALBUMS: null, PLAYLISTS: null }, next: { ALBUMS: 0, PLAYLISTS: 0 }, query: '', found: null, status: '', searchTimer: null };
 // (No answer at all says why, when the network did: "COULDN'T REACH SPOTIFY · ERR_CERT_AUTHORITY_INVALID".)
 const spotifyMessage = (code, detail) => (code === 'OFFLINE' && detail ? `${SPOTIFY_MESSAGES.OFFLINE} · ${detail}` : SPOTIFY_MESSAGES[code] || `SPOTIFY · ${code}`);
 
@@ -767,46 +767,81 @@ function copyLink(app, text) {
 
 const changeAppPill = () => pill('CHANGE APP', () => { sp.editing = true; sp.status = ''; refreshPanel('spotify'); }, 'Enter another Client ID and Secret — to fix a mistyped one, or to use another Spotify developer app');
 
+// The setup wizard: 1 create the app, 2 its keys (checked with Spotify before they're kept), 3 let your account in,
+// 4 connect — and when something's wrong, what, with the way back to the step that fixes it.
+function spotifyWizard(app, a, status, foot) {
+  const step = sp.step || (!a.configured || sp.editing ? 1 : 4);
+  const go = (n) => { sp.step = n; sp.trouble = null; sp.status = ''; refreshPanel('spotify'); };
+  const dots = el('div', { class: 'guide-dots' }, [1, 2, 3, 4].map((n) => el('button', { class: `guide-dot${n === step ? ' on' : ''}`, title: `Step ${n}`, onClick: () => go(n) })));
+  const heading = [title('SPOTIFY'), el('div', { class: 'subtitle' }, `SET UP · ${step} OF 4 — ${['CREATE AN APP', 'ITS KEYS', 'LET YOURSELF IN', 'CONNECT'][step - 1]}`), gap(12)];
+  const trouble = sp.trouble ? el('div', { class: 'spotify-trouble' }, el('div', {}, sp.trouble.text),
+    sp.trouble.step !== step ? pill(`GO TO STEP ${sp.trouble.step}`, () => go(sp.trouble.step)) : null) : null;
+  const nav = (...right) => el('div', { class: 'close-row guide-actions' }, pill('CLOSE', () => closePanel('spotify')), step > 1 ? pill('BACK', () => go(step - 1)) : null, el('span', { class: 'grow' }), ...right.filter(Boolean));
+  const page = (...parts) => parts.flat().filter(Boolean); // an empty part (no trouble) leaves nothing, not "null"
+  const dashboard = pill('OPEN SPOTIFY DASHBOARD', () => app.cdp.openSpotifyDashboard());
+  const intro = hint('Spotify lets an app play for only five people, so CDPlayer plays through your own free Spotify developer app. It takes two minutes, once. You need Spotify Premium.');
+  if (step === 1) {
+    return page(...heading, intro, gap(6),
+      hint('Open the dashboard, click Create app, and fill it in — click each to copy it:'),
+      el('div', { class: 'copy-list' },
+        el('div', {}, 'App name: ', copyLink(app, 'CDPlayer')),
+        el('div', {}, 'App description: ', copyLink(app, 'My CD player')),
+        el('div', {}, 'Redirect URI: ', copyLink(app, 'http://127.0.0.1:8080/callback'), ' — then click Add')),
+      hint('Under “Which API/SDKs are you planning to use?” tick Web API and Web Playback SDK, agree to the terms, and Save.'),
+      gap(10), el('div', { class: 'row-pills' }, dashboard), trouble, dots, nav(pill('NEXT', () => go(2))));
+  }
+  if (step === 2) {
+    const id = el('input', { class: 'text-input', type: 'text', placeholder: 'Client ID', spellcheck: 'false', value: sp.keyId || '' });
+    const secret = el('input', { class: 'text-input', type: 'password', placeholder: 'Client Secret', spellcheck: 'false', value: sp.keySecret || '' });
+    const mark = (input, note) => { const ok = /^[0-9a-f]{32}$/i.test(input.value.trim()); note.textContent = !input.value.trim() ? '' : ok ? '✓' : 'Looks mistyped — 32 letters and digits'; note.className = `key-note${ok ? ' ok' : ''}`; };
+    const idNote = el('span', { class: 'key-note' }), secretNote = el('span', { class: 'key-note' });
+    id.addEventListener('input', () => { sp.keyId = id.value; mark(id, idNote); });
+    secret.addEventListener('input', () => { sp.keySecret = secret.value; mark(secret, secretNote); });
+    const paste = (input, note, key) => pill('PASTE', async () => { const t = await app.cdp.clipboardText().catch(() => ''); if (t) { input.value = t; sp[key] = t; mark(input, note); } }, 'Paste it from the clipboard');
+    requestAnimationFrame(() => { mark(id, idNote); mark(secret, secretNote); });
+    const check = el('button', { class: 'pill on', onClick: async () => {
+      if (!id.value.trim() || !secret.value.trim()) { sp.status = 'BOTH ARE NEEDED'; refreshPanel('spotify'); return; }
+      check.disabled = true; status.textContent = 'ASKING SPOTIFY…';
+      const r = await app.cdp.spotifyCheckKeys({ clientId: id.value, clientSecret: secret.value }).catch(() => ({ error: 'OFFLINE' }));
+      if (!r.ok) { sp.trouble = r.error === 'OFFLINE' ? { step: 2, text: 'Couldn’t reach Spotify — check the connection and try again.' } : await app.cdp.spotifyDiagnose(r.error); refreshPanel('spotify'); return; }
+      if (sp.editing) app.stopSpotify(); // another app's sign-in can't carry on playing
+      sp.account = await app.cdp.saveSpotifyCredentials({ clientId: id.value, clientSecret: secret.value });
+      Object.assign(sp, { editing: false, keyId: '', keySecret: '', lists: { ALBUMS: null, PLAYLISTS: null }, next: { ALBUMS: 0, PLAYLISTS: 0 }, found: null });
+      go(3);
+    } }, 'CHECK & SAVE');
+    return page(...heading, hint('On your app’s page on the dashboard, open Settings. Copy the Client ID, and the Client Secret (under View client secret), and paste them here.'), gap(10),
+      el('div', { class: 'key-row' }, id, paste(id, idNote, 'keyId')), idNote, gap(8),
+      el('div', { class: 'key-row' }, secret, paste(secret, secretNote, 'keySecret')), secretNote,
+      status, trouble, dots, nav(sp.editing && a.configured ? pill('CANCEL', () => { sp.editing = false; go(0); }) : null, check));
+  }
+  if (step === 3) {
+    return page(...heading, hint('Spotify only lets people you’ve added use your app. In your app’s settings, open User Management and add the name and email of the Spotify account you listen with.'),
+      gap(10), el('div', { class: 'row-pills' }, dashboard), trouble, dots, nav(pill('NEXT', () => go(4))));
+  }
+  const connect = el('button', { class: 'pill on', onClick: async () => {
+    connect.disabled = true; sp.trouble = null;
+    status.textContent = 'SIGN IN TO SPOTIFY IN YOUR BROWSER…';
+    const slow = setTimeout(async () => { if (!sp.account || sp.account.connected) return; sp.trouble = await app.cdp.spotifyDiagnose('NO_ANSWER'); sp.status = 'STILL WAITING FOR THE BROWSER…'; refreshPanel('spotify'); }, 20000);
+    const result = await app.cdp.spotifySignIn();
+    clearTimeout(slow);
+    if (result !== 'SPOTIFY CONNECTED') { sp.status = result; refreshSpotifyAccount(app); return; }
+    const v = await app.cdp.spotifyVerify().catch(() => ({ error: 'OFFLINE' }));
+    if (!v.ok && v.error !== 'OFFLINE') { sp.trouble = await app.cdp.spotifyDiagnose(v.error); sp.status = ''; refreshSpotifyAccount(app); return; }
+    Object.assign(sp, { status: '', step: 0, trouble: null, lists: { ALBUMS: null, PLAYLISTS: null }, next: { ALBUMS: 0, PLAYLISTS: 0 } });
+    refreshSpotifyAccount(app);
+  } }, a.reconnectNeeded ? 'RECONNECT SPOTIFY' : 'CONNECT SPOTIFY');
+  return page(...heading, hint(a.reconnectNeeded ? 'Playing Spotify needs a few more permissions than importing playlists did — connect once more.' : 'Sign in to Spotify in your browser, and allow CDPlayer. Then your albums and playlists are here.'),
+    gap(10), el('div', { class: 'row-pills' }, connect, changeAppPill()), status, trouble, dots, nav());
+}
+
 function buildSpotify(app) {
   const a = sp.account;
   const status = el('div', { class: 'setting-hint' }, sp.status);
   const foot = el('div', { class: 'close-row' }, pill('CLOSE', () => closePanel('spotify')));
   if (!a) return [title('SPOTIFY'), gap(18), hint('CHECKING…'), foot];
 
-  // The developer app's Client ID and Secret: at first, and again from CHANGE APP (a mistyped Secret, another app).
-  if (!a.configured || sp.editing) {
-    const id = el('input', { class: 'text-input', type: 'text', placeholder: 'Client ID', spellcheck: 'false' });
-    const secret = el('input', { class: 'text-input', type: 'password', placeholder: 'Client Secret', spellcheck: 'false' });
-    const save = pill('SAVE', async () => {
-      if (!id.value.trim() || !secret.value.trim()) { sp.status = 'BOTH ARE NEEDED'; refreshPanel('spotify'); return; }
-      if (sp.editing) app.stopSpotify(); // another app's sign-in can't carry on playing
-      sp.account = await app.cdp.saveSpotifyCredentials({ clientId: id.value, clientSecret: secret.value });
-      Object.assign(sp, { editing: false, status: '', lists: { ALBUMS: null, PLAYLISTS: null }, next: { ALBUMS: 0, PLAYLISTS: 0 }, found: null });
-      refreshSpotifyAccount(app);
-    });
-    const cancel = a.configured ? pill('CANCEL', () => { sp.editing = false; sp.status = ''; refreshPanel('spotify'); }) : null;
-    return [title('SPOTIFY'), gap(12),
-      hint('Spotify lets each app play for only five people, so CDPlayer plays through your own free Spotify developer app. You need Spotify Premium.'),
-      hint('1. Open the Spotify dashboard and create an app. Tick Web API and Web Playback SDK.'),
-      el('div', { class: 'setting-hint' }, '2. Redirect URI: ', copyLink(app, 'http://127.0.0.1:8080/callback'), ' (click it to copy)'),
-      hint('3. Under User Management, add the email of your Spotify account.'),
-      hint('4. Paste the app’s Client ID and Client Secret here.'), gap(12),
-      el('div', { class: 'row-pills' }, pill('OPEN SPOTIFY DASHBOARD', () => app.cdp.openSpotifyDashboard())), gap(12),
-      id, gap(8), secret, gap(12), el('div', { class: 'row-pills' }, save, cancel), status, foot];
-  }
-
-  if (!a.connected || a.reconnectNeeded) {
-    const connect = pill(a.reconnectNeeded ? 'RECONNECT SPOTIFY' : 'CONNECT SPOTIFY', async () => {
-      connect.disabled = true;
-      sp.status = 'OPENING SPOTIFY LOGIN IN YOUR BROWSER…'; status.textContent = sp.status;
-      sp.status = await app.cdp.spotifySignIn();
-      if (sp.status === 'SPOTIFY CONNECTED') { sp.status = ''; sp.lists = { ALBUMS: null, PLAYLISTS: null }; sp.next = { ALBUMS: 0, PLAYLISTS: 0 }; }
-      refreshSpotifyAccount(app);
-    });
-    return [title('SPOTIFY'), gap(12),
-      hint(a.reconnectNeeded ? 'Playing Spotify needs a few more permissions than importing playlists did — connect once more.' : 'Sign in to Spotify in your browser to see your albums and playlists here.'),
-      gap(12), el('div', { class: 'row-pills' }, connect, changeAppPill()), status, foot];
-  }
+  // Not set up, or not connected: the setup wizard, a step at a time (and again from CHANGE APP).
+  if (!a.configured || sp.editing || !a.connected || a.reconnectNeeded) return spotifyWizard(app, a, status, foot);
 
   const tabs = el('div', { class: 'row-pills' }, ...['ALBUMS', 'PLAYLISTS'].map((t) => {
     const b = pill(t, () => { sp.tab = t; sp.query = ''; sp.found = null; if (!sp.lists[t]) loadSpotifyList(app, t); refreshPanel('spotify'); });

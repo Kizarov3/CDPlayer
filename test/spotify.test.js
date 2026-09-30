@@ -265,3 +265,42 @@ test('an answer that isn\'t a dropped connection says what it was, instead of pa
   assert.strictEqual(r.status, 0);
   assert.match(r.detail, /JSON|UNEXPECTED TOKEN/);
 });
+
+// ---- The setup wizard ----
+
+test('a Client ID or Secret looks right: 32 hex characters, spaces round it ignored', () => {
+  assert.strictEqual(spotify.keyLooksRight(' 0123456789abcdef0123456789ABCDEF '), true);
+  assert.strictEqual(spotify.keyLooksRight('0123456789abcdef'), false);
+  assert.strictEqual(spotify.keyLooksRight('0123456789abcdef0123456789abcdeg'), false);
+  assert.strictEqual(spotify.keyLooksRight(''), false);
+});
+
+test('checking keys asks Spotify for an app token with them, before they are saved', async () => {
+  answer({ 'https://accounts.spotify.com/api/token': { body: { access_token: 'app', expires_in: 3600 } } });
+  assert.deepStrictEqual(await spotify.checkCredentials({ clientId: 'id', clientSecret: 'secret' }), { ok: true });
+  assert.match(requests[0].init.headers.Authorization, new RegExp(Buffer.from('id:secret').toString('base64')));
+  assert.strictEqual(fs.existsSync(file), false, 'nothing saved');
+  answer({ 'https://accounts.spotify.com/api/token': { status: 400, body: { error: 'invalid_client' } } });
+  assert.deepStrictEqual(await spotify.checkCredentials({ clientId: 'id', clientSecret: 'wrong' }), { error: 'BAD_KEYS' });
+});
+
+test('after signing in: the account is checked — added to the app, and Premium', async () => {
+  write(['id', 'secret', 'refresh', ALL]);
+  const token = { 'https://accounts.spotify.com/api/token': { body: { access_token: 'user', expires_in: 3600 } } };
+  answer({ ...token, 'https://api.spotify.com/v1/me': { body: { product: 'premium' } } });
+  assert.deepStrictEqual(await spotify.verifyAccount(), { ok: true });
+  spotify.resetForTests();
+  answer({ ...token, 'https://api.spotify.com/v1/me': { status: 403, body: { error: { status: 403, message: 'Check settings on developer.spotify.com/dashboard, the user may not be registered.' } } } });
+  assert.deepStrictEqual(await spotify.verifyAccount(), { error: 'NOT_REGISTERED' });
+  spotify.resetForTests();
+  answer({ ...token, 'https://api.spotify.com/v1/me': { body: { product: 'free' } } });
+  assert.deepStrictEqual(await spotify.verifyAccount(), { error: 'NO_PREMIUM' });
+});
+
+test('what went wrong, and which step of the setup fixes it', () => {
+  assert.strictEqual(spotify.diagnose('BAD_KEYS').step, 2);
+  assert.strictEqual(spotify.diagnose('NOT_REGISTERED').step, 3);
+  assert.strictEqual(spotify.diagnose('NO_PREMIUM').step, 4);
+  assert.strictEqual(spotify.diagnose('NO_ANSWER').step, 1); // the browser never came back: most often the Redirect URI
+  for (const code of ['BAD_KEYS', 'NOT_REGISTERED', 'NO_PREMIUM', 'NO_ANSWER']) assert.ok(spotify.diagnose(code).text.length > 20);
+});

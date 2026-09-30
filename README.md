@@ -234,7 +234,7 @@ The original Java app lives on at [Kizarov3/CDPlayer-Legacy](https://github.com/
 
 Everything else works without it. With it, CDPlayer plays your Spotify albums and playlists (Premium only), and also uses Spotify as a third cover-art source and to resolve pasted Spotify links.
 
-Spotify lets each developer app play for only five people, so CDPlayer uses your own — the **SPOTIFY** button walks you through it:
+Spotify lets each developer app play for only five people, so CDPlayer uses your own — the **SPOTIFY** button walks you through it in four steps, with what to copy a click away, your keys checked with Spotify before they're kept, and — if something's wrong after you connect (the Redirect URI, your account not added to the app, no Premium) — what, and the step that fixes it:
 
 1. Create a free app at [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard), with **Web API** and **Web Playback SDK** ticked
 2. Add the redirect URI `http://127.0.0.1:8080/callback`

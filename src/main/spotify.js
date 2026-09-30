@@ -144,6 +144,46 @@ async function resolveSpotifyLink(text) {
 
 let signInInProgress = null;
 /** Opens Spotify's login page in the browser and waits (up to 3 minutes) for the redirect back to 127.0.0.1:8080. */
+// ---- The setup wizard (the SPOTIFY panel's four steps): catching what goes wrong at the step that fixes it -------
+
+/** A Client ID or Secret as Spotify makes them: 32 hexadecimal characters. */
+const keyLooksRight = (key) => /^[0-9a-f]{32}$/i.test(String(key || '').trim());
+
+/** Are these the keys of a real app? Asks Spotify for an app token with them, saving nothing. → { ok } | { error } */
+async function checkCredentials({ clientId, clientSecret }) {
+  try {
+    const json = await fetchJson('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: { Authorization: `Basic ${Buffer.from(`${String(clientId).trim()}:${String(clientSecret).trim()}`).toString('base64')}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'grant_type=client_credentials',
+    });
+    return json && json.access_token ? { ok: true } : { error: 'BAD_KEYS' };
+  } catch (e) {
+    return e.status ? { error: 'BAD_KEYS' } : offline(e);
+  }
+}
+
+/** Signed in: is this account one the app lets play (User Management), and a Premium one? → { ok } | { error } */
+async function verifyAccount() {
+  try {
+    const me = await userApi('/me');
+    return me && me.product === 'premium' ? { ok: true } : { error: 'NO_PREMIUM' };
+  } catch (e) {
+    if (e.status === 403) return { error: 'NOT_REGISTERED' };
+    return e.status ? { error: 'SIGN_IN' } : offline(e);
+  }
+}
+
+/** What went wrong (a code) → { step: the wizard step that fixes it, text: what to do }. */
+function diagnose(code) {
+  return ({
+    BAD_KEYS: { step: 2, text: 'Spotify doesn’t know this Client ID and Secret. Copy them again from your app’s Settings on the dashboard — the Secret is under View client secret.' },
+    NO_ANSWER: { step: 1, text: 'The browser never came back. If Spotify’s page said “Invalid redirect URI”, the app’s Redirect URI isn’t exactly http://127.0.0.1:8080/callback — fix it in your app’s Settings, then connect again.' },
+    NOT_REGISTERED: { step: 3, text: 'Spotify says this account isn’t one your app lets in. In your app’s User Management, add the email of the Spotify account you signed in with.' },
+    NO_PREMIUM: { step: 4, text: 'This Spotify account isn’t Premium, and Spotify only lets Premium accounts play in other apps. Your own music plays as always.' },
+  })[code] || { step: 4, text: 'Spotify didn’t let CDPlayer in. Try connecting again.' };
+}
+
 function spotifySignIn() {
   if (signInInProgress) return signInInProgress;
   signInInProgress = (async () => {
@@ -327,5 +367,5 @@ module.exports = {
   SCOPES, REDIRECT_URI, credentials, status, saveCredentials, disconnect, authorizeUrl, resetForTests,
   getSpotifyAppToken, getSpotifyUserToken, accessToken, forgetUserToken, fetchJson,
   classifySpotifyLink, resolveSpotifyLink, spotifySignIn,
-  savedAlbums, playlists, search, discTracks, startPlayback, coverDataUrl,
+  savedAlbums, playlists, search, discTracks, startPlayback, coverDataUrl, keyLooksRight, checkCredentials, verifyAccount, diagnose,
 };

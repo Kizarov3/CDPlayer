@@ -829,3 +829,14 @@ kbd {
 .check-sub { font-size: 10px; font-weight: normal; color: rgb(var(--muted)); }
 .check-buttons { display: flex; gap: 6px; align-items: center; flex: none; }
 .check-cover { width: 34px; height: 34px; object-fit: cover; border-radius: 3px; }
+
+/* The Spotify setup wizard: what to copy, the keys with their checks, and what went wrong. */
+.copy-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 10px 4px; font-size: 12px; font-weight: normal; }
+.key-row { display: flex; gap: 8px; align-items: center; }
+.key-row .text-input { flex: 1; }
+.key-note { display: block; min-height: 14px; margin-top: 3px; font-size: 10px; font-weight: normal; color: rgb(var(--accent)); }
+.key-note.ok { color: rgb(120, 200, 120); }
+.spotify-trouble {
+  display: flex; flex-direction: column; gap: 8px; align-items: flex-start; margin-top: 12px; padding: 10px 12px; border-radius: 6px;
+  background: rgba(var(--accent), .12); border: 1px solid rgba(var(--accent), .4); font-size: 12px; font-weight: normal; line-height: 1.4;
+}

@@ -266,6 +266,11 @@ handle('spotify:resolve', async (text) => {
   try { return await spotify.resolveSpotifyLink(text); } catch (e) { return { error: (e.message || 'LOOKUP FAILED').toUpperCase() }; }
 });
 handle('spotify:signIn', () => spotify.spotifySignIn());
+// The setup wizard: are these keys real (before saving them), is the signed-in account allowed and Premium, and what to do.
+handle('spotify:checkKeys', (creds) => spotify.checkCredentials(creds || {}));
+handle('spotify:verify', () => spotify.verifyAccount());
+handle('spotify:diagnose', (code) => spotify.diagnose(code));
+handle('clipboard:text', () => clipboard.readText().trim().slice(0, 200));
 handle('spotify:status', () => spotify.status());
 handle('spotify:disconnect', () => spotify.disconnect());
 handle('spotify:saveCredentials', (c) => spotify.saveCredentials(c));
