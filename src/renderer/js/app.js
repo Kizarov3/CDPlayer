@@ -13,6 +13,7 @@ import { jogSeconds } from './jog.js';
 import { insertNext, pinnedNext, afterRemove } from './play-next.js';
 import { dockIcon } from './dock-disc.js';
 import { drawCard, lyricChoices, cardSubtitle, quoteLines, MAX_QUOTE_LINES } from './share-card.js';
+import { recordVideo } from './share-video.js';
 import * as panels from './panels.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
 import { wearFor } from './disc-wear.js';
@@ -549,6 +550,24 @@ function shareCard() {
     render: async (picked) => URL.createObjectURL(new Blob([await png(picked)], { type: 'image/png' })),
     copy: attempt(async (bytes) => { await cdp.copyImage(bytes); return true; }, 'CARD COPIED · PASTE IT ANYWHERE'),
     save: attempt((bytes) => cdp.saveCard(bytes, [song.artist, song.title].filter(Boolean).join(' - ')), 'CARD SAVED'),
+    // The video: eight seconds recorded as it plays — started for it if it was paused, and paused again after.
+    video: async (format, onTick) => {
+      const wasPlaying = engine.playing, withSound = !spotifyActive();
+      if (!wasPlaying && engine.deck) { await engine.play(); setPlaying(engine.playing); }
+      try {
+        const made = await recordVideo({ format, audio: withSound ? engine.recordingStream() : null, onTick, song: {
+          ...song, face: disc.renderFace(512, 1).canvas, colors: { ...colors },
+          timed: state.lyrics ? parseLrc(state.lyrics) : [], start: lyricsPosition(),
+        } });
+        if (!made) { setStatus("VIDEO CAN'T BE MADE HERE"); return false; }
+        const saved = await cdp.saveVideo(made.bytes, [song.artist, song.title].filter(Boolean).join(' - '), made.ext);
+        if (saved) setStatus('VIDEO SAVED');
+        return saved;
+      } finally {
+        engine.stopRecording();
+        if (!wasPlaying) { engine.pause(); setPlaying(false); }
+      }
+    },
   });
 }
 

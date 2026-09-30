@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('cdp', {
   dockDisc: invoke('dock:disc'),
   copyImage: invoke('clipboard:image'),
   saveCard: invoke('dialog:saveCard'),
+  saveVideo: invoke('dialog:saveVideo'),
   discMenu: invoke('menu:disc'),
   findCover: invoke('online:cover'),
   findCoverUrl: invoke('online:coverUrl'),

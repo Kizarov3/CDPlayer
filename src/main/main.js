@@ -235,6 +235,16 @@ handle('plays:album', (p) => {
 // The now-playing card (share-card.js), onto the clipboard as a picture.
 handle('clipboard:image', (png) => clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]));
 // …or saved as a picture, named after the song, in the Pictures folder to start with. → true once saved.
+// The card as a video (share-video.js): saved as MP4 (or WebM), named after the song, in the Movies folder to start with.
+handle('dialog:saveVideo', async (bytes, name, ext) => {
+  const kind = ext === 'webm' ? 'webm' : 'mp4';
+  const safe = String(name || 'Now Playing').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || 'Now Playing';
+  const r = await dialog.showSaveDialog(win, { title: 'Save the Video', defaultPath: path.join(app.getPath('videos'), `${safe}.${kind}`), filters: [{ name: kind === 'mp4' ? 'MP4 video' : 'WebM video', extensions: [kind] }] });
+  if (r.canceled || !r.filePath) return false;
+  const target = new RegExp(`\\.${kind}$`, 'i').test(r.filePath) ? r.filePath : `${r.filePath}.${kind}`;
+  fs.writeFileSync(target, Buffer.from(bytes));
+  return true;
+});
 handle('dialog:saveCard', async (png, name) => {
   const safe = String(name || 'Now Playing').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || 'Now Playing';
   const r = await dialog.showSaveDialog(win, { title: 'Save the Card', defaultPath: path.join(app.getPath('pictures'), `${safe}.png`), filters: [{ name: 'PNG picture', extensions: ['png'] }] });

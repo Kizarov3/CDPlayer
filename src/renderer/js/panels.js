@@ -80,7 +80,7 @@ function sliderRow(label, slider, valueLabel) {
 // it off, shift-click to take in every line from the last one clicked; ↑/↓ move to a single line; Enter copies.
 // `render(lines)` → a URL of the card quoting those lines (indexes; none: no quote); `copy` / `save` → true once done.
 
-export function showCard(app, { choices, maxLines, render, copy, save }) {
+export function showCard(app, { choices, maxLines, render, copy, save, video }) {
   let picked = choices.picked >= 0 ? [choices.picked] : [], anchor = choices.picked, shownUrl = null, drawing = 0, noteTimer = null;
   const preview = el('img', { class: 'card-preview', alt: '' });
   const note = el('div', { class: 'card-note' });
@@ -116,6 +116,19 @@ export function showCard(app, { choices, maxLines, render, copy, save }) {
     busy = true;
     try { if (await action(picked)) closePanel('card'); } finally { busy = false; }
   };
+  // VIDEO 9:16 / 1:1: eight seconds recorded as the song plays, counting down on the button, then saved.
+  const videoButton = (format, tip) => {
+    const b = pill(`VIDEO ${format}`, async () => {
+      if (busy || !video) return;
+      busy = true;
+      const buttons = [...b.parentNode.querySelectorAll('button')];
+      buttons.forEach((x) => { x.disabled = true; });
+      b.textContent = 'RECORDING…';
+      try { if (await video(format, (left) => { b.textContent = `RECORDING · ${left}`; })) closePanel('card'); }
+      finally { busy = false; buttons.forEach((x) => { x.disabled = false; }); b.textContent = `VIDEO ${format}`; }
+    }, `${tip} — eight seconds of the disc turning, with the song`);
+    return b;
+  };
   const onKey = (e) => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
@@ -127,7 +140,8 @@ export function showCard(app, { choices, maxLines, render, copy, save }) {
     title('NOW PLAYING CARD'),
     el('div', { class: 'card-pick' }, preview, list),
     el('div', { class: 'close-row split' }, pill('CANCEL', () => closePanel('card')), note,
-      el('div', { class: 'card-actions' }, pill('SAVE…', finish(save), 'Save the card as a picture'), el('button', { class: 'pill on', onClick: finish(copy) }, 'COPY'))),
+      el('div', { class: 'card-actions' }, videoButton('9:16', 'For Stories, Reels and TikTok'), videoButton('1:1', 'Square, for chats'),
+        pill('SAVE…', finish(save), 'Save the card as a picture'), el('button', { class: 'pill on', onClick: finish(copy) }, 'COPY'))),
   ], { width: 940 });
   window.addEventListener('keydown', onKey);
   p.onClose = () => { window.removeEventListener('keydown', onKey); clearTimeout(noteTimer); drawing++; if (shownUrl) URL.revokeObjectURL(shownUrl); };

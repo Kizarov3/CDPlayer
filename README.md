@@ -133,7 +133,7 @@ The first time it opens, CDPlayer shows a short guide — five cards: putting mu
 - **CD view** (`C`) — just the enlarged spinning disc with the title and artist underneath, with a genie-style transition
 - **Visualizer Mode** (`V`) — the whole window becomes the theme's audio-reactive visualizer; also kicks in on its own after a few idle minutes while playing, like a screensaver
 - **The Dock icon** (the taskbar's on Windows) becomes the disc that's in, cover and all
-- **Now Playing card** (`P`, or right-click the disc): a picture of the album in its case and the song, with lines of its lyrics — the one being sung, up to ten you pick, or none — to **COPY** and paste into a chat, or **SAVE…** as a PNG
+- **Now Playing card** (`P`, or right-click the disc): a picture of the album in its case and the song, with lines of its lyrics — the one being sung, up to ten you pick, or none — to **COPY** and paste into a chat, or **SAVE…** as a PNG. Or as a video: **VIDEO 9:16** (for Stories) or **VIDEO 1:1** saves eight seconds of the disc sliding out of its case and turning, the lyrics as they're sung — and the song itself, as MP4
 - System media controls: macOS Control Center, the Windows media overlay and Linux desktop players show what's playing, and hardware media keys work
 - **Discord status**: while a song plays, your Discord profile shows *Listening to* the artist, with the song, a progress bar and the cover (when CDPlayer found it online). It talks only to the Discord app on your computer, clears when you pause, and can be turned off in Settings
 

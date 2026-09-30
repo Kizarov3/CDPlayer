@@ -241,6 +241,13 @@ export class AudioEngine {
    * A band's loudness is its average power, tilted up 3 dB per octave above 1 kHz (music gets quieter towards the
    * treble, so without it the right half would barely move), mapped from −78…−18 dB.
    */
+  /** What's playing as a MediaStream, to record (the card's video); stopRecording() lets go of it. */
+  recordingStream() {
+    if (!this.recDest) this.recDest = this.ctx.createMediaStreamDestination();
+    this.master.connect(this.recDest);
+    return this.recDest.stream;
+  }
+  stopRecording() { if (this.recDest) try { this.master.disconnect(this.recDest); } catch { /* not connected */ } }
   /** Plays through the output device `id` ('' for the system default), without a pause. → false if it can't. */
   async setOutput(id) {
     if (!this.ctx.setSinkId) return false;
