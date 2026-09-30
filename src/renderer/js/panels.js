@@ -13,7 +13,7 @@ import { formatLyricsForDisplay } from './lyrics.js';
 const layer = () => document.getElementById('overlays');
 const panels = new Map(); // name -> { overlay, card, build }
 // Escape closes the closest thing first, in this order.
-const ESC_ORDER = ['onboarding', 'guide', 'faq', 'shortcuts', 'changelog', 'card', 'booklet', 'menu', 'lyrics', 'tags', 'eq', 'rip', 'history', 'spotify', 'search', 'settings'];
+const ESC_ORDER = ['onboarding', 'guide', 'faq', 'shortcuts', 'changelog', 'tags', 'check', 'card', 'booklet', 'menu', 'lyrics', 'eq', 'rip', 'history', 'spotify', 'search', 'settings'];
 
 function openPanel(name, build, { width } = {}) {
   let p = panels.get(name);
@@ -378,12 +378,12 @@ const TAG_ROWS = [
 ];
 let tagsView = null; // { path, name, canWrite, current, found, foundCover, values, picked: Set, status, busy }
 
-export function showTags(app) {
-  const path = app.state.loadedPath;
+/** The TAGS panel for the song playing — or for any file (`path`, from LIBRARY CHECK); onClose after it's closed. */
+export function showTags(app, path = app.state.loadedPath, onClose = null) {
   if (!path) return;
   tagsView = { path, name: app.displayName(path), canWrite: true, current: null, found: null, foundCover: null, values: {}, picked: new Set(), status: 'READING THE FILE…', busy: true };
   const p = openPanel('tags', () => buildTags(app), { width: 660 });
-  p.onClose = () => { tagsView = null; };
+  p.onClose = () => { tagsView = null; if (onClose) onClose(); };
   loadTags(app, tagsView);
 }
 const tagsCurrent = (view) => tagsView === view && isOpen('tags');
@@ -848,6 +848,72 @@ export function showOnboarding(app) {
     const p = showGuide(app, { first: true });
     p.onClose = () => { app.cdp.markOnboarded(); resolve(); };
   });
+}
+
+// ---- LIBRARY CHECK (the shelf's CHECK): what's wrong in the music folder, and a way to fix each ------------------
+
+let check = null; // { status, result, open: Set, covers: Map(folder → { cover } | 'LOOKING' | 'NONE' | 'SAVED') }
+const baseName = (p) => String(p).split(/[\\/]/).pop();
+export function showLibraryCheck(app) {
+  check = { status: 'CHECKING…', result: null, open: new Set(['untagged', 'noCover', 'duplicates', 'gaps', 'unreadable']), covers: new Map() };
+  const p = openPanel('check', () => buildCheck(app), { width: 640 });
+  p.onClose = () => { check = null; };
+  runCheck(app);
+}
+let checkProgressHooked = false;
+async function runCheck(app) {
+  if (!checkProgressHooked) {
+    checkProgressHooked = true;
+    app.cdp.onLibraryCheck(({ done, total }) => { if (check && !check.result) { check.status = `CHECKING · ${done} / ${total}`; refreshPanel('check'); } });
+  }
+  check.result = null; check.status = 'CHECKING…'; refreshPanel('check');
+  const result = await app.cdp.checkLibrary().catch(() => null);
+  if (!check) return;
+  check.result = result;
+  const n = result ? ['untagged', 'noCover', 'duplicates', 'gaps', 'unreadable'].reduce((s, k) => s + result[k].length, 0) : 0;
+  check.status = !result ? 'CHOOSE YOUR MUSIC FOLDER ON THE SHELF FIRST' : n ? `${n} ${n === 1 ? 'THING' : 'THINGS'} TO LOOK AT` : 'NOTHING TO FIX ★';
+  refreshPanel('check');
+}
+function buildCheck(app) {
+  const r = check.result;
+  const show = (p) => pill('SHOW', () => app.cdp.showFile(p), 'Show it in its folder');
+  const group = (key, name, hintText, rows) => {
+    if (!rows.length) return null;
+    const open = check.open.has(key);
+    return el('div', { class: 'check-group' },
+      el('button', { class: 'faq-q', onClick: () => { if (open) check.open.delete(key); else check.open.add(key); refreshPanel('check'); } }, el('span', {}, open ? '−' : '+'), `${name} · ${rows.length}`),
+      ...(open ? [el('div', { class: 'setting-hint' }, hintText), ...rows] : []));
+  };
+  const row = (main, sub, ...buttons) => el('div', { class: 'check-row' }, el('div', { class: 'check-name' }, el('div', {}, main), sub ? el('div', { class: 'check-sub' }, sub) : null), el('div', { class: 'check-buttons' }, buttons));
+  const coverRow = (a) => {
+    const state = check.covers.get(a.folder);
+    const find = async () => {
+      check.covers.set(a.folder, 'LOOKING'); refreshPanel('check');
+      const found = await app.cdp.findCover({ artist: a.artist, title: a.title, album: a.album }).catch(() => null);
+      check.covers.set(a.folder, found && found.cover ? { cover: found.cover } : 'NONE'); refreshPanel('check');
+    };
+    const save = async (cover) => {
+      check.covers.set(a.folder, 'SAVING'); refreshPanel('check');
+      for (const p of a.paths) await app.saveTags(p, { cover }).catch(() => {});
+      check.covers.set(a.folder, 'SAVED'); refreshPanel('check');
+    };
+    const buttons = state && state.cover ? [el('img', { class: 'check-cover', src: state.cover, alt: '' }), el('button', { class: 'pill on', onClick: () => save(state.cover) }, 'SAVE')]
+      : state === 'LOOKING' ? [el('span', { class: 'check-sub' }, 'LOOKING…')] : state === 'SAVING' ? [el('span', { class: 'check-sub' }, 'SAVING…')]
+      : state === 'SAVED' ? [el('span', { class: 'check-sub' }, 'SAVED ★')] : [pill(state === 'NONE' ? 'NOT FOUND · AGAIN' : 'FIND COVER', find, 'Look for its cover online')];
+    return row(a.album, a.artist, ...buttons, show(a.paths[0]));
+  };
+  return [title('LIBRARY CHECK'), el('div', { class: 'subtitle' }, check.status), gap(12),
+    r ? el('div', { class: 'scroll check-list' },
+      group('untagged', 'NO TAGS', 'No artist or album in the file — it’s on the shelf by its folder, and covers and lyrics can’t be found for it. FIX TAGS looks it up on MusicBrainz.',
+        r.untagged.map((p) => row(baseName(p), p.split(/[\\/]/).slice(-3, -1).join(' / '), pill('FIX TAGS', () => showTags(app, p, () => { if (check) runCheck(app); }), 'Fill in its tags from MusicBrainz'), show(p)))),
+      group('noCover', 'NO COVER', 'No picture in its files or beside them. FIND COVER looks online; SAVE writes it into every song of the album.', r.noCover.map(coverRow)),
+      group('duplicates', 'DUPLICATES', 'The same song in more than one file (the same artist and title, nearly the same length) — say, an MP3 and a FLAC. Nothing is deleted: have a look.',
+        r.duplicates.map((copies) => row(baseName(copies[0]).replace(/\.[^.]+$/, ''), `${copies.length} copies`, ...copies.map((p) => pill(`SHOW ${(p.split('.').pop() || '').toUpperCase()}`, () => app.cdp.showFile(p)))))),
+      group('gaps', 'GAPS', 'Albums missing some of their track numbers — a song or two may not have come across.',
+        r.gaps.map((g) => row(g.album, `${g.artist}${g.disc > 1 ? ` · DISC ${g.disc}` : ''} · missing ${g.missing.join(', ')}`, pill('SHOW', () => app.cdp.showFile(g.folder))))),
+      group('unreadable', 'UNREADABLE', 'Files CDPlayer couldn’t read any sound from — damaged, or not really music.', r.unreadable.map((p) => row(baseName(p), null, show(p)))))
+      : null,
+    el('div', { class: 'close-row guide-actions' }, pill('CHECK AGAIN', () => runCheck(app)), el('span', { class: 'grow' }), pill('CLOSE', () => closePanel('check')))];
 }
 
 // ---- Help: the guide, the FAQ and the keyboard shortcuts (help.js; also Settings → HELP) --------------------------

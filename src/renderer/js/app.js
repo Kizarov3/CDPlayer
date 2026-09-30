@@ -1552,7 +1552,7 @@ function frame(now) {
 // ---- The app object the panels module works through ------------------------------------------------------------
 
 export const app = {
-  state, engine, disc, THEMES, BUILTIN_EQ_PRESETS, cdp,
+  state, engine, disc, THEMES, BUILTIN_EQ_PRESETS, cdp, libraryCheck: () => panels.showLibraryCheck(app),
   setStatus, queueDisplay, displayName, formatTime, load, addToQueue, playNext, appendAndPlay, seekTo,
   detailsFor: (p) => detailsCache.get(p),
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) { state.index = i; load(state.queue[i]); } },

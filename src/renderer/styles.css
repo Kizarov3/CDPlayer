@@ -819,3 +819,13 @@ kbd {
 }
 .help-pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
 #hint b { color: rgb(var(--accent2)); }
+
+/* LIBRARY CHECK (panels.js): groups that open into rows — what, where, and the buttons to fix or show it. */
+.check-list { max-height: min(460px, 62vh); padding-right: 6px; }
+.check-group { border-bottom: 1px solid rgba(var(--text), .1); padding-bottom: 6px; }
+.check-row { display: flex; gap: 12px; align-items: center; padding: 6px 2px 6px 24px; }
+.check-name { flex: 1; min-width: 0; font-size: 12px; }
+.check-name > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.check-sub { font-size: 10px; font-weight: normal; color: rgb(var(--muted)); }
+.check-buttons { display: flex; gap: 6px; align-items: center; flex: none; }
+.check-cover { width: 34px; height: 34px; object-fit: cover; border-radius: 3px; }

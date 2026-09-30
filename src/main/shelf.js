@@ -234,8 +234,10 @@ async function onlineCover(query, { find = (q) => require('./online').findAlbumC
  */
 // `online: false` looks only on this computer (and remembers nothing when there's nothing here), for sorting the
 // whole shelf by colour without asking the web about every album.
-async function albumCover(firstTrack, { online = true } = {}) {
-  if (thumbs.get(firstTrack) !== undefined) return thumbs.get(firstTrack);
+// `local: true` counts only a cover in the files or beside them — not one found online before (LIBRARY CHECK).
+const fromWeb = new Set();
+async function albumCover(firstTrack, { online = true, local = false } = {}) {
+  if (thumbs.get(firstTrack) !== undefined) return local && fromWeb.has(firstTrack) ? null : thumbs.get(firstTrack);
   let thumb = null;
   const dirs = [...new Set([path.dirname(sourceOf(firstTrack)), albumFolder(firstTrack)])];
   for (const dir of dirs) {
@@ -252,6 +254,7 @@ async function albumCover(firstTrack, { online = true } = {}) {
       else {
         const query = { artist: (d.credits && d.credits.albumArtist) || d.artist, album: d.album };
         thumb = await onlineCover(query, { shrink: (c) => toThumb(nativeImage.createFromDataURL(c)) });
+        if (thumb) fromWeb.add(firstTrack);
       }
     } catch { /* no art */ }
   }
@@ -282,6 +285,6 @@ async function albumCoverFull(firstTrack) {
 }
 
 /** A file's tags changed: its album's cover thumbnail is made again next time. */
-function forget(filePath) { thumbs.delete(filePath); onShelf = null; } // its tags changed: it may be on another album now
+function forget(filePath) { thumbs.delete(filePath); fromWeb.delete(filePath); onShelf = null; } // its tags changed: it may be on another album now
 
 module.exports = { scanAlbums, albumOf, albumTracks, touchedAt, isWrapped, readCache, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };

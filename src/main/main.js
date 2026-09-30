@@ -379,6 +379,25 @@ handle('notes:set', (id, text) => {
   store.writeNotes(notes);
 });
 handle('dust:wipe', (id) => { const d = dust(), t = Date.now(); d.wiped.set(id, t); store.writeDust(d); return t; });
+// LIBRARY CHECK (the shelf): what's wrong in the music folder — from the tags already read (library-check.js), and
+// which albums have no cover on this computer. Progress as 'library-check' events.
+handle('library:check', async () => {
+  const send = (done, total) => { if (win) win.webContents.send('library-check', { done, total }); };
+  const scanned = await shelf.scanAlbums(send);
+  if (!scanned.folder) return null;
+  const cached = shelf.readCache(scanned.folder) || {};
+  const issues = require('./library-check').libraryIssues(Object.entries(cached).map(([p, e]) => ({ path: p, info: e.info })));
+  const noCover = [];
+  let done = 0;
+  for (const a of scanned.albums) {
+    if (!(await shelf.albumCover(a.tracks[0].path, { online: false, local: true }))) {
+      noCover.push({ album: a.title, artist: a.artist, title: a.tracks[0].title, folder: a.folder, paths: a.tracks.map((t) => t.path) });
+    }
+    if (++done % 20 === 0) send(done, scanned.albums.length);
+  }
+  return { ...issues, noCover, folder: scanned.folder };
+});
+handle('shell:showFile', (p) => { if (typeof p === 'string' && fs.existsSync(cue.parseRef(p) ? cue.parseRef(p).cuePath : p)) shell.showItemInFolder(cue.parseRef(p) ? cue.parseRef(p).cuePath : p); });
 handle('shelf:cover', (firstTrack, opts) => shelf.albumCover(firstTrack, { online: !(opts && opts.online === false) }));
 // The colours the shelf worked out from covers (spines, and SORT: COLOR), kept between launches.
 handle('shelf:colors', () => store.readShelfColors());

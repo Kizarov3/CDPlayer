@@ -79,6 +79,7 @@ export function setupShelf(app) {
   $('shelf-folder').addEventListener('click', pickFolder);
   $('shelf-pull').addEventListener('click', pullOne);
   $('shelf-here').addEventListener('click', goToPlayer);
+  $('shelf-check').addEventListener('click', () => shelf.app.libraryCheck());
   $('shelf-filter').addEventListener('input', render);
   $('shelf-sort').addEventListener('click', () => {
     const { state } = shelf.app;
