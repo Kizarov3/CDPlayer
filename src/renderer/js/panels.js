@@ -4,6 +4,7 @@
 import { THEMES } from './theme.js';
 import { EQ_FREQUENCIES } from './audio.js';
 import { el, pill, toggle, setToggle, Slider, anim } from './widgets.js';
+import { GUIDE, FAQ, SHORTCUTS } from './help.js';
 import { catSvg } from './glyphs.js';
 import { isBookletOpen, closeBooklet } from './booklet.js';
 import { formatLyricsForDisplay } from './lyrics.js';
@@ -11,7 +12,7 @@ import { formatLyricsForDisplay } from './lyrics.js';
 const layer = () => document.getElementById('overlays');
 const panels = new Map(); // name -> { overlay, card, build }
 // Escape closes the closest thing first, in this order.
-const ESC_ORDER = ['onboarding', 'changelog', 'card', 'booklet', 'menu', 'lyrics', 'tags', 'eq', 'rip', 'history', 'spotify', 'search', 'settings'];
+const ESC_ORDER = ['onboarding', 'guide', 'faq', 'shortcuts', 'changelog', 'card', 'booklet', 'menu', 'lyrics', 'tags', 'eq', 'rip', 'history', 'spotify', 'search', 'settings'];
 
 function openPanel(name, build, { width } = {}) {
   let p = panels.get(name);
@@ -215,7 +216,12 @@ function buildSettings(app) {
     hint('Covers and lyrics found online are written into the song’s file (once it’s finished playing), so they’re there offline and in other players too.'), gap(18),
     section('SHARING'),
     row('DISCORD STATUS', discord),
-    hint('Shows the song you’re playing on your Discord profile, while the Discord app is open.'));
+    hint('Shows the song you’re playing on your Discord profile, while the Discord app is open.'), gap(18),
+    section('HELP'),
+    el('div', { class: 'help-pills' },
+      pill('SHOW THE GUIDE', () => showGuide(app), 'The five cards shown the first time CDPlayer opened'),
+      pill('FAQ', () => showFaq(), 'Answers to what people ask the first time'),
+      pill('KEYBOARD SHORTCUTS', () => showShortcuts(), 'Every key, also with ?')));
   return [title('SETTINGS'), gap(18), body, el('div', { class: 'settings-foot' }, github, pill('CLOSE', () => closePanel('settings')))];
 }
 
@@ -827,18 +833,51 @@ function tipsCard(heading, subtitle, bullets, onDone) {
     closeRow(onDone, 'GOT IT')];
 }
 
+// The first time CDPlayer opens: the guide (help.js), five cards to step through — and remembered once it's closed.
 export function showOnboarding(app) {
   return new Promise((resolve) => {
-    const done = () => closePanel('onboarding');
-    const p = openPanel('onboarding', () => tipsCard('WELCOME TO CDPLAYER', 'A few things worth knowing before you dive in', [
-      'Drag &amp; drop audio files or a whole folder onto the window to build your queue',
-      'SPACE / K play or pause &middot; J / L previous / next &middot; &larr; / &rarr; skip 5 seconds &middot; F fullscreen',
-      'Open SETTINGS &rarr; THEME to explore nine animated themes, each with its own audio visualizer',
-      'MP3, M4A, FLAC, WAV, AIFF, OGG and Opus all play right away &mdash; there is nothing else to install',
-      'Your queue is saved automatically and restored the next time you open the app',
-    ], done));
+    const p = showGuide(app, { first: true });
     p.onClose = () => { app.cdp.markOnboarded(); resolve(); };
   });
+}
+
+// ---- Help: the guide, the FAQ and the keyboard shortcuts (help.js; also Settings → HELP) --------------------------
+
+export function showGuide(app, { first = false } = {}) {
+  let step = 0;
+  const done = () => closePanel('guide');
+  const build = () => {
+    const s = GUIDE[step], last = step === GUIDE.length - 1;
+    const dots = el('div', { class: 'guide-dots' }, GUIDE.map((g, i) => el('button', { class: `guide-dot${i === step ? ' on' : ''}`, title: g.title, onClick: () => { step = i; refreshPanel('guide'); } })));
+    return [
+      title(first && !step ? 'WELCOME TO CDPLAYER' : s.title), el('div', { class: 'subtitle' }, first && !step ? s.title : `${step + 1} OF ${GUIDE.length}`), gap(18),
+      s.lines.map((line) => el('div', { class: 'tip-row' }, el('span', { class: 'dot' }, '●'), el('span', { class: 'tip' }, line))),
+      gap(8), dots,
+      el('div', { class: 'close-row guide-actions' },
+        pill(last ? 'CLOSE' : 'SKIP', done),
+        el('span', { class: 'grow' }),
+        step ? pill('BACK', () => { step--; refreshPanel('guide'); }) : null,
+        el('button', { class: 'pill on', onClick: () => { if (last) done(); else { step++; refreshPanel('guide'); } } }, last ? (first ? 'START LISTENING' : 'DONE') : 'NEXT')),
+    ];
+  };
+  return openPanel('guide', build, { width: 480 });
+}
+
+export function showFaq() {
+  const open = new Set();
+  const build = () => [title('QUESTIONS'), el('div', { class: 'subtitle' }, 'What people ask the first time'), gap(14),
+    el('div', { class: 'scroll faq-list' }, FAQ.map(({ q, a }, i) => el('div', { class: `faq${open.has(i) ? ' open' : ''}` },
+      el('button', { class: 'faq-q', onClick: () => { if (open.has(i)) open.delete(i); else open.add(i); refreshPanel('faq'); } }, el('span', {}, open.has(i) ? '−' : '+'), q),
+      open.has(i) ? el('div', { class: 'faq-a' }, a) : null))),
+    closeRow(() => closePanel('faq'))];
+  openPanel('faq', build, { width: 520 });
+}
+
+export function showShortcuts() {
+  const keys = (text) => text.split('`').map((part, i) => (i % 2 ? el('kbd', {}, part) : part ? el('span', {}, part) : null));
+  openPanel('shortcuts', () => [title('KEYBOARD SHORTCUTS'), gap(12),
+    el('div', { class: 'scroll shortcut-list' }, SHORTCUTS.map(([k, what]) => el('div', { class: 'shortcut' }, el('span', { class: 'keys' }, keys(k)), el('span', { class: 'what' }, what)))),
+    closeRow(() => closePanel('shortcuts'))], { width: 520 });
 }
 
 // Newest first. Only the entry matching the running version is ever shown.

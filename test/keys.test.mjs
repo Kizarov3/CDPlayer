@@ -18,3 +18,8 @@ test('space and named keys pass through', () => {
   assert.strictEqual(shortcutKey({ key: ' ', code: 'Space' }), ' ');
   assert.strictEqual(shortcutKey({ key: 'ArrowLeft', code: 'ArrowLeft' }), 'ArrowLeft');
 });
+
+test('? shows the shortcuts, on any layout (Shift and the / key)', () => {
+  assert.strictEqual(shortcutKey({ key: '?', code: 'Slash', shiftKey: true }), '?');
+  assert.strictEqual(shortcutKey({ key: ',', code: 'Slash', shiftKey: true }), '?'); // Russian
+});

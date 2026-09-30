@@ -179,6 +179,7 @@ These builds aren't signed with a paid Apple/Microsoft developer certificate, so
 | `S` | The CD shelf |
 | `B` | Turn the disc over to its data side: a ring for each track, the laser where it's playing |
 | `P` | Now Playing card: pick lines of the lyrics, then copy or save it |
+| `?` | These keyboard shortcuts |
 | `Esc` | Close whatever's open, or leave fullscreen / CD view / Visualizer Mode / Mini Mode |
 
 ## Coming from the Java version?
