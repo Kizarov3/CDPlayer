@@ -78,4 +78,6 @@ test('the sections to jump to: the divider cards in order, short names shortened
   assert.deepStrictEqual(jumpTargets(years).map((t) => t.short), ['90s', '10s']);
   const played = arrange([album('X', 'One', { plays: 3 }), album('Y', 'Two', { plays: 0 })], 'PLAYED');
   assert.deepStrictEqual(jumpTargets(played).map((t) => t.short), ['NOT']);
+  const colours = arrange([album('X', 'One', { color: [240, 140, 20] }), album('Y', 'Two', { color: [230, 210, 40] })], 'COLOR');
+  assert.deepStrictEqual(jumpTargets(colours).map((t) => t.short), ['ORA', 'YEL']);
 });

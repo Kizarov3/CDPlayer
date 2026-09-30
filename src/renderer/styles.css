@@ -668,7 +668,7 @@ body.cd-view #cd-info { display: block !important; }
   background-image: linear-gradient(to bottom, rgb(232, 96, 40) 0 3px, transparent 3px);
 }
 .case-info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
-.case-title { font-size: 22px; color: rgb(var(--text)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.case-title { font-size: 22px; line-height: 1.3; padding-top: 2px; color: rgb(var(--text)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* room for the tops of its letters */
 .case-artist { margin-top: 4px; font-size: 13px; font-weight: normal; color: rgb(var(--accent2)); }
 .case-meta { margin-top: 8px; font-size: 10px; color: rgb(var(--muted)); }
 .case-tracks { flex: 1 1 auto; margin: 14px 0; }
