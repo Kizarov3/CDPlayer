@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { arrange, SORTS, dominantColor, colorBand } from '../src/renderer/js/shelf-order.js';
+import { arrange, SORTS, dominantColor, colorBand, jumpTargets } from '../src/renderer/js/shelf-order.js';
 
 const DAY = 86400000;
 const album = (artist, title, extra = {}) => ({ id: `${artist}/${title}`, artist, title, year: null, added: null, plays: 0, ...extra });
@@ -69,4 +69,13 @@ test('SORT: COLOR stands the shelf in rainbow order, a card for each colour, bla
   ];
   assert.deepStrictEqual(show(arrange(list, 'COLOR')), ['[RED]', 'Crimson', 'Red', '[GREEN]', 'Green', '[BLUE]', 'Blue', '[B&W]', 'White', 'No cover', 'Black']);
   assert.deepStrictEqual(SORTS, ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR']);
+});
+
+test('the sections to jump to: the divider cards in order, short names shortened', () => {
+  const items = arrange([album('ABBA', 'Gold'), album('Björk', 'Post'), album('Beck', 'Odelay'), album('The Cure', 'Disintegration')], 'ARTIST');
+  assert.deepStrictEqual(jumpTargets(items), [{ label: 'A', short: 'A' }, { label: 'B', short: 'B' }, { label: 'C', short: 'C' }]);
+  const years = arrange([album('X', 'One', { year: '1994' }), album('Y', 'Two', { year: '2011' })], 'YEAR');
+  assert.deepStrictEqual(jumpTargets(years).map((t) => t.short), ['90s', '10s']);
+  const played = arrange([album('X', 'One', { plays: 3 }), album('Y', 'Two', { plays: 0 })], 'PLAYED');
+  assert.deepStrictEqual(jumpTargets(played).map((t) => t.short), ['NOT']);
 });

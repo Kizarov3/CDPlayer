@@ -100,3 +100,15 @@ export function arrange(albums, sort) {
   }
   return out;
 }
+
+/**
+ * The sections of a shelf as arranged (its divider cards, in order), for the index down its side: { label, short } —
+ * short enough for a narrow strip: '1990s' → '90s', 'MAR 2024' → "MAR'24", 'NOT PLAYED YET' → 'NOT'.
+ */
+export function jumpTargets(items) {
+  return items.filter((x) => x.divider).map(({ divider: label }) => {
+    const month = /^([A-Z]{3}) \d{2}(\d{2})$/.exec(label);
+    const short = /^\d{4}s$/.test(label) ? label.slice(2) : month ? `${month[1]}'${month[2]}` : label.split(' ')[0].slice(0, 5);
+    return { label, short };
+  });
+}

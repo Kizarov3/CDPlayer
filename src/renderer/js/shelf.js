@@ -10,7 +10,7 @@
 import { el, pill, anim } from './widgets.js';
 import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './booklet.js';
 import { stickersFor } from './shelf-stickers.js';
-import { arrange, SORTS, matchesFilter, dominantColor } from './shelf-order.js';
+import { arrange, SORTS, matchesFilter, dominantColor, jumpTargets } from './shelf-order.js';
 import { hash } from './disc-wear.js';
 import { stickyNote, noteLook } from './shelf-notes.js';
 import { receiptFor } from './shelf-receipt.js';
@@ -40,6 +40,7 @@ export function showInPlayer(path) {
     spine.classList.toggle('in-player', holds(spine.album, shelf.inPlayer));
     spine.title = spineTitle(spine.album);
   }
+  if (shelf.open) showHere();
 }
 
 export async function openShelf(app) {
@@ -77,6 +78,7 @@ export function setupShelf(app) {
   $('shelf-close').addEventListener('click', closeShelf);
   $('shelf-folder').addEventListener('click', pickFolder);
   $('shelf-pull').addEventListener('click', pullOne);
+  $('shelf-here').addEventListener('click', goToPlayer);
   $('shelf-filter').addEventListener('input', render);
   $('shelf-sort').addEventListener('click', () => {
     const { state } = shelf.app;
@@ -143,10 +145,13 @@ function render() {
   shelf.onScreen.clear();
   if (sort !== 'ARTIST') stopLookups();
   const boxes = sort === 'ARTIST' ? boxesFor({ albums: shelf.albums, shown, discogs: shelf.discogs, hidden: shelf.hidden, open: shelf.openBoxes, query }) : new Map();
-  const items = withMissing(arrange(shown, sort), boxes).map((a) => {
+  const arranged = arrange(shown, sort);
+  showIndex(jumpTargets(arranged));
+  showHere();
+  const items = withMissing(arranged, boxes).map((a) => {
     if (a.box) return boxCard(a.box);
     if (a.ghost) return ghostSpine(a.ghost, a.artist);
-    if (a.divider) return el('div', { class: `shelf-divider${[...a.divider].length <= 2 ? ' short' : ''}`, 'aria-hidden': 'true' }, el('span', {}, a.divider));
+    if (a.divider) return el('div', { class: `shelf-divider${[...a.divider].length <= 2 ? ' short' : ''}`, 'aria-hidden': 'true', 'data-section': a.divider }, el('span', {}, a.divider));
     const st = a.stickers = stickersFor(a, now);
     const spine = el('button', { class: `spine${a.discs > 1 ? ' double' : ''}${st.obi ? ' obi' : ''}${st.isNew ? ' new' : ''}${holds(a, shelf.inPlayer) ? ' in-player' : ''}`, title: spineTitle(a), onClick: () => { if (!shelf.dragged) openCase(a, spine); } },
       el('span', { class: 'spine-text' }, a.artist ? el('b', {}, a.artist) : null, a.artist ? ' · ' : null, a.title),
@@ -330,6 +335,28 @@ function putDown(drag, target, next = false) {
   // Let go anywhere else: it goes back in its place on the shelf.
   if (!anim.enabled) { back(); return; }
   ghost.animate([{ transform: ghost.style.transform }, { transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.3,.7,.3,1)' }).onfinish = back;
+}
+
+// ---- Getting about: the index down the side, and the album in the player -----------------------------------------
+
+// A button for each section (letter, month, decade, colour…) down the shelf's right edge; click one to go to it.
+function showIndex(targets) {
+  const index = $('shelf-index');
+  index.hidden = targets.length < 2;
+  index.replaceChildren(...targets.map(({ label, short }) => el('button', { title: label, onClick: () => {
+    const card = $('shelf-body').querySelector(`[data-section="${CSS.escape(label)}"]`);
+    if (card) card.scrollIntoView({ block: 'start', behavior: anim.enabled ? 'smooth' : 'auto' });
+  } }, short)));
+}
+// ⌖ IN THE PLAYER: shown while the album whose disc is in is on the shelf as it stands; goes to it, and it waves.
+function showHere() {
+  $('shelf-here').hidden = !(shelf.inPlayer && (shelf.shown || []).some((a) => holds(a, shelf.inPlayer)));
+}
+function goToPlayer() {
+  const spine = [...document.querySelectorAll('#shelf-body .spine')].find((s) => s.album && holds(s.album, shelf.inPlayer));
+  if (!spine) return;
+  spine.scrollIntoView({ block: 'center', inline: 'nearest', behavior: anim.enabled ? 'smooth' : 'auto' });
+  if (anim.enabled) setTimeout(() => spine.animate([{ transform: 'translateY(-12px)' }, { transform: 'translateY(-26px)' }, { transform: 'translateY(-12px)' }], { duration: 420, easing: 'ease-in-out' }), 350);
 }
 
 // ---- Missing albums (shelf-missing.js) -------------------------------------------------------------------------
