@@ -172,13 +172,15 @@ let discStart = 0;
 function updateDiscData() {
   const i = state.index, here = state.loadedPath && detailsCache.get(state.loadedPath);
   if (i < 0 || !here) { disc.setData(null); return; }
-  const same = (p) => { const d = detailsCache.get(p); return !!(here.album && d && d.album === here.album); };
+  const artistOf = (d) => (d.credits && d.credits.albumArtist) || d.artist || '';
+  const same = (p) => { const d = detailsCache.get(p); return !!(here.album && d && d.album === here.album && artistOf(d) === artistOf(here)); };
   let a = i, b = i;
   while (a > 0 && same(state.queue[a - 1])) a--;
   while (b < state.queue.length - 1 && same(state.queue[b + 1])) b++;
   discStart = a;
   const paths = state.queue.slice(a, b + 1);
   disc.setData({
+    id: `${here.album || ''}\n${artistOf(here)}\n${state.queue[a]}`,
     durations: paths.map((p) => (p === state.loadedPath && engine.duration) || (detailsCache.get(p) || {}).duration || 240),
     titles: paths.map((p) => (detailsCache.get(p) || {}).title || displayName(p)),
   });

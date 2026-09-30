@@ -338,7 +338,8 @@ function insidePages(content, spread, size) {
   pages.push(...layout('tracks', (n) => heading(n ? `${tracks.title} (cont.)` : tracks.title, n ? null : tracks.sub), tracks.rows.map((t, k) => () => {
     const row = el('div', { class: `track${t.current ? ' current' : ''}${t.favorite ? ' favorite' : ''}`, 'data-play': k, title: t.tip },
       el('span', { class: 'no' }, String(k + 1).padStart(2, '0')),
-      el('span', { class: 'name' }, el('span', { class: 'title' }, t.name), t.tally ? tallyMarks(t.tally, k) : null),
+      el('span', { class: 'name' }, el('span', { class: 'title' }, t.name)),
+      t.tally ? tallyMarks(t.tally, k) : null, // beside the name, never cut off with a long one
       el('span', { class: 'time' }, t.time));
     row.addEventListener('click', (e) => { e.stopPropagation(); t.play(); });
     return row;

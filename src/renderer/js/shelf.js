@@ -485,6 +485,12 @@ function caseFilm(a) {
       film.removeEventListener('pointercancel', up);
       film.classList.remove('pulling');
       if (ev.type === 'pointerup' && Math.abs(ev.clientX - x0) > w * 0.4) { tearFilm(film, a, false, Math.sign(ev.clientX - x0)); return; }
+      // Just a click on it: the film rustles — it has to be pulled off first.
+      if (ev.type === 'pointerup' && Math.abs(ev.clientX - x0) < 4 && anim.enabled) {
+        film.style.transform = '';
+        film.animate([{ transform: 'none' }, { transform: 'translateX(-4px)' }, { transform: 'translateX(3px)' }, { transform: 'none' }], { duration: 240 });
+        return;
+      }
       const from = film.style.transform;
       film.style.transform = '';
       if (anim.enabled && from) film.animate([{ transform: from }, { transform: 'none' }], { duration: 260, easing: 'cubic-bezier(.3,1.6,.5,1)' });
@@ -574,7 +580,7 @@ async function openCase(a, spine) {
   if (!shelf.open || shelf.caseOpen) return;
   if (!spine.isConnected) spine = spineFor(a) || spine; // the shelf was redrawn meanwhile
   const from = spine.getBoundingClientRect();
-  const trackRow = (t, i, no = t.track || i + 1) => el('div', { class: 'case-track', title: `Play from here`, onClick: () => (a.wrapped && film ? tearFilm(film, a, true).then(() => play(a, i)) : play(a, i)) },
+  const trackRow = (t, i, no = t.track || i + 1) => el('div', { class: 'case-track', title: `Play from here`, onClick: () => unwrapped(() => play(a, i))() },
     el('span', { class: 'no' }, no ? String(no).padStart(2, '0') : ''),
     el('span', { class: 'name' }, t.title, a.artist === 'Various Artists' && t.artist ? el('span', { class: 'by' }, ` · ${t.artist}`) : null),
     el('span', { class: 'time' }, t.duration ? app.formatTime(t.duration) : ''));
@@ -612,7 +618,12 @@ async function openCase(a, spine) {
   };
   // Shrink-wrap: dragged off by hand, or torn off at once by PLAY, PLAY NEXT or ADD TO QUEUE (or a track clicked).
   const film = a.wrapped ? caseFilm(a) : null;
-  const unwrapped = (then) => () => (a.wrapped && film ? tearFilm(film, a, true).then(then) : then());
+  let tearing = null; // PLAY and co. while the film is coming off: once, not again with a second click
+  const unwrapped = (then) => () => {
+    if (tearing) return;
+    if (a.wrapped && film) { tearing = tearFilm(film, a, true).then(then); return; }
+    then();
+  };
   const addNote = pill('+ NOTE', () => { addNote.hidden = true; caseFront.append(stickyNote({ id: a.id, text: '', onSave: saveNote })); }, 'Stick a note on the case');
   addNote.hidden = !!a.note;
   const caseFront = el('div', { class: 'case-front' }, receiptSlip(a, st), front,

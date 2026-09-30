@@ -23,6 +23,7 @@ const updates = require('./updates');
 const discord = require('./discord');
 const cue = require('./cue');
 const shelf = require('./shelf');
+const { recordPlay } = require('./plays');
 const tagWriter = require('./tag-writer');
 const audioCd = require('./audio-cd');
 const rip = require('./rip');
@@ -212,12 +213,11 @@ function writePlays() {
   if (firstPlayed) store.writeFirstPlayed(firstPlayed);
 }
 handle('plays:add', (p) => {
-  const counts = plays(), n = (counts.get(p) || 0) + 1;
-  counts.delete(p); counts.set(p, n); // most recently played last, so the oldest drop off first
-  const times = playedAt(), firsts = firstPlayedAt();
-  times.delete(p); times.set(p, Date.now());
-  if (!firsts.has(p)) firsts.set(p, Date.now());
+  const n = recordPlay({ counts: plays(), last: playedAt(), first: firstPlayedAt() }, p, Date.now());
   clearTimeout(playsTimer); playsTimer = setTimeout(writePlays, 1000);
+  // Played, its album is out of its shrink-wrap for good (not only while its play count is kept).
+  const album = shelf.albumOf(p), w = album && wrap();
+  if (w && !w.torn.has(album.id)) { w.torn.add(album.id); store.writeWrap(w); }
   return n;
 });
 handle('plays:count', (p) => plays().get(p) || 0);

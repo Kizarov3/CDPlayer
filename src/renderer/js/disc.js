@@ -86,7 +86,7 @@ export class Disc {
     canvas.addEventListener('pointerup', up);
     canvas.addEventListener('pointercancel', up);
     window.addEventListener('mousemove', (e) => this.aimLight(e.clientX, e.clientY));
-    canvas.addEventListener('dblclick', (e) => { if (this.mode !== 'mini' && !this.artOpen && !this.overArt(e)) this.startEject(); });
+    canvas.addEventListener('dblclick', (e) => { if (this.mode !== 'mini' && !this.artOpen && !this.overArt(e) && !this.overFlip(e) && !this.showingData()) this.startEject(); });
     canvas.addEventListener('click', (e) => {
       if (this.mode === 'mini') { if (this.onMiniClick) this.onMiniClick(); return; }
       if (this.overFlip(e)) { this.flip(); return; }
@@ -110,14 +110,14 @@ export class Disc {
     });
   }
   setMode(mode) { this.mode = mode; }
-  /** The tracks on the disc that's in: { durations (s), titles }, or null. A different disc comes in face up. */
+  /** The tracks on the disc that's in: { id, durations (s), titles }, or null. A different disc (id) comes in face up. */
   setData(data) {
     const key = data ? JSON.stringify([data.durations, data.titles]) : '';
     if (key === (this.data && this.data.key)) return;
-    const another = !this.data || !data || this.data.titles.join('\n') !== data.titles.join('\n');
-    this.data = data ? { layout: discLayout(data.durations), titles: data.titles, key } : null;
+    const another = !this.data || !data || this.data.id !== data.id;
+    this.data = data ? { layout: discLayout(data.durations), titles: data.titles, key, id: data.id } : null;
     this.dataFace = null;
-    if (another) this.flipped = false; // another disc comes in face up (the same one, better timed, stays as it is)
+    if (another) this.flipped = false; // another disc comes in face up (the same one, its names filling in, stays as it is)
   }
   /** Turns the disc over (or to `side`: true for the data side). */
   flip(side = !this.flipped) { this.flipped = !!side && !!this.data; }

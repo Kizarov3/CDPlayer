@@ -534,7 +534,7 @@ body.cd-view #cd-info { display: block !important; }
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .22);
 }
 .case-film {
-  position: absolute; inset: -3px; z-index: 1; cursor: grab; touch-action: none; border-radius: 3px;
+  position: absolute; inset: -3px; z-index: 2; cursor: grab; touch-action: none; border-radius: 3px;
   background:
     linear-gradient(118deg, rgba(255, 255, 255, 0) 14%, rgba(255, 255, 255, .5) 24%, rgba(255, 255, 255, .12) 30%, rgba(255, 255, 255, 0) 36%, rgba(255, 255, 255, 0) 60%, rgba(255, 255, 255, .28) 68%, rgba(255, 255, 255, 0) 76%),
     linear-gradient(28deg, rgba(255, 255, 255, 0) 70%, rgba(255, 255, 255, .22) 78%, rgba(255, 255, 255, 0) 84%),
@@ -603,7 +603,7 @@ body.cd-view #cd-info { display: block !important; }
 }
 .case-front { flex: 0 0 auto; height: 100%; aspect-ratio: 1; position: relative; }
 .case-cover { width: 100%; height: 100%; object-fit: cover; display: block; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
-.case-front .case-cover { cursor: pointer; }
+.case-front .case-cover { cursor: pointer; position: relative; z-index: 1; } /* over the receipt tucked behind it */
 .case-front .case-cover.opening { cursor: progress; }
 .case-cover.cdr { background: radial-gradient(circle at 50% 50%, #e9eaec 0, #cfd2d6 70%); color: #1a1a4e; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; text-align: center; }
 .case-cover .marker { font: 26px "Marker Felt", "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive; transform: rotate(-4deg); max-width: 85%; }
@@ -644,7 +644,7 @@ body.cd-view #cd-info { display: block !important; }
   font: 16px/1 sans-serif; color: rgba(34, 38, 84, .55); opacity: 0; transition: opacity 120ms;
 }
 .sticky-note:hover .note-peel { opacity: 1; }
-.case-front .sticker-new { top: 14px; right: 14px; width: 54px; height: 54px; font-size: 14px; letter-spacing: .04em; transform: rotate(14deg); z-index: 2; }
+.case-front .sticker-new { top: 14px; right: 14px; width: 54px; height: 54px; font-size: 14px; letter-spacing: .04em; transform: rotate(14deg); z-index: 3; }
 /* A missing album's ghost case: see-through, with a dashed edge. */
 .case-card.ghost { background: rgba(var(--card), .82); border: 1.5px dashed rgba(255, 255, 255, .35); }
 .case-card.ghost .case-cover { opacity: .75; }
@@ -736,7 +736,7 @@ body.cd-view #cd-info { display: block !important; }
    with a star in the margin, and a note on the back cover — in light ballpoint ink, readable on any print. */
 .booklet { --ink: rgba(150, 192, 255, .92); }
 .booklet .pen { font-family: "Bradley Hand", "Segoe Print", "Marker Felt", "Comic Sans MS", cursive; color: var(--ink); font-weight: normal; }
-.booklet .tally { display: inline-block; margin-left: .7em; font-size: .95em; letter-spacing: .06em; }
+.booklet .tally { flex: none; font-size: .95em; letter-spacing: .06em; white-space: nowrap; }
 .booklet .tally .five { position: relative; margin-right: .35em; }
 .booklet .tally .five::after { content: ""; position: absolute; left: -.15em; right: -.15em; top: 50%; border-top: 1.5px solid var(--ink); transform: rotate(-22deg); }
 .booklet .track.favorite { position: relative; }
