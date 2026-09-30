@@ -882,6 +882,13 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.10.0', changes: [
+    '<b>The shelf comes alive</b>: albums you leave alone gather dust (rub a spine to wipe it), new ones come shrink-wrapped, cases carry a sticky note and the shop&rsquo;s receipt, and SORT now goes round the rainbow by colour',
+    '<b>Missing albums</b>: sorted by artist, each artist&rsquo;s studio albums you don&rsquo;t have stand as see-through places &mdash; and a case lists the songs you don&rsquo;t have in grey',
+    '<b>A disc that&rsquo;s yours</b>: turn it by hand like a jog wheel, turn it over (B) to its tracks and the laser, and watch it wear with play; the booklet gets marked in pen',
+    '<b>Share what&rsquo;s playing</b> (P) as a card with lines of its lyrics, and <b>PLAY NEXT</b> for songs straight after this one',
+    '<b>New here?</b> A short guide, a FAQ and every shortcut (?) are in Settings &rarr; HELP &mdash; and a shelf of thousands of albums scrolls smoothly',
+  ] },
   { version: '2.9.2', changes: [
     '<b>Spotify on Windows plays</b>: pressing play on a Spotify disc no longer ends in &ldquo;couldn&rsquo;t reach Spotify&rdquo; &mdash; and if Spotify still won&rsquo;t play, SHOW LOG in SPOTIFY opens a log of what happened',
     '<b>Sign in with the right account</b>: CONNECT SPOTIFY now always asks which Spotify account, with &ldquo;Not you?&rdquo; to switch',
