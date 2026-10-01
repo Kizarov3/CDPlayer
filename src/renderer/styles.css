@@ -352,11 +352,15 @@ body.cd-view #cd-info { display: block !important; }
 .theme-menu-layer { position: absolute; inset: 0; pointer-events: auto; }
 .theme-menu {
   position: absolute; background: rgb(var(--card)); border: 1px solid rgba(255, 255, 255, .118);
-  display: flex; flex-direction: column; padding: 2px 0;
+  display: flex; flex-direction: column; padding: 2px 0; max-height: calc(100vh - 16px); overflow-y: auto;
 }
 .theme-item { display: flex; align-items: center; gap: 10px; padding: 8px 16px 8px 12px; font-size: 11px; color: rgb(var(--text)); cursor: pointer; }
 .theme-item:hover { background: rgba(255, 255, 255, .06); }
 .theme-item.current { color: rgb(var(--accent)); }
+.menu-divider { height: 1px; margin: 4px 0; background: rgba(255, 255, 255, .118); }
+.menu-more { opacity: 0; padding: 0 2px 0 10px; color: rgb(var(--muted)); }
+.theme-item:hover .menu-more { opacity: 1; }
+.menu-more:hover { color: rgb(var(--accent)); }
 .swatch { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .235); }
 
 /* ---- Visualizer Mode ---- */

@@ -13,7 +13,7 @@ import { formatLyricsForDisplay } from './lyrics.js';
 const layer = () => document.getElementById('overlays');
 const panels = new Map(); // name -> { overlay, card, build }
 // Escape closes the closest thing first, in this order.
-const ESC_ORDER = ['onboarding', 'guide', 'faq', 'shortcuts', 'changelog', 'tags', 'check', 'card', 'booklet', 'menu', 'lyrics', 'eq', 'rip', 'history', 'spotify', 'search', 'settings'];
+const ESC_ORDER = ['onboarding', 'guide', 'faq', 'shortcuts', 'changelog', 'tags', 'check', 'card', 'booklet', 'menu', 'theme', 'lyrics', 'eq', 'rip', 'history', 'spotify', 'search', 'settings'];
 
 function openPanel(name, build, { width } = {}) {
   let p = panels.get(name);
@@ -252,14 +252,23 @@ function buildSettings(app) {
 // ---- Drop-down menus (theme picker, EQ presets) ------------------------------------------------------------------
 
 let menuLayer = null;
-/** A small menu under `anchor`; items are { label, swatch (CSS background, optional), current, pick }. */
+/**
+ * A small menu under `anchor` (an element, or where one was); items are { label, swatch (CSS background, optional),
+ * current, pick, more (optional: ✎ and right-click, given where the item is) } or { divider: true }.
+ */
 function showMenu(anchor, items) {
+  const box = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;
   closeMenu();
-  const box = anchor.getBoundingClientRect();
   const menu = el('div', { class: 'theme-menu' }, items.map((item) => {
+    if (item.divider) return el('div', { class: 'menu-divider' });
     const swatch = item.swatch ? el('span', { class: 'swatch' }) : null;
     if (swatch) swatch.style.background = item.swatch;
-    return el('div', { class: `theme-item${item.current ? ' current' : ''}`, onClick: () => { item.pick(); closeMenu(); } }, swatch, item.label);
+    const openMore = (e) => { e.preventDefault(); e.stopPropagation(); item.more(node.getBoundingClientRect()); };
+    const node = el('div', { class: `theme-item${item.current ? ' current' : ''}`, onClick: () => { closeMenu(); item.pick(); },
+      onContextmenu: (e) => { if (item.more) openMore(e); } },
+    swatch, el('span', { class: 'grow' }, item.label),
+    item.more ? el('span', { class: 'menu-more', title: 'Edit, share or delete', onClick: openMore }, '✎') : null);
+    return node;
   }));
   const layerNode = el('div', { class: 'theme-menu-layer', onMousedown: (e) => { if (e.target === layerNode) closeMenu(); } }, menu);
   layer().append(layerNode);
@@ -270,11 +279,32 @@ function showMenu(anchor, items) {
 }
 export function closeMenu() { if (menuLayer) { menuLayer.remove(); menuLayer = null; } }
 
+const themeSwatch = (t) => (t.image ? `center / cover url("${t.image}")` : `linear-gradient(135deg, rgb(${t.accent}), rgb(${t.accent2}))`);
 function showThemeMenu(app) {
-  showMenu(themeButton, THEMES.map((t, i) => ({
-    label: t.name, swatch: `linear-gradient(135deg, rgb(${t.accent}), rgb(${t.accent2}))`,
-    current: i === app.state.themeIndex, pick: () => app.switchTheme(i),
-  })));
+  const item = (t) => {
+    const i = THEMES.indexOf(t);
+    return { label: t.name, swatch: themeSwatch(t), current: i === app.state.themeIndex, pick: () => app.switchTheme(i), more: t.user ? (box) => showThemeActions(app, t, box) : null };
+  };
+  showMenu(themeButton, [
+    ...THEMES.filter((t) => !t.user).map(item),
+    { divider: true },
+    ...THEMES.filter((t) => t.user).map(item),
+    { label: '+ NEW THEME', pick: () => app.setStatus('COMING UP') },
+    { label: 'IMPORT…', pick: () => app.importTheme() },
+    { label: 'PASTE CODE', pick: () => app.pasteThemeCode() },
+  ]);
+}
+// ✎ or right-click on a theme of your own.
+function showThemeActions(app, theme, box) {
+  showMenu(box, [
+    { label: 'EDIT', pick: () => app.setStatus('COMING UP') },
+    { label: 'EXPORT…', pick: () => app.exportTheme(theme.name) },
+    theme.image ? null : { label: 'COPY CODE', pick: () => app.copyThemeCode(theme) },
+    { label: 'DELETE…', pick: () => showMenu(box, [
+      { label: `DELETE ${theme.name}`, pick: () => app.deleteTheme(theme.name) },
+      { label: 'KEEP IT', pick: () => {} },
+    ]) },
+  ].filter(Boolean));
 }
 function showPresetMenu(app) {
   const current = presetName(app);
