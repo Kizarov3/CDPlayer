@@ -180,6 +180,11 @@ The first time it opens, CDPlayer shows a short guide — five cards: putting mu
   - **MATRIX** — falling green code rain; a miniature rain driven by the audio
   - **AUTUMN** — tumbling leaves; a branch whose leaves grow with the music
 
+## Languages
+
+CDPlayer speaks **English** and **Russian**. **Settings → LANGUAGE**: AUTO follows your system's language, or pick one;
+it applies after a restart. Your language missing? Adding it is one file — see [docs/TRANSLATING.md](docs/TRANSLATING.md).
+
 ## Keyboard shortcuts
 
 | Key | Action |
