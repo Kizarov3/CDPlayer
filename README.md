@@ -171,6 +171,7 @@ The first time it opens, CDPlayer shows a short guide — five cards: putting mu
 
 **Themes**
 - Ten themes — RED, BLUE, SUNSET, FOREST, GALAXY, OCEAN, MATRIX, AUTUMN, SNOW and AUTO — with a smooth animated color transition
+- **Themes of your own** — Settings → THEME → **+ NEW THEME**: six colors (with a warning if the text gets hard to read), a scene (snow, stars, waves, rain of code, leaves or plain bars) and a picture behind the player, blurred and dimmed as you like; start from any theme or from the album playing. Share one as a `.cdtheme` file (**EXPORT…**, then drop it on anyone's CDPlayer) or, without a picture, as a one-line code (**COPY CODE** / **PASTE CODE**)
 - **AUTO** derives the whole palette from the current track's album art
 - Five themes come with their own animated scenery and visualizer shape:
   - **SNOW** — falling snow; the visualizer is a pine tree whose lights pulse with the music
