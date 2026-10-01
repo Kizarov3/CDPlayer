@@ -12,6 +12,7 @@ const http = require('http');
 const crypto = require('crypto');
 const { shell } = require('electron');
 const store = require('./store');
+const { t } = require('./i18n');
 
 const REDIRECT_URI = 'http://127.0.0.1:8080/callback';
 const SCOPES = ['streaming', 'user-read-email', 'user-read-private', 'user-library-read', 'user-modify-playback-state',
@@ -128,12 +129,12 @@ function classifySpotifyLink(text) {
 /** Resolves a Spotify link to [{title, artist}] — or {needsSignIn: true} for a playlist without a user token. */
 async function resolveSpotifyLink(text) {
   const link = classifySpotifyLink(text);
-  if (!link) return { error: 'NOT A SPOTIFY LINK' };
+  if (!link) return { error: t('NOT A SPOTIFY LINK') };
   if (link.kind === 'track') {
     const token = await getSpotifyAppToken();
-    if (!token) return { error: 'SPOTIFY APP CREDENTIALS NOT CONFIGURED' };
-    const t = await fetchJson(`https://api.spotify.com/v1/tracks/${link.id}`, { headers: { Authorization: `Bearer ${token}` } });
-    return { tracks: [{ title: t.name, artist: t.artists && t.artists[0] ? t.artists[0].name : '' }] };
+    if (!token) return { error: t('SPOTIFY APP CREDENTIALS NOT CONFIGURED') };
+    const track = await fetchJson(`https://api.spotify.com/v1/tracks/${link.id}`, { headers: { Authorization: `Bearer ${token}` } });
+    return { tracks: [{ title: track.name, artist: track.artists && track.artists[0] ? track.artists[0].name : '' }] };
   }
   const r = await discTracks({ kind: 'playlist', id: link.id });
   if (r.error === 'SIGN_IN') return { needsSignIn: true };

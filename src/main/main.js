@@ -16,6 +16,7 @@ if (process.env.CDPLAYER_HOME) app.setPath('userData', path.join(process.env.CDP
 const store = require('./store');
 const userThemes = require('./user-themes');
 const i18n = require('./i18n');
+const { t } = i18n; // the main process's own text — dialogs and menus — in the interface's language
 const metadata = require('./metadata');
 const online = require('./online');
 const spotify = require('./spotify');
@@ -163,7 +164,7 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { role: 'appMenu' },
     { role: 'editMenu' },
-    { label: 'Window', submenu: [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }] },
+    { label: t('Window'), submenu: [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }] },
   ]));
 }
 
@@ -247,7 +248,7 @@ handle('clipboard:image', (png) => clipboard.write([new ClipboardItem({ 'image/p
 handle('dialog:saveVideo', async (bytes, name, ext) => {
   const kind = ext === 'webm' ? 'webm' : 'mp4';
   const safe = String(name || 'Now Playing').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || 'Now Playing';
-  const r = await dialog.showSaveDialog(win, { title: 'Save the Video', defaultPath: path.join(app.getPath('videos'), `${safe}.${kind}`), filters: [{ name: kind === 'mp4' ? 'MP4 video' : 'WebM video', extensions: [kind] }] });
+  const r = await dialog.showSaveDialog(win, { title: t('Save the Video'), defaultPath: path.join(app.getPath('videos'), `${safe}.${kind}`), filters: [{ name: kind === 'mp4' ? t('MP4 video') : t('WebM video'), extensions: [kind] }] });
   if (r.canceled || !r.filePath) return false;
   const target = new RegExp(`\\.${kind}$`, 'i').test(r.filePath) ? r.filePath : `${r.filePath}.${kind}`;
   fs.writeFileSync(target, Buffer.from(bytes));
@@ -255,7 +256,7 @@ handle('dialog:saveVideo', async (bytes, name, ext) => {
 });
 handle('dialog:saveCard', async (png, name) => {
   const safe = String(name || 'Now Playing').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || 'Now Playing';
-  const r = await dialog.showSaveDialog(win, { title: 'Save the Card', defaultPath: path.join(app.getPath('pictures'), `${safe}.png`), filters: [{ name: 'PNG picture', extensions: ['png'] }] });
+  const r = await dialog.showSaveDialog(win, { title: t('Save the Card'), defaultPath: path.join(app.getPath('pictures'), `${safe}.png`), filters: [{ name: t('PNG picture'), extensions: ['png'] }] });
   if (r.canceled || !r.filePath) return false;
   const target = /\.png$/i.test(r.filePath) ? r.filePath : `${r.filePath}.png`;
   fs.writeFileSync(target, Buffer.from(png));
@@ -268,16 +269,16 @@ handle('themes:save', (theme, oldName) => userThemes.save(theme, oldName || null
 handle('themes:delete', (name) => userThemes.remove(name));
 handle('themes:import', async (source) => {
   if (typeof source !== 'string') {
-    const r = await dialog.showOpenDialog(win, { title: 'Import a Theme', defaultPath: app.getPath('downloads'), properties: ['openFile'], filters: [{ name: 'CDPlayer theme', extensions: ['cdtheme'] }] });
+    const r = await dialog.showOpenDialog(win, { title: t('Import a Theme'), defaultPath: app.getPath('downloads'), properties: ['openFile'], filters: [{ name: t('CDPlayer theme'), extensions: ['cdtheme'] }] });
     if (r.canceled || !r.filePaths.length) return { canceled: true };
     source = r.filePaths[0];
   }
   const theme = userThemes.importFile(source);
-  return theme ? { theme } : { error: 'NOT A CDPLAYER THEME' };
+  return theme ? { theme } : { error: t('NOT A CDPLAYER THEME') };
 });
 handle('themes:export', async (name) => {
   const safe = String(name || 'Theme').replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Theme';
-  const r = await dialog.showSaveDialog(win, { title: 'Export the Theme', defaultPath: path.join(app.getPath('documents'), `${safe}.cdtheme`), filters: [{ name: 'CDPlayer theme', extensions: ['cdtheme'] }] });
+  const r = await dialog.showSaveDialog(win, { title: t('Export the Theme'), defaultPath: path.join(app.getPath('documents'), `${safe}.cdtheme`), filters: [{ name: t('CDPlayer theme'), extensions: ['cdtheme'] }] });
   if (r.canceled || !r.filePath) return false;
   return userThemes.exportFile(name, /\.cdtheme$/i.test(r.filePath) ? r.filePath : `${r.filePath}.cdtheme`);
 });
@@ -285,7 +286,7 @@ handle('themes:encode', (theme) => userThemes.encodeCode(theme));
 handle('themes:decode', (text) => userThemes.decodeCode(text));
 // Right-clicking the disc: its menu → what was chosen ('card'), or null.
 handle('menu:disc', (loaded) => new Promise((resolve) => {
-  const menu = Menu.buildFromTemplate([{ label: 'Now Playing Card…', sublabel: 'P', enabled: !!loaded, click: () => resolve('card') }]);
+  const menu = Menu.buildFromTemplate([{ label: t('Now Playing Card…'), sublabel: 'P', enabled: !!loaded, click: () => resolve('card') }]);
   menu.popup({ window: win, callback: () => setTimeout(() => resolve(null), 0) });
 }));
 // The Dock (macOS) or taskbar (Windows, Linux) icon: the disc that's in (drawn by dock-disc.js), or the app's own
@@ -450,7 +451,7 @@ handle('shelf:colors', () => store.readShelfColors());
 handle('shelf:saveColors', (colors) => { if (colors && typeof colors === 'object') store.writeShelfColors(colors); });
 handle('shelf:coverFull', (firstTrack) => shelf.albumCoverFull(firstTrack));
 handle('dialog:pickMusicFolder', async () => {
-  const r = await dialog.showOpenDialog(win, { title: 'Your Music Folder', defaultPath: dialogDefaultPath(), properties: ['openDirectory'] });
+  const r = await dialog.showOpenDialog(win, { title: t('Your Music Folder'), defaultPath: dialogDefaultPath(), properties: ['openDirectory'] });
   if (r.canceled || !r.filePaths.length) return null;
   store.writeLastPath(r.filePaths[0]);
   return r.filePaths[0];
@@ -460,21 +461,21 @@ function dialogDefaultPath() {
   const last = store.readLastPath();
   return last && store.isDir(last) ? last : app.getPath('music');
 }
-const AUDIO_FILTER = { name: 'Audio files (MP3, M4A, FLAC, WAV, AIFF, AU, OGG, Opus) and CUE sheets', extensions: [...library.AUDIO_EXTENSIONS, 'cue'] };
+const audioFilter = () => ({ name: t('Audio files (MP3, M4A, FLAC, WAV, AIFF, AU, OGG, Opus) and CUE sheets'), extensions: [...library.AUDIO_EXTENSIONS, 'cue'] });
 
 handle('dialog:openTracks', async () => {
   // macOS can pick files and folders in one dialog; Windows/Linux dialogs are one or the other, so pick files there
   // (folders can still be dragged onto the window).
   const properties = ['openFile', 'multiSelections'];
   if (process.platform === 'darwin') properties.push('openDirectory');
-  const r = await dialog.showOpenDialog(win, { title: 'Load a Track', defaultPath: dialogDefaultPath(), properties, filters: [AUDIO_FILTER] });
+  const r = await dialog.showOpenDialog(win, { title: t('Load a Track'), defaultPath: dialogDefaultPath(), properties, filters: [audioFilter()] });
   if (r.canceled || !r.filePaths.length) return [];
   const first = r.filePaths[0];
   store.writeLastPath(store.isDir(first) && r.filePaths.length === 1 ? first : path.dirname(first));
   return r.filePaths;
 });
 handle('dialog:savePlaylist', async (entries) => {
-  const r = await dialog.showSaveDialog(win, { title: 'Save Playlist', defaultPath: path.join(dialogDefaultPath(), 'playlist.m3u'), filters: [{ name: 'Playlist (M3U)', extensions: ['m3u', 'm3u8'] }] });
+  const r = await dialog.showSaveDialog(win, { title: t('Save Playlist'), defaultPath: path.join(dialogDefaultPath(), 'playlist.m3u'), filters: [{ name: t('Playlist (M3U)'), extensions: ['m3u', 'm3u8'] }] });
   if (r.canceled || !r.filePath) return { ok: false, canceled: true };
   let target = r.filePath;
   if (!/\.m3u8?$/i.test(target)) target += '.m3u';
@@ -485,7 +486,7 @@ handle('dialog:savePlaylist', async (entries) => {
   } catch { return { ok: false }; }
 });
 handle('dialog:loadPlaylist', async () => {
-  const r = await dialog.showOpenDialog(win, { title: 'Load Playlist', defaultPath: dialogDefaultPath(), properties: ['openFile'], filters: [{ name: 'Playlist (M3U)', extensions: ['m3u', 'm3u8'] }] });
+  const r = await dialog.showOpenDialog(win, { title: t('Load Playlist'), defaultPath: dialogDefaultPath(), properties: ['openFile'], filters: [{ name: t('Playlist (M3U)'), extensions: ['m3u', 'm3u8'] }] });
   if (r.canceled || !r.filePaths.length) return { canceled: true };
   const source = r.filePaths[0];
   store.writeLastPath(path.dirname(source));
@@ -493,8 +494,8 @@ handle('dialog:loadPlaylist', async () => {
 });
 handle('dialog:importLibrary', async () => {
   const r = await dialog.showOpenDialog(win, {
-    title: 'Import Library', defaultPath: dialogDefaultPath(), properties: ['openFile'],
-    filters: [{ name: 'Library export (iTunes XML, Spotify CSV/JSON)', extensions: ['xml', 'csv', 'json'] }],
+    title: t('Import Library'), defaultPath: dialogDefaultPath(), properties: ['openFile'],
+    filters: [{ name: t('Library export (iTunes XML, Spotify CSV/JSON)'), extensions: ['xml', 'csv', 'json'] }],
   });
   if (r.canceled || !r.filePaths.length) return { canceled: true };
   const source = r.filePaths[0];
@@ -660,7 +661,7 @@ handle('rip:start', async (mount) => {
   if (entry.naming) return { ok: false, reason: 'naming' }; // (the button waits for this too)
   let musicFolder = store.readLastPath();
   if (!musicFolder || !store.isDir(musicFolder)) {
-    const r = await dialog.showOpenDialog(win, { title: 'Your Music Folder', defaultPath: dialogDefaultPath(), properties: ['openDirectory', 'createDirectory'] });
+    const r = await dialog.showOpenDialog(win, { title: t('Your Music Folder'), defaultPath: dialogDefaultPath(), properties: ['openDirectory', 'createDirectory'] });
     if (r.canceled || !r.filePaths.length) return { ok: false, reason: 'cancelled' };
     musicFolder = r.filePaths[0];
     store.writeLastPath(musicFolder);
@@ -679,8 +680,9 @@ handle('rip:start', async (mount) => {
   const folder = rip.albumFolder(musicFolder, album), already = rip.existingTargets(musicFolder, album, tracks);
   if (already.length) {
     const { response } = await dialog.showMessageBox(win, {
-      type: 'question', buttons: ['Replace', 'Cancel'], defaultId: 1, cancelId: 1,
-      message: `${album.album || 'This disc'} is already in your music folder.`, detail: `Replace its ${already.length} ${already.length === 1 ? 'track' : 'tracks'} in ${folder} with this rip?`,
+      type: 'question', buttons: [t('Replace'), t('Cancel')], defaultId: 1, cancelId: 1,
+      message: album.album ? t('{album} is already in your music folder.', { album: album.album }) : t('This disc is already in your music folder.'),
+      detail: already.length === 1 ? t('Replace its track in {folder} with this rip?', { folder }) : t('Replace its {n} tracks in {folder} with this rip?', { n: already.length, folder }),
     });
     if (response !== 0) return { ok: false, reason: 'cancelled' };
   }

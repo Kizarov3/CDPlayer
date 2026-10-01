@@ -8,6 +8,7 @@
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
+const { t } = require('./i18n');
 
 // The tag library is loaded the first time a tag is read or written, not at startup: it's large (a twentieth of a second
 // and 15 MB to load), and most sessions never save a tag.
@@ -76,7 +77,7 @@ function coverPicture(cover) {
  * cover) into the file. → { ok: true } or { ok: false, error }.
  */
 async function writeTags(filePath, changes) {
-  if (!canWrite(filePath)) return { ok: false, error: 'CAN’T WRITE TAGS TO THIS FILE' };
+  if (!canWrite(filePath)) return { ok: false, error: t('CAN’T WRITE TAGS TO THIS FILE') };
   const dir = path.dirname(filePath), ext = path.extname(filePath);
   const tmp = path.join(dir, `.${path.basename(filePath, ext)}.cdplayer-${process.pid}-${Date.now()}${ext}`);
   try {
