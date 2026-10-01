@@ -70,4 +70,50 @@ function decodeCode(text) {
   return parseTheme({ cdtheme: 1, name: b.subarray(20).toString('utf8'), colors, scene: SCENES[b[1]] });
 }
 
-module.exports = { BUILTIN, SCENES, COLOR_KEYS, parseTheme, uniqueName, encodeCode, decodeCode };
+// ---- Where they're kept: <data dir>/themes/, a file per theme named after a hash of its name ----------------------
+
+const MAX_FILE = 4 * 1024 * 1024;
+const themesDir = () => path.join(store.dataDir(), 'themes');
+const fileFor = (name) => path.join(themesDir(), `${crypto.createHash('sha1').update(name).digest('hex').slice(0, 16)}.cdtheme`);
+
+function readThemeFile(p) {
+  try {
+    if (fs.statSync(p).size > MAX_FILE) return null;
+    return parseTheme(JSON.parse(fs.readFileSync(p, 'utf8')));
+  } catch { return null; }
+}
+/** Every theme kept, by name. Files that aren't themes are left out. */
+function list() {
+  let files;
+  try { files = fs.readdirSync(themesDir()).filter((f) => f.endsWith('.cdtheme')); } catch { return []; }
+  return files.map((f) => readThemeFile(path.join(themesDir(), f))).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name));
+}
+/** Keeps a theme — a new one under a name nothing else has, or `oldName` edited (renamed: the old file goes). */
+function save(theme, oldName = null) {
+  const t = parseTheme(theme);
+  if (!t) return null;
+  t.name = uniqueName(t.name, list().map((x) => x.name).filter((n) => n !== oldName));
+  try {
+    fs.mkdirSync(themesDir(), { recursive: true });
+    const target = fileFor(t.name), tmp = `${target}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(t));
+    fs.renameSync(tmp, target);
+  } catch { return null; }
+  if (oldName && oldName !== t.name) remove(oldName);
+  return t;
+}
+function remove(name) {
+  try { fs.unlinkSync(fileFor(name)); return true; } catch { return false; }
+}
+/** A .cdtheme someone shared → kept (under a new name if needed), or null if it isn't one. */
+function importFile(p) {
+  const t = readThemeFile(p);
+  return t ? save(t) : null;
+}
+function exportFile(name, target) {
+  const t = list().find((x) => x.name === name);
+  if (!t) return false;
+  try { fs.writeFileSync(target, JSON.stringify(t, null, 1)); return true; } catch { return false; }
+}
+
+module.exports = { BUILTIN, SCENES, COLOR_KEYS, parseTheme, uniqueName, encodeCode, decodeCode, list, save, remove, importFile, exportFile };

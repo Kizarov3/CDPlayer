@@ -70,3 +70,38 @@ test('garbage is not a code', () => {
     assert.strictEqual(themes.decodeCode(bad), null, String(bad));
   }
 });
+
+test('kept: saved, listed by name, renamed, removed', () => {
+  const a = themes.save(good());
+  assert.strictEqual(a.name, 'VAPOR');
+  assert.strictEqual(themes.save({ ...good(), name: 'ACID' }).name, 'ACID');
+  assert.deepStrictEqual(themes.list().map((t) => t.name), ['ACID', 'VAPOR']);
+  const renamed = themes.save({ ...a, name: 'VAPOR WAVE', dim: 50 }, 'VAPOR');
+  assert.strictEqual(renamed.name, 'VAPOR WAVE');
+  assert.deepStrictEqual(themes.list().map((t) => [t.name, t.dim]), [['ACID', 40], ['VAPOR WAVE', 50]]);
+  assert.strictEqual(themes.save({ ...renamed, blur: 3 }, 'VAPOR WAVE').name, 'VAPOR WAVE'); // editing keeps its own name
+  assert.strictEqual(themes.remove('ACID'), true);
+  assert.strictEqual(themes.remove('ACID'), false);
+  assert.deepStrictEqual(themes.list().map((t) => t.name), ['VAPOR WAVE']);
+});
+
+test('a new theme never overwrites another or takes a built-in name', () => {
+  assert.strictEqual(themes.save({ ...good(), name: 'VAPOR WAVE' }).name, 'VAPOR WAVE 2');
+  assert.strictEqual(themes.save({ ...good(), name: 'snow' }).name, 'SNOW 2');
+});
+
+test('a file that is not a theme is skipped, not fatal', () => {
+  fs.writeFileSync(path.join(home, 'themes', 'broken.cdtheme'), '{ not json');
+  fs.writeFileSync(path.join(home, 'themes', 'other.cdtheme'), JSON.stringify({ cdtheme: 1, name: 'X' }));
+  assert.ok(themes.list().every((t) => t.colors));
+});
+
+test('exported and imported: the same theme, under a new name if that one is taken', () => {
+  const out = path.join(home, 'shared.cdtheme');
+  assert.strictEqual(themes.exportFile('VAPOR WAVE', out), true);
+  assert.strictEqual(themes.exportFile('NOPE', out), false);
+  const imported = themes.importFile(out);
+  assert.strictEqual(imported.name, 'VAPOR WAVE 3');
+  assert.strictEqual(themes.importFile(path.join(home, 'themes', 'broken.cdtheme')), null);
+  assert.strictEqual(themes.importFile(path.join(home, 'missing.cdtheme')), null);
+});

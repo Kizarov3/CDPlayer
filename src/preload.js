@@ -93,6 +93,11 @@ contextBridge.exposeInMainWorld('cdp', {
   isFullscreen: invoke('win:isFullscreen'),
   openGitHub: invoke('shell:openGitHub'),
   copyText: invoke('clipboard:write'),
+  themes: {
+    list: invoke('themes:list'), save: invoke('themes:save'), remove: invoke('themes:delete'),
+    importFile: invoke('themes:import'), exportFile: invoke('themes:export'),
+    encode: invoke('themes:encode'), decode: invoke('themes:decode'),
+  },
   checkForUpdate: invoke('updates:check'),
   openReleasesPage: invoke('updates:openReleases'),
   setDiscordTrack: (track) => ipcRenderer.send('discord:track', track),

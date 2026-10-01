@@ -14,6 +14,7 @@ if (smokeDir) process.env.CDPLAYER_HOME = fs.mkdtempSync(path.join(require('os')
 if (process.env.CDPLAYER_HOME) app.setPath('userData', path.join(process.env.CDPLAYER_HOME, 'electron-profile'));
 
 const store = require('./store');
+const userThemes = require('./user-themes');
 const metadata = require('./metadata');
 const online = require('./online');
 const spotify = require('./spotify');
@@ -186,6 +187,7 @@ handle('state:load', () => ({
   lastPath: store.readLastPath(),
   onboarded: store.isOnboarded(),
   lastVersion: store.readLastVersion(),
+  themes: userThemes.list(),
   version: APP_VERSION,
   platform: process.platform,
 }));
@@ -253,6 +255,28 @@ handle('dialog:saveCard', async (png, name) => {
   fs.writeFileSync(target, Buffer.from(png));
   return true;
 });
+// Themes people make (user-themes.js): kept, imported from a .cdtheme (chosen, or dropped on the window), exported, and
+// turned into or read from the short code.
+handle('themes:list', () => userThemes.list());
+handle('themes:save', (theme, oldName) => userThemes.save(theme, oldName || null));
+handle('themes:delete', (name) => userThemes.remove(name));
+handle('themes:import', async (source) => {
+  if (typeof source !== 'string') {
+    const r = await dialog.showOpenDialog(win, { title: 'Import a Theme', defaultPath: app.getPath('downloads'), properties: ['openFile'], filters: [{ name: 'CDPlayer theme', extensions: ['cdtheme'] }] });
+    if (r.canceled || !r.filePaths.length) return { canceled: true };
+    source = r.filePaths[0];
+  }
+  const theme = userThemes.importFile(source);
+  return theme ? { theme } : { error: 'NOT A CDPLAYER THEME' };
+});
+handle('themes:export', async (name) => {
+  const safe = String(name || 'Theme').replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Theme';
+  const r = await dialog.showSaveDialog(win, { title: 'Export the Theme', defaultPath: path.join(app.getPath('documents'), `${safe}.cdtheme`), filters: [{ name: 'CDPlayer theme', extensions: ['cdtheme'] }] });
+  if (r.canceled || !r.filePath) return false;
+  return userThemes.exportFile(name, /\.cdtheme$/i.test(r.filePath) ? r.filePath : `${r.filePath}.cdtheme`);
+});
+handle('themes:encode', (theme) => userThemes.encodeCode(theme));
+handle('themes:decode', (text) => userThemes.decodeCode(text));
 // Right-clicking the disc: its menu → what was chosen ('card'), or null.
 handle('menu:disc', (loaded) => new Promise((resolve) => {
   const menu = Menu.buildFromTemplate([{ label: 'Now Playing Card…', sublabel: 'P', enabled: !!loaded, click: () => resolve('card') }]);
