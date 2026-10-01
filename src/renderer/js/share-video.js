@@ -1,7 +1,7 @@
 // The Now Playing card as a video (the card's VIDEO 9:16 and VIDEO 1:1): eight seconds of the disc sliding out of its
 // case and turning, the song's name, the lines of its lyrics as they're sung — and the song itself, from where it's
 // playing. Recorded as it happens, from a canvas and the audio engine, as MP4 (or WebM where MP4 can't be made).
-import { rgb, FONT } from './theme.js';
+import { rgb, FONT, drawThemeImage } from './theme.js';
 
 export const VIDEO_SECONDS = 8;
 const FPS = 30, SLIDE_S = 0.8, TURNS_PER_S = 0.35;
@@ -54,7 +54,8 @@ const ease = (t) => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
 function backdrop(L, song, colors) {
   const c = new OffscreenCanvas(L.w, L.h), g = c.getContext('2d');
   g.fillStyle = rgb(colors.bg); g.fillRect(0, 0, L.w, L.h);
-  if (song.cover) { g.save(); g.filter = 'blur(80px) saturate(1.3)'; g.globalAlpha = 0.5; g.drawImage(song.cover, -150, -150, L.w + 300, L.h + 300); g.restore(); }
+  if (song.backdrop) drawThemeImage(g, L.w, L.h, song.backdrop.image, song.backdrop);
+  else if (song.cover) { g.save(); g.filter = 'blur(80px) saturate(1.3)'; g.globalAlpha = 0.5; g.drawImage(song.cover, -150, -150, L.w + 300, L.h + 300); g.restore(); }
   const shade = g.createLinearGradient(0, 0, 0, L.h);
   shade.addColorStop(0, 'rgba(0,0,0,0.1)'); shade.addColorStop(1, 'rgba(0,0,0,0.6)');
   g.fillStyle = shade; g.fillRect(0, 0, L.w, L.h);

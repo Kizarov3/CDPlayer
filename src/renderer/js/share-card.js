@@ -1,7 +1,7 @@
 // The "now playing" card (P, or right-click the disc): a picture of what's on, to paste into a chat or save — the album
 // in its jewel case, the song, its artist and album, and a quote from its lyrics (up to ten lines picked, or none), in
 // the theme's colours on a wash of the cover.
-import { rgb, FONT } from './theme.js';
+import { rgb, FONT, drawThemeImage } from './theme.js';
 import { currentLineIndex, parseLrc } from './lyrics.js';
 
 const W = 1200, H = 630;
@@ -98,7 +98,8 @@ export async function drawCard(song, colors) {
   const canvas = new OffscreenCanvas(W, H), g = canvas.getContext('2d');
   // The background: the theme's, washed with a blur of the cover, like the Ambient Background.
   g.fillStyle = rgb(colors.bg); g.fillRect(0, 0, W, H);
-  if (song.cover) {
+  if (song.backdrop) drawThemeImage(g, W, H, song.backdrop.image, song.backdrop);
+  else if (song.cover) {
     g.save(); g.filter = 'blur(60px) saturate(1.3)'; g.globalAlpha = 0.45;
     g.drawImage(song.cover, -100, -100, W + 200, H + 200);
     g.restore();

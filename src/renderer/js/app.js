@@ -539,7 +539,9 @@ function applyCover(img) {
 // panel, copied to paste into a chat or saved.
 function shareCard() {
   if (!state.loadedPath) { setStatus('NOTHING PLAYING TO SHARE'); return; }
-  const song = { cover: state.cover, title: state.titleText, artist: state.artistText, subtitle: cardSubtitle(state.details) };
+  const themeImage = shownTheme.image ? $('backdrop-theme') : null;
+  const song = { cover: state.cover, title: state.titleText, artist: state.artistText, subtitle: cardSubtitle(state.details),
+    backdrop: themeImage && themeImage.complete ? { image: themeImage, blur: shownTheme.blur, dim: shownTheme.dim } : null };
   const choices = lyricChoices(state.lyrics, lyricsPosition());
   const png = (picked) => drawCard({ ...song, quote: quoteLines(choices.lines, picked) }, { ...colors });
   const attempt = (work, done) => async (picked) => {
