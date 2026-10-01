@@ -68,7 +68,7 @@ test('SORT: COLOR stands the shelf in rainbow order, a card for each colour, bla
     album('G', 'No cover', { color: null }),
   ];
   assert.deepStrictEqual(show(arrange(list, 'COLOR')), ['[RED]', 'Crimson', 'Red', '[GREEN]', 'Green', '[BLUE]', 'Blue', '[B&W]', 'White', 'No cover', 'Black']);
-  assert.deepStrictEqual(SORTS, ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR']);
+  assert.deepStrictEqual(SORTS, ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR', 'PRICE']);
 });
 
 test('the sections to jump to: the divider cards in order, short names shortened', () => {
