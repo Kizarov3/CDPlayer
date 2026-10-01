@@ -15,6 +15,7 @@ if (process.env.CDPLAYER_HOME) app.setPath('userData', path.join(process.env.CDP
 
 const store = require('./store');
 const userThemes = require('./user-themes');
+const i18n = require('./i18n');
 const metadata = require('./metadata');
 const online = require('./online');
 const spotify = require('./spotify');
@@ -199,6 +200,11 @@ handle('state:markOnboarded', () => store.markOnboarded());
 handle('state:writeLastVersion', (v) => store.writeLastVersion(v));
 // Synchronous on purpose: called from the renderer's beforeunload, where async IPC may never be delivered.
 ipcMain.on('state:saveQueueSync', (e, q) => { e.returnValue = store.writeQueue(q); });
+// The interface's language (i18n.js): the dictionary, read once by each window as it loads; the languages to pick from;
+// and the restart a new pick needs (the window saves the queue on its way out, as on any quit).
+ipcMain.on('i18n:dict', (e) => { e.returnValue = i18n.current(); });
+handle('i18n:list', () => ({ locales: i18n.listLocales(), auto: i18n.resolveLocale('AUTO', app.getPreferredSystemLanguages(), i18n.listLocales().map((l) => l.code)) }));
+handle('app:relaunch', () => { app.relaunch(); app.quit(); });
 
 handle('fs:exists', (p) => cue.entryExists(p));
 handle('meta:details', (p, opts) => metadata.getDetails(p, opts));
@@ -717,6 +723,7 @@ function registerWindowsShortcut() {
 // ---- Lifecycle --------------------------------------------------------------------------------------------------
 
 app.whenReady().then(() => {
+  i18n.loadLocale(settings.language, app.getPreferredSystemLanguages());
   protocol.handle('cdp', media.handle);
   registerWindowsShortcut();
   buildMenu();

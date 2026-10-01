@@ -20,7 +20,7 @@ test('reads a settings.txt written by the Java version', () => {
   assert.deepStrictEqual(s, {
     volume: 70, crossfade: 5, mono: true, animations: false, theme: 'OCEAN', eq: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
     waveform: false, miniMode: false, bounds: { x: 10, y: 20, width: 1200, height: 900 }, ambient: false, discord: true,
-    discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null,
+    discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO',
   });
 });
 
@@ -204,4 +204,13 @@ test('the audio output is the 17th settings line: its id and name; none by defau
   store.writeSettings({ ...store.DEFAULT_SETTINGS, output: { id: 'air2', label: 'AirPods Pro' } });
   assert.strictEqual(fs.readFileSync(path.join(home, 'settings.txt'), 'utf8').split('\n')[16], 'air2\tAirPods Pro');
   assert.deepStrictEqual(store.readSettings().output, { id: 'air2', label: 'AirPods Pro' });
+});
+
+test('the language: AUTO unless set, kept, odd values back to AUTO', () => {
+  fs.writeFileSync(path.join(home, 'settings.txt'), '70\n5\n1\n0\nOCEAN\n');
+  assert.strictEqual(store.readSettings().language, 'AUTO');
+  store.writeSettings({ ...store.readSettings(), language: 'ru' });
+  assert.strictEqual(store.readSettings().language, 'ru');
+  store.writeSettings({ ...store.readSettings(), language: 'ru/../x' });
+  assert.strictEqual(store.readSettings().language, 'AUTO');
 });
