@@ -2,6 +2,7 @@
 // music folder, for the price on its sticker. The shops are made up; which one, the time, the way it was paid and the
 // numbers all come from the album's name, so a receipt reads the same every time.
 import { hash, random } from './disc-wear.js';
+import { t } from './i18n.js';
 
 const SHOPS = [
   { shop: 'SPINDLE RECORDS', address: '214 4TH ST · EAST VILLAGE' },
@@ -37,8 +38,8 @@ export function receiptFor(album, stickers) {
     const yen = pick(YEN);
     price = japanese ? `¥${Math.floor(yen / 1000)},${pad(yen % 1000, 3)}` : `$${9 + Math.floor(rnd() * 10)}.99`;
   }
-  const paid = rnd() < 0.45 ? 'CASH' : `CARD ****${pad(Math.floor(rnd() * 10000), 4)}`;
+  const paid = rnd() < 0.45 ? t('CASH') : t('CARD {number}', { number: `****${pad(Math.floor(rnd() * 10000), 4)}` });
   const number = `${pad(Math.floor(rnd() * 10000), 4)}-${pad(Math.floor(rnd() * 1e6), 6)}`;
   const barcode = Array.from({ length: 12 }, () => Math.floor(rnd() * 10)).join('');
-  return { shop, address, date, time, item: `${album.artist || 'Unknown Artist'} — ${album.title}`, price, total: price, paid, number, barcode };
+  return { shop, address, date, time, item: `${album.artist || t('Unknown Artist')} — ${album.title}`, price, total: price, paid, number, barcode };
 }

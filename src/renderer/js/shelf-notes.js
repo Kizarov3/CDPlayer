@@ -3,6 +3,7 @@
 // time; its corner shows above the spine on the shelf. Click it to change it; wipe it out, or ×, to peel it off.
 
 import { hash } from './disc-wear.js';
+import { t } from './i18n.js';
 
 export const NOTE_MAX = 140;
 export const NOTE_COLORS = ['255, 234, 128', '255, 184, 204', '176, 216, 255', '204, 240, 164'];
@@ -32,13 +33,13 @@ export function stickyNote({ id, text, onSave }) {
   note.className = 'sticky-note';
   note.style.setProperty('--note', color);
   note.style.transform = `rotate(${tilt}deg)`;
-  note.title = 'Click to change the note';
+  note.title = t('Click to change the note');
   const written = document.createElement('div');
   written.className = 'note-text';
   const peel = document.createElement('button');
   peel.className = 'note-peel';
   peel.textContent = '×';
-  peel.title = 'Peel the note off';
+  peel.title = t('Peel the note off');
   note.append(written, peel);
   let current = text || '';
   const show = () => { written.textContent = current; if (!note.contains(written)) note.replaceChildren(written, peel); };
@@ -53,7 +54,7 @@ export function stickyNote({ id, text, onSave }) {
     field.className = 'note-field';
     field.maxLength = NOTE_MAX;
     field.value = current;
-    field.placeholder = 'Write a note…';
+    field.placeholder = t('Write a note…');
     field.spellcheck = false;
     let done = false;
     const finish = (keep) => {

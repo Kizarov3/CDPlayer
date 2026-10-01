@@ -1,5 +1,6 @@
 // What an album's booklet says about it, from its songs' details (as metadata.getDetails gives them): the credits
 // most of its songs agree on, a summary of the album, and the small print for the back cover. No page drawing here.
+import { t } from './i18n.js';
 
 const time = (seconds) => { const s = Math.max(0, Math.floor(seconds || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const creditsOf = (details) => (details && details.credits) || {};
@@ -19,9 +20,9 @@ function mostSaid(details, pick) {
 /** The CREDITS page's rows for an album: [[label, value]…], only the ones some song names. */
 export function albumCredits(details) {
   return [
-    ['PRODUCED BY', mostSaid(details, (c) => c.producer)], ['RELEASED', mostSaid(details, (c) => c.released)],
-    ['GENRE', mostSaid(details, (c) => c.genre)], ['LABEL', mostSaid(details, (c) => c.label)],
-    ['CATALOG NO.', mostSaid(details, (c) => c.catalog)],
+    [t('PRODUCED BY'), mostSaid(details, (c) => c.producer)], [t('RELEASED'), mostSaid(details, (c) => c.released)],
+    [t('GENRE'), mostSaid(details, (c) => c.genre)], [t('LABEL'), mostSaid(details, (c) => c.label)],
+    [t('CATALOG NO.'), mostSaid(details, (c) => c.catalog)],
   ].filter(([, v]) => v);
 }
 
@@ -31,7 +32,7 @@ function format(qualities) {
   const kinds = new Set(qualities);
   if (kinds.size <= 1) return qualities[0] || null;
   const codecs = new Set(qualities.map((q) => q.split(' · ')[0]));
-  if (codecs.size > 1) return 'Mixed';
+  if (codecs.size > 1) return t('Mixed');
   const codec = [...codecs][0];
   const rates = qualities.map((q) => /(\d+) KBPS$/.exec(q));
   return rates.every(Boolean) ? `${codec} · ${Math.round(rates.reduce((s, m) => s + +m[1], 0) / rates.length)} KBPS` : codec;
@@ -43,8 +44,8 @@ export function albumSummary({ details, plays, discs }) {
   const qualities = details.map((d) => d && d.quality).filter(Boolean);
   const played = plays.reduce((s, n) => s + (n || 0), 0);
   return [
-    ['TRACKS', String(details.length)], ['DISCS', discs > 1 ? String(discs) : null], ['LENGTH', total ? time(total) : null],
-    ['FORMAT', format(qualities)], ['PLAYED', played ? `${played} ${played === 1 ? 'time' : 'times'}` : null],
+    [t('TRACKS'), String(details.length)], [t('DISCS'), discs > 1 ? String(discs) : null], [t('LENGTH'), total ? time(total) : null],
+    [t('FORMAT'), format(qualities)], [t('PLAYED'), played ? (played === 1 ? t('1 time') : t('{n} times', { n: played })) : null],
   ].filter(([, v]) => v);
 }
 
@@ -62,17 +63,17 @@ export function sameAlbum(a, b) {
 
 // ---- The owner's marks, in pen: what a well-used booklet collects -----------------------------------------------
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTHS = [t('Jan'), t('Feb'), t('Mar'), t('Apr'), t('May'), t('Jun'), t('Jul'), t('Aug'), t('Sep'), t('Oct'), t('Nov'), t('Dec')];
 const DAY_MS = 86400000;
 function ago(then, now) {
   const start = (t) => new Date(t).setHours(0, 0, 0, 0);
   const days = Math.round((start(now) - start(then)) / DAY_MS);
-  if (days <= 0) return 'today';
-  if (days === 1) return 'yesterday';
-  if (days < 30) return `${days} days ago`;
-  if (days < 365) { const m = Math.floor(days / 30); return `${m} ${m === 1 ? 'month' : 'months'} ago`; }
+  if (days <= 0) return t('today');
+  if (days === 1) return t('yesterday');
+  if (days < 30) return t('{n} days ago', { n: days });
+  if (days < 365) { const m = Math.floor(days / 30); return m === 1 ? t('a month ago') : t('{n} months ago', { n: m }); }
   const y = Math.floor(days / 365);
-  return `${y} ${y === 1 ? 'year' : 'years'} ago`;
+  return y === 1 ? t('a year ago') : t('{n} years ago', { n: y });
 }
 
 /**
@@ -86,7 +87,7 @@ export function ownerMarks({ plays, first, last, now = Date.now() }) {
   plays.forEach((n, i) => { if (n >= 3 && (favorite < 0 || n > plays[favorite])) favorite = i; });
   const known = (list) => list.filter(Boolean);
   const notes = [];
-  if (known(first).length) { const d = new Date(Math.min(...known(first))); notes.push(`1st spin: ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`); }
-  if (known(last).length) notes.push(`last: ${ago(Math.max(...known(last)), now)}`);
+  if (known(first).length) { const d = new Date(Math.min(...known(first))); notes.push(t('1st spin: {date}', { date: `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}` })); }
+  if (known(last).length) notes.push(t('last: {when}', { when: ago(Math.max(...known(last)), now) }));
   return { tallies, favorite, notes };
 }

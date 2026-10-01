@@ -1,6 +1,7 @@
 // Missing albums on the shelf (SORT: ARTIST): after the albums of an artist you have two or more of, a box saying how
 // many of their studio albums you don't have, which opens into see-through places for them, oldest first. Their
 // discographies come from MusicBrainz (main/discography.js); this works out what's missing and where it all stands.
+import { t } from './i18n.js';
 
 const VARIOUS = 'various artists';
 
@@ -113,4 +114,4 @@ export function fullTracklist(edition, owned) {
   return [...rows, ...left.map((o) => ({ no: null, title: o.title, length: o.duration || 0, have: o }))];
 }
 
-export const boxLabel = (box) => (box.state !== 'found' ? '…' : box.missing.length ? `+${box.missing.length} MISSING` : 'COMPLETE ★');
+export const boxLabel = (box) => (box.state !== 'found' ? '…' : box.missing.length ? t('+{n} MISSING', { n: box.missing.length }) : t('COMPLETE ★'));

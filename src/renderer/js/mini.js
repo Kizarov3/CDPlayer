@@ -5,7 +5,7 @@ import { Disc } from './disc.js';
 import { Visualizer } from './visualizer.js';
 import { glyphSvg } from './glyphs.js';
 import { shortcutKey } from './keys.js';
-import { translatePage } from './i18n.js';
+import { t, translatePage } from './i18n.js';
 
 const cdp = window.cdp;
 translatePage(document);
@@ -86,17 +86,17 @@ cdp.onMiniState(async (s) => {
   }
   if ('animations' in s) document.body.classList.toggle('no-anim', !s.animations);
   if (s.track) {
-    const t = s.track;
-    $('title').textContent = t.title || 'Pick a track to get started.';
-    $('subtitle').textContent = [t.artist, t.album].filter(Boolean).join(' — ');
-    document.title = t.artist ? `${t.artist} – ${t.title}` : (t.title || 'CDPlayer');
-    disc.lookingUp = !!t.lookingUp;
-    disc.setLabel(t.loaded ? t.title : null, t.artist);
-    if (t.coverKey !== coverKey && t.cover !== undefined) {
-      coverKey = t.coverKey;
+    const track = s.track;
+    $('title').textContent = track.title || t('Pick a track to get started.');
+    $('subtitle').textContent = [track.artist, track.album].filter(Boolean).join(' — ');
+    document.title = track.artist ? `${track.artist} – ${track.title}` : (track.title || 'CDPlayer');
+    disc.lookingUp = !!track.lookingUp;
+    disc.setLabel(track.loaded ? track.title : null, track.artist);
+    if (track.coverKey !== coverKey && track.cover !== undefined) {
+      coverKey = track.coverKey;
       let img = null;
-      if (t.cover) { img = new Image(); img.src = t.cover; try { await img.decode(); } catch { img = null; } }
-      if (coverKey === t.coverKey) disc.setCover(img);
+      if (track.cover) { img = new Image(); img.src = track.cover; try { await img.decode(); } catch { img = null; } }
+      if (coverKey === track.coverKey) disc.setCover(img);
     }
   }
   if ('playing' in s) { disc.spinning = s.playing; vis.setActive(s.playing); setPlayGlyph(s.playing); }
@@ -104,7 +104,7 @@ cdp.onMiniState(async (s) => {
   if ('repeat' in s) {
     $('repeat').classList.toggle('on', s.repeat !== 'OFF');
     $('badge').textContent = s.repeat === 'ONE' ? '1' : '';
-    $('repeat').title = s.repeat === 'OFF' ? 'Repeat' : s.repeat === 'ONE' ? 'Repeat: one track' : 'Repeat: whole queue';
+    $('repeat').title = s.repeat === 'OFF' ? t('Repeat') : s.repeat === 'ONE' ? t('Repeat: one track') : t('Repeat: whole queue');
   }
   if ('duration' in s) view.duration = s.duration;
   if ('position' in s) { view.position = s.position; if (!view.dragging) renderProgress(s.position); }

@@ -2,6 +2,7 @@
 // case and turning, the song's name, the lines of its lyrics as they're sung — and the song itself, from where it's
 // playing. Recorded as it happens, from a canvas and the audio engine, as MP4 (or WebM where MP4 can't be made).
 import { rgb, FONT, drawThemeImage } from './theme.js';
+import { t } from './i18n.js';
 
 export const VIDEO_SECONDS = 8;
 const FPS = 30, SLIDE_S = 0.8, TURNS_PER_S = 0.35;
@@ -62,17 +63,17 @@ function backdrop(L, song, colors) {
   return c;
 }
 
-function drawFrame(g, L, back, s, t) {
+function drawFrame(g, L, back, s, at) {
   g.drawImage(back, 0, 0);
   // The disc, sliding out from behind its case, then turning.
-  const d = L.disc, x = d.x0 + (d.x1 - d.x0) * ease(t / SLIDE_S);
+  const d = L.disc, x = d.x0 + (d.x1 - d.x0) * ease(at / SLIDE_S);
   g.save();
   g.shadowColor = 'rgba(0,0,0,0.55)'; g.shadowBlur = 30;
   g.beginPath(); g.arc(x, d.y, d.r, 0, Math.PI * 2); g.fillStyle = '#111'; g.fill();
   g.restore();
   g.save();
   g.beginPath(); g.arc(x, d.y, d.r, 0, Math.PI * 2); g.clip();
-  g.translate(x, d.y); g.rotate(t * TURNS_PER_S * Math.PI * 2);
+  g.translate(x, d.y); g.rotate(at * TURNS_PER_S * Math.PI * 2);
   g.drawImage(s.face, -d.r, -d.r, d.r * 2, d.r * 2);
   g.restore();
   // A glint across it, staying put while it turns.
@@ -96,7 +97,7 @@ function drawFrame(g, L, back, s, t) {
   const n = L.names, big = L.w === L.h ? 58 : 84;
   g.textBaseline = 'top'; g.textAlign = 'left';
   let y = n.y;
-  g.font = `bold ${L.w === L.h ? 24 : 30}px ${FONT}`; g.fillStyle = rgb(s.colors.accent); g.fillText('NOW PLAYING', n.x, y); y += L.w === L.h ? 44 : 56;
+  g.font = `bold ${L.w === L.h ? 24 : 30}px ${FONT}`; g.fillStyle = rgb(s.colors.accent); g.fillText(t('NOW PLAYING'), n.x, y); y += L.w === L.h ? 44 : 56;
   g.font = `bold ${big}px ${FONT}`; g.fillStyle = rgb(s.colors.text);
   for (const line of wrap(g, s.title, n.w, 2)) { g.fillText(line, n.x, y); y += big * 1.12; }
   g.font = `${Math.round(big * 0.6)}px ${FONT}`; g.fillStyle = rgb(s.colors.accent2);
@@ -104,7 +105,7 @@ function drawFrame(g, L, back, s, t) {
   g.font = `${Math.round(big * 0.45)}px ${FONT}`; g.fillStyle = rgb(s.colors.muted);
   if (s.subtitle) g.fillText(wrap(g, s.subtitle, n.w, 1)[0], n.x, y + 10);
   // The lines as they're sung: the one now, bright, and the next, faint.
-  const lyr = lyricsAt(s.timed, s.start + t), l = L.lyrics, size = L.w === L.h ? 44 : 64;
+  const lyr = lyricsAt(s.timed, s.start + at), l = L.lyrics, size = L.w === L.h ? 44 : 64;
   y = l.y;
   if (lyr.current) {
     g.fillStyle = rgb(s.colors.accent); g.fillRect(l.x, y + 4, 5, size * 1.2);

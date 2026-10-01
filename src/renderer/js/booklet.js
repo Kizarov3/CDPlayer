@@ -9,6 +9,7 @@ import { deriveAutoTheme, rgb } from './theme.js';
 import { parseLrc, formatLyricsForDisplay, currentLineIndex } from './lyrics.js';
 import { paginate, leavesFor, ean13 } from './booklet-layout.js';
 import { albumCredits, albumSummary, albumSmallPrint, sameAlbum, ownerMarks } from './booklet-content.js';
+import { t } from './i18n.js';
 
 const LIFT_MS = 420, TURN_MS = 650;
 const layer = () => document.getElementById('overlays');
@@ -221,25 +222,25 @@ async function songContent(app) {
   return {
     cover: state.cover, marker: { title: d.title, artist: d.artist },
     tracks: {
-      title: d.album || 'IN THE QUEUE', sub: d.artist,
+      title: d.album || t('IN THE QUEUE'), sub: d.artist,
       rows: tracks.map((t) => ({
         name: t.d ? t.d.title : app.displayName(t.p), time: t.d && t.d.duration ? app.formatTime(t.d.duration) : '',
         current: t.i === state.index, tip: `Play ${app.queueDisplay(t.p)}`, play: () => app.playQueueIndex(t.i),
       })),
     },
-    lyrics: state.lyrics ? [{ key: 'lyrics', title: 'LYRICS', sub: d.title, raw: state.lyrics, live: true }] : [],
+    lyrics: state.lyrics ? [{ key: 'lyrics', title: t('LYRICS'), sub: d.title, raw: state.lyrics, live: true }] : [],
     credits: {
-      sub: d.title, none: 'No credits in this file’s tags.', summaryTitle: 'THIS DISC',
+      sub: d.title, none: t('No credits in this file’s tags.'), summaryTitle: t('THIS DISC'),
       rows: [
-        ['WRITTEN BY', [c.composer, c.lyricist && c.lyricist !== c.composer ? c.lyricist : null].filter(Boolean).join(' · ')],
-        ['PRODUCED BY', c.producer], ['CONDUCTED BY', c.conductor], ['ALBUM ARTIST', c.albumArtist !== d.artist ? c.albumArtist : null],
-        ['RELEASED', c.released], ['GENRE', c.genre], ['LABEL', c.label], ['CATALOG NO.', c.catalog],
+        [t('WRITTEN BY'), [c.composer, c.lyricist && c.lyricist !== c.composer ? c.lyricist : null].filter(Boolean).join(' · ')],
+        [t('PRODUCED BY'), c.producer], [t('CONDUCTED BY'), c.conductor], [t('ALBUM ARTIST'), c.albumArtist !== d.artist ? c.albumArtist : null],
+        [t('RELEASED'), c.released], [t('GENRE'), c.genre], [t('LABEL'), c.label], [t('CATALOG NO.'), c.catalog],
         ['TRACK', c.track ? `${c.track.no}${c.track.of ? ` of ${c.track.of}` : ''}` : null],
         ['DISC', c.disc ? `${c.disc.no}${c.disc.of ? ` of ${c.disc.of}` : ''}` : null], ['BPM', c.bpm],
       ].filter(([, v]) => v),
       summary: [
         ['FORMAT', d.quality || d.ext], ['LENGTH', app.formatTime(d.duration || app.engine.duration)],
-        ['COVER', app.coverSource()], ['LYRICS', state.lyrics ? state.lyricsSource || (d.lyrics ? 'In the file' : 'Online') : null],
+        [t('COVER'), app.coverSource()], [t('LYRICS'), state.lyrics ? state.lyricsSource || (d.lyrics ? t('In the file') : t('Online')) : null],
         ['PLAYED', plays ? `${plays} ${plays === 1 ? 'time' : 'times'}` : null],
       ].filter(([, v]) => v),
     },
@@ -276,7 +277,7 @@ export async function albumBooklet(app, album, cover, { play, onClose = () => {}
       })),
     },
     lyrics: [],
-    credits: { sub: album.title, none: 'No credits in these files’ tags.', rows: albumCredits(details), summaryTitle: 'THIS ALBUM', summary: albumSummary({ details, plays, discs: album.discs }) },
+    credits: { sub: album.title, none: t('No credits in these files’ tags.'), rows: albumCredits(details), summaryTitle: t('THIS ALBUM'), summary: albumSummary({ details, plays, discs: album.discs }) },
     back: {
       title: album.title, artist: album.artist, names: album.tracks.map((t) => t.title), count: album.tracks.length,
       total: album.tracks.reduce((s, t) => s + (t.duration || 0), 0), ...small, notes: marks.notes,
@@ -335,7 +336,7 @@ function insidePages(content, spread, size) {
 
   // Tracklist.
   const { tracks } = content;
-  pages.push(...layout('tracks', (n) => heading(n ? `${tracks.title} (cont.)` : tracks.title, n ? null : tracks.sub), tracks.rows.map((t, k) => () => {
+  pages.push(...layout('tracks', (n) => heading(n ? t('{title} (cont.)', { title: tracks.title }) : tracks.title, n ? null : tracks.sub), tracks.rows.map((t, k) => () => {
     const row = el('div', { class: `track${t.current ? ' current' : ''}${t.favorite ? ' favorite' : ''}`, 'data-play': k, title: t.tip },
       el('span', { class: 'no' }, String(k + 1).padStart(2, '0')),
       el('span', { class: 'name' }, el('span', { class: 'title' }, t.name)),
@@ -349,7 +350,7 @@ function insidePages(content, spread, size) {
   for (const song of content.lyrics) {
     const synced = parseLrc(song.raw);
     const lines = synced.length ? synced.map((l, i) => ({ text: l.text, i })) : formatLyricsForDisplay(song.raw).split('\n').map((text) => ({ text }));
-    pages.push(...layout(song.key, (n) => heading(n ? `${song.title} (cont.)` : song.title, n ? null : song.sub), lines.map((l) => () => {
+    pages.push(...layout(song.key, (n) => heading(n ? t('{title} (cont.)', { title: song.title }) : song.title, n ? null : song.sub), lines.map((l) => () => {
       const line = el('div', { class: `lyric${l.text ? '' : ' gap'}` }, l.text || ' ');
       if (l.i != null && song.live) line.dataset.line = l.i;
       return line;
@@ -384,12 +385,12 @@ function backCover(content) {
     el('div', { class: 'back-title' }, b.title),
     b.artist ? el('div', { class: 'back-artist' }, b.artist) : null,
     el('ol', { class: 'back-tracks' }, b.names.slice(0, 20).map((name) => el('li', {}, name))),
-    el('div', { class: 'back-total' }, `${b.count} ${b.count === 1 ? 'TRACK' : 'TRACKS'}${b.total ? ` · ${formatTotal(b.total)}` : ''}`),
+    el('div', { class: 'back-total' }, [b.count === 1 ? t('1 TRACK') : t('{n} TRACKS', { n: b.count }), b.total ? formatTotal(b.total) : null].filter(Boolean).join(' · ')),
     el('div', { class: 'small-print' },
       b.copyright ? el('div', {}, /[©℗]/.test(b.copyright) ? b.copyright : `℗ © ${b.copyright}`) : null,
       b.label || b.catalog ? el('div', {}, [b.label, b.catalog].filter(Boolean).join(' · ')) : null,
       code ? barcode(code) : null,
-      el('div', { class: 'made-with' }, 'PLAYED ON CDPLAYER')),
+      el('div', { class: 'made-with' }, t('PLAYED ON CDPLAYER'))),
     b.notes && b.notes.length ? el('div', { class: 'pen-notes' }, b.notes.map((n) => el('div', {}, n))) : null);
   page.dataset.key = 'back';
   return page;

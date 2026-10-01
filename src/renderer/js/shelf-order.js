@@ -1,6 +1,7 @@
 // The order the shelf stands in, and the cardboard divider cards between its sections, like a record shop's:
 // by artist (a card for each letter), newest in the music folder first (a card for each month), most played (a card
 // before the albums not played yet), by year (a card for each decade), or by colour, round the rainbow (a card for each).
+import { t } from './i18n.js';
 
 export const SORTS = ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR'];
 
@@ -10,7 +11,7 @@ export function matchesFilter(album, query) {
   const text = `${album.artist || ''} ${album.title} ${album.year || ''} ${album.note || ''}`.toLowerCase();
   return words.every((w) => text.includes(w));
 }
-const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+const MONTHS = [t('JAN'), t('FEB'), t('MAR'), t('APR'), t('MAY'), t('JUN'), t('JUL'), t('AUG'), t('SEP'), t('OCT'), t('NOV'), t('DEC')];
 
 // The letter an artist is filed under: "The Beatles" under B, "Björk" under B, "311" under #, no artist under ?.
 function letterOf(artist) {
@@ -66,7 +67,7 @@ export function colorBand(rgb) {
   return { band, order: h >= 345 ? h - 360 : h }; // crimson comes before red
 }
 
-const decadeOf = (year) => (year ? `${Math.floor(Number(year) / 10) * 10}s` : 'NO YEAR');
+const decadeOf = (year) => (year ? t('{decade}s', { decade: Math.floor(Number(year) / 10) * 10 }) : t('NO YEAR'));
 
 /**
  * Albums (in the scanner's by-artist order, each with `added` and `plays`) → the shelf as it stands under `sort`: the
@@ -79,7 +80,7 @@ export function arrange(albums, sort) {
     section = (a) => monthOf(a.added);
   } else if (sort === 'PLAYED') {
     list.sort((a, b) => (b.plays || 0) - (a.plays || 0));
-    section = (a) => (a.plays ? null : 'NOT PLAYED YET');
+    section = (a) => (a.plays ? null : t('NOT PLAYED YET'));
   } else if (sort === 'COLOR') {
     const at = new Map(list.map((a) => [a, colorBand(a.color)]));
     list.sort((a, b) => (BANDS.indexOf(at.get(a).band) - BANDS.indexOf(at.get(b).band)) || (at.get(a).order - at.get(b).order));

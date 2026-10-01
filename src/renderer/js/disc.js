@@ -6,6 +6,7 @@ import { colors, rgb, FONT } from './theme.js';
 import { angleDelta, coast, releaseVelocity } from './jog.js';
 import { random } from './disc-wear.js';
 import { discLayout, radiusAt, trackAt, R0 } from './disc-data.js';
+import { t } from './i18n.js';
 
 const SIZES = {
   normal: { cap: 380, margin: 40 },
@@ -105,8 +106,8 @@ export class Disc {
       const over = this.mode !== 'mini' && this.overArt(e), flip = this.overFlip(e);
       const track = !over && !flip && this.showingData() ? this.trackUnder(e) : -1;
       canvas.style.cursor = this.held ? 'grabbing' : over || flip || track >= 0 ? 'pointer' : this.grabbable(e) ? 'grab' : '';
-      canvas.title = flip ? `Turn the disc over (B)` : track >= 0 ? `${track + 1}. ${this.data.titles[track] || ''}`
-        : over ? (this.artOpen ? (this.onArtClick ? 'Open the booklet' : 'Back to the disc') : 'Show the full album art') : '';
+      canvas.title = flip ? t('Turn the disc over (B)') : track >= 0 ? `${track + 1}. ${this.data.titles[track] || ''}`
+        : over ? (this.artOpen ? (this.onArtClick ? t('Open the booklet') : t('Back to the disc')) : t('Show the full album art')) : '';
     });
   }
   setMode(mode) { this.mode = mode; }
@@ -502,7 +503,7 @@ export class Disc {
     g.strokeStyle = 'rgba(0,0,0,0.18)';
     g.beginPath(); g.arc(c, c, c * LABEL_R, 0, Math.PI * 2); g.stroke();
     // The matrix number, tiny, round the inner edge of the mirror band.
-    const text = 'CDP-0001  ·  MADE ON CDPLAYER  ·  11';
+    const text = 'CDP-0001  ·  MADE ON CDPLAYER  ·  11'; // printed on the disc, like a real one's matrix code
     g.save();
     g.fillStyle = 'rgba(60,62,72,0.45)'; g.font = `${Math.max(3, side / 120)}px ${FONT}`; g.textAlign = 'center';
     const radius = c * (CLEAR_R + 0.022), step = (side / 120) * 0.62 / radius;

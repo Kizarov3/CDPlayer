@@ -6,9 +6,10 @@ const loaded = typeof window !== 'undefined' && window.cdp && window.cdp.i18nDic
 export const locale = loaded.code;
 export const t = (text, vars) => format(loaded.dict, text, vars);
 
-/** index.html's and mini.html's own text: elements marked data-i18n (their text) and data-i18n-title (their title). */
+/** index.html's and mini.html's own text: elements marked data-i18n (their text), data-i18n-title (their title) and data-i18n-placeholder. */
 export function translatePage(root) {
   for (const n of root.querySelectorAll('[data-i18n]')) n.textContent = t(n.textContent.trim());
   for (const n of root.querySelectorAll('[data-i18n-title]')) n.title = t(n.title);
+  for (const n of root.querySelectorAll('[data-i18n-placeholder]')) n.placeholder = t(n.placeholder);
   if (root.documentElement) root.documentElement.lang = locale;
 }

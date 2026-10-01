@@ -16,6 +16,7 @@ import { stickyNote, noteLook } from './shelf-notes.js';
 import { receiptFor } from './shelf-receipt.js';
 import { withMissing, boxLabel, sameName, boxesFor, renderGate, groupOf, pickEdition, fullTracklist } from './shelf-missing.js';
 import { dustLevel, pickOne, Wiper } from './shelf-dust.js';
+import { t } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 const shelf = { open: false, albums: [], loading: false, covers: new Map(), colors: new Map(), observer: null, caseOpen: null, app: null, generation: 0, inPlayer: null,
@@ -28,8 +29,8 @@ const redraw = renderGate({ render: () => { if (shelf.open) render(); }, busy: (
 
 // The album whose disc is in the player (a track of it loaded, playing or paused) stands a little proud of the others,
 // lit in the theme's colour.
-const IN_PLAYER = 'IN THE PLAYER';
-const SORT_LABELS = { ARTIST: 'ARTIST', NEW: 'NEW', PLAYED: 'MOST PLAYED', YEAR: 'YEAR', COLOR: 'COLOR' };
+const IN_PLAYER = t('IN THE PLAYER');
+const SORT_LABELS = { ARTIST: t('ARTIST'), NEW: t('NEW|sort'), PLAYED: t('MOST PLAYED'), YEAR: t('YEAR'), COLOR: t('COLOR') };
 const holds = (a, path) => !!path && a.tracks.some((t) => t.path === path);
 const spineTitle = (a) => [a.artist, a.title, a.year, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ') + (a.note ? `\n\n${a.note}` : '');
 /** The track now in the player (null: none), so its album's spine can show it. */
@@ -91,7 +92,7 @@ export function setupShelf(app) {
     shelf.discogs.set(key, { state, groups });
     if (shelf.open && shelf.app.state.shelfSort === 'ARTIST') redraw.request();
   });
-  app.cdp.onShelfProgress(({ done, total }) => { if (shelf.loading) $('shelf-count').textContent = `READING YOUR MUSIC · ${done} / ${total}`; });
+  app.cdp.onShelfProgress(({ done, total }) => { if (shelf.loading) $('shelf-count').textContent = t('READING YOUR MUSIC · {done} / {total}', { done, total }); });
 }
 
 async function pickFolder() {
@@ -102,7 +103,7 @@ async function pickFolder() {
 async function load() {
   const generation = ++shelf.generation;
   shelf.loading = true;
-  $('shelf-count').textContent = 'READING YOUR MUSIC…';
+  $('shelf-count').textContent = t('READING YOUR MUSIC…');
   $('shelf-body').replaceChildren();
   let result;
   try { result = await shelf.app.cdp.shelfAlbums(); } catch { result = { folder: null, albums: [], error: true }; }
@@ -126,20 +127,20 @@ function render() {
   if (!shelf.folderName) {
     $('shelf-count').textContent = '';
     body.replaceChildren(el('div', { class: 'shelf-empty' },
-      el('div', {}, 'Which folder is your music in?'),
-      pill('CHOOSE YOUR MUSIC FOLDER…', pickFolder)));
+      el('div', {}, t('Which folder is your music in?')),
+      pill(t('CHOOSE YOUR MUSIC FOLDER…'), pickFolder)));
     return;
   }
   const query = $('shelf-filter').value, filtering = !!query.trim();
   const shown = shelf.albums.filter((a) => matchesFilter(a, query));
   const n = shelf.albums.length;
-  $('shelf-count').textContent = `${shelf.folderName.toUpperCase()} · ${n} ${n === 1 ? 'ALBUM' : 'ALBUMS'}${filtering ? ` · ${shown.length} SHOWN` : ''}`;
-  if (!n) { body.replaceChildren(el('div', { class: 'shelf-empty' }, el('div', {}, 'No music in this folder yet.'), pill('CHOOSE ANOTHER FOLDER…', pickFolder))); return; }
+  $('shelf-count').textContent = [shelf.folderName.toUpperCase(), n === 1 ? t('1 ALBUM') : t('{n} ALBUMS', { n }), filtering ? t('{n} SHOWN', { n: shown.length }) : null].filter(Boolean).join(' · ');
+  if (!n) { body.replaceChildren(el('div', { class: 'shelf-empty' }, el('div', {}, t('No music in this folder yet.')), pill(t('CHOOSE ANOTHER FOLDER…'), pickFolder))); return; }
   shelf.observer = new IntersectionObserver((entries) => {
     for (const e of entries) if (e.isIntersecting) { shelf.observer.unobserve(e.target); loadCover(e.target.album, e.target); }
   }, { root: body, rootMargin: '200px' });
   const now = Date.now(), sort = shelf.app.state.shelfSort;
-  $('shelf-sort').textContent = `SORT: ${SORT_LABELS[sort] || sort}`;
+  $('shelf-sort').textContent = t('SORT: {how}', { how: SORT_LABELS[sort] || sort });
   if (sort === 'COLOR') { if (shelf.fillCount) shelf.fillCount(); fillColors(shown); }
   shelf.shown = shown;
   if (shelf.boxObserver) shelf.boxObserver.disconnect();
@@ -157,7 +158,7 @@ function render() {
     const spine = el('button', { class: `spine${a.discs > 1 ? ' double' : ''}${st.obi ? ' obi' : ''}${st.isNew ? ' new' : ''}${holds(a, shelf.inPlayer) ? ' in-player' : ''}`, title: spineTitle(a), onClick: () => { if (!shelf.dragged) openCase(a, spine); } },
       el('span', { class: 'spine-text' }, a.artist ? el('b', {}, a.artist) : null, a.artist ? ' · ' : null, a.title),
       st.obi ? el('span', { class: 'obi-cat' }, st.obi.catalog) : null,
-      st.isNew ? el('span', { class: 'sticker-new' }, 'NEW') : null,
+      st.isNew ? el('span', { class: 'sticker-new' }, t('NEW')) : null,
       a.wrapped ? el('span', { class: 'spine-film' }) : null);
     spine.album = a;
     showNoteTab(spine);
@@ -239,7 +240,7 @@ async function fillColors(shown) {
   shelf.filling = true;
   const generation = shelf.generation;
   let done = 0;
-  const count = () => { $('shelf-count').textContent = `SORTING BY COLOR · ${done} / ${todo.length}`; };
+  const count = () => { $('shelf-count').textContent = t('SORTING BY COLOR · {done} / {total}', { done, total: todo.length }); };
   shelf.fillCount = count; // a redraw meanwhile shows it again
   count();
   // Four at a time, and only covers on this computer (not a web lookup for every album in the library).
@@ -364,7 +365,7 @@ function goToPlayer() {
 
 function boxCard(box) {
   const card = el('button', { class: `missing-box${box.state === 'found' && !box.missing.length ? ' complete' : ''}${box.open ? ' open' : ''}`,
-    title: box.state !== 'found' ? `Looking up ${box.artist} on MusicBrainz…` : box.missing.length ? `${box.artist}: releases you don't have — click to ${box.open ? 'close' : 'show them'}` : `You have everything ${box.artist} has released`,
+    title: box.state !== 'found' ? t('Looking up {artist} on MusicBrainz…', { artist: box.artist }) : box.missing.length ? (box.open ? t('{artist}: releases you don’t have — click to close', { artist: box.artist }) : t('{artist}: releases you don’t have — click to show them', { artist: box.artist })) : t('You have everything {artist} has released', { artist: box.artist }),
     onClick: () => {
       if (box.state !== 'found' || !box.missing.length) return;
       if (shelf.openBoxes.has(box.key)) shelf.openBoxes.delete(box.key); else shelf.openBoxes.add(box.key);
@@ -420,25 +421,25 @@ async function openGhostCase(group, artist, spine) {
     tracks.replaceChildren(...(editions[0] || []).map((t, i) => el('div', { class: 'case-track' },
       el('span', { class: 'no' }, String(i + 1).padStart(2, '0')), el('span', { class: 'name' }, t.title),
       el('span', { class: 'time' }, t.length ? app.formatTime(t.length) : ''))));
-  }).catch(() => tracks.replaceChildren(el('div', { class: 'case-track' }, el('span', { class: 'name' }, "COULDN'T REACH MUSICBRAINZ"))));
-  const spotifyButton = pill('PLAY ON SPOTIFY', async () => {
+  }).catch(() => tracks.replaceChildren(el('div', { class: 'case-track' }, el('span', { class: 'name' }, t("COULDN'T REACH MUSICBRAINZ")))));
+  const spotifyButton = pill(t('PLAY ON SPOTIFY'), async () => {
     if (spotifyButton.disabled) return; // already looking: one disc, not two
     spotifyButton.disabled = true;
     try { await playMissingOnSpotify(group, artist); } finally { spotifyButton.disabled = false; }
-  }, 'Find it on Spotify and play it as a disc');
+  }, t('Find it on Spotify and play it as a disc'));
   spotifyButton.hidden = true;
   app.cdp.spotifyStatus().then((s) => { spotifyButton.hidden = !(s && s.connected); }).catch(() => {});
   const card = el('div', { class: 'case-card ghost' }, front,
     el('div', { class: 'case-info' },
       el('div', { class: 'case-title' }, group.title),
       el('div', { class: 'case-artist' }, [artist, group.year].filter(Boolean).join(' · ')),
-      el('div', { class: 'case-meta' }, 'NOT IN YOUR COLLECTION'),
+      el('div', { class: 'case-meta' }, t('NOT IN YOUR COLLECTION')),
       tracks,
       el('div', { class: 'case-actions' },
-        pill('BACK ON THE SHELF', () => closeCase()),
-        pill('NOT INTERESTED', () => hideMissing(group), 'Never show this one on the shelf again'),
+        pill(t('BACK ON THE SHELF'), () => closeCase()),
+        pill(t('NOT INTERESTED'), () => hideMissing(group), t('Never show this one on the shelf again')),
         el('span', { class: 'grow' }),
-        pill('MUSICBRAINZ', () => app.cdp.openMusicBrainz(group.id), 'Open its page on MusicBrainz'),
+        pill(t('MUSICBRAINZ'), () => app.cdp.openMusicBrainz(group.id), t('Open its page on MusicBrainz')),
         spotifyButton)));
   showCase(card, spine, from, hashColor(group.title + artist));
 }
@@ -453,9 +454,9 @@ async function playMissingOnSpotify(group, artist) {
   const { app } = shelf;
   const found = await app.cdp.spotifySearch(`album:${group.title} artist:${artist}`).catch(() => ({ error: 'OFFLINE' }));
   const hit = (found.items || []).find((i) => i.kind === 'album' && sameName(i.name) === sameName(group.title));
-  if (!hit) { app.setStatus('NOT ON SPOTIFY'); return; }
+  if (!hit) { app.setStatus(t('NOT ON SPOTIFY')); return; }
   const disc = await app.cdp.spotifyDiscTracks({ kind: 'album', id: hit.id }).catch(() => ({ error: 'OFFLINE' }));
-  if (!disc.tracks) { app.setStatus('NOT ON SPOTIFY'); return; }
+  if (!disc.tracks) { app.setStatus(t('NOT ON SPOTIFY')); return; }
   closeCase(true);
   app.playSpotifyDisc(disc.tracks, hit.name);
 }
@@ -480,13 +481,13 @@ function receiptSlip(a, stickers) {
   if (!r) return null;
   const row = (left, right) => el('div', { class: 'rc-row' }, el('span', {}, left), el('span', {}, right));
   const bars = el('div', { class: 'rc-bars' }, ...[...r.barcode].map((d) => el('i', { style: `width:${1 + (Number(d) % 3)}px;margin-right:${1 + (Number(d) % 2)}px` })));
-  const slip = el('div', { class: 'receipt', title: 'The receipt' },
+  const slip = el('div', { class: 'receipt', title: t('The receipt') },
     el('div', { class: 'rc-shop' }, r.shop), el('div', { class: 'rc-center' }, r.address),
     el('div', { class: 'rc-rule' }), row(r.date, r.time), el('div', { class: 'rc-rule' }),
-    el('div', { class: 'rc-item' }, r.item), row('CD × 1', r.price),
-    el('div', { class: 'rc-rule' }), row('TOTAL', r.total), row(r.paid, ''),
+    el('div', { class: 'rc-item' }, r.item), row(t('CD × 1'), r.price),
+    el('div', { class: 'rc-rule' }), row(t('TOTAL'), r.total), row(r.paid, ''),
     el('div', { class: 'rc-rule' }), el('div', { class: 'rc-center' }, `NO. ${r.number}`), bars,
-    el('div', { class: 'rc-center rc-small' }, 'THANK YOU · NO REFUNDS ON OPENED CDs'));
+    el('div', { class: 'rc-center rc-small' }, t('THANK YOU · NO REFUNDS ON OPENED CDs')));
   slip.addEventListener('click', (e) => { e.stopPropagation(); slip.classList.toggle('out'); });
   return slip;
 }
@@ -496,7 +497,7 @@ function receiptSlip(a, stickers) {
 // The film over a new album's case: take hold of it and drag it across; past 40% of the way it tears off, short of
 // that it springs back.
 function caseFilm(a) {
-  const film = el('div', { class: 'case-film', title: 'Drag across to unwrap it' }, el('span', { class: 'film-tab' }));
+  const film = el('div', { class: 'case-film', title: t('Drag across to unwrap it') }, el('span', { class: 'film-tab' }));
   film.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || !a.wrapped) return;
     e.preventDefault(); e.stopPropagation();
@@ -608,10 +609,10 @@ async function openCase(a, spine) {
   if (!shelf.open || shelf.caseOpen) return;
   if (!spine.isConnected) spine = spineFor(a) || spine; // the shelf was redrawn meanwhile
   const from = spine.getBoundingClientRect();
-  const trackRow = (t, i, no = t.track || i + 1) => el('div', { class: 'case-track', title: `Play from here`, onClick: () => unwrapped(() => play(a, i))() },
+  const trackRow = (track, i, no = track.track || i + 1) => el('div', { class: 'case-track', title: t('Play from here'), onClick: () => unwrapped(() => play(a, i))() },
     el('span', { class: 'no' }, no ? String(no).padStart(2, '0') : ''),
-    el('span', { class: 'name' }, t.title, a.artist === 'Various Artists' && t.artist ? el('span', { class: 'by' }, ` · ${t.artist}`) : null),
-    el('span', { class: 'time' }, t.duration ? app.formatTime(t.duration) : ''));
+    el('span', { class: 'name' }, track.title, a.artist === 'Various Artists' && track.artist ? el('span', { class: 'by' }, ` · ${track.artist}`) : null),
+    el('span', { class: 'time' }, track.duration ? app.formatTime(track.duration) : ''));
   const tracks = a.tracks.map((t, i) => trackRow(t, i));
   const trackList = el('div', { class: 'case-tracks scroll' }, tracks);
   // The album's whole tracklist from MusicBrainz, once its artist's discography is known: the songs you don't have
@@ -623,14 +624,14 @@ async function openCase(a, spine) {
       if (!edition || !trackList.isConnected) return;
       const rows = fullTracklist(edition, a.tracks);
       if (rows.every((r) => r.have)) return; // nothing missing: as it was
-      trackList.replaceChildren(...rows.map((r) => (r.have ? trackRow(r.have, a.tracks.indexOf(r.have), r.no) : el('div', { class: 'case-track missing', title: 'Not in your collection' },
+      trackList.replaceChildren(...rows.map((r) => (r.have ? trackRow(r.have, a.tracks.indexOf(r.have), r.no) : el('div', { class: 'case-track missing', title: t('Not in your collection') },
         el('span', { class: 'no' }, String(r.no).padStart(2, '0')), el('span', { class: 'name' }, r.title),
         el('span', { class: 'time' }, r.length ? app.formatTime(r.length) : '')))));
     }).catch(() => {});
   }
   const front = cover ? el('img', { class: 'case-cover', src: cover, alt: '' })
     : el('div', { class: 'case-cover cdr' }, el('div', { class: 'marker' }, a.title), a.artist ? el('div', { class: 'marker small' }, a.artist) : null);
-  front.title = 'Open the booklet';
+  front.title = t('Open the booklet');
   front.addEventListener('click', () => {
     if (a.wrapped) { if (film && anim.enabled) film.animate([{ transform: 'none' }, { transform: 'translateX(-4px)' }, { transform: 'translateX(3px)' }, { transform: 'none' }], { duration: 240 }); return; } // unwrap it first
     openAlbumBooklet(a, front);
@@ -652,7 +653,7 @@ async function openCase(a, spine) {
     if (a.wrapped && film) { tearing = tearFilm(film, a, true).then(then); return; }
     then();
   };
-  const addNote = pill('+ NOTE', () => { addNote.hidden = true; caseFront.append(stickyNote({ id: a.id, text: '', onSave: saveNote })); }, 'Stick a note on the case');
+  const addNote = pill(t('+ NOTE'), () => { addNote.hidden = true; caseFront.append(stickyNote({ id: a.id, text: '', onSave: saveNote })); }, t('Stick a note on the case'));
   addNote.hidden = !!a.note;
   const caseFront = el('div', { class: 'case-front' }, receiptSlip(a, st), front,
       st.obi ? el('div', { class: 'case-obi' },
@@ -660,7 +661,7 @@ async function openCase(a, spine) {
         el('div', { class: 'obi-title' }, a.title),
         el('div', { class: 'obi-foot' }, el('div', {}, st.obi.catalog), el('div', {}, st.price))) : null,
       !st.obi && st.price ? el('div', { class: 'sticker-price' }, st.price) : null,
-      st.isNew ? el('div', { class: 'sticker-new' }, 'NEW') : null,
+      st.isNew ? el('div', { class: 'sticker-new' }, t('NEW')) : null,
       film,
       a.note ? stickyNote({ id: a.id, text: a.note, onSave: saveNote }) : null);
   const card = el('div', { class: 'case-card' },
@@ -668,15 +669,15 @@ async function openCase(a, spine) {
     el('div', { class: 'case-info' },
       el('div', { class: 'case-title' }, a.title),
       el('div', { class: 'case-artist' }, [a.artist, a.year].filter(Boolean).join(' · ')),
-      el('div', { class: 'case-meta' }, `${a.tracks.length} ${a.tracks.length === 1 ? 'TRACK' : 'TRACKS'}${a.duration ? ` · ${app.formatTime(a.duration)}` : ''}${a.discs > 1 ? ` · ${a.discs} DISCS` : ''}${holds(a, shelf.inPlayer) ? ` · ${IN_PLAYER}` : ''}`),
+      el('div', { class: 'case-meta' }, [a.tracks.length === 1 ? t('1 TRACK') : t('{n} TRACKS', { n: a.tracks.length }), a.duration ? app.formatTime(a.duration) : null, a.discs > 1 ? t('{n} DISCS', { n: a.discs }) : null, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ')),
       trackList,
       el('div', { class: 'case-actions' },
-        pill('BACK ON THE SHELF', () => closeCase()),
+        pill(t('BACK ON THE SHELF'), () => closeCase()),
         addNote,
         el('span', { class: 'grow' }),
-        pill('PLAY NEXT', unwrapped(() => { app.playNext(a.tracks.map((t) => t.path), { sorted: true }); closeCase(); }), 'Play the album next, after the song playing'),
-        pill('ADD TO QUEUE', unwrapped(() => { app.addToQueue(a.tracks.map((t) => t.path), { sorted: true }); closeCase(); }), 'Add every track to the end of the queue'),
-        el('button', { class: 'pill on', onClick: unwrapped(() => play(a, 0)) }, 'PLAY'))));
+        pill(t('PLAY NEXT'), unwrapped(() => { app.playNext(a.tracks.map((t) => t.path), { sorted: true }); closeCase(); }), t('Play the album next, after the song playing')),
+        pill(t('ADD TO QUEUE'), unwrapped(() => { app.addToQueue(a.tracks.map((t) => t.path), { sorted: true }); closeCase(); }), t('Add every track to the end of the queue')),
+        el('button', { class: 'pill on', onClick: unwrapped(() => play(a, 0)) }, t('PLAY')))));
   showCase(card, spine, from, shelf.colors.get(a.id) || hashColor(a.title + a.artist));
 }
 
@@ -731,5 +732,5 @@ function closeCase(instant = false) {
 function play(a, from) {
   const paths = a.tracks.map((t) => t.path);
   closeShelf();
-  shelf.app.insertDisc(paths, { start: from, status: `${a.title.toUpperCase()} ON THE TRAY` });
+  shelf.app.insertDisc(paths, { start: from, status: t('{disc} ON THE TRAY', { disc: a.title.toUpperCase() }) });
 }

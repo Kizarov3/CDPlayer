@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
-import { collectStrings, sourceFiles, syncLocale, coverage, untranslated, CONVERTED, ALLOW } from '../scripts/i18n-collect.mjs';
+import { collectStrings, sourceFiles, syncLocale, coverage, untranslated, hiddenT, CONVERTED, ALLOW } from '../scripts/i18n-collect.mjs';
 
 test('collected: t() with a plain string in any quotes, and the pages\' marked text', () => {
   const keys = collectStrings([
     { path: 'a.js', text: "x(t('THEME')); t(\"SHELF\", { n }); t(`PLAY NEXT`); t(`A ${b}`); t(r.error); sqrt(2); t('IT\\'S')" },
-    { path: 'p.html', text: '<span data-i18n>NOW PLAYING</span><button data-i18n-title title="Shuffle" id="s"></button>' },
+    { path: 'p.html', text: '<span data-i18n>NOW PLAYING</span><button data-i18n-title title="Shuffle" id="s"></button><input placeholder="Find it" data-i18n-placeholder>' },
   ]);
-  assert.deepStrictEqual(keys, ["IT'S", 'NOW PLAYING', 'PLAY NEXT', 'SHELF', 'Shuffle', 'THEME']);
+  assert.deepStrictEqual(keys, ['Find it', "IT'S", 'NOW PLAYING', 'PLAY NEXT', 'SHELF', 'Shuffle', 'THEME']);
 });
 
 test('a language file brought in step: new texts empty, gone ones dropped, the rest kept, metadata first', () => {
@@ -57,10 +57,13 @@ test('other languages: how far along (never failing)', () => {
   }
 });
 
-test('no file that translates has a variable of its own called t (it would hide the translating one)', () => {
-  const own = /(?:\b(?:const|let|var)\s+t\b|[(,]\s*t\s*[,)=]|\bt\s*=>|for\s*\(\s*(?:const|let)\s+t\b)/;
-  for (const file of sourceFiles('src').filter((f) => /\bt\(['"`]/.test(f.text) && f.path.endsWith('.js'))) {
-    const lines = file.text.split('\n').filter((l) => own.test(l) && !/^\s*(\/\/|\*)/.test(l) && !/export const t =|const t = \(text, vars\)/.test(l));
-    assert.deepStrictEqual(lines, [], file.path);
+test('a t() hidden by a variable of the same name is found', () => {
+  assert.deepStrictEqual(hiddenT("import { t } from './i18n.js';\nconst a = (t) => t('X');\nconst b = () => t('Y');\nfunction c(list) { for (const t of list) t('Z'); }"), [2, 4]);
+  assert.deepStrictEqual(hiddenT("import { t } from './i18n.js';\nconst a = (t) => t + 1;\nt('X');"), []);
+});
+
+test('no t() in the code is hidden by a variable called t', () => {
+  for (const file of sourceFiles('src').filter((f) => f.path.endsWith('.js') && /\bt\(['"`]/.test(f.text))) {
+    assert.deepStrictEqual(hiddenT(file.text), [], file.path);
   }
 });

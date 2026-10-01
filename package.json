@@ -23,6 +23,8 @@
     "node-taglib-sharp": "^6.0.3"
   },
   "devDependencies": {
+    "acorn": "^8.18.0",
+    "acorn-walk": "^8.3.5",
     "electron": "https://github.com/castlabs/electron-releases#v44.1.0+wvcus",
     "electron-builder": "^26.15.3"
   },

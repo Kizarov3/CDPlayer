@@ -3,6 +3,7 @@
 // the theme's colours on a wash of the cover.
 import { rgb, FONT, drawThemeImage } from './theme.js';
 import { currentLineIndex, parseLrc } from './lyrics.js';
+import { t } from './i18n.js';
 
 const W = 1200, H = 630;
 const MARKER_FONT = '"Marker Felt", "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive';
@@ -140,7 +141,7 @@ export async function drawCard(song, colors) {
   const quoteMeasure = (t, size) => { g.font = `italic ${size}px ${FONT}`; return g.measureText(t).width; };
   const layout = (titleLines) => {
     const parts = []; // [font, colour, lines, line height, gap after]
-    parts.push([`bold 20px ${FONT}`, rgb(colors.accent), ['NOW PLAYING'], 30, 20]);
+    parts.push([`bold 20px ${FONT}`, rgb(colors.accent), [t('NOW PLAYING')], 30, 20]);
     g.font = `bold 54px ${FONT}`;
     parts.push([g.font, rgb(colors.text), wrap(g, song.title, tw, titleLines), 62, 6]);
     if (song.artist) { g.font = `30px ${FONT}`; parts.push([g.font, rgb(colors.accent2), wrap(g, song.artist, tw, 1), 40, 0]); }
