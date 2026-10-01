@@ -36,14 +36,14 @@ const SKIP_SECONDS = 5; // ←/→, the round skip buttons and the system media 
 const UPDATE_RECHECK_MS = 15 * 60 * 1000;
 
 export const BUILTIN_EQ_PRESETS = [
-  { name: 'Flat', gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+  { name: t('Flat'), gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
   { name: t('Bass Boost'), gains: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0] },
   { name: t('Treble Boost'), gains: [0, 0, 0, 0, 0, 0, 2, 4, 5, 6] },
-  { name: 'Vocal', gains: [-2, -1, 0, 2, 4, 4, 3, 1, 0, -1] },
-  { name: 'Rock', gains: [4, 3, 2, 0, -1, 0, 1, 2, 3, 4] },
-  { name: 'Pop', gains: [-1, 0, 2, 3, 3, 2, 0, -1, -1, -1] },
-  { name: 'Classical', gains: [3, 2, 0, 0, 0, 0, 0, 2, 3, 4] },
-  { name: 'Electronic', gains: [5, 4, 1, 0, -2, 0, 1, 2, 4, 5] },
+  { name: t('Vocal'), gains: [-2, -1, 0, 2, 4, 4, 3, 1, 0, -1] },
+  { name: t('Rock'), gains: [4, 3, 2, 0, -1, 0, 1, 2, 3, 4] },
+  { name: t('Pop'), gains: [-1, 0, 2, 3, 3, 2, 0, -1, -1, -1] },
+  { name: t('Classical'), gains: [3, 2, 0, 0, 0, 0, 0, 2, 3, 4] },
+  { name: t('Electronic'), gains: [5, 4, 1, 0, -2, 0, 1, 2, 4, 5] },
 ];
 
 const state = {

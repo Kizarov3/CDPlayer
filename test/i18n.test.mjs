@@ -36,3 +36,12 @@ test('the main process formats the same way', () => {
     assert.strictEqual(main.format(ru, text, vars), format(ru, text, vars));
   }
 });
+
+test('the same English in two places: "TEXT|context" shows as TEXT, and is translated on its own', () => {
+  const d = { _locale: 'ru', NEXT: 'СЛЕДУЮЩАЯ', 'NEXT|step': 'ДАЛЕЕ' };
+  assert.strictEqual(format(d, 'NEXT|step'), 'ДАЛЕЕ');
+  assert.strictEqual(format(d, 'NEXT'), 'СЛЕДУЮЩАЯ');
+  assert.strictEqual(format({}, 'NEXT|step'), 'NEXT');
+  assert.strictEqual(format({}, '{n} OF|step', { n: 2 }), '2 OF');
+  assert.strictEqual(require('../src/main/i18n-format.js').format({}, 'NEXT|step'), 'NEXT');
+});

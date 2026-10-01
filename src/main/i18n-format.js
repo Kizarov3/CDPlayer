@@ -21,7 +21,8 @@ function format(dict, text, vars = {}) {
     const category = typeof vars.n === 'number' ? pluralRules(dict._locale || 'en').select(vars.n) : 'other';
     out = out[category] || out.other || null;
   }
-  return fill(typeof out === 'string' && out ? out : text, vars);
+  // "NEXT|step": the same English as "NEXT" somewhere else, translated on its own; shown in English without the |context.
+  return fill(typeof out === 'string' && out ? out : text.split('|')[0], vars);
 }
 
 module.exports = { format };

@@ -62,6 +62,6 @@ export function untranslated(files, allow) {
   return out;
 }
 /** Files already converted (each conversion task adds its own). */
-export const CONVERTED = ['src/renderer/js/app.js', 'src/renderer/js/widgets.js', 'src/renderer/js/keys.js'];
+export const CONVERTED = ['src/renderer/js/app.js', 'src/renderer/js/widgets.js', 'src/renderer/js/keys.js', 'src/renderer/js/panels.js', 'src/renderer/js/help.js', 'src/renderer/js/theme-editor.js'];
 /** Literal text that is shown as it is in every language. */
 export const ALLOW = [];

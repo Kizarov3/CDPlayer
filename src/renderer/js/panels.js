@@ -65,7 +65,7 @@ export function closeTopmost() {
 }
 
 const title = (text) => el('h1', {}, text);
-const closeRow = (onClick, caption = 'CLOSE') => el('div', { class: 'close-row' }, pill(caption, onClick));
+const closeRow = (onClick, caption = t('CLOSE')) => el('div', { class: 'close-row' }, pill(caption, onClick));
 const gap = (h = 22) => { const d = el('div', { class: 'gap-22' }); d.style.height = `${h}px`; return d; };
 const hint = (text) => el('div', { class: 'setting-hint' }, text);
 function row(label, control) { return el('div', { class: 'setting-row' }, el('span', {}, label), control); }
@@ -87,7 +87,7 @@ export function showCard(app, { choices, maxLines, render, copy, save, video }) 
   const preview = el('img', { class: 'card-preview', alt: '' });
   const note = el('div', { class: 'card-note' });
   const rows = [
-    el('div', { class: 'list-row card-line none', onClick: () => set([], -1) }, el('span', { class: 'entry' }, '— WITHOUT LYRICS —')),
+    el('div', { class: 'list-row card-line none', onClick: () => set([], -1) }, el('span', { class: 'entry' }, t('— WITHOUT LYRICS —'))),
     ...choices.lines.map((text, i) => el('div', { class: 'list-row card-line', title: text, onClick: (e) => click(i, e.shiftKey) }, el('span', { class: 'entry' }, text))),
   ];
   const list = el('div', { class: 'scroll card-lines' }, rows);
@@ -99,7 +99,7 @@ export function showCard(app, { choices, maxLines, render, copy, save, video }) 
   }
   function tell(text) { note.textContent = text; clearTimeout(noteTimer); noteTimer = setTimeout(() => { note.textContent = ''; }, 1600); }
   function set(lines, from, scroll = false) {
-    if (lines.length > maxLines) { tell(`UP TO ${maxLines} LINES`); return; }
+    if (lines.length > maxLines) { tell(t('UP TO {n} LINES', { n: maxLines })); return; }
     picked = lines; anchor = from;
     rows[0].classList.toggle('on', !lines.length);
     rows.slice(1).forEach((r, i) => r.classList.toggle('on', lines.includes(i)));
@@ -120,14 +120,14 @@ export function showCard(app, { choices, maxLines, render, copy, save, video }) 
   };
   // VIDEO 9:16 / 1:1: eight seconds recorded as the song plays, counting down on the button, then saved.
   const videoButton = (format, tip) => {
-    const b = pill(`VIDEO ${format}`, async () => {
+    const b = pill(t('VIDEO {format}', { format }), async () => {
       if (busy || !video) return;
       busy = true;
       const buttons = [...b.parentNode.querySelectorAll('button')];
       buttons.forEach((x) => { x.disabled = true; });
-      b.textContent = 'RECORDING…';
-      try { if (await video(format, (left) => { b.textContent = `RECORDING · ${left}`; })) closePanel('card'); }
-      finally { busy = false; buttons.forEach((x) => { x.disabled = false; }); b.textContent = `VIDEO ${format}`; }
+      b.textContent = t('RECORDING…');
+      try { if (await video(format, (left) => { b.textContent = t('RECORDING · {left}', { left }); })) closePanel('card'); }
+      finally { busy = false; buttons.forEach((x) => { x.disabled = false; }); b.textContent = t('VIDEO {format}', { format }); }
     }, `${tip} — eight seconds of the disc turning, with the song`);
     return b;
   };
@@ -139,11 +139,11 @@ export function showCard(app, { choices, maxLines, render, copy, save, video }) 
     } else if (e.key === 'Enter') { e.preventDefault(); finish(copy)(); }
   };
   const p = openPanel('card', () => [
-    title('NOW PLAYING CARD'),
+    title(t('NOW PLAYING CARD')),
     el('div', { class: 'card-pick' }, preview, list),
-    el('div', { class: 'close-row split' }, pill('CANCEL', () => closePanel('card')), note,
-      el('div', { class: 'card-actions' }, videoButton('9:16', 'For Stories, Reels and TikTok'), videoButton('1:1', 'Square, for chats'),
-        pill('SAVE…', finish(save), 'Save the card as a picture'), el('button', { class: 'pill on', onClick: finish(copy) }, 'COPY'))),
+    el('div', { class: 'close-row split' }, pill(t('CANCEL'), () => closePanel('card')), note,
+      el('div', { class: 'card-actions' }, videoButton('9:16', t('For Stories, Reels and TikTok')), videoButton('1:1', t('Square, for chats')),
+        pill(t('SAVE…'), finish(save), t('Save the card as a picture')), el('button', { class: 'pill on', onClick: finish(copy) }, t('COPY')))),
   ], { width: 940 });
   window.addEventListener('keydown', onKey);
   p.onClose = () => { window.removeEventListener('keydown', onKey); clearTimeout(noteTimer); drawing++; if (shownUrl) URL.revokeObjectURL(shownUrl); };
@@ -165,41 +165,41 @@ const section = (text) => el('div', { class: 'settings-section' }, text);
 function presetName(app) {
   const gains = app.state.eq, same = (p) => p.gains.every((g, i) => Math.round(g) === Math.round(gains[i]));
   const match = [...app.BUILTIN_EQ_PRESETS, ...app.state.customPresets].find(same);
-  return match ? match.name.toUpperCase() : 'CUSTOM';
+  return match ? match.name.toUpperCase() : t('CUSTOM');
 }
 
 function buildSettings(app) {
   const s = app.state;
   // The swatch follows the live colors (CSS variables), so it stays right for AUTO and during a theme transition.
-  themeButton = el('button', { class: 'pill theme-pill', title: 'Pick a theme', onClick: () => showThemeMenu(app) },
+  themeButton = el('button', { class: 'pill theme-pill', title: t('Pick a theme'), onClick: () => showThemeMenu(app) },
     el('span', { class: 'swatch' }), el('span', {}, THEMES[s.themeIndex].name));
-  presetButton = pill(presetName(app), () => showPresetMenu(app), 'Switch to another equalizer preset');
-  const eqButton = pill('EQ', () => showEq(app), 'Adjust the 10 bands, or save your own preset');
+  presetButton = pill(presetName(app), () => showPresetMenu(app), t('Switch to another equalizer preset'));
+  const eqButton = pill(t('EQ'), () => showEq(app), t('Adjust the 10 bands, or save your own preset'));
   // Where the sound goes: the button names it; the menu lists what's plugged in now.
   const outputButton = pill('…', async () => {
     const devices = await app.listOutputs(), now = app.engine.outputId || '';
-    showMenu(outputButton, [{ label: 'SYSTEM DEFAULT', current: !now, pick: () => app.setOutput(null).then(() => refreshSettingsIfOpen(app)) },
+    showMenu(outputButton, [{ label: t('SYSTEM DEFAULT'), current: !now, pick: () => app.setOutput(null).then(() => refreshSettingsIfOpen(app)) },
       ...devices.map((d) => ({ label: outputName(d), current: d.deviceId === now, pick: () => app.setOutput(d).then(() => refreshSettingsIfOpen(app)) }))]);
-  }, 'Where the sound comes out: speakers, headphones, AirPods…');
+  }, t('Where the sound comes out: speakers, headphones, AirPods…'));
   app.currentOutputName().then((name) => { outputButton.textContent = name; });
 
-  const crossfadeValue = el('span', { class: 'row-value' }, s.crossfade ? `${s.crossfade}S` : 'OFF');
-  const crossfade = new Slider({ min: 0, max: 15, value: s.crossfade, onInput: (v) => { crossfadeValue.textContent = v ? `${v}S` : 'OFF'; app.setCrossfade(v); } });
-  crossfade.canvas.title = 'Crossfade between tracks (0 = off, up to 15s)';
+  const crossfadeValue = el('span', { class: 'row-value' }, s.crossfade ? t('{n}S', { n: s.crossfade }) : t('OFF'));
+  const crossfade = new Slider({ min: 0, max: 15, value: s.crossfade, onInput: (v) => { crossfadeValue.textContent = v ? t('{n}S', { n: v }) : t('OFF'); app.setCrossfade(v); } });
+  crossfade.canvas.title = t('Crossfade between tracks (0 = off, up to 15s)');
 
   // Arms a one-shot countdown from now, only once the drag settles — not on every intermediate value.
-  const sleepValue = el('span', { class: 'row-value' }, s.sleepMinutes ? `${s.sleepMinutes}M` : 'OFF');
+  const sleepValue = el('span', { class: 'row-value' }, s.sleepMinutes ? t('{n}M', { n: s.sleepMinutes }) : t('OFF'));
   const sleep = new Slider({
     min: 0, max: 120, value: s.sleepRemaining > 0 ? s.sleepMinutes : 0,
-    onInput: (v) => { sleepValue.textContent = v ? `${v}M` : 'OFF'; },
+    onInput: (v) => { sleepValue.textContent = v ? t('{n}M', { n: v }) : t('OFF'); },
     onChange: (v) => app.armSleepTimer(v),
   });
-  sleep.canvas.title = 'Pause playback after a set time (0 = off, up to 120 minutes)';
+  sleep.canvas.title = t('Pause playback after a set time (0 = off, up to 120 minutes)');
 
-  const offsetText = (ms) => (ms ? `${ms > 0 ? '+' : '−'}${Math.abs(ms)} MS` : '0 MS');
+  const offsetText = (ms) => (ms ? t('{n} MS', { n: `${ms > 0 ? '+' : '−'}${Math.abs(ms)}` }) : t('0 MS'));
   const offsetValue = el('span', { class: 'row-value' }, offsetText(s.lyricsOffset));
   const lyricsOffset = new Slider({ min: -10, max: 10, value: Math.round(s.lyricsOffset / 50), onInput: (v) => { offsetValue.textContent = offsetText(v * 50); app.setLyricsOffset(v * 50); } });
-  lyricsOffset.canvas.title = 'Move the lyrics later (+) or earlier (−) for a song timed a little off';
+  lyricsOffset.canvas.title = t('Move the lyrics later (+) or earlier (−) for a song timed a little off');
 
   const mono = toggle(s.mono, () => { app.setMono(!s.mono); setToggle(mono, s.mono); });
   const waveform = toggle(s.waveform, () => { app.setWaveform(!s.waveform); setToggle(waveform, s.waveform); });
@@ -227,44 +227,44 @@ function buildSettings(app) {
   const saveFound = toggle(s.saveFound, () => { app.setSaveFound(!s.saveFound); setToggle(saveFound, s.saveFound); });
   // A Spotify disc plays outside Web Audio: the EQ, crossfade and mono can't shape it.
   const forSpotify = app.spotifyActive();
-  const unavailable = (node) => (forSpotify ? el('div', { class: 'unavailable', title: 'Not available for Spotify' }, node) : node);
+  const unavailable = (node) => (forSpotify ? el('div', { class: 'unavailable', title: t('Not available for Spotify') }, node) : node);
 
-  const github = el('div', { class: 'github-link', title: 'Open GitHub profile', onClick: () => app.cdp.openGitHub('Kizarov3') }, catSvg(), el('span', {}, 'Kizarov3'));
+  const github = el('div', { class: 'github-link', title: t('Open GitHub profile'), onClick: () => app.cdp.openGitHub('Kizarov3') }, catSvg(), el('span', {}, 'Kizarov3'));
   const body = el('div', { class: 'scroll settings-body' },
-    section('SOUND'),
-    unavailable(row('EQUALIZER', el('div', { class: 'row-pills' }, presetButton, eqButton))),
-    unavailable(sliderRow('CROSSFADE', crossfade, crossfadeValue)),
-    unavailable(row('OUTPUT', outputButton)),
-    unavailable(row('MONO AUDIO', mono)),
-    hint('Sums the left and right channels together — for a single speaker or one earbud.'),
-    row('DISC NOISE', discNoise),
-    hint('A real player’s sounds: a faint hiss, the tray motor, the disc spinning up — and a skip when you shake the window.'), gap(18),
-    section('LOOK'),
-    row('THEME', themeButton),
+    section(t('SOUND')),
+    unavailable(row(t('EQUALIZER'), el('div', { class: 'row-pills' }, presetButton, eqButton))),
+    unavailable(sliderRow(t('CROSSFADE'), crossfade, crossfadeValue)),
+    unavailable(row(t('OUTPUT'), outputButton)),
+    unavailable(row(t('MONO AUDIO'), mono)),
+    hint(t('Sums the left and right channels together — for a single speaker or one earbud.')),
+    row(t('DISC NOISE'), discNoise),
+    hint(t('A real player’s sounds: a faint hiss, the tray motor, the disc spinning up — and a skip when you shake the window.')), gap(18),
+    section(t('LOOK')),
+    row(t('THEME'), themeButton),
     row(t('LANGUAGE'), languageButton), languageNote,
-    row('WAVEFORM', waveform),
-    row('AMBIENT BACKGROUND', ambient),
-    app.shownTheme().image ? hint('The theme’s own image is the background while it’s on.') : null,
-    row('DISC WEAR', discWear),
-    hint('A disc played a lot looks it: scratches from ten plays of its album, fingerprints from fifty, chips from a hundred.'),
-    row('ANIMATIONS', animations), gap(18),
-    section('PLAYBACK'),
-    sliderRow('SLEEP TIMER', sleep, sleepValue),
-    sliderRow('LYRICS OFFSET', lyricsOffset, offsetValue),
-    hint('Karaoke and the lyrics already follow what you hear, Bluetooth included. Move them if a song’s lyrics are timed a little off.'),
-    row('MINI MODE', mini), gap(18),
-    section('LIBRARY'),
-    row('SAVE FOUND ART & LYRICS', saveFound),
-    hint('Covers and lyrics found online are written into the song’s file (once it’s finished playing), so they’re there offline and in other players too.'), gap(18),
-    section('SHARING'),
-    row('DISCORD STATUS', discord),
-    hint('Shows the song you’re playing on your Discord profile, while the Discord app is open.'), gap(18),
-    section('HELP'),
+    row(t('WAVEFORM'), waveform),
+    row(t('AMBIENT BACKGROUND'), ambient),
+    app.shownTheme().image ? hint(t('The theme’s own image is the background while it’s on.')) : null,
+    row(t('DISC WEAR'), discWear),
+    hint(t('A disc played a lot looks it: scratches from ten plays of its album, fingerprints from fifty, chips from a hundred.')),
+    row(t('ANIMATIONS'), animations), gap(18),
+    section(t('PLAYBACK')),
+    sliderRow(t('SLEEP TIMER'), sleep, sleepValue),
+    sliderRow(t('LYRICS OFFSET'), lyricsOffset, offsetValue),
+    hint(t('Karaoke and the lyrics already follow what you hear, Bluetooth included. Move them if a song’s lyrics are timed a little off.')),
+    row(t('MINI MODE'), mini), gap(18),
+    section(t('LIBRARY')),
+    row(t('SAVE FOUND ART & LYRICS'), saveFound),
+    hint(t('Covers and lyrics found online are written into the song’s file (once it’s finished playing), so they’re there offline and in other players too.')), gap(18),
+    section(t('SHARING')),
+    row(t('DISCORD STATUS'), discord),
+    hint(t('Shows the song you’re playing on your Discord profile, while the Discord app is open.')), gap(18),
+    section(t('HELP')),
     el('div', { class: 'help-pills' },
-      pill('SHOW THE GUIDE', () => showGuide(app), 'The five cards shown the first time CDPlayer opened'),
-      pill('FAQ', () => showFaq(), 'Answers to what people ask the first time'),
-      pill('KEYBOARD SHORTCUTS', () => showShortcuts(), 'Every key, also with ?')));
-  return [title('SETTINGS'), gap(18), body, el('div', { class: 'settings-foot' }, github, pill('CLOSE', () => closePanel('settings')))];
+      pill(t('SHOW THE GUIDE'), () => showGuide(app), t('The five cards shown the first time CDPlayer opened')),
+      pill(t('FAQ'), () => showFaq(), t('Answers to what people ask the first time')),
+      pill(t('KEYBOARD SHORTCUTS'), () => showShortcuts(), t('Every key, also with ?'))));
+  return [title(t('SETTINGS')), gap(18), body, el('div', { class: 'settings-foot' }, github, pill(t('CLOSE'), () => closePanel('settings')))];
 }
 
 // ---- Drop-down menus (theme picker, EQ presets) ------------------------------------------------------------------
@@ -285,7 +285,7 @@ function showMenu(anchor, items) {
     const node = el('div', { class: `theme-item${item.current ? ' current' : ''}`, onClick: () => { closeMenu(); item.pick(); },
       onContextmenu: (e) => { if (item.more) openMore(e); } },
     swatch, el('span', { class: 'grow' }, item.label),
-    item.more ? el('span', { class: 'menu-more', title: 'Edit, share or delete', onClick: openMore }, '✎') : null);
+    item.more ? el('span', { class: 'menu-more', title: t('Edit, share or delete'), onClick: openMore }, '✎') : null);
     return node;
   }));
   const layerNode = el('div', { class: 'theme-menu-layer', onMousedown: (e) => { if (e.target === layerNode) closeMenu(); } }, menu);
@@ -307,20 +307,20 @@ function showThemeMenu(app) {
     ...THEMES.filter((theme) => !theme.user).map(item),
     { divider: true },
     ...THEMES.filter((theme) => theme.user).map(item),
-    { label: '+ NEW THEME', pick: () => showThemeEditor(app) },
-    { label: 'IMPORT…', pick: () => app.importTheme() },
-    { label: 'PASTE CODE', pick: () => app.pasteThemeCode() },
+    { label: t('+ NEW THEME'), pick: () => showThemeEditor(app) },
+    { label: t('IMPORT…'), pick: () => app.importTheme() },
+    { label: t('PASTE CODE'), pick: () => app.pasteThemeCode() },
   ]);
 }
 // ✎ or right-click on a theme of your own.
 function showThemeActions(app, theme, box) {
   showMenu(box, [
-    { label: 'EDIT', pick: () => showThemeEditor(app, theme) },
-    { label: 'EXPORT…', pick: () => app.exportTheme(theme.name) },
-    theme.image ? null : { label: 'COPY CODE', pick: () => app.copyThemeCode(theme) },
-    { label: 'DELETE…', pick: () => showMenu(box, [
-      { label: `DELETE ${theme.name}`, pick: () => app.deleteTheme(theme.name) },
-      { label: 'KEEP IT', pick: () => {} },
+    { label: t('EDIT'), pick: () => showThemeEditor(app, theme) },
+    { label: t('EXPORT…'), pick: () => app.exportTheme(theme.name) },
+    theme.image ? null : { label: t('COPY CODE'), pick: () => app.copyThemeCode(theme) },
+    { label: t('DELETE…'), pick: () => showMenu(box, [
+      { label: t('DELETE {theme}', { theme: theme.name }), pick: () => app.deleteTheme(theme.name) },
+      { label: t('KEEP IT'), pick: () => {} },
     ]) },
   ].filter(Boolean));
 }
@@ -328,7 +328,7 @@ function showThemeActions(app, theme, box) {
 
 /** A new theme (starting from the one on), or `editing`, one of yours. Closed without SAVE, the theme that was on is back. */
 export function showThemeEditor(app, editing = null) {
-  const ctx = { draft: editing ? draftFrom(editing, editing.name) : draftFrom(app.shownTheme(), 'MY THEME'), editing, saved: false };
+  const ctx = { draft: editing ? draftFrom(editing, editing.name) : draftFrom(app.shownTheme(), t('MY THEME')), editing, saved: false };
   const ui = { title, row, hint, gap, sliderRow, menu: showMenu, refresh: () => refreshPanel('theme'), close: () => closePanel('theme') };
   const p = openPanel('theme', () => buildThemeEditor(app, ctx, ui), { width: 460 });
   p.onClose = () => { if (!ctx.saved) app.restoreTheme(); };
@@ -377,7 +377,7 @@ function buildEq(app) {
         app.saveEq(); refreshPanel('eq');
       } }, '×'))),
   ];
-  const nameField = el('input', { class: 'text-input', type: 'text', maxlength: '40', placeholder: 'Preset name' });
+  const nameField = el('input', { class: 'text-input', type: 'text', maxlength: '40', placeholder: t('Preset name') });
   nameField.style.width = '140px';
   const doSave = () => {
     const name = nameField.value.trim();
@@ -388,14 +388,14 @@ function buildEq(app) {
     app.saveEq(); refreshPanel('eq');
   };
   nameField.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSave(); e.stopPropagation(); if (e.key === 'Escape') closePanel('eq'); });
-  const inputRow = el('div', {}, nameField, ' ', pill('SAVE', doSave), ' ', pill('CANCEL', () => { inputRow.hidden = true; trigger.hidden = false; nameField.value = ''; }));
+  const inputRow = el('div', {}, nameField, ' ', pill(t('SAVE'), doSave), ' ', pill(t('CANCEL'), () => { inputRow.hidden = true; trigger.hidden = false; nameField.value = ''; }));
   Object.assign(inputRow.style, { display: 'flex', alignItems: 'center', gap: '6px' });
   inputRow.hidden = true;
-  const trigger = pill('SAVE AS PRESET', () => { trigger.hidden = true; inputRow.hidden = false; nameField.focus(); });
+  const trigger = pill(t('SAVE AS PRESET'), () => { trigger.hidden = true; inputRow.hidden = false; nameField.focus(); });
   const saveArea = el('div', {}, trigger, inputRow);
   const presets = el('div', { class: 'presets scroll' }, presetButtons);
-  return [title('EQUALIZER'), app.spotifyActive() ? hint('Not available for Spotify — the equalizer shapes your own files.') : [], gap(18), sliders.map((x) => x.row), gap(10),
-    el('div', { class: 'setting-row' }, 'PRESETS'), presets, gap(14), saveArea, closeRow(() => closePanel('eq'))];
+  return [title(t('EQUALIZER')), app.spotifyActive() ? hint(t('Not available for Spotify — the equalizer shapes your own files.')) : [], gap(18), sliders.map((x) => x.row), gap(10),
+    el('div', { class: 'setting-row' }, t('PRESETS')), presets, gap(14), saveArea, closeRow(() => closePanel('eq'))];
 }
 
 // ---- Lyrics ------------------------------------------------------------------------------------------------------
@@ -426,8 +426,8 @@ function buildLyrics(app) {
   }
   body.style.height = '380px';
   body.style.marginTop = '16px';
-  const karaoke = lines.length ? pill('KARAOKE', () => { closePanel('lyrics'); app.openKaraoke(); }, 'The lyrics full-window, filling in word by word as they are sung (Y)') : null;
-  return [title('LYRICS'), body, el('div', { class: 'close-row split' }, karaoke || el('span'), pill('CLOSE', () => closePanel('lyrics')))];
+  const karaoke = lines.length ? pill(t('KARAOKE'), () => { closePanel('lyrics'); app.openKaraoke(); }, t('The lyrics full-window, filling in word by word as they are sung (Y)')) : null;
+  return [title(t('LYRICS')), body, el('div', { class: 'close-row split' }, karaoke || el('span'), pill(t('CLOSE'), () => closePanel('lyrics')))];
 }
 /** Karaoke-style: highlight the line at the current playback position and keep it centered. */
 export function updateLyricsSync(app, force = false) {
@@ -447,15 +447,15 @@ export function updateLyricsSync(app, force = false) {
 // ---- Tags: what the file says, what MusicBrainz says, and writing it in ---------------------------------------------
 
 const TAG_ROWS = [
-  ['TITLE', 'title'], ['ARTIST', 'artist'], ['ALBUM', 'album'], ['ALBUM ARTIST', 'albumArtist'], ['YEAR', 'year'],
-  ['TRACK', 'track', 'trackCount'], ['DISC', 'disc', 'discCount'], ['GENRE', 'genre'], ['LABEL', 'label'],
+  [t('TITLE'), 'title'], [t('ARTIST'), 'artist'], [t('ALBUM'), 'album'], [t('ALBUM ARTIST'), 'albumArtist'], [t('YEAR'), 'year'],
+  [t('TRACK'), 'track', 'trackCount'], [t('DISC'), 'disc', 'discCount'], [t('GENRE'), 'genre'], [t('LABEL'), 'label'],
 ];
 let tagsView = null; // { path, name, canWrite, current, found, foundCover, values, picked: Set, status, busy }
 
 /** The TAGS panel for the song playing — or for any file (`path`, from LIBRARY CHECK); onClose after it's closed. */
 export function showTags(app, path = app.state.loadedPath, onClose = null) {
   if (!path) return;
-  tagsView = { path, name: app.displayName(path), canWrite: true, current: null, found: null, foundCover: null, values: {}, picked: new Set(), status: 'READING THE FILE…', busy: true };
+  tagsView = { path, name: app.displayName(path), canWrite: true, current: null, found: null, foundCover: null, values: {}, picked: new Set(), status: t('READING THE FILE…'), busy: true };
   const p = openPanel('tags', () => buildTags(app), { width: 660 });
   p.onClose = () => { tagsView = null; if (onClose) onClose(); };
   loadTags(app, tagsView);
@@ -468,11 +468,11 @@ async function loadTags(app, view) {
   view.canWrite = r.canWrite;
   view.current = r.tags || {};
   for (const [, ...keys] of TAG_ROWS) for (const k of keys) view.values[k] = view.current[k] ?? '';
-  if (!r.canWrite) { view.status = 'TAGS CAN’T BE WRITTEN TO THIS FILE (A CUE SHEET TRACK, OR A FORMAT WITHOUT TAGS)'; view.busy = false; refreshPanel('tags'); return; }
+  if (!r.canWrite) { view.status = t('TAGS CAN’T BE WRITTEN TO THIS FILE (A CUE SHEET TRACK, OR A FORMAT WITHOUT TAGS)'); view.busy = false; refreshPanel('tags'); return; }
   // Lyrics found online (not the file's own) are offered too.
   view.lyricsOffer = app.state.lyrics && !(app.state.details && app.state.details.lyrics) ? app.state.lyrics : null;
   if (view.lyricsOffer) view.picked.add('lyrics');
-  view.status = 'LOOKING THE SONG UP ON MUSICBRAINZ…';
+  view.status = t('LOOKING THE SONG UP ON MUSICBRAINZ…');
   refreshPanel('tags');
   await lookUpTags(app, view);
 }
@@ -484,7 +484,7 @@ async function lookUpTags(app, view) {
   if (!tagsCurrent(view)) return;
   view.busy = false;
   if (!found || found.networkError) {
-    view.status = found ? 'MUSICBRAINZ COULDN’T BE REACHED — YOU CAN STILL EDIT THE TAGS BY HAND' : 'MUSICBRAINZ DOESN’T KNOW THIS SONG — YOU CAN STILL EDIT THE TAGS BY HAND';
+    view.status = found ? t('MUSICBRAINZ COULDN’T BE REACHED — YOU CAN STILL EDIT THE TAGS BY HAND') : t('MUSICBRAINZ DOESN’T KNOW THIS SONG — YOU CAN STILL EDIT THE TAGS BY HAND');
     refreshPanel('tags');
     return;
   }
@@ -495,7 +495,7 @@ async function lookUpTags(app, view) {
     view.values[k] = found[k];
     if (String(found[k]) !== String(view.current[k] ?? '')) view.picked.add(k);
   }
-  view.status = `FOUND ON MUSICBRAINZ · ${[found.album, found.year].filter(Boolean).join(' · ')}`.toUpperCase();
+  view.status = t('FOUND ON MUSICBRAINZ · {album}', { album: [found.album, found.year].filter(Boolean).join(' · ').toUpperCase() });
   refreshPanel('tags');
   if (!view.current.hasCover && found.coverUrl) {
     const cover = await app.cdp.coverFromUrl(found.coverUrl).catch(() => null);
@@ -509,7 +509,7 @@ async function lookUpTags(app, view) {
 function buildTags(app) {
   const v = tagsView;
   const pick = (key) => {
-    const b = el('button', { class: `tag-pick${v.picked.has(key) ? ' on' : ''}`, title: 'Write this into the file', disabled: !v.canWrite }, '✓');
+    const b = el('button', { class: `tag-pick${v.picked.has(key) ? ' on' : ''}`, title: t('Write this into the file'), disabled: !v.canWrite }, '✓');
     b.addEventListener('click', () => { v.picked.has(key) ? v.picked.delete(key) : v.picked.add(key); b.classList.toggle('on', v.picked.has(key)); save.disabled = !v.picked.size || v.busy; });
     return b;
   };
@@ -529,16 +529,16 @@ function buildTags(app) {
     const now = of ? `${shown(v.current && v.current[key])}${v.current && v.current[of] ? ` of ${v.current[of]}` : ''}` : shown(v.current && v.current[key]);
     const b = pick(key); picks.set(key, b);
     if (of) { const b2 = pick(of); b2.hidden = true; picks.set(of, b2); }
-    const edit = of ? el('div', { class: 'tag-pair' }, input(key, true, of), el('span', {}, 'OF'), input(of, true, key)) : input(key);
+    const edit = of ? el('div', { class: 'tag-pair' }, input(key, true, of), el('span', {}, t('OF')), input(of, true, key)) : input(key);
     if (of) b.addEventListener('click', () => { if (v.picked.has(key)) v.picked.add(of); else v.picked.delete(of); });
     return el('div', { class: 'tag-row' }, el('span', { class: 'tag-label' }, label), el('span', { class: 'tag-now', title: now }, now), edit, b);
   });
   const thumb = (src) => (src ? el('img', { class: 'tag-thumb', src, alt: '' }) : el('span', { class: 'tag-now' }, '—'));
-  const coverNow = v.current && v.current.hasCover ? el('span', { class: 'tag-now' }, 'In the file') : el('span', { class: 'tag-now' }, 'None');
-  if (v.foundCover) rows.push(el('div', { class: 'tag-row' }, el('span', { class: 'tag-label' }, 'COVER'), coverNow, el('div', {}, thumb(v.foundCover), el('span', { class: 'tag-source' }, 'Cover Art Archive')), pick('cover')));
-  if (v.lyricsOffer) rows.push(el('div', { class: 'tag-row' }, el('span', { class: 'tag-label' }, 'LYRICS'), el('span', { class: 'tag-now' }, 'None'),
+  const coverNow = v.current && v.current.hasCover ? el('span', { class: 'tag-now' }, t('In the file')) : el('span', { class: 'tag-now' }, t('None'));
+  if (v.foundCover) rows.push(el('div', { class: 'tag-row' }, el('span', { class: 'tag-label' }, t('COVER')), coverNow, el('div', {}, thumb(v.foundCover), el('span', { class: 'tag-source' }, t('Cover Art Archive'))), pick('cover')));
+  if (v.lyricsOffer) rows.push(el('div', { class: 'tag-row' }, el('span', { class: 'tag-label' }, t('LYRICS')), el('span', { class: 'tag-now' }, t('None')),
     el('span', { class: 'tag-source' }, `${/^\[\d/m.test(v.lyricsOffer) ? 'Timed' : 'Plain'}, from ${app.state.lyricsSource || 'online'}`), pick('lyrics')));
-  const save = el('button', { class: 'pill on', disabled: !v.picked.size || v.busy || !v.canWrite }, 'SAVE TO FILE');
+  const save = el('button', { class: 'pill on', disabled: !v.picked.size || v.busy || !v.canWrite }, t('SAVE TO FILE'));
   save.addEventListener('click', async () => {
     const changes = {};
     for (const k of v.picked) {
@@ -549,20 +549,20 @@ function buildTags(app) {
     if (v.found && Object.keys(changes).some((k) => k !== 'lyrics' && k !== 'cover')) {
       changes.musicBrainzTrackId = v.found.musicBrainzTrackId; changes.musicBrainzReleaseId = v.found.musicBrainzReleaseId;
     }
-    v.busy = true; v.status = 'WRITING…'; refreshPanel('tags');
+    v.busy = true; v.status = t('WRITING…'); refreshPanel('tags');
     const r = await app.saveTags(v.path, changes);
     if (!tagsCurrent(v)) return;
-    if (r.ok) { closePanel('tags'); app.setStatus('TAGS SAVED INTO THE FILE'); return; }
-    v.busy = false; v.status = `COULDN’T SAVE · ${r.error || 'UNKNOWN ERROR'}`; refreshPanel('tags');
+    if (r.ok) { closePanel('tags'); app.setStatus(t('TAGS SAVED INTO THE FILE')); return; }
+    v.busy = false; v.status = t('COULDN’T SAVE · {why}', { why: r.error || t('UNKNOWN ERROR') }); refreshPanel('tags');
   });
-  const again = pill('LOOK UP AGAIN', () => { if (!v.busy && v.canWrite) { v.status = 'LOOKING THE SONG UP ON MUSICBRAINZ…'; refreshPanel('tags'); lookUpTags(app, v); } }, 'Ask MusicBrainz again');
+  const again = pill(t('LOOK UP AGAIN'), () => { if (!v.busy && v.canWrite) { v.status = t('LOOKING THE SONG UP ON MUSICBRAINZ…'); refreshPanel('tags'); lookUpTags(app, v); } }, t('Ask MusicBrainz again'));
   again.disabled = v.busy || !v.canWrite;
   return [
-    title('TAGS'), el('div', { class: 'subtitle' }, v.name),
+    title(t('TAGS')), el('div', { class: 'subtitle' }, v.name),
     el('div', { class: `tag-status${v.busy ? ' busy' : ''}` }, v.status),
-    el('div', { class: 'tag-head' }, el('span', {}, ''), el('span', {}, 'IN THE FILE'), el('span', {}, 'SAVE AS'), el('span', {}, '')),
+    el('div', { class: 'tag-head' }, el('span', {}, ''), el('span', {}, t('IN THE FILE')), el('span', {}, t('SAVE AS')), el('span', {}, '')),
     el('div', { class: 'scroll tag-rows' }, rows),
-    el('div', { class: 'close-row split' }, again, el('div', { class: 'row-pills' }, pill('CLOSE', () => closePanel('tags')), save)),
+    el('div', { class: 'close-row split' }, again, el('div', { class: 'row-pills' }, pill(t('CLOSE'), () => closePanel('tags')), save)),
   ];
 }
 
@@ -571,21 +571,21 @@ function buildTags(app) {
 export function showHistory(app) { openPanel('history', () => buildHistory(app), { width: 480 }); }
 export function refreshHistoryIfOpen(app) { if (isOpen('history')) refreshPanel('history'); }
 function trackRow(app, path, label, onPlay) {
-  const next = pill('NEXT', (e) => { e.stopPropagation(); app.playNext([path], { sorted: true }); }, 'Play it next, after the song playing');
-  const add = pill('ADD', (e) => { e.stopPropagation(); app.addToQueue([path], { sorted: true }); }, 'Add to queue');
+  const next = pill(t('NEXT'), (e) => { e.stopPropagation(); app.playNext([path], { sorted: true }); }, t('Play it next, after the song playing'));
+  const add = pill(t('ADD'), (e) => { e.stopPropagation(); app.addToQueue([path], { sorted: true }); }, t('Add to queue'));
   return el('div', { class: 'list-row', title: `Play ${label}`, onClick: onPlay }, el('span', { class: 'entry' }, label), next, add);
 }
 function buildHistory(app) {
   const h = app.state.history;
   const body = h.length
     ? el('div', { class: 'scroll' }, h.map((p) => trackRow(app, p, app.queueDisplay(p), async () => {
-      if (!(await app.cdp.exists(p))) { app.setStatus('FILE NO LONGER FOUND'); await app.loadHistoryFromDisk(); refreshPanel('history'); return; }
+      if (!(await app.cdp.exists(p))) { app.setStatus(t('FILE NO LONGER FOUND')); await app.loadHistoryFromDisk(); refreshPanel('history'); return; }
       app.appendAndPlay(p); closePanel('history');
     })))
-    : el('div', { class: 'empty-note' }, 'NOTHING PLAYED YET');
+    : el('div', { class: 'empty-note' }, t('NOTHING PLAYED YET'));
   if (h.length) { body.style.height = '380px'; body.style.marginTop = '16px'; }
   else body.style.marginTop = '16px';
-  return [title('RECENTLY PLAYED'), body, closeRow(() => closePanel('history'))];
+  return [title(t('RECENTLY PLAYED')), body, closeRow(() => closePanel('history'))];
 }
 
 // ---- The rip ----------------------------------------------------------------------------------------------------
@@ -594,13 +594,13 @@ function buildHistory(app) {
 
 export function showRip(app) { openPanel('rip', () => buildRip(app), { width: 520 }); }
 export function refreshRipIfOpen(app) { if (isOpen('rip')) refreshPanel('rip'); }
-const STAGE = { reading: 'reading from the disc…', encoding: 'encoding…' };
+const STAGE = { reading: t('reading from the disc…'), encoding: t('encoding…') };
 function buildRip(app) {
   const r = app.state.rip;
-  if (!r) return [title('RIP'), el('div', { class: 'empty-note' }, 'NOTHING BEING RIPPED'), closeRow(() => closePanel('rip'))];
-  const heading = r.finished ? (r.ok ? 'RIPPED' : 'RIP STOPPED') : 'RIPPING';
+  if (!r) return [title(t('RIP')), el('div', { class: 'empty-note' }, t('NOTHING BEING RIPPED')), closeRow(() => closePanel('rip'))];
+  const heading = r.finished ? (r.ok ? t('RIPPED') : t('RIP STOPPED')) : t('RIPPING');
   const head = el('div', { class: 'rip-head' },
-    el('div', { class: 'rip-album' }, [r.artist, r.year].filter(Boolean).join(' · ') || 'Audio CD'),
+    el('div', { class: 'rip-album' }, [r.artist, r.year].filter(Boolean).join(' · ') || t('Audio CD')),
     el('div', { class: 'rip-count' }, `${r.done} / ${r.tracks.length} · ${r.percent}%`),
     r.folder ? el('div', { class: 'rip-folder', title: r.folder }, `→ ${r.folder}`) : null);
   const rows = r.tracks.map((track, i) => {
@@ -617,10 +617,10 @@ function buildRip(app) {
   list.style.height = '340px'; list.style.marginTop = '12px';
   const buttons = el('div', { class: 'close-row split' },
     r.finished
-      ? (r.ok ? pill('SHOW IN FOLDER', () => app.cdp.showRipFolder(), 'Open the album\'s folder') : el('span', { class: 'rip-result' }, r.message || ''))
-      : pill('CANCEL RIP', () => app.cdp.cancelRip(), 'Stop ripping; the tracks already done are kept'),
-    pill('CLOSE', () => closePanel('rip')));
-  return [title(`${heading} · ${(r.album || 'AUDIO CD').toUpperCase()}`), head, list, buttons];
+      ? (r.ok ? pill(t('SHOW IN FOLDER'), () => app.cdp.showRipFolder(), t('Open the album\'s folder')) : el('span', { class: 'rip-result' }, r.message || ''))
+      : pill(t('CANCEL RIP'), () => app.cdp.cancelRip(), t('Stop ripping; the tracks already done are kept')),
+    pill(t('CLOSE'), () => closePanel('rip')));
+  return [title([heading, (r.album || t('AUDIO CD')).toUpperCase()].join(' · ')), head, list, buttons];
 }
 
 // ---- Search ------------------------------------------------------------------------------------------------------
@@ -667,27 +667,27 @@ export function showSearch(app) {
 function buildSearch(app) {
   search.status = el('div', { class: 'setting-row' });
   search.status.style.minHeight = '16px';
-  search.field = el('input', { class: 'text-input', type: 'text', placeholder: 'Search by filename, or paste a Spotify link' });
+  search.field = el('input', { class: 'text-input', type: 'text', placeholder: t('Search by filename, or paste a Spotify link') });
   search.field.style.width = '100%';
   search.field.addEventListener('input', () => onSearchInput(app));
   search.field.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') closePanel('search'); });
   search.results = el('div', { class: 'scroll' });
   search.results.style.height = '340px';
-  const importButton = pill('IMPORT LIBRARY…', () => importLibrary(app), 'Import an iTunes/Music "Library.xml", or a Spotify "Liked Songs" export (CSV or YourLibrary.json)');
-  const instructions = el('div', { class: 'tip' }, 'Type to search your library, or paste a Spotify track/playlist link to queue matching songs you already have');
+  const importButton = pill(t('IMPORT LIBRARY…'), () => importLibrary(app), t('Import an iTunes/Music "Library.xml", or a Spotify "Liked Songs" export (CSV or YourLibrary.json)'));
+  const instructions = el('div', { class: 'tip' }, t('Type to search your library, or paste a Spotify track/playlist link to queue matching songs you already have'));
   Object.assign(instructions.style, { fontSize: '11px', fontWeight: 'bold', marginTop: '12px', lineHeight: '1.35' });
   const importRow = el('div', {}, importButton);
   importRow.style.margin = '10px 0';
   const fieldRow = el('div', {}, search.field);
   fieldRow.style.margin = '6px 0 10px';
-  return [title('SEARCH LIBRARY'), instructions, importRow, search.status, fieldRow, search.results, closeRow(() => closePanel('search'))];
+  return [title(t('SEARCH LIBRARY')), instructions, importRow, search.status, fieldRow, search.results, closeRow(() => closePanel('search'))];
 }
 function setSearchStatus(text) { if (search.status) search.status.textContent = text; }
 function refreshSearchResults(app) {
   if (!search.results || !isOpen('search')) return;
   const query = (search.field ? search.field.value : '').trim().toLowerCase();
   if (!search.folder && !search.scanning) {
-    setSearchStatus('LOAD A TRACK FIRST TO SET A FOLDER TO SEARCH');
+    setSearchStatus(t('LOAD A TRACK FIRST TO SET A FOLDER TO SEARCH'));
     search.results.replaceChildren();
     return;
   }
@@ -695,14 +695,14 @@ function refreshSearchResults(app) {
   for (const p of search.index) {
     if (!query || searchName(p).toLowerCase().includes(query)) { matches.push(p); if (matches.length >= SEARCH_LIMIT) break; }
   }
-  setSearchStatus(search.scanning ? 'SCANNING YOUR MUSIC FOLDER…'
-    : `${matches.length}${matches.length >= SEARCH_LIMIT ? '+' : ''} MATCH${matches.length === 1 ? '' : 'ES'} IN ${search.folder}`);
+  setSearchStatus(search.scanning ? t('SCANNING YOUR MUSIC FOLDER…')
+    : matches.length >= SEARCH_LIMIT ? t('{n}+ MATCHES IN {folder}', { n: matches.length, folder: search.folder }) : t('{n} MATCHES IN {folder}', { n: matches.length, folder: search.folder }));
   search.results.replaceChildren(...(matches.length
     ? matches.map((p) => trackRow(app, p, searchName(p), async () => {
-      if (!(await app.cdp.exists(p))) { app.setStatus('FILE NO LONGER FOUND'); startLibraryScan(app); return; }
+      if (!(await app.cdp.exists(p))) { app.setStatus(t('FILE NO LONGER FOUND')); startLibraryScan(app); return; }
       app.appendAndPlay(p); closePanel('search');
     }))
-    : [el('div', { class: 'list-row plain' }, search.scanning ? 'SCANNING…' : 'NO MATCHES')]));
+    : [el('div', { class: 'list-row plain' }, search.scanning ? t('SCANNING…') : t('NO MATCHES'))]));
 }
 async function onSearchInput(app) {
   const text = search.field.value.trim();
@@ -718,18 +718,18 @@ async function onSearchInput(app) {
 }
 async function importSpotifyLink(app, url, isPlaylist) {
   search.results.replaceChildren();
-  setSearchStatus(isPlaylist ? 'RESOLVING SPOTIFY PLAYLIST…' : 'RESOLVING SPOTIFY TRACK…');
+  setSearchStatus(isPlaylist ? t('RESOLVING SPOTIFY PLAYLIST…') : t('RESOLVING SPOTIFY TRACK…'));
   const result = await app.cdp.resolveSpotifyLink(url);
   if (result.needsSignIn) { promptSpotifySignIn(app, url); return; }
-  if (result.error) { setSearchStatus(`SPOTIFY IMPORT FAILED — ${result.error}`); return; }
+  if (result.error) { setSearchStatus(t('SPOTIFY IMPORT FAILED — {why}', { why: result.error })); return; }
   finishImport(app, result.tracks);
 }
 function promptSpotifySignIn(app, pendingUrl) {
-  setSearchStatus('CONNECT SPOTIFY TO IMPORT PLAYLISTS');
-  const explain = el('div', { class: 'list-row plain' }, "Reading a playlist's songs needs you signed in to Spotify — a single track link doesn't.");
-  const connect = pill('CONNECT SPOTIFY ACCOUNT', async () => {
+  setSearchStatus(t('CONNECT SPOTIFY TO IMPORT PLAYLISTS'));
+  const explain = el('div', { class: 'list-row plain' }, t("Reading a playlist's songs needs you signed in to Spotify — a single track link doesn't."));
+  const connect = pill(t('CONNECT SPOTIFY ACCOUNT'), async () => {
     connect.disabled = true;
-    setSearchStatus('OPENING SPOTIFY LOGIN IN YOUR BROWSER…');
+    setSearchStatus(t('OPENING SPOTIFY LOGIN IN YOUR BROWSER…'));
     const message = await app.cdp.spotifySignIn();
     setSearchStatus(message);
     if (message === 'SPOTIFY CONNECTED') { search.lastSpotifyUrl = null; importSpotifyLink(app, pendingUrl, true); }
@@ -738,29 +738,29 @@ function promptSpotifySignIn(app, pendingUrl) {
   search.results.replaceChildren(explain, connect);
 }
 function finishImport(app, tracks) {
-  if (!tracks) { setSearchStatus('SPOTIFY LOOKUP FAILED — CHECK THE LINK'); return; }
-  if (!tracks.length) { setSearchStatus('NO TRACKS FOUND AT THAT LINK'); return; }
-  if (!search.index.length) { setSearchStatus('LOAD A TRACK FIRST TO SET A LIBRARY FOLDER TO MATCH AGAINST'); return; }
+  if (!tracks) { setSearchStatus(t('SPOTIFY LOOKUP FAILED — CHECK THE LINK')); return; }
+  if (!tracks.length) { setSearchStatus(t('NO TRACKS FOUND AT THAT LINK')); return; }
+  if (!search.index.length) { setSearchStatus(t('LOAD A TRACK FIRST TO SET A LIBRARY FOLDER TO MATCH AGAINST')); return; }
   const matched = [], missing = [];
   for (const track of tracks) {
     const f = findLocalMatch(track.title, track.artist);
     if (f) matched.push(f); else missing.push(`${track.title}${track.artist ? ` – ${track.artist}` : ''}`);
   }
   if (matched.length) app.addToQueue(matched, { sorted: true });
-  setSearchStatus(`${matched.length} OF ${tracks.length} TRACK${tracks.length === 1 ? '' : 'S'} FOUND IN YOUR LIBRARY AND ADDED`);
-  search.results.replaceChildren(...missing.map((m) => el('div', { class: 'list-row plain' }, `NOT IN YOUR LIBRARY · ${m}`)));
+  setSearchStatus(t('{found} OF {n} TRACKS FOUND IN YOUR LIBRARY AND ADDED', { found: matched.length, n: tracks.length }));
+  search.results.replaceChildren(...missing.map((m) => el('div', { class: 'list-row plain' }, t('NOT IN YOUR LIBRARY · {song}', { song: m }))));
 }
 async function importLibrary(app) {
   const r = await app.cdp.importLibraryDialog();
   if (r.canceled) return;
-  if (r.error) { setSearchStatus("COULDN'T READ THAT IMPORT FILE"); return; }
+  if (r.error) { setSearchStatus(t("COULDN'T READ THAT IMPORT FILE")); return; }
   if (r.kind === 'itunes') {
-    if (!r.tracks.length) { setSearchStatus('NO PLAYABLE TRACKS FOUND IN THAT LIBRARY FILE'); return; }
+    if (!r.tracks.length) { setSearchStatus(t('NO PLAYABLE TRACKS FOUND IN THAT LIBRARY FILE')); return; }
     app.addToQueue(r.tracks, { sorted: true });
-    setSearchStatus(`${r.tracks.length} TRACK${r.tracks.length === 1 ? '' : 'S'} IMPORTED FROM ITUNES/MUSIC`);
+    setSearchStatus(t('{n} TRACKS IMPORTED FROM ITUNES/MUSIC', { n: r.tracks.length }));
     return;
   }
-  if (!r.tracks.length) { setSearchStatus('NO TRACKS FOUND IN THAT EXPORT FILE'); return; }
+  if (!r.tracks.length) { setSearchStatus(t('NO TRACKS FOUND IN THAT EXPORT FILE')); return; }
   finishImport(app, r.tracks);
 }
 
@@ -769,12 +769,12 @@ async function importLibrary(app) {
 // before playback existed), and connected — your saved albums, your playlists, and a search. A click puts it on the tray.
 
 const SPOTIFY_MESSAGES = {
-  SIGN_IN: 'CONNECT SPOTIFY AGAIN', OFFLINE: "COULDN'T REACH SPOTIFY",
-  NOT_SHARED: 'SPOTIFY ONLY SHARES THE SONGS OF PLAYLISTS YOU OWN OR COLLABORATE ON', EMPTY: 'NOTHING TO PLAY ON THAT ONE',
+  SIGN_IN: t('CONNECT SPOTIFY AGAIN'), OFFLINE: t("COULDN'T REACH SPOTIFY"),
+  NOT_SHARED: t('SPOTIFY ONLY SHARES THE SONGS OF PLAYLISTS YOU OWN OR COLLABORATE ON'), EMPTY: t('NOTHING TO PLAY ON THAT ONE'),
 };
 const sp = { account: null, editing: false, step: 0, trouble: null, drm: null, tab: 'ALBUMS', lists: { ALBUMS: null, PLAYLISTS: null }, next: { ALBUMS: 0, PLAYLISTS: 0 }, query: '', found: null, status: '', searchTimer: null };
 // (No answer at all says why, when the network did: "COULDN'T REACH SPOTIFY · ERR_CERT_AUTHORITY_INVALID".)
-const spotifyMessage = (code, detail) => (code === 'OFFLINE' && detail ? `${SPOTIFY_MESSAGES.OFFLINE} · ${detail}` : SPOTIFY_MESSAGES[code] || `SPOTIFY · ${code}`);
+const spotifyMessage = (code, detail) => (code === 'OFFLINE' && detail ? `${SPOTIFY_MESSAGES.OFFLINE} · ${detail}` : SPOTIFY_MESSAGES[code] || `SPOTIFY · ${code}`); // an unknown code: Spotify's own word
 
 export function showSpotify(app) {
   openPanel('spotify', () => buildSpotify(app), { width: 540 });
@@ -791,7 +791,7 @@ async function refreshSpotifyAccount(app) {
 async function loadSpotifyList(app, tab) {
   const offset = sp.next[tab];
   if (offset === null) return;
-  sp.status = 'LOADING…'; refreshPanel('spotify');
+  sp.status = t('LOADING…'); refreshPanel('spotify');
   const r = await (tab === 'ALBUMS' ? app.cdp.spotifyAlbums(offset) : app.cdp.spotifyPlaylists(offset)).catch(() => ({ error: 'OFFLINE' }));
   if (r.error) {
     sp.status = spotifyMessage(r.error, r.detail);
@@ -815,7 +815,7 @@ function searchSpotify(app, query) {
   }, 400);
 }
 async function putSpotifyOnTray(app, item) {
-  sp.status = `READING ${item.name.toUpperCase()}…`; refreshPanel('spotify');
+  sp.status = t('READING {name}…', { name: item.name.toUpperCase() }); refreshPanel('spotify');
   const r = await app.cdp.spotifyDiscTracks({ kind: item.kind, id: item.id }).catch(() => ({ error: 'OFFLINE' }));
   if (r.error) {
     sp.status = spotifyMessage(r.error, r.detail);
@@ -839,7 +839,7 @@ function copyLink(app, text) {
   return link;
 }
 
-const changeAppPill = () => pill('CHANGE APP', () => { sp.editing = true; sp.status = ''; refreshPanel('spotify'); }, 'Enter another Client ID and Secret — to fix a mistyped one, or to use another Spotify developer app');
+const changeAppPill = () => pill(t('CHANGE APP'), () => { sp.editing = true; sp.status = ''; refreshPanel('spotify'); }, t('Enter another Client ID and Secret — to fix a mistyped one, or to use another Spotify developer app'));
 
 // The setup wizard: 1 create the app, 2 its keys (checked with Spotify before they're kept), 3 let your account in,
 // 4 connect — and when something's wrong, what, with the way back to the step that fixes it.
@@ -847,55 +847,55 @@ function spotifyWizard(app, a, status, foot) {
   const step = sp.step || (!a.configured || sp.editing ? 1 : 4);
   const go = (n) => { sp.step = n; sp.trouble = null; sp.status = ''; refreshPanel('spotify'); };
   const dots = el('div', { class: 'guide-dots' }, [1, 2, 3, 4].map((n) => el('button', { class: `guide-dot${n === step ? ' on' : ''}`, title: `Step ${n}`, onClick: () => go(n) })));
-  const heading = [title('SPOTIFY'), el('div', { class: 'subtitle' }, `SET UP · ${step} OF 4 — ${['CREATE AN APP', 'ITS KEYS', 'LET YOURSELF IN', 'CONNECT'][step - 1]}`), gap(12)];
+  const heading = [title(t('SPOTIFY')), el('div', { class: 'subtitle' }, t('SET UP · {step} OF 4 — {what}', { step, what: [t('CREATE AN APP'), t('ITS KEYS'), t('LET YOURSELF IN'), t('CONNECT')][step - 1] })), gap(12)];
   const trouble = sp.trouble ? el('div', { class: 'spotify-trouble' }, el('div', {}, sp.trouble.text),
-    sp.trouble.step !== step ? pill(`GO TO STEP ${sp.trouble.step}`, () => go(sp.trouble.step)) : null) : null;
-  const nav = (...right) => el('div', { class: 'close-row guide-actions' }, pill('CLOSE', () => closePanel('spotify')), step > 1 ? pill('BACK', () => go(step - 1)) : null, el('span', { class: 'grow' }), ...right.filter(Boolean));
+    sp.trouble.step !== step ? pill(t('GO TO STEP {step}', { step: sp.trouble.step }), () => go(sp.trouble.step)) : null) : null;
+  const nav = (...right) => el('div', { class: 'close-row guide-actions' }, pill(t('CLOSE'), () => closePanel('spotify')), step > 1 ? pill(t('BACK'), () => go(step - 1)) : null, el('span', { class: 'grow' }), ...right.filter(Boolean));
   const page = (...parts) => parts.flat().filter(Boolean); // an empty part (no trouble) leaves nothing, not "null"
-  const dashboard = pill('OPEN SPOTIFY DASHBOARD', () => app.cdp.openSpotifyDashboard());
-  const intro = hint('Spotify lets an app play for only five people, so CDPlayer plays through your own free Spotify developer app. It takes two minutes, once. You need Spotify Premium.');
+  const dashboard = pill(t('OPEN SPOTIFY DASHBOARD'), () => app.cdp.openSpotifyDashboard());
+  const intro = hint(t('Spotify lets an app play for only five people, so CDPlayer plays through your own free Spotify developer app. It takes two minutes, once. You need Spotify Premium.'));
   if (step === 1) {
     return page(...heading, intro, gap(6),
-      hint('Open the dashboard, click Create app, and fill it in — click each to copy it:'),
+      hint(t('Open the dashboard, click Create app, and fill it in — click each to copy it:')),
       el('div', { class: 'copy-list' },
-        el('div', {}, 'App name: ', copyLink(app, 'CDPlayer')),
-        el('div', {}, 'App description: ', copyLink(app, 'My CD player')),
-        el('div', {}, 'Redirect URI: ', copyLink(app, 'http://127.0.0.1:8080/callback'), ' — then click Add')),
-      hint('Under “Which API/SDKs are you planning to use?” tick Web API and Web Playback SDK, agree to the terms, and Save.'),
-      gap(10), el('div', { class: 'row-pills' }, dashboard), trouble, dots, nav(pill('NEXT', () => go(2))));
+        el('div', {}, t('App name: '), copyLink(app, 'CDPlayer')),
+        el('div', {}, t('App description: '), copyLink(app, t('My CD player'))),
+        el('div', {}, t('Redirect URI: '), copyLink(app, 'http://127.0.0.1:8080/callback'), t(' — then click Add'))),
+      hint(t('Under “Which API/SDKs are you planning to use?” tick Web API and Web Playback SDK, agree to the terms, and Save.')),
+      gap(10), el('div', { class: 'row-pills' }, dashboard), trouble, dots, nav(pill(t('NEXT|step'), () => go(2))));
   }
   if (step === 2) {
-    const id = el('input', { class: 'text-input', type: 'text', placeholder: 'Client ID', spellcheck: 'false', value: sp.keyId || '' });
-    const secret = el('input', { class: 'text-input', type: 'password', placeholder: 'Client Secret', spellcheck: 'false', value: sp.keySecret || '' });
-    const mark = (input, note) => { const ok = /^[0-9a-f]{32}$/i.test(input.value.trim()); note.textContent = !input.value.trim() ? '' : ok ? '✓' : 'Looks mistyped — 32 letters and digits'; note.className = `key-note${ok ? ' ok' : ''}`; };
+    const id = el('input', { class: 'text-input', type: 'text', placeholder: t('Client ID'), spellcheck: 'false', value: sp.keyId || '' });
+    const secret = el('input', { class: 'text-input', type: 'password', placeholder: t('Client Secret'), spellcheck: 'false', value: sp.keySecret || '' });
+    const mark = (input, note) => { const ok = /^[0-9a-f]{32}$/i.test(input.value.trim()); note.textContent = !input.value.trim() ? '' : ok ? '✓' : t('Looks mistyped — 32 letters and digits'); note.className = `key-note${ok ? ' ok' : ''}`; };
     const idNote = el('span', { class: 'key-note' }), secretNote = el('span', { class: 'key-note' });
     id.addEventListener('input', () => { sp.keyId = id.value; mark(id, idNote); });
     secret.addEventListener('input', () => { sp.keySecret = secret.value; mark(secret, secretNote); });
-    const paste = (input, note, key) => pill('PASTE', async () => { const text = await app.cdp.clipboardText().catch(() => ''); if (text) { input.value = text; sp[key] = text; mark(input, note); } }, 'Paste it from the clipboard');
+    const paste = (input, note, key) => pill(t('PASTE'), async () => { const text = await app.cdp.clipboardText().catch(() => ''); if (text) { input.value = text; sp[key] = text; mark(input, note); } }, t('Paste it from the clipboard'));
     requestAnimationFrame(() => { mark(id, idNote); mark(secret, secretNote); });
     const check = el('button', { class: 'pill on', onClick: async () => {
-      if (!id.value.trim() || !secret.value.trim()) { sp.status = 'BOTH ARE NEEDED'; refreshPanel('spotify'); return; }
-      check.disabled = true; status.textContent = 'ASKING SPOTIFY…';
+      if (!id.value.trim() || !secret.value.trim()) { sp.status = t('BOTH ARE NEEDED'); refreshPanel('spotify'); return; }
+      check.disabled = true; status.textContent = t('ASKING SPOTIFY…');
       const r = await app.cdp.spotifyCheckKeys({ clientId: id.value, clientSecret: secret.value }).catch(() => ({ error: 'OFFLINE' }));
-      if (!r.ok) { sp.trouble = r.error === 'OFFLINE' ? { step: 2, text: 'Couldn’t reach Spotify — check the connection and try again.' } : await app.cdp.spotifyDiagnose(r.error); refreshPanel('spotify'); return; }
+      if (!r.ok) { sp.trouble = r.error === 'OFFLINE' ? { step: 2, text: t('Couldn’t reach Spotify — check the connection and try again.') } : await app.cdp.spotifyDiagnose(r.error); refreshPanel('spotify'); return; }
       if (sp.editing) app.stopSpotify(); // another app's sign-in can't carry on playing
       sp.account = await app.cdp.saveSpotifyCredentials({ clientId: id.value, clientSecret: secret.value });
       Object.assign(sp, { editing: false, keyId: '', keySecret: '', lists: { ALBUMS: null, PLAYLISTS: null }, next: { ALBUMS: 0, PLAYLISTS: 0 }, found: null });
       go(3);
-    } }, 'CHECK & SAVE');
-    return page(...heading, hint('On your app’s page on the dashboard, open Settings. Copy the Client ID, and the Client Secret (under View client secret), and paste them here.'), gap(10),
+    } }, t('CHECK & SAVE'));
+    return page(...heading, hint(t('On your app’s page on the dashboard, open Settings. Copy the Client ID, and the Client Secret (under View client secret), and paste them here.')), gap(10),
       el('div', { class: 'key-row' }, id, paste(id, idNote, 'keyId')), idNote, gap(8),
       el('div', { class: 'key-row' }, secret, paste(secret, secretNote, 'keySecret')), secretNote,
-      status, trouble, dots, nav(sp.editing && a.configured ? pill('CANCEL', () => { sp.editing = false; go(0); }) : null, check));
+      status, trouble, dots, nav(sp.editing && a.configured ? pill(t('CANCEL'), () => { sp.editing = false; go(0); }) : null, check));
   }
   if (step === 3) {
-    return page(...heading, hint('Spotify only lets people you’ve added use your app. In your app’s settings, open User Management and add the name and email of the Spotify account you listen with.'),
-      gap(10), el('div', { class: 'row-pills' }, dashboard), trouble, dots, nav(pill('NEXT', () => go(4))));
+    return page(...heading, hint(t('Spotify only lets people you’ve added use your app. In your app’s settings, open User Management and add the name and email of the Spotify account you listen with.')),
+      gap(10), el('div', { class: 'row-pills' }, dashboard), trouble, dots, nav(pill(t('NEXT|step'), () => go(4))));
   }
   const connect = el('button', { class: 'pill on', onClick: async () => {
     connect.disabled = true; sp.trouble = null;
-    status.textContent = 'SIGN IN TO SPOTIFY IN YOUR BROWSER…';
-    const slow = setTimeout(async () => { if (!sp.account || sp.account.connected) return; sp.trouble = await app.cdp.spotifyDiagnose('NO_ANSWER'); sp.status = 'STILL WAITING FOR THE BROWSER…'; refreshPanel('spotify'); }, 20000);
+    status.textContent = t('SIGN IN TO SPOTIFY IN YOUR BROWSER…');
+    const slow = setTimeout(async () => { if (!sp.account || sp.account.connected) return; sp.trouble = await app.cdp.spotifyDiagnose('NO_ANSWER'); sp.status = t('STILL WAITING FOR THE BROWSER…'); refreshPanel('spotify'); }, 20000);
     const result = await app.cdp.spotifySignIn();
     clearTimeout(slow);
     if (result !== 'SPOTIFY CONNECTED') { sp.status = result; refreshSpotifyAccount(app); return; }
@@ -903,44 +903,44 @@ function spotifyWizard(app, a, status, foot) {
     if (!v.ok && v.error !== 'OFFLINE') { sp.trouble = await app.cdp.spotifyDiagnose(v.error); sp.status = ''; refreshSpotifyAccount(app); return; }
     Object.assign(sp, { status: '', step: 0, trouble: null, lists: { ALBUMS: null, PLAYLISTS: null }, next: { ALBUMS: 0, PLAYLISTS: 0 } });
     refreshSpotifyAccount(app);
-  } }, a.reconnectNeeded ? 'RECONNECT SPOTIFY' : 'CONNECT SPOTIFY');
-  return page(...heading, hint(a.reconnectNeeded ? 'Playing Spotify needs a few more permissions than importing playlists did — connect once more.' : 'Sign in to Spotify in your browser, and allow CDPlayer. Then your albums and playlists are here.'),
+  } }, a.reconnectNeeded ? t('RECONNECT SPOTIFY') : t('CONNECT SPOTIFY'));
+  return page(...heading, hint(a.reconnectNeeded ? t('Playing Spotify needs a few more permissions than importing playlists did — connect once more.') : t('Sign in to Spotify in your browser, and allow CDPlayer. Then your albums and playlists are here.')),
     gap(10), el('div', { class: 'row-pills' }, connect, changeAppPill()), status, trouble, dots, nav());
 }
 
 function buildSpotify(app) {
   const a = sp.account;
   const status = el('div', { class: 'setting-hint' }, sp.status);
-  const foot = el('div', { class: 'close-row' }, pill('CLOSE', () => closePanel('spotify')));
-  if (!a) return [title('SPOTIFY'), gap(18), hint('CHECKING…'), foot];
+  const foot = el('div', { class: 'close-row' }, pill(t('CLOSE'), () => closePanel('spotify')));
+  if (!a) return [title(t('SPOTIFY')), gap(18), hint(t('CHECKING…')), foot];
 
   // Not set up, or not connected: the setup wizard, a step at a time (and again from CHANGE APP).
   if (!a.configured || sp.editing || !a.connected || a.reconnectNeeded) return spotifyWizard(app, a, status, foot);
 
   const tabs = el('div', { class: 'row-pills' }, ...['ALBUMS', 'PLAYLISTS'].map((tab) => {
-    const b = pill(tab, () => { sp.tab = tab; sp.query = ''; sp.found = null; if (!sp.lists[tab]) loadSpotifyList(app, tab); refreshPanel('spotify'); });
+    const b = pill(tab === 'ALBUMS' ? t('ALBUMS') : t('PLAYLISTS'), () => { sp.tab = tab; sp.query = ''; sp.found = null; if (!sp.lists[tab]) loadSpotifyList(app, tab); refreshPanel('spotify'); });
     b.classList.toggle('on', !sp.found && sp.tab === tab);
     return b;
   }));
-  const field = el('input', { class: 'text-input', type: 'text', placeholder: 'Search Spotify for an album or playlist', value: sp.query, spellcheck: 'false' });
+  const field = el('input', { class: 'text-input', type: 'text', placeholder: t('Search Spotify for an album or playlist'), value: sp.query, spellcheck: 'false' });
   field.addEventListener('input', () => searchSpotify(app, field.value));
   const items = sp.found || sp.lists[sp.tab] || [];
   const rows = items.map((item) => el('div', { class: 'list-row', title: `Put ${item.name} on the tray`, onClick: () => putSpotifyOnTray(app, item) },
     el('span', { class: 'entry' }, `${item.name}${item.owner ? ` · ${item.owner}` : ''}`),
-    el('span', { class: 'duration' }, `${sp.found ? `${item.kind.toUpperCase()} · ` : ''}${item.total} TRACKS`)));
-  if (!sp.found && sp.next[sp.tab] !== null && sp.lists[sp.tab]) rows.push(el('div', { class: 'row-pills' }, pill('MORE', () => loadSpotifyList(app, sp.tab))));
-  if (sp.found && !sp.found.length) rows.push(el('div', { class: 'list-row plain' }, 'NOTHING FOUND'));
-  const drm = sp.drm === false ? hint("Spotify playback isn't supported on this system — Widevine isn't available.") : [];
+    el('span', { class: 'duration' }, `${sp.found ? `${({ album: t('ALBUM'), playlist: t('PLAYLIST') })[item.kind] || item.kind.toUpperCase()} · ` : ''}${t('{n} TRACKS', { n: item.total })}`)));
+  if (!sp.found && sp.next[sp.tab] !== null && sp.lists[sp.tab]) rows.push(el('div', { class: 'row-pills' }, pill(t('MORE'), () => loadSpotifyList(app, sp.tab))));
+  if (sp.found && !sp.found.length) rows.push(el('div', { class: 'list-row plain' }, t('NOTHING FOUND')));
+  const drm = sp.drm === false ? hint(t("Spotify playback isn't supported on this system — Widevine isn't available.")) : [];
   requestAnimationFrame(() => { if (sp.query && document.activeElement !== field) { field.focus(); field.setSelectionRange(field.value.length, field.value.length); } });
-  const disconnect = pill('DISCONNECT SPOTIFY', async () => {
+  const disconnect = pill(t('DISCONNECT SPOTIFY'), async () => {
     app.stopSpotify();
     sp.account = await app.cdp.disconnectSpotify();
-    Object.assign(sp, { lists: { ALBUMS: null, PLAYLISTS: null }, next: { ALBUMS: 0, PLAYLISTS: 0 }, query: '', found: null, status: 'SPOTIFY DISCONNECTED' });
+    Object.assign(sp, { lists: { ALBUMS: null, PLAYLISTS: null }, next: { ALBUMS: 0, PLAYLISTS: 0 }, query: '', found: null, status: t('SPOTIFY DISCONNECTED') });
     refreshPanel('spotify');
-  }, 'Sign CDPlayer out of Spotify. Your Client ID and Secret stay, so connecting again is one click.');
-  const showLog = pill('SHOW LOG', () => app.cdp.showSpotifyLog(), 'The Spotify log: each step of connecting and playing, to send along if Spotify won’t play');
-  const connectedFoot = el('div', { class: 'close-row split' }, el('div', { class: 'row-pills' }, disconnect, changeAppPill(), showLog), pill('CLOSE', () => closePanel('spotify')));
-  return [title('SPOTIFY'), gap(12), tabs, gap(10), field, drm, gap(10), el('div', { class: 'scroll' }, rows), status, connectedFoot];
+  }, t('Sign CDPlayer out of Spotify. Your Client ID and Secret stay, so connecting again is one click.'));
+  const showLog = pill(t('SHOW LOG'), () => app.cdp.showSpotifyLog(), t('The Spotify log: each step of connecting and playing, to send along if Spotify won’t play'));
+  const connectedFoot = el('div', { class: 'close-row split' }, el('div', { class: 'row-pills' }, disconnect, changeAppPill(), showLog), pill(t('CLOSE'), () => closePanel('spotify')));
+  return [title(t('SPOTIFY')), gap(12), tabs, gap(10), field, drm, gap(10), el('div', { class: 'scroll' }, rows), status, connectedFoot];
 }
 
 // ---- Welcome & What's New ------------------------------------------------------------------------------------------
@@ -948,7 +948,7 @@ function buildSpotify(app) {
 function tipsCard(heading, subtitle, bullets, onDone) {
   return [title(heading), el('div', { class: 'subtitle' }, subtitle), gap(20),
     bullets.map((b) => el('div', { class: 'tip-row' }, el('span', { class: 'dot' }, '●'), el('span', { class: 'tip', html: b }))),
-    closeRow(onDone, 'GOT IT')];
+    closeRow(onDone, t('GOT IT'))];
 }
 
 // The first time CDPlayer opens: the guide (help.js), five cards to step through — and remembered once it's closed.
@@ -964,7 +964,7 @@ export function showOnboarding(app) {
 let check = null; // { status, result, open: Set, covers: Map(folder → { cover } | 'LOOKING' | 'NONE' | 'SAVED') }
 const baseName = (p) => String(p).split(/[\\/]/).pop();
 export function showLibraryCheck(app) {
-  check = { status: 'CHECKING…', result: null, open: new Set(['untagged', 'noCover', 'duplicates', 'gaps', 'unreadable']), covers: new Map() };
+  check = { status: t('CHECKING…'), result: null, open: new Set(['untagged', 'noCover', 'duplicates', 'gaps', 'unreadable']), covers: new Map() };
   const p = openPanel('check', () => buildCheck(app), { width: 640 });
   p.onClose = () => { check = null; };
   runCheck(app);
@@ -973,19 +973,19 @@ let checkProgressHooked = false;
 async function runCheck(app) {
   if (!checkProgressHooked) {
     checkProgressHooked = true;
-    app.cdp.onLibraryCheck(({ done, total }) => { if (check && !check.result) { check.status = `CHECKING · ${done} / ${total}`; refreshPanel('check'); } });
+    app.cdp.onLibraryCheck(({ done, total }) => { if (check && !check.result) { check.status = t('CHECKING · {done} / {total}', { done, total }); refreshPanel('check'); } });
   }
-  check.result = null; check.status = 'CHECKING…'; refreshPanel('check');
+  check.result = null; check.status = t('CHECKING…'); refreshPanel('check');
   const result = await app.cdp.checkLibrary().catch(() => null);
   if (!check) return;
   check.result = result;
   const n = result ? ['untagged', 'noCover', 'duplicates', 'gaps', 'unreadable'].reduce((s, k) => s + result[k].length, 0) : 0;
-  check.status = !result ? 'CHOOSE YOUR MUSIC FOLDER ON THE SHELF FIRST' : n ? `${n} ${n === 1 ? 'THING' : 'THINGS'} TO LOOK AT` : 'NOTHING TO FIX ★';
+  check.status = !result ? t('CHOOSE YOUR MUSIC FOLDER ON THE SHELF FIRST') : n ? t('{n} THINGS TO LOOK AT', { n }) : t('NOTHING TO FIX ★');
   refreshPanel('check');
 }
 function buildCheck(app) {
   const r = check.result;
-  const show = (p) => pill('SHOW', () => app.cdp.showFile(p), 'Show it in its folder');
+  const show = (p) => pill(t('SHOW'), () => app.cdp.showFile(p), t('Show it in its folder'));
   const group = (key, name, hintText, rows) => {
     if (!rows.length) return null;
     const open = check.open.has(key);
@@ -1006,23 +1006,23 @@ function buildCheck(app) {
       for (const p of a.paths) await app.saveTags(p, { cover }).catch(() => {});
       check.covers.set(a.folder, 'SAVED'); refreshPanel('check');
     };
-    const buttons = state && state.cover ? [el('img', { class: 'check-cover', src: state.cover, alt: '' }), el('button', { class: 'pill on', onClick: () => save(state.cover) }, 'SAVE')]
-      : state === 'LOOKING' ? [el('span', { class: 'check-sub' }, 'LOOKING…')] : state === 'SAVING' ? [el('span', { class: 'check-sub' }, 'SAVING…')]
-      : state === 'SAVED' ? [el('span', { class: 'check-sub' }, 'SAVED ★')] : [pill(state === 'NONE' ? 'NOT FOUND · AGAIN' : 'FIND COVER', find, 'Look for its cover online')];
+    const buttons = state && state.cover ? [el('img', { class: 'check-cover', src: state.cover, alt: '' }), el('button', { class: 'pill on', onClick: () => save(state.cover) }, t('SAVE'))]
+      : state === 'LOOKING' ? [el('span', { class: 'check-sub' }, t('LOOKING…'))] : state === 'SAVING' ? [el('span', { class: 'check-sub' }, t('SAVING…'))]
+      : state === 'SAVED' ? [el('span', { class: 'check-sub' }, t('SAVED ★'))] : [pill(state === 'NONE' ? t('NOT FOUND · AGAIN') : t('FIND COVER'), find, t('Look for its cover online'))];
     return row(a.album, a.artist, ...buttons, show(a.paths[0]));
   };
-  return [title('LIBRARY CHECK'), el('div', { class: 'subtitle' }, check.status), gap(12),
+  return [title(t('LIBRARY CHECK')), el('div', { class: 'subtitle' }, check.status), gap(12),
     r ? el('div', { class: 'scroll check-list' },
-      group('untagged', 'NO TAGS', 'No artist or album in the file — it’s on the shelf by its folder, and covers and lyrics can’t be found for it. FIX TAGS looks it up on MusicBrainz.',
-        r.untagged.map((p) => row(baseName(p), p.split(/[\\/]/).slice(-3, -1).join(' / '), pill('FIX TAGS', () => showTags(app, p, () => { if (check) runCheck(app); }), 'Fill in its tags from MusicBrainz'), show(p)))),
-      group('noCover', 'NO COVER', 'No picture in its files or beside them. FIND COVER looks online; SAVE writes it into every song of the album.', r.noCover.map(coverRow)),
-      group('duplicates', 'DUPLICATES', 'The same song in more than one file (the same artist and title, nearly the same length) — say, an MP3 and a FLAC. Nothing is deleted: have a look.',
-        r.duplicates.map((copies) => row(baseName(copies[0]).replace(/\.[^.]+$/, ''), `${copies.length} copies`, ...copies.map((p) => pill(`SHOW ${(p.split('.').pop() || '').toUpperCase()}`, () => app.cdp.showFile(p)))))),
-      group('gaps', 'GAPS', 'Albums missing some of their track numbers — a song or two may not have come across.',
-        r.gaps.map((g) => row(g.album, `${g.artist}${g.disc > 1 ? ` · DISC ${g.disc}` : ''} · missing ${g.missing.join(', ')}`, pill('SHOW', () => app.cdp.showFile(g.folder))))),
-      group('unreadable', 'UNREADABLE', 'Files CDPlayer couldn’t read any sound from — damaged, or not really music.', r.unreadable.map((p) => row(baseName(p), null, show(p)))))
+      group('untagged', t('NO TAGS'), t('No artist or album in the file — it’s on the shelf by its folder, and covers and lyrics can’t be found for it. FIX TAGS looks it up on MusicBrainz.'),
+        r.untagged.map((p) => row(baseName(p), p.split(/[\\/]/).slice(-3, -1).join(' / '), pill(t('FIX TAGS'), () => showTags(app, p, () => { if (check) runCheck(app); }), t('Fill in its tags from MusicBrainz')), show(p)))),
+      group('noCover', t('NO COVER'), t('No picture in its files or beside them. FIND COVER looks online; SAVE writes it into every song of the album.'), r.noCover.map(coverRow)),
+      group('duplicates', t('DUPLICATES'), t('The same song in more than one file (the same artist and title, nearly the same length) — say, an MP3 and a FLAC. Nothing is deleted: have a look.'),
+        r.duplicates.map((copies) => row(baseName(copies[0]).replace(/\.[^.]+$/, ''), t('{n} copies', { n: copies.length }), ...copies.map((p) => pill(t('SHOW {format}', { format: (p.split('.').pop() || '').toUpperCase() }), () => app.cdp.showFile(p)))))),
+      group('gaps', t('GAPS'), t('Albums missing some of their track numbers — a song or two may not have come across.'),
+        r.gaps.map((g) => row(g.album, g.disc > 1 ? t('{artist} · DISC {disc} · missing {numbers}', { artist: g.artist, disc: g.disc, numbers: g.missing.join(', ') }) : t('{artist} · missing {numbers}', { artist: g.artist, numbers: g.missing.join(', ') }), pill(t('SHOW'), () => app.cdp.showFile(g.folder))))),
+      group('unreadable', t('UNREADABLE'), t('Files CDPlayer couldn’t read any sound from — damaged, or not really music.'), r.unreadable.map((p) => row(baseName(p), null, show(p)))))
       : null,
-    el('div', { class: 'close-row guide-actions' }, pill('CHECK AGAIN', () => runCheck(app)), el('span', { class: 'grow' }), pill('CLOSE', () => closePanel('check')))];
+    el('div', { class: 'close-row guide-actions' }, pill(t('CHECK AGAIN'), () => runCheck(app)), el('span', { class: 'grow' }), pill(t('CLOSE'), () => closePanel('check')))];
 }
 
 // ---- Help: the guide, the FAQ and the keyboard shortcuts (help.js; also Settings → HELP) --------------------------
@@ -1034,14 +1034,14 @@ export function showGuide(app, { first = false } = {}) {
     const s = GUIDE[step], last = step === GUIDE.length - 1;
     const dots = el('div', { class: 'guide-dots' }, GUIDE.map((g, i) => el('button', { class: `guide-dot${i === step ? ' on' : ''}`, title: g.title, onClick: () => { step = i; refreshPanel('guide'); } })));
     return [
-      title(first && !step ? 'WELCOME TO CDPLAYER' : s.title), el('div', { class: 'subtitle' }, first && !step ? s.title : `${step + 1} OF ${GUIDE.length}`), gap(18),
+      title(first && !step ? t('WELCOME TO CDPLAYER') : s.title), el('div', { class: 'subtitle' }, first && !step ? s.title : t('{step} OF {total}', { step: step + 1, total: GUIDE.length })), gap(18),
       s.lines.map((line) => el('div', { class: 'tip-row' }, el('span', { class: 'dot' }, '●'), el('span', { class: 'tip' }, line))),
       gap(8), dots,
       el('div', { class: 'close-row guide-actions' },
-        pill(last ? 'CLOSE' : 'SKIP', done),
+        pill(last ? t('CLOSE') : t('SKIP'), done),
         el('span', { class: 'grow' }),
-        step ? pill('BACK', () => { step--; refreshPanel('guide'); }) : null,
-        el('button', { class: 'pill on', onClick: () => { if (last) done(); else { step++; refreshPanel('guide'); } } }, last ? (first ? 'START LISTENING' : 'DONE') : 'NEXT')),
+        step ? pill(t('BACK'), () => { step--; refreshPanel('guide'); }) : null,
+        el('button', { class: 'pill on', onClick: () => { if (last) done(); else { step++; refreshPanel('guide'); } } }, last ? (first ? t('START LISTENING') : t('DONE')) : t('NEXT|step'))),
     ];
   };
   return openPanel('guide', build, { width: 480 });
@@ -1049,7 +1049,7 @@ export function showGuide(app, { first = false } = {}) {
 
 export function showFaq() {
   const open = new Set();
-  const build = () => [title('QUESTIONS'), el('div', { class: 'subtitle' }, 'What people ask the first time'), gap(14),
+  const build = () => [title(t('QUESTIONS')), el('div', { class: 'subtitle' }, t('What people ask the first time')), gap(14),
     el('div', { class: 'scroll faq-list' }, FAQ.map(({ q, a }, i) => el('div', { class: `faq${open.has(i) ? ' open' : ''}` },
       el('button', { class: 'faq-q', onClick: () => { if (open.has(i)) open.delete(i); else open.add(i); refreshPanel('faq'); } }, el('span', {}, open.has(i) ? '−' : '+'), q),
       open.has(i) ? el('div', { class: 'faq-a' }, a) : null))),
@@ -1058,8 +1058,8 @@ export function showFaq() {
 }
 
 export function showShortcuts() {
-  const keys = (text) => text.split('`').map((part, i) => (i % 2 ? el('kbd', {}, part) : part ? el('span', {}, part) : null));
-  openPanel('shortcuts', () => [title('KEYBOARD SHORTCUTS'), gap(12),
+  const keys = (text) => text.split('`').map((part, i) => (i % 2 ? el('kbd', {}, part) : part ? el('span', {}, part.trim() === 'or' ? ` ${t('or')} ` : part) : null));
+  openPanel('shortcuts', () => [title(t('KEYBOARD SHORTCUTS')), gap(12),
     el('div', { class: 'scroll shortcut-list' }, SHORTCUTS.map(([k, what]) => el('div', { class: 'shortcut' }, el('span', { class: 'keys' }, keys(k)), el('span', { class: 'what' }, what)))),
     closeRow(() => closePanel('shortcuts'))], { width: 520 });
 }

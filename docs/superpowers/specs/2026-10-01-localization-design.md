@@ -32,6 +32,8 @@ can be added by the community as one file, with a tool that shows what's left to
 - Every other key is the English text exactly as in the code. The value is a string, or — for text with `{n}` that
   changes with the number — an object of plural forms named as `Intl.PluralRules(_locale)` names them.
 - An empty string, a missing key or a missing plural form → the English text is shown.
+- The same English meaning two things gets a context after `|`: `t('NEXT|step')` is its own key, shown in English
+  as `NEXT` (the queue's `NEXT` tag and the guide's `NEXT` button translate differently).
 - There is no `en.json`: English is the code.
 
 ## `t(text, vars)`
