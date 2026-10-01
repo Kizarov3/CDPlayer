@@ -11,6 +11,7 @@ import { el, pill, anim } from './widgets.js';
 import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './booklet.js';
 import { stickersFor } from './shelf-stickers.js';
 import { arrange, SORTS, matchesFilter, dominantColor, jumpTargets } from './shelf-order.js';
+import { pressingLine, marketLine, money, isRare, shelfTotal } from './shelf-discogs.js';
 import { hash } from './disc-wear.js';
 import { stickyNote, noteLook } from './shelf-notes.js';
 import { receiptFor } from './shelf-receipt.js';
@@ -20,7 +21,7 @@ import { t } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 const shelf = { open: false, albums: [], loading: false, covers: new Map(), colors: new Map(), observer: null, caseOpen: null, app: null, generation: 0, inPlayer: null,
-  discogs: new Map(), openBoxes: new Set(), noCover: new Set(), colorCache: {}, hidden: new Set(), boxObserver: null, wantTimer: null, onScreen: new Set() };
+  discogs: new Map(), openBoxes: new Set(), pressings: new Map(), appraising: null, appraisalNote: null, countBase: '', settings: null, noCover: new Set(), colorCache: {}, hidden: new Set(), boxObserver: null, wantTimer: null, onScreen: new Set() };
 
 export const isShelfOpen = () => shelf.open;
 // Discographies arriving redraw the shelf — once for a burst, and not while a case is out, a spine is carried or one
@@ -85,12 +86,22 @@ export function setupShelf(app) {
   $('shelf-sort').addEventListener('click', () => {
     const { state } = shelf.app;
     shelf.app.setShelfSort(SORTS[(SORTS.indexOf(state.shelfSort) + 1) % SORTS.length]);
+    if (state.shelfSort === 'PRICE' && !shelf.appraised && !(shelf.appraising && !shelf.appraising.finished)) appraise();
     render();
     $('shelf-body').scrollTop = 0;
   });
   app.cdp.onDiscography(({ key, state, groups }) => {
     shelf.discogs.set(key, { state, groups });
     if (shelf.open && shelf.app.state.shelfSort === 'ARTIST') redraw.request();
+  });
+  $('shelf-appraise').addEventListener('click', () => { if (shelf.appraising && !shelf.appraising.finished) app.cdp.discogsStop(); else appraise(); });
+  // Each album as the appraisal reaches it: its spine (and the shelf, sorted by price) brought up to date.
+  app.cdp.onDiscogsProgress((p) => {
+    shelf.pressings.set(p.albumId, p.entry);
+    attachPressings();
+    // (the last of these can arrive after the appraisal's own answer: it mustn't make a finished one look running)
+    if (!shelf.appraising || !shelf.appraising.finished) { shelf.appraising = { done: p.done, total: p.total }; updateAppraiseCount(); }
+    if (shelf.open && shelf.app.state.shelfSort === 'PRICE') redraw.request(); else markSpine(p.albumId);
   });
   app.cdp.onShelfProgress(({ done, total }) => { if (shelf.loading) $('shelf-count').textContent = t('READING YOUR MUSIC · {done} / {total}', { done, total }); });
 }
@@ -116,6 +127,12 @@ async function load() {
     const c = shelf.colorCache[a.id];
     if (c) { shelf.colors.set(a.id, c.spine); a.color = c.main; }
   }
+  // What Discogs said before: pressings and prices at once, for SORT: PRICE and the spines' gold dots.
+  const known = await shelf.app.cdp.discogsKnown(shelf.albums.map((a) => a.id)).catch(() => ({})) || {};
+  shelf.pressings = new Map(Object.entries(known));
+  attachPressings();
+  shelf.settings = await shelf.app.cdp.discogsSettings().catch(() => null);
+  shelf.appraisalNote = totalNote();
   shelf.hidden = new Set(result.hiddenMissing || []);
   shelf.folderName = result.name || null;
   render();
@@ -134,7 +151,8 @@ function render() {
   const query = $('shelf-filter').value, filtering = !!query.trim();
   const shown = shelf.albums.filter((a) => matchesFilter(a, query));
   const n = shelf.albums.length;
-  $('shelf-count').textContent = [shelf.folderName.toUpperCase(), n === 1 ? t('1 ALBUM') : t('{n} ALBUMS', { n }), filtering ? t('{n} SHOWN', { n: shown.length }) : null].filter(Boolean).join(' · ');
+  shelf.countBase = [shelf.folderName.toUpperCase(), n === 1 ? t('1 ALBUM') : t('{n} ALBUMS', { n }), filtering ? t('{n} SHOWN', { n: shown.length }) : null].filter(Boolean).join(' · ');
+  renderCount();
   if (!n) { body.replaceChildren(el('div', { class: 'shelf-empty' }, el('div', {}, t('No music in this folder yet.')), pill(t('CHOOSE ANOTHER FOLDER…'), pickFolder))); return; }
   shelf.observer = new IntersectionObserver((entries) => {
     for (const e of entries) if (e.isIntersecting) { shelf.observer.unobserve(e.target); loadCover(e.target.album, e.target); }
@@ -155,7 +173,7 @@ function render() {
     if (a.ghost) return ghostSpine(a.ghost, a.artist);
     if (a.divider) return el('div', { class: `shelf-divider${[...a.divider].length <= 2 ? ' short' : ''}`, 'aria-hidden': 'true', 'data-section': a.divider }, el('span', {}, a.divider));
     const st = a.stickers = stickersFor(a, now);
-    const spine = el('button', { class: `spine${a.discs > 1 ? ' double' : ''}${st.obi ? ' obi' : ''}${st.isNew ? ' new' : ''}${holds(a, shelf.inPlayer) ? ' in-player' : ''}`, title: spineTitle(a), onClick: () => { if (!shelf.dragged) openCase(a, spine); } },
+    const spine = el('button', { class: `spine${a.discs > 1 ? ' double' : ''}${st.obi ? ' obi' : ''}${st.isNew ? ' new' : ''}${holds(a, shelf.inPlayer) ? ' in-player' : ''}${isRare(a.pressing) ? ' rare' : ''}`, title: spineTitle(a), onClick: () => { if (!shelf.dragged) openCase(a, spine); } },
       el('span', { class: 'spine-text' }, a.artist ? el('b', {}, a.artist) : null, a.artist ? ' · ' : null, a.title),
       st.obi ? el('span', { class: 'obi-cat' }, st.obi.catalog) : null,
       st.isNew ? el('span', { class: 'sticker-new' }, t('NEW')) : null,
@@ -655,7 +673,8 @@ async function openCase(a, spine) {
   };
   const addNote = pill(t('+ NOTE'), () => { addNote.hidden = true; caseFront.append(stickyNote({ id: a.id, text: '', onSave: saveNote })); }, t('Stick a note on the case'));
   addNote.hidden = !!a.note;
-  const caseFront = el('div', { class: 'case-front' }, receiptSlip(a, st), front,
+  const rare = el('div', { class: 'sticker-rare', hidden: !isRare(a.pressing) }, t('★ RARE'));
+  const caseFront = el('div', { class: 'case-front' }, receiptSlip(a, st), front, rare,
       st.obi ? el('div', { class: 'case-obi' },
         el('div', { class: 'obi-top' }, 'CD'),
         el('div', { class: 'obi-title' }, a.title),
@@ -670,6 +689,7 @@ async function openCase(a, spine) {
       el('div', { class: 'case-title' }, a.title),
       el('div', { class: 'case-artist' }, [a.artist, a.year].filter(Boolean).join(' · ')),
       el('div', { class: 'case-meta' }, [a.tracks.length === 1 ? t('1 TRACK') : t('{n} TRACKS', { n: a.tracks.length }), a.duration ? app.formatTime(a.duration) : null, a.discs > 1 ? t('{n} DISCS', { n: a.discs }) : null, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ')),
+      pressingBlock(a, rare),
       trackList,
       el('div', { class: 'case-actions' },
         pill(t('BACK ON THE SHELF'), () => closeCase()),
@@ -733,4 +753,85 @@ function play(a, from) {
   const paths = a.tracks.map((t) => t.path);
   closeShelf();
   shelf.app.insertDisc(paths, { start: from, status: t('{disc} ON THE TRAY', { disc: a.title.toUpperCase() }) });
+}
+
+// ---- Discogs (main/discogs.js): the pressing on the case, the shelf appraised -------------------------------------
+
+const attachPressings = () => { for (const a of shelf.albums) a.pressing = shelf.pressings.get(a.id); };
+const albumQuery = (a) => ({ id: a.id, artist: a.artist, title: a.title, year: a.year, barcode: a.barcode, catalog: a.catalog, label: a.label, mbReleaseId: a.mbReleaseId });
+function markSpine(id) {
+  const spine = [...document.querySelectorAll('#shelf-body .spine')].find((s) => s.album && s.album.id === id);
+  if (spine) spine.classList.toggle('rare', isRare(spine.album.pressing));
+}
+function renderCount() {
+  if (!shelf.loading) $('shelf-count').textContent = [shelf.countBase, shelf.appraisalNote].filter(Boolean).join(' · ');
+}
+
+// The case's PRESSING: what's known at once, then Discogs' answer as the case comes out.
+function pressingBlock(a, rare) {
+  const box = el('div', { class: 'case-pressing' });
+  const show = (entry) => {
+    rare.hidden = !isRare(entry);
+    if (entry && entry.error) { box.replaceChildren(el('div', { class: 'pressing-line' }, t('DISCOGS UNAVAILABLE'))); return; }
+    if (!entry || !entry.releaseId) {
+      box.replaceChildren(el('div', { class: 'pressing-line' }, t('NOT ON DISCOGS')),
+        el('div', { class: 'row-pills' }, pill(t('CHOOSE PRESSING…'), (e) => choosePressing(a, e.currentTarget, null, show), t('Pick it from a Discogs search'))));
+      return;
+    }
+    const other = entry.info.masterId ? pill(t('OTHER PRESSING…'), (e) => choosePressing(a, e.currentTarget, entry.info.masterId, show), t('Another pressing of this album')) : null;
+    box.replaceChildren(
+      el('div', { class: 'pressing-head' }, t('PRESSING')),
+      el('div', { class: 'pressing-line' }, pressingLine(entry.info)),
+      el('div', { class: 'pressing-line market' }, marketLine(entry)),
+      el('div', { class: 'row-pills' }, pill(t('DISCOGS'), () => shelf.app.cdp.openDiscogs(entry.info.uri), t('Open it on Discogs')), other));
+  };
+  const known = shelf.pressings.get(a.id);
+  if (known) show(known); else box.replaceChildren(el('div', { class: 'pressing-line' }, t('LOOKING ON DISCOGS…')));
+  shelf.app.cdp.discogsLookup(albumQuery(a)).then((entry) => {
+    if (entry && !entry.error) { shelf.pressings.set(a.id, entry); a.pressing = entry; markSpine(a.id); }
+    if (entry && (!entry.error || !known)) show(entry);
+  });
+  return box;
+}
+
+/** OTHER PRESSING… (the master's CD pressings) or CHOOSE PRESSING… (a Discogs search): a menu; the pick is kept. */
+export async function choosePressing(a, anchor, masterId, onChosen = () => {}) {
+  const box = anchor.getBoundingClientRect();
+  const list = masterId ? await shelf.app.cdp.discogsVersions(masterId) : await shelf.app.cdp.discogsSearch(albumQuery(a));
+  if (!Array.isArray(list) || !list.length) { shelf.app.setStatus(list && list.error ? t('DISCOGS UNAVAILABLE') : t('NOTHING FOUND')); return; }
+  shelf.app.pressingMenu(box, list.map((v) => ({
+    label: [masterId ? null : v.title, v.label, v.catno, v.country, v.year, v.format].filter(Boolean).join(' · '),
+    pick: async () => {
+      const entry = await shelf.app.cdp.discogsChoose(albumQuery(a), v.id);
+      if (!entry || entry.error) { shelf.app.setStatus(t('DISCOGS UNAVAILABLE')); return; }
+      shelf.pressings.set(a.id, entry);
+      const onShelf = shelf.albums.find((x) => x.id === a.id);
+      if (onShelf) onShelf.pressing = entry;
+      markSpine(a.id);
+      onChosen(entry);
+    },
+  })));
+}
+
+// APPRAISE: every album's price, one after another (main/discogs.js keeps to Discogs' pace); STOP stops it.
+async function appraise() {
+  shelf.appraising = { done: 0, total: shelf.albums.length };
+  updateAppraiseCount();
+  const result = await shelf.app.cdp.discogsAppraise(shelf.albums.map(albumQuery));
+  shelf.appraising = { ...result, finished: true };
+  if (!result.stopped && !result.error) shelf.appraised = true;
+  if (result.error) shelf.app.setStatus(t('APPRAISAL STOPPED · NO CONNECTION'));
+  updateAppraiseCount();
+  if (shelf.open) render();
+}
+function updateAppraiseCount() {
+  const p = shelf.appraising, running = p && !p.finished;
+  $('shelf-appraise').textContent = running ? t('STOP') : t('APPRAISE');
+  shelf.appraisalNote = running ? t('APPRAISING · {done} / {total}', { done: p.done, total: p.total }) : totalNote();
+  renderCount();
+}
+function totalNote() {
+  const currency = (shelf.settings && shelf.settings.currency) || 'USD';
+  const { value, count } = shelfTotal(shelf.albums.map((a) => a.pressing), currency);
+  return count ? t('THE SHELF ≈ {value}', { value: money(value, currency) }) : null;
 }

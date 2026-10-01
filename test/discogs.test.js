@@ -221,6 +221,11 @@ test('a master\'s CD pressings, and a search to choose from', async () => {
   assert.deepStrictEqual(await engine.search(album), [{ id: 2, title: 'Radiohead - Kid A', label: 'EMI', catno: 'Y2', country: 'Japan', year: '2000' }]);
 });
 
+test('pressings to choose from read cleanly: no "(2)" after a label, no "none" for a catalogue number', async () => {
+  const { engine } = rig({ routes: { 'masters/7/versions': { versions: [{ id: 3, label: 'Parlophone (2)', catno: 'none', country: 'Russia', released: '1997', format: 'CD, Album, Unofficial Release' }] } } });
+  assert.deepStrictEqual(await engine.versions(7), [{ id: 3, label: 'Parlophone', catno: null, country: 'Russia', year: '1997', format: 'CD, Album, Unofficial Release' }]);
+});
+
 test('what\'s kept survives a restart', async () => {
   const first = rig({ routes: { 'releases/9': release(9), 'marketplace/stats/9': stats(7) } });
   await first.engine.choose(album, 9);

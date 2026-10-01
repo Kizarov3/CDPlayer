@@ -295,6 +295,8 @@ function showMenu(anchor, items) {
   menu.style.top = `${Math.max(4, Math.min(box.bottom + 6, window.innerHeight - m.height - 4))}px`;
   menuLayer = layerNode;
 }
+/** A list of Discogs pressings to pick from (the shelf's OTHER PRESSING… and CHOOSE PRESSING…), under `anchor`. */
+export function pressingMenu(anchor, items) { showMenu(anchor, items); }
 export function closeMenu() { if (menuLayer) { menuLayer.remove(); menuLayer = null; } }
 
 const themeSwatch = (theme) => (theme.image ? `center / cover url("${theme.image}")` : `linear-gradient(135deg, rgb(${theme.accent}), rgb(${theme.accent2}))`);

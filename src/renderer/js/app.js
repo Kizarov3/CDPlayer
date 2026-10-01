@@ -1659,6 +1659,7 @@ export const app = {
   setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setOutput, listOutputs, currentOutputName,
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
+  pressingMenu: (anchor, items) => panels.pressingMenu(anchor, items),
   setLanguage: (code) => { state.language = code; cdp.saveSettings(settingsSnapshot()); },
   relaunch: async () => { await cdp.saveSettings(settingsSnapshot()); cdp.relaunch(); },
   saveEq: () => cdp.saveEqPresets(state.customPresets),

@@ -177,11 +177,11 @@ function createDiscogs({ fetchJson, mbFetch, read = (f) => store.readText(f), wr
 
   async function versions(masterId) {
     const json = await request(`masters/${Number(masterId)}/versions?format=CD&per_page=50`);
-    return (json.versions || []).map((v) => ({ id: v.id, label: v.label || null, catno: v.catno || null, country: v.country || null, year: v.released ? String(v.released).slice(0, 4) : null, format: v.format || null }));
+    return (json.versions || []).map((v) => ({ id: v.id, label: v.label ? bare(v.label) : null, catno: v.catno && v.catno.toLowerCase() !== 'none' ? v.catno : null, country: v.country || null, year: v.released ? String(v.released).slice(0, 4) : null, format: v.format || null }));
   }
   async function search(album) {
     const json = await request(`database/search?${searchQuery(album, 10)}`);
-    return (json.results || []).map((r) => ({ id: r.id, title: r.title, label: (r.label || [])[0] || null, catno: r.catno || null, country: r.country || null, year: r.year ? String(r.year) : null }));
+    return (json.results || []).map((r) => ({ id: r.id, title: r.title, label: (r.label || [])[0] ? bare(r.label[0]) : null, catno: r.catno && r.catno.toLowerCase() !== 'none' ? r.catno : null, country: r.country || null, year: r.year ? String(r.year) : null }));
   }
   async function choose(album, releaseId) {
     const id = Number(releaseId);

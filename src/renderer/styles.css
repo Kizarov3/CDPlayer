@@ -447,7 +447,7 @@ body.cd-view #cd-info { display: block !important; }
   font: bold 9px/1.2 var(--font, inherit); letter-spacing: .02em; color: rgba(214, 200, 172, .6);
 }
 #shelf-index button:hover { color: rgb(var(--accent)); background: rgba(255, 255, 255, .06); }
-#shelf-title { font-size: 16px; color: rgb(var(--accent)); }
+#shelf-title { font-size: 16px; color: rgb(var(--accent)); white-space: nowrap; }
 #shelf-count { font-size: 10px; color: rgb(var(--muted)); white-space: nowrap; }
 #shelf-filter { width: 220px; }
 #shelf-body { flex: 1 1 auto; min-height: 0; padding: 18px 6px 40px; }
@@ -680,10 +680,22 @@ body.cd-view #cd-info { display: block !important; }
   background-image: linear-gradient(to bottom, rgb(232, 96, 40) 0 3px, transparent 3px);
 }
 .case-info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.case-info > :not(.case-tracks) { flex-shrink: 0; } /* only the track list gives way when the case's text runs long */
 .case-title { font-size: 22px; line-height: 1.3; padding-top: 2px; color: rgb(var(--text)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* room for the tops of its letters */
 .case-artist { margin-top: 4px; font-size: 13px; font-weight: normal; color: rgb(var(--accent2)); }
 .case-meta { margin-top: 8px; font-size: 10px; color: rgb(var(--muted)); }
-.case-tracks { flex: 1 1 auto; margin: 14px 0; }
+/* The pressing, from Discogs (shelf.js pressingBlock): label · catalogue no. · country · year · format, then the market. */
+.case-pressing { margin-top: 10px; font-size: 10px; color: rgb(var(--muted)); display: flex; flex-direction: column; gap: 4px; }
+.case-pressing .pressing-head { font-size: 9px; letter-spacing: .08em; color: rgb(var(--accent)); }
+.case-pressing .pressing-line { line-height: 1.35; }
+.case-pressing .pressing-line.market { color: rgb(var(--text)); }
+.case-pressing .row-pills { margin-top: 2px; }
+/* A rare album: a gold sticker on its case, a gold dot on its spine. */
+.sticker-rare { position: absolute; top: 14px; left: 14px; z-index: 3; padding: 5px 9px; border-radius: 12px; transform: rotate(-8deg);
+  background: linear-gradient(135deg, #f3d77a, #c8992e); color: #3a2a05; font-size: 11px; font-weight: bold; letter-spacing: .04em; box-shadow: 0 2px 6px rgba(0, 0, 0, .45); }
+.spine.rare::after { content: ""; position: absolute; left: 50%; bottom: 6px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%;
+  background: #d8b24a; box-shadow: 0 0 4px rgba(216, 178, 74, .8); }
+.case-tracks { flex: 1 1 auto; min-height: 0; margin: 14px 0; }
 .case-track { display: flex; gap: 10px; align-items: baseline; padding: 5px 6px; border-radius: 3px; font-size: 11px; font-weight: normal; color: rgb(var(--text)); cursor: pointer; }
 .case-track:hover { background: rgba(255, 255, 255, .06); }
 .case-track .no { flex: 0 0 20px; color: rgb(var(--muted)); font-size: 10px; }
