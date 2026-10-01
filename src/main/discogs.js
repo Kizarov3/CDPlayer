@@ -28,11 +28,12 @@ function discogsLink(mbRelease) {
 /**
  * Discogs search results → the one that's this album, or null. Its title and artist must be the album's (Discogs
  * writes "Artist - Title"; a compilation's artist is "Various"); then the same barcode counts most, then the same
- * catalogue number, then the year and the label. A tie keeps Discogs' order.
+ * catalogue number, then the year and the label; between equals, the pressing most people have (the likeliest to be
+ * this one), then Discogs' order.
  */
 function pickRelease(results, album) {
   const various = !album.artist || album.artist === 'Various Artists';
-  let best = null, bestScore = -1;
+  let best = null, bestScore = -1, bestHave = -1;
   for (const r of results || []) {
     const [artist, ...rest] = String(r.title || '').split(' - ');
     if (sameName(rest.join(' - ')) !== sameName(album.title)) continue;
@@ -42,7 +43,8 @@ function pickRelease(results, album) {
     if (album.catalog && r.catno && loose(r.catno) === loose(album.catalog)) score += 3;
     if (album.year && String(r.year) === String(album.year)) score += 1;
     if (album.label && (r.label || []).some((l) => sameName(bare(l)) === sameName(album.label))) score += 1;
-    if (score > bestScore) { best = r; bestScore = score; }
+    const have = (r.community && r.community.have) || 0;
+    if (score > bestScore || (score === bestScore && have > bestHave)) { best = r; bestScore = score; bestHave = have; }
   }
   return best;
 }

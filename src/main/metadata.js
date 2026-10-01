@@ -16,7 +16,7 @@ const { t } = require('./i18n');
 function creditsFrom(c) {
   const first = (v) => (Array.isArray(v) ? v.filter(Boolean).join(', ') : v) || null;
   const out = {
-    albumArtist: first(c.albumartist), albumArtistMbid: first(c.musicbrainz_albumartistid), released: first(c.date) || (c.year ? String(c.year) : null),
+    albumArtist: first(c.albumartist), albumArtistMbid: first(c.musicbrainz_albumartistid), albumMbid: first(c.musicbrainz_albumid), released: first(c.date) || (c.year ? String(c.year) : null),
     genre: first(c.genre), composer: first(c.composer), lyricist: first(c.lyricist), producer: first(c.producer),
     conductor: first(c.conductor), label: first(c.label), catalog: first(c.catalognumber), barcode: first(c.barcode),
     copyright: first(c.copyright), bpm: c.bpm ? Math.round(c.bpm) : null,

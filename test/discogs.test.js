@@ -34,6 +34,12 @@ test('the search result that is this album: barcode, then catalogue number, then
   assert.strictEqual(discogs.pickRelease([], album), null);
 });
 
+test('a tie: the pressing most people have — the likeliest to be yours', () => {
+  const r = (id, have) => ({ id, title: 'Radiohead - Kid A', year: '2000', community: { have } });
+  assert.strictEqual(discogs.pickRelease([r(1, 502), r(2, 9000), r(3, 40)], album).id, 2);
+  assert.strictEqual(discogs.pickRelease([r(1, 502), { ...r(2, 9000), year: '2009' }], album).id, 1); // the year still counts first
+});
+
 test('a release, summed up', () => {
   const info = discogs.summarize({
     id: 1360906, master_id: 21491, country: 'UK', year: 2000, uri: 'https://www.discogs.com/release/1360906',

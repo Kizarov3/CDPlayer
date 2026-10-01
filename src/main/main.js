@@ -398,6 +398,22 @@ const discography = require('./discography').createDiscography({
 });
 handle('discography:want', (artists) => discography.want(Array.isArray(artists) ? artists.slice(0, 200) : []));
 handle('discography:tracklist', (groupId) => discography.tracklist(groupId));
+// Discogs (discogs.js): an album's pressing and price when its case is opened, the whole shelf when it's appraised.
+const discogs = require('./discogs').createDiscogs({ fetchJson: (url, init) => require('./online').fetchJson(url, init), mbFetch: (q) => require('./online').mbFetch(q), userAgent: `CDPlayer/${APP_VERSION} +https://github.com/Kizarov3/CDPlayer` });
+const albumQuery = (a) => (a && typeof a === 'object' && typeof a.id === 'string' ? { id: a.id, artist: a.artist || null, title: a.title || null, year: a.year || null, barcode: a.barcode || null, catalog: a.catalog || null, label: a.label || null, mbReleaseId: a.mbReleaseId || null } : null);
+const offline = (e) => ({ error: e && e.status ? 'DISCOGS' : 'OFFLINE' });
+handle('discogs:lookup', (a) => { const q = albumQuery(a); return q ? discogs.lookup(q).catch(offline) : null; });
+handle('discogs:appraise', (list) => discogs.appraise((Array.isArray(list) ? list : []).map(albumQuery).filter(Boolean), (p) => { if (win) win.webContents.send('discogs-progress', p); }));
+handle('discogs:stop', () => discogs.stopAppraise());
+handle('discogs:versions', (id) => discogs.versions(id).catch(offline));
+handle('discogs:search', (a) => { const q = albumQuery(a); return q ? discogs.search(q).catch(offline) : []; });
+handle('discogs:choose', (a, id) => { const q = albumQuery(a); return q && Number(id) > 0 ? discogs.choose(q, id).catch(offline) : null; });
+handle('discogs:known', (ids) => discogs.known(Array.isArray(ids) ? ids : []));
+handle('discogs:notFound', () => discogs.notFound());
+handle('discogs:settings', () => discogs.settings());
+handle('discogs:setToken', (token) => discogs.setToken(token));
+handle('discogs:setCurrency', (code) => discogs.setCurrency(code));
+handle('discogs:open', (uri) => { if (/^https:\/\/www\.discogs\.com\//.test(String(uri))) shell.openExternal(uri); });
 handle('discography:hide', (groupId) => { const hidden = store.readHiddenMissing(); hidden.add(String(groupId)); store.writeHiddenMissing(hidden); });
 handle('discography:open', (groupId) => { if (/^[0-9a-f-]{36}$/.test(groupId)) shell.openExternal(`https://musicbrainz.org/release-group/${groupId}`); });
 // Shrink-wrap on new albums: from the first time the shelf was read with it; unwrapped album by album.

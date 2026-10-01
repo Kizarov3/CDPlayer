@@ -16,7 +16,7 @@ const cue = require('./cue');
 const { sameName } = require('./same-name');
 
 const CACHE_FILE = 'shelf-cache.json';
-const CACHE_VERSION = 2; // bump when trackInfo() reads files differently, so old entries are read again
+const CACHE_VERSION = 3; // bump when trackInfo() reads files differently, so old entries are read again (3: the pressing's tags)
 const CONCURRENCY = 6;
 const COVER_FILE = /^(cover|folder|front|album|albumart|albumartlarge)\.(jpe?g|png|webp)$/i;
 const DISC_FOLDER = /^(cd|disc|disk)\s*\d+$/i;
@@ -46,6 +46,7 @@ async function trackInfo(p) {
     title: d.title, artist: d.artist || null, album: d.album || null, albumArtist: c.albumArtist || null,
     year: year ? year[0] : null, track: ref ? ref.number : (c.track && c.track.no) || null,
     disc: (c.disc && c.disc.no) || discFromFolder(p) || 1, duration: d.duration || 0, artistMbid: c.albumArtistMbid || null,
+    albumMbid: c.albumMbid || null, barcode: c.barcode || null, catalog: c.catalog || null, label: c.label || null, // its pressing, for Discogs
   };
 }
 
@@ -78,11 +79,13 @@ function groupAlbums(tracks) {
     const artists = new Set(g.items.map((t) => t.info.artist).filter(Boolean));
     const albumArtist = g.items.map((t) => t.info.albumArtist).find(Boolean);
     const years = g.items.map((t) => t.info.year).filter(Boolean).sort();
+    const most = (key) => { const seen = new Map(); for (const t of g.items) { const v = t.info[key]; if (v) seen.set(v, (seen.get(v) || 0) + 1); } return [...seen].sort((x, y) => y[1] - x[1])[0]?.[0] || null; };
     return {
       id: g.id, title: g.title, folder: g.folder,
       artist: albumArtist || (artists.size === 1 ? [...artists][0] : artists.size ? 'Various Artists' : null),
       year: years[0] || null,
       artistMbid: g.items.map((t) => t.info.artistMbid).find(Boolean) || null,
+      mbReleaseId: most('albumMbid'), barcode: most('barcode'), catalog: most('catalog'), label: most('label'), // the pressing its tracks' tags name most
       discs: Math.max(1, ...g.items.map((t) => t.info.disc || 1)),
       duration: g.items.reduce((s, t) => s + (t.info.duration || 0), 0),
       added: g.items.reduce((m, t) => (t.added && (m === null || t.added > m) ? t.added : m), null), // its newest track (a NEW sticker)

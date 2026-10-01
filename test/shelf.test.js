@@ -229,3 +229,12 @@ test('an album comes shrink-wrapped when it turned up after wrapping began and h
   assert.strictEqual(isWrapped(album({ id: 'torn' }), wrap), false, 'unwrapped by hand');
   assert.strictEqual(isWrapped(album(), { since: null, torn: new Set() }), false);
 });
+
+test('an album carries what its tracks\' tags say about its pressing: the most common of each', () => {
+  const t = (n, extra) => ({ path: `/m/Kid A/${n}.flac`, info: { title: `S${n}`, artist: 'Radiohead', album: 'Kid A', albumArtist: 'Radiohead', year: '2000', track: n, disc: 1, duration: 1, ...extra } });
+  const [a] = groupAlbums([
+    t(1, { barcode: '724352775324', catalog: 'X1', label: 'Parlophone', albumMbid: 'f9e0e4e5-1d7e-4e8d-9a46-3f1d2e6f6b1d' }),
+    t(2, { barcode: '724352775324', catalog: 'X1', label: 'EMI' }), t(3, { label: 'Parlophone' }),
+  ]);
+  assert.deepStrictEqual([a.barcode, a.catalog, a.label, a.mbReleaseId], ['724352775324', 'X1', 'Parlophone', 'f9e0e4e5-1d7e-4e8d-9a46-3f1d2e6f6b1d']);
+});
