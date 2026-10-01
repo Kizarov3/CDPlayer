@@ -1,7 +1,8 @@
 // In-window panels (Settings, Equalizer, Lyrics, History, Search, the theme and EQ preset menus, the welcome and
 // What's New dialogs). Each is a dimmed full-window layer that blocks clicks/drops/shortcuts to the player behind it,
 // with a centered card that grows and fades in, and shrinks and fades out.
-import { THEMES } from './theme.js';
+import { THEMES, draftFrom } from './theme.js';
+import { buildThemeEditor } from './theme-editor.js';
 import { EQ_FREQUENCIES } from './audio.js';
 import { el, pill, toggle, setToggle, Slider, anim } from './widgets.js';
 import { GUIDE, FAQ, SHORTCUTS } from './help.js';
@@ -289,7 +290,7 @@ function showThemeMenu(app) {
     ...THEMES.filter((t) => !t.user).map(item),
     { divider: true },
     ...THEMES.filter((t) => t.user).map(item),
-    { label: '+ NEW THEME', pick: () => app.setStatus('COMING UP') },
+    { label: '+ NEW THEME', pick: () => showThemeEditor(app) },
     { label: 'IMPORT…', pick: () => app.importTheme() },
     { label: 'PASTE CODE', pick: () => app.pasteThemeCode() },
   ]);
@@ -297,7 +298,7 @@ function showThemeMenu(app) {
 // ✎ or right-click on a theme of your own.
 function showThemeActions(app, theme, box) {
   showMenu(box, [
-    { label: 'EDIT', pick: () => app.setStatus('COMING UP') },
+    { label: 'EDIT', pick: () => showThemeEditor(app, theme) },
     { label: 'EXPORT…', pick: () => app.exportTheme(theme.name) },
     theme.image ? null : { label: 'COPY CODE', pick: () => app.copyThemeCode(theme) },
     { label: 'DELETE…', pick: () => showMenu(box, [
@@ -306,6 +307,17 @@ function showThemeActions(app, theme, box) {
     ]) },
   ].filter(Boolean));
 }
+// ---- Theme editor (theme-editor.js) -------------------------------------------------------------------------------
+
+/** A new theme (starting from the one on), or `editing`, one of yours. Closed without SAVE, the theme that was on is back. */
+export function showThemeEditor(app, editing = null) {
+  const ctx = { draft: editing ? draftFrom(editing, editing.name) : draftFrom(app.shownTheme(), 'MY THEME'), editing, saved: false };
+  const ui = { title, row, hint, gap, sliderRow, menu: showMenu, refresh: () => refreshPanel('theme'), close: () => closePanel('theme') };
+  const p = openPanel('theme', () => buildThemeEditor(app, ctx, ui), { width: 460 });
+  p.onClose = () => { if (!ctx.saved) app.restoreTheme(); };
+  app.previewTheme(ctx.draft);
+}
+
 function showPresetMenu(app) {
   const current = presetName(app);
   showMenu(presetButton, [...app.BUILTIN_EQ_PRESETS, ...app.state.customPresets].map((p) => ({

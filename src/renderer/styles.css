@@ -289,7 +289,7 @@ body.cd-view #cd-info { display: block !important; }
 .settings-body .setting-row.slider-row .slider { flex: 1 1 auto; width: auto; }
 .settings-body .setting-row.slider-row .row-value { flex: 0 0 52px; margin-left: 0; text-align: right; }
 .settings-body .setting-hint { margin-top: 0; width: auto; }
-.row-pills { display: flex; gap: 6px; }
+.row-pills { display: flex; align-items: center; gap: 6px; }
 .theme-pill { display: inline-flex; align-items: center; gap: 8px; padding-left: 10px; color: rgb(var(--text)); }
 .theme-pill .swatch { background: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent2))); }
 .settings-foot { margin-top: 18px; display: flex; align-items: center; justify-content: space-between; }
@@ -361,6 +361,11 @@ body.cd-view #cd-info { display: block !important; }
 .menu-more { opacity: 0; padding: 0 2px 0 10px; color: rgb(var(--muted)); }
 .theme-item:hover .menu-more { opacity: 1; }
 .menu-more:hover { color: rgb(var(--accent)); }
+.color-well { width: 34px; height: 22px; padding: 0; border: 1px solid rgba(255, 255, 255, .2); border-radius: 4px; background: none; cursor: pointer; }
+.color-well::-webkit-color-swatch-wrapper { padding: 2px; }
+.color-well::-webkit-color-swatch { border: none; border-radius: 2px; }
+.theme-warning { color: rgb(var(--accent)); font-size: 10px; font-weight: bold; }
+.theme-name { width: 170px; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .118); color: rgb(var(--text)); font: inherit; font-size: 12px; padding: 5px 8px; }
 .swatch { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .235); }
 
 /* ---- Visualizer Mode ---- */
