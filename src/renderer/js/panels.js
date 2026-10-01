@@ -297,16 +297,16 @@ function showMenu(anchor, items) {
 }
 export function closeMenu() { if (menuLayer) { menuLayer.remove(); menuLayer = null; } }
 
-const themeSwatch = (t) => (t.image ? `center / cover url("${t.image}")` : `linear-gradient(135deg, rgb(${t.accent}), rgb(${t.accent2}))`);
+const themeSwatch = (theme) => (theme.image ? `center / cover url("${theme.image}")` : `linear-gradient(135deg, rgb(${theme.accent}), rgb(${theme.accent2}))`);
 function showThemeMenu(app) {
-  const item = (t) => {
-    const i = THEMES.indexOf(t);
-    return { label: t.name, swatch: themeSwatch(t), current: i === app.state.themeIndex, pick: () => app.switchTheme(i), more: t.user ? (box) => showThemeActions(app, t, box) : null };
+  const item = (theme) => {
+    const i = THEMES.indexOf(theme);
+    return { label: theme.name, swatch: themeSwatch(theme), current: i === app.state.themeIndex, pick: () => app.switchTheme(i), more: theme.user ? (box) => showThemeActions(app, theme, box) : null };
   };
   showMenu(themeButton, [
-    ...THEMES.filter((t) => !t.user).map(item),
+    ...THEMES.filter((theme) => !theme.user).map(item),
     { divider: true },
-    ...THEMES.filter((t) => t.user).map(item),
+    ...THEMES.filter((theme) => theme.user).map(item),
     { label: '+ NEW THEME', pick: () => showThemeEditor(app) },
     { label: 'IMPORT…', pick: () => app.importTheme() },
     { label: 'PASTE CODE', pick: () => app.pasteThemeCode() },
@@ -603,14 +603,14 @@ function buildRip(app) {
     el('div', { class: 'rip-album' }, [r.artist, r.year].filter(Boolean).join(' · ') || 'Audio CD'),
     el('div', { class: 'rip-count' }, `${r.done} / ${r.tracks.length} · ${r.percent}%`),
     r.folder ? el('div', { class: 'rip-folder', title: r.folder }, `→ ${r.folder}`) : null);
-  const rows = r.tracks.map((t, i) => {
+  const rows = r.tracks.map((track, i) => {
     const stage = r.stages[i];
     const mark = stage === 'done' ? '✓' : stage ? '●' : '·';
     const note = stage === 'done' ? `${(r.sizes[i] / 1048576).toFixed(1)} MB` : STAGE[stage] || '';
     return el('div', { class: `list-row plain rip-row ${stage || 'waiting'}` },
       el('span', { class: 'rip-mark' }, mark),
-      el('span', { class: 'entry' }, `${String(i + 1).padStart(2, '0')} ${t.title}`),
-      el('span', { class: 'rip-time' }, t.duration ? app.formatTime(t.duration) : ''),
+      el('span', { class: 'entry' }, `${String(i + 1).padStart(2, '0')} ${track.title}`),
+      el('span', { class: 'rip-time' }, track.duration ? app.formatTime(track.duration) : ''),
       el('span', { class: 'rip-note' }, note));
   });
   const list = el('div', { class: 'scroll rip-list' }, rows);
@@ -742,9 +742,9 @@ function finishImport(app, tracks) {
   if (!tracks.length) { setSearchStatus('NO TRACKS FOUND AT THAT LINK'); return; }
   if (!search.index.length) { setSearchStatus('LOAD A TRACK FIRST TO SET A LIBRARY FOLDER TO MATCH AGAINST'); return; }
   const matched = [], missing = [];
-  for (const t of tracks) {
-    const f = findLocalMatch(t.title, t.artist);
-    if (f) matched.push(f); else missing.push(`${t.title}${t.artist ? ` – ${t.artist}` : ''}`);
+  for (const track of tracks) {
+    const f = findLocalMatch(track.title, track.artist);
+    if (f) matched.push(f); else missing.push(`${track.title}${track.artist ? ` – ${track.artist}` : ''}`);
   }
   if (matched.length) app.addToQueue(matched, { sorted: true });
   setSearchStatus(`${matched.length} OF ${tracks.length} TRACK${tracks.length === 1 ? '' : 'S'} FOUND IN YOUR LIBRARY AND ADDED`);
@@ -871,7 +871,7 @@ function spotifyWizard(app, a, status, foot) {
     const idNote = el('span', { class: 'key-note' }), secretNote = el('span', { class: 'key-note' });
     id.addEventListener('input', () => { sp.keyId = id.value; mark(id, idNote); });
     secret.addEventListener('input', () => { sp.keySecret = secret.value; mark(secret, secretNote); });
-    const paste = (input, note, key) => pill('PASTE', async () => { const t = await app.cdp.clipboardText().catch(() => ''); if (t) { input.value = t; sp[key] = t; mark(input, note); } }, 'Paste it from the clipboard');
+    const paste = (input, note, key) => pill('PASTE', async () => { const text = await app.cdp.clipboardText().catch(() => ''); if (text) { input.value = text; sp[key] = text; mark(input, note); } }, 'Paste it from the clipboard');
     requestAnimationFrame(() => { mark(id, idNote); mark(secret, secretNote); });
     const check = el('button', { class: 'pill on', onClick: async () => {
       if (!id.value.trim() || !secret.value.trim()) { sp.status = 'BOTH ARE NEEDED'; refreshPanel('spotify'); return; }
@@ -917,9 +917,9 @@ function buildSpotify(app) {
   // Not set up, or not connected: the setup wizard, a step at a time (and again from CHANGE APP).
   if (!a.configured || sp.editing || !a.connected || a.reconnectNeeded) return spotifyWizard(app, a, status, foot);
 
-  const tabs = el('div', { class: 'row-pills' }, ...['ALBUMS', 'PLAYLISTS'].map((t) => {
-    const b = pill(t, () => { sp.tab = t; sp.query = ''; sp.found = null; if (!sp.lists[t]) loadSpotifyList(app, t); refreshPanel('spotify'); });
-    b.classList.toggle('on', !sp.found && sp.tab === t);
+  const tabs = el('div', { class: 'row-pills' }, ...['ALBUMS', 'PLAYLISTS'].map((tab) => {
+    const b = pill(tab, () => { sp.tab = tab; sp.query = ''; sp.found = null; if (!sp.lists[tab]) loadSpotifyList(app, tab); refreshPanel('spotify'); });
+    b.classList.toggle('on', !sp.found && sp.tab === tab);
     return b;
   }));
   const field = el('input', { class: 'text-input', type: 'text', placeholder: 'Search Spotify for an album or playlist', value: sp.query, spellcheck: 'false' });

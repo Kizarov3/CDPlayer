@@ -15,7 +15,7 @@ import { dockIcon } from './dock-disc.js';
 import { drawCard, lyricChoices, cardSubtitle, quoteLines, MAX_QUOTE_LINES } from './share-card.js';
 import { recordVideo } from './share-video.js';
 import * as panels from './panels.js';
-import { translatePage } from './i18n.js';
+import { t, translatePage } from './i18n.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
 import { wearFor } from './disc-wear.js';
 import { pickOutput, outputName } from './output.js';
@@ -37,8 +37,8 @@ const UPDATE_RECHECK_MS = 15 * 60 * 1000;
 
 export const BUILTIN_EQ_PRESETS = [
   { name: 'Flat', gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
-  { name: 'Bass Boost', gains: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0] },
-  { name: 'Treble Boost', gains: [0, 0, 0, 0, 0, 0, 2, 4, 5, 6] },
+  { name: t('Bass Boost'), gains: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0] },
+  { name: t('Treble Boost'), gains: [0, 0, 0, 0, 0, 0, 2, 4, 5, 6] },
   { name: 'Vocal', gains: [-2, -1, 0, 2, 4, 4, 3, 1, 0, -1] },
   { name: 'Rock', gains: [4, 3, 2, 0, -1, 0, 1, 2, 3, 4] },
   { name: 'Pop', gains: [-1, 0, 2, 3, 3, 2, 0, -1, -1, -1] },
@@ -201,30 +201,30 @@ function renderQueue() {
   const list = $('queue-list');
   if (undoClear && state.queue.length) { clearTimeout(undoClear.timer); undoClear = null; } // new songs since: keep them
   const clearButton = $('clear-queue-button');
-  clearButton.textContent = undoClear ? 'UNDO CLEAR' : 'CLEAR';
-  clearButton.title = undoClear ? 'Bring the cleared queue back (⌘Z / Ctrl+Z)' : 'Clear the queue';
+  clearButton.textContent = undoClear ? t('UNDO CLEAR') : t('CLEAR');
+  clearButton.title = undoClear ? t('Bring the cleared queue back (⌘Z / Ctrl+Z)') : t('Clear the queue');
   clearButton.classList.toggle('on', !!undoClear);
   clearButton.disabled = !state.queue.length && !undoClear;
   if (!state.queue.length || state.index < 0) {
-    $('queue-info').textContent = 'QUEUE EMPTY';
-    $('queue-next').textContent = 'DROP SONGS OR A FOLDER TO BUILD A QUEUE';
+    $('queue-info').textContent = t('QUEUE EMPTY');
+    $('queue-next').textContent = t('DROP SONGS OR A FOLDER TO BUILD A QUEUE');
     list.replaceChildren();
     return;
   }
-  $('queue-info').textContent = `QUEUE ${state.index + 1} / ${state.queue.length}${state.shuffle ? ' · SHUFFLED' : ''}`;
+  $('queue-info').textContent = state.shuffle ? t('QUEUE {at} / {of} · SHUFFLED', { at: state.index + 1, of: state.queue.length }) : t('QUEUE {at} / {of}', { at: state.index + 1, of: state.queue.length });
   const next = upcomingIndex();
-  $('queue-next').textContent = state.repeat === 'ONE' ? 'REPEATING THIS TRACK'
-    : next >= 0 && next !== state.index ? `UP NEXT · ${queueDisplay(state.queue[next])}` : 'END OF QUEUE';
+  $('queue-next').textContent = state.repeat === 'ONE' ? t('REPEATING THIS TRACK')
+    : next >= 0 && next !== state.index ? t('UP NEXT · {song}', { song: queueDisplay(state.queue[next]) }) : t('END OF QUEUE');
   const scrollTop = list.scrollTop;
   const rows = state.queue.map((p, i) => {
     ensureDetails(p);
     const d = detailsCache.get(p);
-    const remove = el('button', { class: 'glyph-x', title: 'Remove from queue', onClick: (e) => { e.stopPropagation(); removeFromQueue(i); } }, '×');
+    const remove = el('button', { class: 'glyph-x', title: t('Remove from queue'), onClick: (e) => { e.stopPropagation(); removeFromQueue(i); } }, '×');
     const next = !!state.nextUp && i > state.index && i >= state.nextUp.start && i < state.nextUp.end;
     const row = el('div', { class: `queue-row${i === state.index ? ' active' : ''}${i === drag.index ? ' dragging' : ''}`, title: `Play ${queueDisplay(p)}` },
       el('span', { class: 'num' }, `${i + 1}.`),
       el('span', { class: 'entry' }, queueDisplay(p)),
-      next ? el('span', { class: 'next-tag', title: 'Plays next' }, 'NEXT') : null,
+      next ? el('span', { class: 'next-tag', title: t('Plays next') }, t('NEXT')) : null,
       el('span', { class: 'east' }, el('span', { class: 'duration' }, formatDuration(d ? d.duration : 0)), remove));
     row.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || e.target === remove) return;
@@ -272,11 +272,11 @@ function setupQueueDrag() {
 
 async function addToQueue(items, { sorted = false } = {}) {
   const songs = sorted ? items : await cdp.collectAudio(items);
-  if (!songs.length) { setStatus('NO SUPPORTED AUDIO FOUND'); return; }
+  if (!songs.length) { setStatus(t('NO SUPPORTED AUDIO FOUND')); return; }
   if (spotifyDiscIn()) { insertDisc(songs); return; } // files replace a Spotify disc, like a new CD
   if (disc.trayOpen && !state.trayBusy) { putDiscOnTray(songs); return; }
   state.queue.push(...songs);
-  setStatus(`ADDED ${songs.length} TO QUEUE`);
+  setStatus(t('ADDED {n} TO QUEUE', { n: songs.length }));
   renderQueue(); saveQueueSoon();
   if (state.index < 0) { state.index = 0; load(state.queue[0]); }
 }
@@ -284,11 +284,11 @@ async function addToQueue(items, { sorted = false } = {}) {
 async function playNext(items, { sorted = false } = {}) {
   if (!state.queue.length || state.index < 0 || spotifyDiscIn() || disc.trayOpen) { await addToQueue(items, { sorted }); return; }
   const songs = sorted ? items : await cdp.collectAudio(items);
-  if (!songs.length) { setStatus('NO SUPPORTED AUDIO FOUND'); return; }
+  if (!songs.length) { setStatus(t('NO SUPPORTED AUDIO FOUND')); return; }
   const r = insertNext(state.queue, state.index, state.nextUp, songs);
   state.queue = r.queue; state.nextUp = r.nextUp;
   shuffleCache.index = NaN;
-  setStatus(songs.length === 1 ? 'PLAYS NEXT' : `${songs.length} TO PLAY NEXT`);
+  setStatus(songs.length === 1 ? t('PLAYS NEXT') : t('{n} TO PLAY NEXT', { n: songs.length }));
   spotifyResync();
   renderQueue(); saveQueueSoon();
 }
@@ -296,7 +296,7 @@ function removeFromQueue(i) {
   if (i < 0 || i >= state.queue.length) return;
   state.queue.splice(i, 1);
   state.nextUp = afterRemove(state.nextUp, i);
-  if (!state.queue.length) resetToIdle('QUEUE EMPTY');
+  if (!state.queue.length) resetToIdle(t('QUEUE EMPTY'));
   else if (i === state.index) { state.index = Math.min(i, state.queue.length - 1); load(state.queue[state.index]); }
   else if (i < state.index) state.index--;
   spotifyResync();
@@ -313,7 +313,7 @@ function clearQueue() {
     timer: setTimeout(() => { undoClear = null; renderQueue(); }, UNDO_CLEAR_SECONDS * 1000),
   };
   state.nextUp = null; state.queue = [];
-  resetToIdle('QUEUE CLEARED');
+  resetToIdle(t('QUEUE CLEARED'));
   renderQueue(); saveQueueSoon();
 }
 function undoClearQueue() {
@@ -322,7 +322,7 @@ function undoClearQueue() {
   clearTimeout(u.timer); undoClear = null;
   state.nextUp = null; state.queue = u.queue; state.index = u.index;
   renderQueue(); saveQueueSoon();
-  setStatus('QUEUE RESTORED');
+  setStatus(t('QUEUE RESTORED'));
   if (state.index >= 0) load(state.queue[state.index], { autoPlay: u.playing, startAt: u.position });
 }
 function resetToIdle(message) {
@@ -331,8 +331,8 @@ function resetToIdle(message) {
   state.loadedPath = null; state.details = null; state.lyrics = null;
   disc.setWear(null);
   showInPlayer(null);
-  setTrackTitle('Pick a track to get started.', null);
-  $('track-source').textContent = 'YOUR MUSIC LIBRARY';
+  setTrackTitle(t('Pick a track to get started.'), null);
+  $('track-source').textContent = t('YOUR MUSIC LIBRARY');
   document.title = 'CDPlayer';
   $('elapsed').textContent = $('length').textContent = '0:00';
   progress.setValue(0); progress.setWaveform(null);
@@ -366,7 +366,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   if (token !== state.loadToken) return;
   if (cueRef(path) && !cue) {
     engine.stop(); setPlaying(false);
-    setStatus((await cdp.exists(path)) ? 'TRACK NOT FOUND IN CUE SHEET' : 'FILE NO LONGER FOUND');
+    setStatus((await cdp.exists(path)) ? t('TRACK NOT FOUND IN CUE SHEET') : t('FILE NO LONGER FOUND'));
     return;
   }
   const url = cdp.mediaUrl(cue ? cue.file : path);
@@ -379,7 +379,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
     } catch {
       if (token !== state.loadToken) return;
       setPlaying(false);
-      setStatus((await cdp.exists(path)) ? "COULDN'T PLAY THAT FILE" : 'FILE NO LONGER FOUND');
+      setStatus((await cdp.exists(path)) ? t("COULDN'T PLAY THAT FILE") : t('FILE NO LONGER FOUND'));
       return;
     }
     if (startAt > 0) engine.seek(Math.min(startAt, engine.duration));
@@ -387,8 +387,8 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   if (autoPlay) { if (!reload) recordHistory(path); await engine.play(); }
   if (token !== state.loadToken) return;
   setPlaying(autoPlay);
-  if (fade) setStatus('CROSSFADING');
-  else if (!autoPlay) setStatus('TRACK LOADED');
+  if (fade) setStatus(t('CROSSFADING'));
+  else if (!autoPlay) setStatus(t('TRACK LOADED'));
   $('length').textContent = formatTime(engine.duration);
   updateProgressUi(true);
   renderQueue(); saveQueueSoon();
@@ -406,7 +406,8 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   disc.lookingUp = canLookUp;
   const fromCd = isAudioCdTrack(path);
   $('tags-button').hidden = fromCd; // a CD can't be written to
-  $('track-source').textContent = details.cover ? `${fromCd ? 'AUDIO CD · MUSICBRAINZ COVER ART' : 'EMBEDDED ALBUM ART'} · ${ext}` : canLookUp ? `${fromCd ? 'AUDIO CD' : 'LOCAL AUDIO FILE'} · ${ext}` : 'NO EMBEDDED COVER · ADD SONG METADATA';
+  $('track-source').textContent = details.cover ? `${fromCd ? t('AUDIO CD · MUSICBRAINZ COVER ART') : t('EMBEDDED ALBUM ART')} · ${ext}` : canLookUp ? `${fromCd ? t('AUDIO CD') : t('LOCAL AUDIO FILE')} · ${ext}` : t('NO EMBEDDED COVER · ADD SONG METADATA');
+  state.coverFrom = details.cover ? (fromCd ? 'MusicBrainz' : t('In the file')) : null; // where the cover came from, for the booklet
   updateMediaSession();
   if (canLookUp) lookUpCover(details, path, token);
   state.lyrics = details.lyrics || null; state.lyricsSource = null;
@@ -447,13 +448,14 @@ async function lookUpCover(details, path, token) {
     const img = await decodeCover(result.cover);
     if (token !== state.loadToken) return; // another track was picked while the picture decoded
     applyCover(img);
-    $('track-source').textContent = `${result.source} COVER ART · ${ext}`;
+    $('track-source').textContent = t('{source} COVER ART · {format}', { source: result.source, format: ext });
+    state.coverFrom = result.source;
     state.details.cover = result.cover;
     state.details.coverUrl = result.url || null;
     if (state.saveFound) saveFoundLater(path, { cover: result.cover });
     updateMediaSession();
   } else {
-    $('track-source').textContent = `${result.networkError ? 'COVER LOOKUP UNAVAILABLE' : 'COVER NOT FOUND'} · ${ext}`;
+    $('track-source').textContent = `${result.networkError ? t('COVER LOOKUP UNAVAILABLE') : t('COVER NOT FOUND')} · ${ext}`;
   }
 }
 async function lookUpLyrics(details, token) {
@@ -507,7 +509,7 @@ function setLyricsOffset(ms) { state.lyricsOffset = ms; saveSettingsSoon(); }
 // nothing is on its way to the speakers) and the user's offset. A clicked line plays from where it's heard.
 const heardLatency = () => (engine.playing ? engine.outputLatency : 0);
 const lyricsPosition = () => heardPosition(engine.position, heardLatency(), state.lyricsOffset);
-const seekToLyric = (t) => seekTo(playbackTimeFor(t, heardLatency(), state.lyricsOffset));
+const seekToLyric = (time) => seekTo(playbackTimeFor(time, heardLatency(), state.lyricsOffset));
 // The lyrics for the loaded song arrived or went: the LYRICS and KARAOKE buttons, and anything showing them, follow.
 function lyricsChanged() {
   $('lyrics-button').hidden = !state.lyrics;
@@ -519,7 +521,7 @@ function toggleKaraoke() {
   if (isKaraokeOpen()) { closeKaraoke(); return; }
   if (state.miniMode) return;
   if (state.visualizerMode) toggleVisualizerMode();
-  if (!openKaraoke(app)) setStatus(state.lyrics ? 'THESE LYRICS AREN’T TIMED' : 'NO LYRICS FOR THIS SONG');
+  if (!openKaraoke(app)) setStatus(state.lyrics ? t('THESE LYRICS AREN’T TIMED') : t('NO LYRICS FOR THIS SONG'));
 }
 
 async function setCover(dataUrl) { applyCover(await decodeCover(dataUrl)); }
@@ -540,20 +542,20 @@ function applyCover(img) {
 // P, or right-click the disc: a picture of what's playing (share-card.js), quoting lines of its lyrics picked in a
 // panel, copied to paste into a chat or saved.
 function shareCard() {
-  if (!state.loadedPath) { setStatus('NOTHING PLAYING TO SHARE'); return; }
+  if (!state.loadedPath) { setStatus(t('NOTHING PLAYING TO SHARE')); return; }
   const themeImage = shownTheme.image ? $('backdrop-theme') : null;
   const song = { cover: state.cover, title: state.titleText, artist: state.artistText, subtitle: cardSubtitle(state.details),
     backdrop: themeImage && themeImage.complete ? { image: themeImage, blur: shownTheme.blur, dim: shownTheme.dim } : null };
   const choices = lyricChoices(state.lyrics, lyricsPosition());
   const png = (picked) => drawCard({ ...song, quote: quoteLines(choices.lines, picked) }, { ...colors });
   const attempt = (work, done) => async (picked) => {
-    try { if (!(await work(await png(picked)))) return false; setStatus(done); return true; } catch { setStatus("COULDN'T MAKE THE CARD"); return false; }
+    try { if (!(await work(await png(picked)))) return false; setStatus(done); return true; } catch { setStatus(t("COULDN'T MAKE THE CARD")); return false; }
   };
   panels.showCard(app, {
     choices, maxLines: MAX_QUOTE_LINES,
     render: async (picked) => URL.createObjectURL(new Blob([await png(picked)], { type: 'image/png' })),
-    copy: attempt(async (bytes) => { await cdp.copyImage(bytes); return true; }, 'CARD COPIED · PASTE IT ANYWHERE'),
-    save: attempt((bytes) => cdp.saveCard(bytes, [song.artist, song.title].filter(Boolean).join(' - ')), 'CARD SAVED'),
+    copy: attempt(async (bytes) => { await cdp.copyImage(bytes); return true; }, t('CARD COPIED · PASTE IT ANYWHERE')),
+    save: attempt((bytes) => cdp.saveCard(bytes, [song.artist, song.title].filter(Boolean).join(' - ')), t('CARD SAVED')),
     // The video: eight seconds recorded as it plays — started for it if it was paused, and paused again after.
     video: async (format, onTick) => {
       const wasPlaying = engine.playing, withSound = !spotifyActive();
@@ -563,9 +565,9 @@ function shareCard() {
           ...song, face: disc.renderFace(512, 1).canvas, colors: { ...colors },
           timed: state.lyrics ? parseLrc(state.lyrics) : [], start: lyricsPosition(),
         } });
-        if (!made) { setStatus("VIDEO CAN'T BE MADE HERE"); return false; }
+        if (!made) { setStatus(t("VIDEO CAN'T BE MADE HERE")); return false; }
         const saved = await cdp.saveVideo(made.bytes, [song.artist, song.title].filter(Boolean).join(' - '), made.ext);
-        if (saved) setStatus('VIDEO SAVED');
+        if (saved) setStatus(t('VIDEO SAVED'));
         return saved;
       } finally {
         engine.stopRecording();
@@ -595,7 +597,7 @@ function setPlaying(playing) {
   noise.setPlaying(playing);
   playButton.setGlyph(playing ? 'PAUSE' : 'PLAY'); pulse(playButton, true);
   if (playing) spotifyTrouble = null;
-  setStatus(playing ? 'NOW SPINNING' : spotifyActive() && spotifyTrouble ? spotifyTrouble : state.loadedPath ? 'PAUSED' : 'READY TO PLAY');
+  setStatus(playing ? t('NOW SPINNING') : spotifyActive() && spotifyTrouble ? spotifyTrouble : state.loadedPath ? t('PAUSED') : t('READY TO PLAY'));
   visualizer.setActive(playing); bigVisualizer.setActive(playing);
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = state.loadedPath ? (playing ? 'playing' : 'paused') : 'none';
   pushMini(true);
@@ -669,7 +671,7 @@ function startJog() {
   jog = { wasPlaying: engine.playing, target: engine.position, audible: !spotifyActive(), sentAt: 0, unsent: false };
   if (jog.audible && engine.playing) engine.pause();
   noise.setPlaying(false);
-  setStatus('SEARCHING');
+  setStatus(t('SEARCHING'));
   holdStillSoon();
 }
 function turnJog(radians, ms) {
@@ -727,25 +729,25 @@ async function openTray({ eject = false } = {}) {
   state.trayBusy = true;
   trayResume = { playing: dropJog() || engine.playing };
   if (engine.playing) { engine.pause(); setPlaying(false); }
-  setStatus('OPENING');
+  setStatus(t('OPENING'));
   noise.tray(TRAY_MS);
   await disc.setTray(true);
   state.trayBusy = false;
-  setStatus(state.queue.length ? 'OPEN · DROP IN A NEW DISC, OR PRESS E TO CLOSE' : 'OPEN · DROP MUSIC ON THE TRAY');
+  setStatus(state.queue.length ? t('OPEN · DROP IN A NEW DISC, OR PRESS E TO CLOSE') : t('OPEN · DROP MUSIC ON THE TRAY'));
   $('tray-button').classList.add('on');
 }
 async function closeTray({ play = true } = {}) {
   if (!disc.trayOpen || state.trayBusy) return;
   state.trayBusy = true;
-  setStatus('CLOSING');
+  setStatus(t('CLOSING'));
   noise.tray(TRAY_MS);
   await disc.setTray(false);
   $('tray-button').classList.remove('on');
   const resume = trayResume || { playing: false };
   trayResume = null;
-  if (!state.queue.length || state.index < 0) { state.trayBusy = false; setStatus('NO DISC'); return; }
+  if (!state.queue.length || state.index < 0) { state.trayBusy = false; setStatus(t('NO DISC')); return; }
   // Reading: the disc spins up, slowly, before anything plays.
-  setStatus('READING…');
+  setStatus(t('READING…'));
   disc.reading = true; disc.spinning = true;
   noise.spinUp(READING_MS);
   await new Promise((r) => setTimeout(r, READING_MS));
@@ -761,13 +763,13 @@ function toggleTray() { if (disc.trayOpen) closeTray(); else openTray({ eject: t
 // SDK plays it (spotify-deck.js); everything else — the disc, transport, lyrics, karaoke — works as for files.
 
 const SPOTIFY_ERRORS = {
-  premium: 'SPOTIFY PREMIUM IS NEEDED TO PLAY',
-  unsupported: "SPOTIFY PLAYBACK ISN'T SUPPORTED ON THIS SYSTEM",
-  auth: 'SPOTIFY SIGNED OUT · CONNECT AGAIN UNDER SPOTIFY',
-  offline: "COULDN'T REACH SPOTIFY",
-  sdk: "COULDN'T LOAD SPOTIFY'S PLAYER",
-  notready: "SPOTIFY'S PLAYER DIDN'T START",
-  playback: "COULDN'T PLAY THAT TRACK ON SPOTIFY",
+  premium: t('SPOTIFY PREMIUM IS NEEDED TO PLAY'),
+  unsupported: t("SPOTIFY PLAYBACK ISN'T SUPPORTED ON THIS SYSTEM"),
+  auth: t('SPOTIFY SIGNED OUT · CONNECT AGAIN UNDER SPOTIFY'),
+  offline: t("COULDN'T REACH SPOTIFY"),
+  sdk: t("COULDN'T LOAD SPOTIFY'S PLAYER"),
+  notready: t("SPOTIFY'S PLAYER DIDN'T START"),
+  playback: t("COULDN'T PLAY THAT TRACK ON SPOTIFY"),
 };
 let spotifySession = null;
 let spotifyTrouble = null; // why Spotify last refused to play, kept in the status line until something plays
@@ -788,9 +790,9 @@ const spotifyActive = () => isSpotifyUri(state.loadedPath);
 const spotifyDiscIn = () => state.queue.some(isSpotifyUri);
 function onSpotifyEvent(e) {
   if (!spotifyActive()) return;
-  if (e.type === 'lost') { setPlaying(false); setStatus('PLAYING ON ANOTHER DEVICE · PRESS PLAY TO BRING IT BACK'); return; }
+  if (e.type === 'lost') { setPlaying(false); setStatus(t('PLAYING ON ANOTHER DEVICE · PRESS PLAY TO BRING IT BACK')); return; }
   if (e.type !== 'error') return;
-  spotifyTrouble = `${SPOTIFY_ERRORS[e.reason] || SPOTIFY_ERRORS.playback}${e.detail ? ` · ${e.detail}` : ''}`;
+  spotifyTrouble = `${SPOTIFY_ERRORS[e.reason] || SPOTIFY_ERRORS.playback}${e.detail ? ` · ${e.detail}` : ''}`; // the detail is Spotify's own words
   if (e.reason !== 'playback') { engine.pause(); setPlaying(false); }
   setStatus(spotifyTrouble);
 }
@@ -801,44 +803,44 @@ function spotifyResync() {
 /** DISCONNECT SPOTIFY: a Spotify disc comes out, and the player closes. */
 function stopSpotify() {
   if (spotifySession) spotifySession.disconnect();
-  if (spotifyDiscIn()) { state.nextUp = null; state.queue = []; resetToIdle('SPOTIFY DISCONNECTED'); renderQueue(); saveQueueSoon(); }
+  if (spotifyDiscIn()) { state.nextUp = null; state.queue = []; resetToIdle(t('SPOTIFY DISCONNECTED')); renderQueue(); saveQueueSoon(); }
   spotifyTracks.clear();
 }
 async function playSpotifyDisc(tracks, name) {
   if (!tracks.length) return;
-  for (const t of tracks) {
-    spotifyTracks.set(t.uri, t);
-    detailsCache.set(t.uri, { title: t.title, artist: t.artist, album: t.album, duration: t.durationMs / 1000 });
+  for (const track of tracks) {
+    spotifyTracks.set(track.uri, track);
+    detailsCache.set(track.uri, { title: track.title, artist: track.artist, album: track.album, duration: track.durationMs / 1000 });
   }
   if (isShelfOpen()) closeShelf();
-  await insertDisc(tracks.map((t) => t.uri), { status: `${String(name || 'SPOTIFY').toUpperCase()} ON THE TRAY` });
+  await insertDisc(tracks.map((track) => track.uri), { status: t('{disc} ON THE TRAY', { disc: String(name || 'SPOTIFY').toUpperCase() }) });
 }
 async function loadSpotify(path, token, { autoPlay, startAt }) {
-  const t = spotifyTracks.get(path);
-  if (!t) { engine.stop(); setPlaying(false); setStatus('THAT SPOTIFY DISC IS NO LONGER IN'); return; }
+  const track = spotifyTracks.get(path);
+  if (!track) { engine.stop(); setPlaying(false); setStatus(t('THAT SPOTIFY DISC IS NO LONGER IN')); return; }
   $('tags-button').hidden = true;
-  const element = new SpotifyTrackElement(spotify(), path, t.durationMs, () => spotifyUpcoming(state.queue, state.index, state));
+  const element = new SpotifyTrackElement(spotify(), path, track.durationMs, () => spotifyUpcoming(state.queue, state.index, state));
   const ok = await engine.load(path, { autoPlay: false, element }).catch(() => false);
   if (!ok || token !== state.loadToken) return;
   if (startAt > 0) engine.seek(Math.min(startAt, engine.duration));
   if (autoPlay) await engine.play();
   if (token !== state.loadToken) return;
   setPlaying(autoPlay && engine.playing);
-  if (!autoPlay) setStatus('TRACK LOADED');
+  if (!autoPlay) setStatus(t('TRACK LOADED'));
   $('length').textContent = formatTime(engine.duration);
   updateProgressUi(true);
   renderQueue(); saveQueueSoon();
   panels.refreshSettingsIfOpen(app);
-  const details = { title: t.title, artist: t.artist, album: t.album, lyrics: null, cover: null, coverUrl: t.cover, duration: t.durationMs / 1000, ext: 'SPOTIFY' };
+  const details = { title: track.title, artist: track.artist, album: track.album, lyrics: null, cover: null, coverUrl: track.cover, duration: track.durationMs / 1000, ext: 'SPOTIFY' };
   state.details = details; state.detailsPath = path;
   setTrackTitle(details.title, details.artist);
   updateWear();
   fadeInNowPlaying();
-  $('track-source').textContent = `SPOTIFY${t.album ? ` · ${t.album.toUpperCase()}` : ''}`;
+  $('track-source').textContent = `SPOTIFY${track.album ? ` · ${track.album.toUpperCase()}` : ''}`;
   state.lyrics = null; state.lyricsSource = null;
   lyricsChanged();
   if (details.title) lookUpLyrics(details, token);
-  details.cover = t.cover ? await cdp.spotifyCover(t.cover).catch(() => null) : null;
+  details.cover = track.cover ? await cdp.spotifyCover(track.cover).catch(() => null) : null;
   if (token !== state.loadToken) return;
   await setCover(details.cover);
   updateMediaSession();
@@ -852,13 +854,13 @@ function showAudioCd() {
   const cd = state.audioCd, button = $('cd-button');
   button.hidden = !cd;
   if (!state.ripping) $('rip-button').hidden = !cd || !cd.ready; // not before MusicBrainz has named it (or couldn't)
-  if (cd) button.textContent = cd.album ? `▶ ${cd.album}`.toUpperCase() : 'AUDIO CD';
+  if (cd) button.textContent = cd.album ? `▶ ${cd.album}`.toUpperCase() : t('AUDIO CD');
 }
 function onAudioCd(cd) {
   const first = !state.audioCd || state.audioCd.mount !== cd.mount;
   state.audioCd = cd;
   showAudioCd();
-  if (first) setStatus(`AUDIO CD IN THE DRIVE${cd.album ? ` · ${cd.album.toUpperCase()}` : ''} · CLICK IT ABOVE TO PLAY`);
+  if (first) setStatus(cd.album ? t('AUDIO CD IN THE DRIVE · {album} · CLICK IT ABOVE TO PLAY', { album: cd.album.toUpperCase() }) : t('AUDIO CD IN THE DRIVE · CLICK IT ABOVE TO PLAY'));
   // Named now: the queue and the song on the disc in the player take the new names (and cover).
   for (const p of cd.tracks) detailsCache.delete(p);
   renderQueue();
@@ -870,7 +872,7 @@ function onAudioCdGone({ mount, tracks }) {
   if (!state.queue.some((p) => gone.has(p))) return;
   const current = state.loadedPath;
   state.nextUp = null; state.queue = state.queue.filter((p) => !gone.has(p));
-  if (gone.has(current)) resetToIdle('DISC EJECTED');
+  if (gone.has(current)) resetToIdle(t('DISC EJECTED'));
   else state.index = state.queue.indexOf(current);
   renderQueue();
   saveQueueSoon();
@@ -879,10 +881,10 @@ async function playAudioCd() {
   const cd = state.audioCd;
   if (!cd) return;
   if (isShelfOpen()) closeShelf();
-  await insertDisc(cd.tracks, { status: `${(cd.album || 'AUDIO CD').toUpperCase()} ON THE TRAY` });
+  await insertDisc(cd.tracks, { status: t('{disc} ON THE TRAY', { disc: (cd.album || t('AUDIO CD')).toUpperCase() }) });
 }
 // RIP: the disc saved into the music folder as FLAC. Clicking it again while it rips cancels.
-const RIP_STATUS = { cancelled: 'RIP CANCELLED', 'disc-removed': 'DISC REMOVED', busy: 'ALREADY RIPPING', naming: 'STILL NAMING THE DISC — A MOMENT' };
+const RIP_STATUS = { cancelled: t('RIP CANCELLED'), 'disc-removed': t('DISC REMOVED'), busy: t('ALREADY RIPPING'), naming: t('STILL NAMING THE DISC — A MOMENT') };
 async function ripAudioCd() {
   const cd = state.audioCd, button = $('rip-button');
   if (state.ripping) { panels.showRip(app); return; } // the list of tracks being ripped (CANCEL RIP is there)
@@ -894,17 +896,17 @@ async function ripAudioCd() {
   };
   state.ripping = true;
   button.classList.add('ripping');
-  button.textContent = `RIPPING 0/${cd.tracks.length} · 0%`;
+  button.textContent = t('RIPPING {done}/{total} · {percent}%', { done: 0, total: cd.tracks.length, percent: 0 });
   const result = await cdp.startRip(cd.mount).catch((e) => ({ ok: false, reason: 'failed', message: e.message }));
   state.ripping = false;
   button.classList.remove('ripping');
-  button.textContent = 'RIP';
+  button.textContent = t('RIP');
   button.hidden = !state.audioCd || !state.audioCd.ready;
   Object.assign(state.rip, { finished: true, ok: !!result.ok, folder: result.folder || state.rip.folder,
-    message: result.ok ? null : RIP_STATUS[result.reason] || `RIP FAILED · ${String(result.message || 'unknown').toUpperCase()}` });
+    message: result.ok ? null : RIP_STATUS[result.reason] || t('RIP FAILED · {why}', { why: String(result.message || 'unknown').toUpperCase() }) });
   panels.refreshRipIfOpen(app);
-  if (result.ok) setStatus(`RIPPED TO ${(result.album || 'YOUR MUSIC FOLDER').toUpperCase()} · ${result.folder}`);
-  else setStatus(RIP_STATUS[result.reason] || `RIP FAILED · ${String(result.message || 'unknown').toUpperCase()}`);
+  if (result.ok) setStatus(t('RIPPED TO {album} · {folder}', { album: (result.album || t('YOUR MUSIC FOLDER')).toUpperCase(), folder: result.folder }));
+  else setStatus(RIP_STATUS[result.reason] || t('RIP FAILED · {why}', { why: String(result.message || 'unknown').toUpperCase() }));
 }
 // The loaded song's details changed underneath (a CD just got its names): show them without touching playback.
 async function refreshLoadedDetails() {
@@ -914,7 +916,7 @@ async function refreshLoadedDetails() {
   detailsCache.set(path, { ...d, cover: undefined });
   setTrackTitle(d.title, d.artist);
   updateWear();
-  if (d.cover) { await setCover(d.cover); $('track-source').textContent = `AUDIO CD · MUSICBRAINZ COVER ART · ${d.quality || d.ext || extension(path)}`; }
+  if (d.cover) { await setCover(d.cover); $('track-source').textContent = `${t('AUDIO CD · MUSICBRAINZ COVER ART')} · ${d.quality || d.ext || extension(path)}`; state.coverFrom = 'MusicBrainz'; }
   updateMediaSession();
   renderQueue();
 }
@@ -938,7 +940,7 @@ async function insertDisc(paths, { status, start = 0 } = {}) {
   await closeTray();
 }
 // Music dropped (or picked) while the tray is out: that's the new disc — it replaces the queue, loaded but not playing.
-function putDiscOnTray(paths, start = 0, status = 'DISC ON THE TRAY · PRESS E OR PLAY TO CLOSE') {
+function putDiscOnTray(paths, start = 0, status = t('DISC ON THE TRAY · PRESS E OR PLAY TO CLOSE')) {
   state.nextUp = null; state.queue = paths.slice();
   state.index = Math.max(0, Math.min(start, paths.length - 1));
   shuffleCache.index = NaN;
@@ -1012,7 +1014,7 @@ async function applyOutput(announce) {
   if (id === (engine.outputId || '')) return;
   if (!(await engine.setOutput(id)) || !announce) return;
   const device = devices.find((d) => d.deviceId === id);
-  setStatus(device ? `PLAYING ON ${outputName(device)}` : 'OUTPUT: SYSTEM DEFAULT');
+  setStatus(device ? t('PLAYING ON {device}', { device: outputName(device) }) : t('OUTPUT: SYSTEM DEFAULT'));
 }
 /** Settings → OUTPUT: a device ({ deviceId, label }), or null for the system default. */
 async function setOutput(device) {
@@ -1050,7 +1052,7 @@ function setupMediaSession() {
 // ---- Themes --------------------------------------------------------------------------------------------------
 
 function refreshAutoTheme() {
-  const i = THEMES.findIndex((t) => t.name === 'AUTO');
+  const i = THEMES.findIndex((theme) => theme.name === 'AUTO');
   THEMES[i] = deriveAutoTheme(state.cover);
   return THEMES[i];
 }
@@ -1116,13 +1118,13 @@ async function reloadUserThemes(select = null) {
   const name = select || THEMES[state.themeIndex].name;
   setUserThemes(await cdp.themes.list());
   state.themeIndex = -1;
-  switchTheme(Math.max(0, THEMES.findIndex((t) => t.name === name)));
+  switchTheme(Math.max(0, THEMES.findIndex((theme) => theme.name === name)));
 }
 async function saveTheme(theme, oldName = null) {
   const saved = await cdp.themes.save(toFile(theme), oldName);
-  if (!saved) { setStatus("COULDN'T SAVE THE THEME"); return null; }
+  if (!saved) { setStatus(t("COULDN'T SAVE THE THEME")); return null; }
   await reloadUserThemes(saved.name);
-  setStatus('THEME SAVED');
+  setStatus(t('THEME SAVED'));
   return saved;
 }
 async function importTheme(path = null) {
@@ -1130,27 +1132,27 @@ async function importTheme(path = null) {
   if (r.canceled) return;
   if (r.error) { setStatus(r.error); return; }
   await reloadUserThemes(r.theme.name);
-  setStatus('THEME ADDED');
+  setStatus(t('THEME ADDED'));
 }
 async function pasteThemeCode() {
   const theme = await cdp.themes.decode(await cdp.clipboardText());
-  if (!theme) { setStatus("THAT CODE ISN'T A THEME"); return; }
+  if (!theme) { setStatus(t("THAT CODE ISN'T A THEME")); return; }
   const saved = await cdp.themes.save(theme, null);
-  if (!saved) { setStatus("COULDN'T SAVE THE THEME"); return; }
+  if (!saved) { setStatus(t("COULDN'T SAVE THE THEME")); return; }
   await reloadUserThemes(saved.name);
-  setStatus('THEME ADDED');
+  setStatus(t('THEME ADDED'));
 }
-async function exportTheme(name) { if (await cdp.themes.exportFile(name)) setStatus('THEME EXPORTED'); }
+async function exportTheme(name) { if (await cdp.themes.exportFile(name)) setStatus(t('THEME EXPORTED')); }
 async function copyThemeCode(theme) {
   const code = await cdp.themes.encode(toFile(theme));
   if (!code) return;
   await cdp.copyText(code);
-  setStatus('CODE COPIED · PASTE IT IN A CHAT');
+  setStatus(t('CODE COPIED · PASTE IT IN A CHAT'));
 }
 async function deleteTheme(name) {
   await cdp.themes.remove(name);
   await reloadUserThemes(THEMES[state.themeIndex].name === name ? 'RED' : null);
-  setStatus('THEME DELETED');
+  setStatus(t('THEME DELETED'));
 }
 
 // ---- Settings setters ------------------------------------------------------------------------------------------
@@ -1195,7 +1197,7 @@ function armSleepTimer(minutes) {
 }
 function updateSleepIndicator() {
   const s = state.sleepRemaining;
-  $('sleep-indicator').textContent = s > 0 ? `SLEEP ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : '';
+  $('sleep-indicator').textContent = s > 0 ? t('SLEEP {time}', { time: `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }) : '';
 }
 
 // ---- View modes --------------------------------------------------------------------------------------------------
@@ -1204,7 +1206,7 @@ function applyCdViewState() {
   document.body.classList.toggle('cd-view', state.cdView);
   $('cd-info').hidden = !state.cdView;
   disc.setMode(state.cdView ? 'enlarged' : 'normal');
-  $('cd-view-button').textContent = state.cdView ? 'EXIT CD VIEW' : 'CD VIEW';
+  $('cd-view-button').textContent = state.cdView ? t('EXIT CD VIEW') : t('CD VIEW');
   state.lastCdMouse = Date.now();
   showCursor();
 }
@@ -1221,7 +1223,7 @@ async function toggleCdView() {
 // it sits in the other, growing or shrinking on the way — redrawn at every in-between size, so it stays sharp and
 // keeps spinning — while the rest of the player fades out around it, or back in.
 const CD_MORPH_MS = 440;
-const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+const easeOutCubic = (x) => 1 - Math.pow(1 - x, 3);
 let discMorph = null;
 function morphCdView(entering) {
   const canvas = $('disc'), body = document.body;
@@ -1252,11 +1254,11 @@ function morphCdView(entering) {
 function stepDiscMorph(now, finish = false) {
   const m = discMorph;
   if (!m) return;
-  const p = finish ? 1 : Math.min(1, (now - m.start) / CD_MORPH_MS), t = easeOutCubic(p);
-  const lerp = (key) => `${m.from[key] + (m.to[key] - m.from[key]) * t}px`;
+  const p = finish ? 1 : Math.min(1, (now - m.start) / CD_MORPH_MS), eased = easeOutCubic(p);
+  const lerp = (key) => `${m.from[key] + (m.to[key] - m.from[key]) * eased}px`;
   const style = $('disc').style;
   Object.assign(style, { left: lerp('left'), top: lerp('top'), width: lerp('width'), height: lerp('height') });
-  disc.morph.t = t;
+  disc.morph.t = eased;
   if (p < 1) return;
   discMorph = null; disc.morph = null;
   for (const key of ['position', 'left', 'top', 'right', 'bottom', 'width', 'height', 'zIndex']) style[key] = '';
@@ -1313,7 +1315,7 @@ function pushMini(full = false) {
       colors, animations: anim.enabled, visMode: visualizerModeFor(shownTheme),
       shuffle: state.shuffle, repeat: state.repeat,
       track: {
-        title: state.titleText || 'Pick a track to get started.', artist: state.artistText || null, album: d && d.album ? d.album : null,
+        title: state.titleText || t('Pick a track to get started.'), artist: state.artistText || null, album: d && d.album ? d.album : null,
         lookingUp: disc.lookingUp, coverKey: miniCoverKey, loaded: !!state.loadedPath,
         // The artwork is a large data URL — only send it when it actually changed.
         cover: miniCoverKey !== sentMiniCoverKey ? cover : undefined,
@@ -1358,19 +1360,19 @@ async function choose() {
   if (picked.length) addToQueue(picked);
 }
 async function savePlaylist() {
-  if (!state.queue.length) { setStatus('QUEUE IS EMPTY'); return; }
+  if (!state.queue.length) { setStatus(t('QUEUE IS EMPTY')); return; }
   const r = await cdp.savePlaylistDialog(state.queue.map((p) => ({ path: p, display: queueDisplay(p) })));
-  if (r.ok) setStatus(`SAVED PLAYLIST · ${r.name}`);
-  else if (!r.canceled) setStatus("COULDN'T SAVE PLAYLIST");
+  if (r.ok) setStatus(t('SAVED PLAYLIST · {name}', { name: r.name }));
+  else if (!r.canceled) setStatus(t("COULDN'T SAVE PLAYLIST"));
 }
 async function loadPlaylist() {
   const r = await cdp.loadPlaylistDialog();
   if (r.canceled) return;
-  if (r.error) { setStatus("COULDN'T READ PLAYLIST"); return; }
-  if (!r.tracks.length) { setStatus('NO PLAYABLE TRACKS IN PLAYLIST'); return; }
+  if (r.error) { setStatus(t("COULDN'T READ PLAYLIST")); return; }
+  if (!r.tracks.length) { setStatus(t('NO PLAYABLE TRACKS IN PLAYLIST')); return; }
   if (spotifyDiscIn()) { insertDisc(r.tracks); return; }
   state.queue.push(...r.tracks); // order preserved exactly as saved
-  setStatus(`LOADED PLAYLIST · ${r.tracks.length} TRACK${r.tracks.length === 1 ? '' : 'S'}`);
+  setStatus(t('LOADED PLAYLIST · {n} TRACKS', { n: r.tracks.length }));
   renderQueue(); saveQueueSoon();
   if (state.index < 0) { state.index = 0; load(state.queue[0]); }
 }
@@ -1414,7 +1416,7 @@ function escape() {
 
 // ---- Build the static UI ---------------------------------------------------------------------------------------
 
-const playButton = roundButton('PLAY', 68, { primary: true, title: 'Play/Pause', onClick: () => toggle() });
+const playButton = roundButton('PLAY', 68, { primary: true, title: t('Play/Pause'), onClick: () => toggle() });
 function toggleShuffle() {
   state.shuffle = !state.shuffle; shuffleButton.setOn(state.shuffle); shuffleCache.index = NaN; renderQueue();
   pushMini(true);
@@ -1424,13 +1426,13 @@ function cycleRepeat() {
   state.repeat = state.repeat === 'OFF' ? 'ONE' : state.repeat === 'ONE' ? 'ALL' : 'OFF';
   repeatButton.setOn(state.repeat !== 'OFF');
   repeatButton.setBadge(state.repeat === 'ONE' ? '1' : null);
-  repeatButton.title = state.repeat === 'OFF' ? 'Repeat' : state.repeat === 'ONE' ? 'Repeat: one track' : 'Repeat: whole queue';
+  repeatButton.title = state.repeat === 'OFF' ? t('Repeat') : state.repeat === 'ONE' ? t('Repeat: one track') : t('Repeat: whole queue');
   renderQueue();
   pushMini(true);
   spotifyResync();
 }
-const shuffleButton = modeButton('SHUFFLE', 'Shuffle', toggleShuffle);
-const repeatButton = modeButton('REPEAT', 'Repeat', cycleRepeat);
+const shuffleButton = modeButton('SHUFFLE', t('Shuffle'), toggleShuffle);
+const repeatButton = modeButton('REPEAT', t('Repeat'), cycleRepeat);
 
 let seeking = false;
 const progress = new Slider({
@@ -1443,11 +1445,11 @@ const volumeSlider = new Slider({ min: 0, max: 100, value: 100, onInput: (v) => 
 function buildStaticUi() {
   $('transport').append(
     shuffleButton, spacer(22),
-    roundButton('SKIP_BACK', 36, { title: `Back ${SKIP_SECONDS} seconds`, onClick: () => seek(-SKIP_SECONDS) }), spacer(10),
-    roundButton('PREVIOUS_TRACK', 44, { title: 'Previous track', onClick: () => previousTrack() }), spacer(16),
+    roundButton('SKIP_BACK', 36, { title: t('Back {n} seconds', { n: SKIP_SECONDS }), onClick: () => seek(-SKIP_SECONDS) }), spacer(10),
+    roundButton('PREVIOUS_TRACK', 44, { title: t('Previous track'), onClick: () => previousTrack() }), spacer(16),
     playButton, spacer(16),
-    roundButton('NEXT_TRACK', 44, { title: 'Next track', onClick: () => nextTrack() }), spacer(10),
-    roundButton('SKIP_FORWARD', 36, { title: `Forward ${SKIP_SECONDS} seconds`, onClick: () => seek(SKIP_SECONDS) }), spacer(22),
+    roundButton('NEXT_TRACK', 44, { title: t('Next track'), onClick: () => nextTrack() }), spacer(10),
+    roundButton('SKIP_FORWARD', 36, { title: t('Forward {n} seconds', { n: SKIP_SECONDS }), onClick: () => seek(SKIP_SECONDS) }), spacer(22),
     repeatButton);
 
   $('load-button').addEventListener('click', choose);
@@ -1462,7 +1464,7 @@ function buildStaticUi() {
   $('rip-button').addEventListener('click', () => ripAudioCd());
   cdp.onRipProgress(({ done, total, percent, current, stage, size, folder }) => {
     if (!state.ripping) return;
-    $('rip-button').textContent = `RIPPING ${done}/${total} · ${percent}%`;
+    $('rip-button').textContent = t('RIPPING {done}/{total} · {percent}%', { done, total, percent });
     const r = state.rip;
     if (!r) return;
     Object.assign(r, { done, percent, folder: folder || r.folder });
@@ -1494,7 +1496,7 @@ function buildStaticUi() {
   disc.position = discPosition;
   disc.onTrackPick = (k) => { const i = discStart + k; if (i === state.index) return; state.index = i; load(state.queue[i]); };
   engine.onEnded = trackFinished;
-  engine.onCrossfadeDone = () => { if (engine.playing) setStatus('NOW SPINNING'); };
+  engine.onCrossfadeDone = () => { if (engine.playing) setStatus(t('NOW SPINNING')); };
   setupQueueDrag();
   drawDivider();
   new ResizeObserver(drawDivider).observe($('divider'));
@@ -1520,7 +1522,7 @@ function drawDivider() {
 
 // ---- Input -----------------------------------------------------------------------------------------------------
 
-function isTyping(e) { const t = e.target; return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable); }
+function isTyping(e) { const target = e.target; return target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable); }
 function onKeyDown(e) {
   state.lastActivity = Date.now();
   if (e.key === 'Escape') { e.preventDefault(); escape(); return; }
@@ -1554,7 +1556,7 @@ function setupDragAndDrop() {
     const isTheme = (p) => /\.cdtheme$/i.test(p);
     for (const p of paths.filter(isTheme)) importTheme(p);
     const songs = paths.filter((p) => !isTheme(p));
-    if (songs.length) addToQueue(songs).catch(() => setStatus("COULDN'T LOAD THAT FILE"));
+    if (songs.length) addToQueue(songs).catch(() => setStatus(t("COULDN'T LOAD THAT FILE")));
   });
 }
 
@@ -1652,7 +1654,7 @@ export const app = {
   setStatus, queueDisplay, displayName, formatTime, load, addToQueue, playNext, appendAndPlay, seekTo,
   detailsFor: (p) => detailsCache.get(p),
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) { state.index = i; load(state.queue[i]); } },
-  coverSource: () => { const s = $('track-source').textContent; return /COVER ART|ALBUM ART/.test(s) ? s.split(' · ')[0].replace(/ COVER ART$/, '').replace('EMBEDDED ALBUM ART', 'In the file') : null; },
+  coverSource: () => state.coverFrom || null,
   switchTheme, previewTheme, restoreTheme, shownTheme: () => shownTheme, saveTheme, importTheme, pasteThemeCode, exportTheme, copyThemeCode, deleteTheme,
   setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setOutput, listOutputs, currentOutputName,
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
@@ -1676,11 +1678,12 @@ async function checkForUpdate() {
   if (update && update.offline) return;
   const button = $('update-button');
   button.hidden = !update;
-  if (update) button.textContent = `${update.version} AVAILABLE`;
+  if (update) button.textContent = t('{version} AVAILABLE', { version: update.version });
 }
 
 async function start() {
   translatePage(document);
+  setStatus(t('READY TO PLAY'));
   buildStaticUi();
   setupMediaSession();
   setupDragAndDrop();
@@ -1721,10 +1724,10 @@ async function start() {
   state.language = s.language || 'AUTO';
   setEq(s.eq);
   setUserThemes(saved.themes || []);
-  const themeIndex = Math.max(0, THEMES.findIndex((t) => t.name === s.theme));
+  const themeIndex = Math.max(0, THEMES.findIndex((theme) => theme.name === s.theme));
   state.themeIndex = -1;
   switchTheme(themeIndex, { instant: true });
-  setTrackTitle('Pick a track to get started.', null);
+  setTrackTitle(t('Pick a track to get started.'), null);
   renderQueue();
   requestAnimationFrame(frame);
   setInterval(playbackTick, 40);

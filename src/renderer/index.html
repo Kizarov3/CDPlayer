@@ -13,18 +13,18 @@
     <div id="header-block">
       <header id="header">
         <div id="header-west">
-          <button class="pill" id="update-button" title="A newer CDPlayer is out — opens the download page" hidden></button>
-          <button class="pill" id="cd-button" title="Play the audio CD in your drive" hidden>AUDIO CD</button>
-          <button class="pill" id="rip-button" title="Save this CD into your music folder as FLAC" hidden>RIP</button>
+          <button class="pill" id="update-button" title="A newer CDPlayer is out — opens the download page" hidden data-i18n-title></button>
+          <button class="pill" id="cd-button" title="Play the audio CD in your drive" hidden data-i18n-title data-i18n>AUDIO CD</button>
+          <button class="pill" id="rip-button" title="Save this CD into your music folder as FLAC" hidden data-i18n-title data-i18n>RIP</button>
         </div>
         <div id="status-pill"><span id="status">●&nbsp;&nbsp;READY TO PLAY</span></div>
         <div id="header-east">
-          <span id="sleep-indicator" title="Click to cancel the sleep timer"></span>
-          <button class="pill" id="shelf-button" title="Your albums on a shelf (S)">SHELF</button>
-          <button class="pill" id="spotify-button" title="Play albums and playlists from your Spotify (Premium)">SPOTIFY</button>
-          <button class="pill" id="history-button">HISTORY</button>
-          <button class="pill" id="cd-view-button" title="Distraction-free view: just the disc">CD VIEW</button>
-          <button class="pill" id="settings-button">SETTINGS</button>
+          <span id="sleep-indicator" title="Click to cancel the sleep timer" data-i18n-title></span>
+          <button class="pill" id="shelf-button" title="Your albums on a shelf (S)" data-i18n-title data-i18n>SHELF</button>
+          <button class="pill" id="spotify-button" title="Play albums and playlists from your Spotify (Premium)" data-i18n-title data-i18n>SPOTIFY</button>
+          <button class="pill" id="history-button" data-i18n>HISTORY</button>
+          <button class="pill" id="cd-view-button" title="Distraction-free view: just the disc" data-i18n-title data-i18n>CD VIEW</button>
+          <button class="pill" id="settings-button" data-i18n>SETTINGS</button>
         </div>
       </header>
       <canvas id="divider"></canvas>
@@ -34,38 +34,38 @@
       <div id="disc-column"><canvas id="disc"></canvas></div>
       <section id="player">
         <div id="now-row">
-          <span id="now-playing-label">NOW PLAYING</span>
+          <span id="now-playing-label" data-i18n>NOW PLAYING</span>
           <canvas id="visualizer"></canvas>
           <span class="grow"></span>
-          <button class="pill" id="karaoke-button" title="Karaoke: the lyrics fill in word by word as they're sung (Y)" hidden>KARAOKE</button>
-          <button class="pill" id="lyrics-button" hidden>LYRICS</button>
-          <button class="pill" id="tags-button" title="See and fix this song's tags — from MusicBrainz, or by hand" hidden>TAGS</button>
+          <button class="pill" id="karaoke-button" title="Karaoke: the lyrics fill in word by word as they're sung (Y)" hidden data-i18n-title data-i18n>KARAOKE</button>
+          <button class="pill" id="lyrics-button" hidden data-i18n>LYRICS</button>
+          <button class="pill" id="tags-button" title="See and fix this song's tags — from MusicBrainz, or by hand" hidden data-i18n-title data-i18n>TAGS</button>
         </div>
-        <div id="track-title" class="fit">Pick a track to get started.</div>
+        <div id="track-title" class="fit" data-i18n>Pick a track to get started.</div>
         <div id="track-artist" class="fit" hidden></div>
-        <div id="track-source">YOUR MUSIC LIBRARY</div>
+        <div id="track-source" data-i18n>YOUR MUSIC LIBRARY</div>
         <div id="progress-row"></div>
         <div id="times"><span id="elapsed">0:00</span><span id="length">0:00</span></div>
         <div id="controls"><div id="transport"></div></div>
         <div id="volume-row" class="slider-row">
-          <span class="row-label">VOLUME</span>
+          <span class="row-label" data-i18n>VOLUME</span>
           <div id="volume-slider"></div>
           <span class="row-value" id="volume-value">100%</span>
           <span class="grow"></span>
-          <button class="pill small" id="tray-button" title="Open / close the disc tray (E)">⏏</button>
-          <button class="pill" id="load-button">LOAD A TRACK&nbsp;&nbsp;+</button>
+          <button class="pill small" id="tray-button" title="Open / close the disc tray (E)" data-i18n-title>⏏</button>
+          <button class="pill" id="load-button" data-i18n>LOAD A TRACK&nbsp;&nbsp;+</button>
         </div>
         <div id="queue-card">
           <div id="queue-head">
             <div id="queue-text">
-              <div id="queue-info">QUEUE EMPTY</div>
-              <div id="queue-next">DROP SONGS OR A FOLDER TO BUILD A QUEUE</div>
+              <div id="queue-info" data-i18n>QUEUE EMPTY</div>
+              <div id="queue-next" data-i18n>DROP SONGS OR A FOLDER TO BUILD A QUEUE</div>
             </div>
             <div id="queue-actions">
-              <button class="pill small" id="search-button" title="Search your music folder, or paste a Spotify track/playlist link">SEARCH</button>
-              <button class="pill small" id="save-playlist-button" title="Save the current queue as a .m3u playlist file">SAVE</button>
-              <button class="pill small" id="load-playlist-button" title="Add every track from a .m3u playlist file to the queue">LOAD</button>
-              <button class="pill small" id="clear-queue-button">CLEAR</button>
+              <button class="pill small" id="search-button" title="Search your music folder, or paste a Spotify track/playlist link" data-i18n-title data-i18n>SEARCH</button>
+              <button class="pill small" id="save-playlist-button" title="Save the current queue as a .m3u playlist file" data-i18n-title data-i18n>SAVE</button>
+              <button class="pill small" id="load-playlist-button" title="Add every track from a .m3u playlist file to the queue" data-i18n-title data-i18n>LOAD</button>
+              <button class="pill small" id="clear-queue-button" data-i18n>CLEAR</button>
             </div>
           </div>
           <div id="queue-list" class="scroll"></div>
@@ -74,7 +74,7 @@
     </div>
 
     <footer id="south">
-      <div id="hint">SPACE PLAY · J/L PREV/NEXT · S SHELF · E TRAY · B TURN OVER · C CD VIEW · Y KARAOKE · <b>? ALL KEYS</b></div>
+      <div id="hint"><span data-i18n>SPACE PLAY · J/L PREV/NEXT · S SHELF · E TRAY · B TURN OVER · C CD VIEW · Y KARAOKE</span> · <b data-i18n>? ALL KEYS</b></div>
       <div id="cd-info" hidden>
         <div id="cd-title" class="fit"></div>
         <div id="cd-artist" class="fit" hidden></div>
@@ -84,27 +84,27 @@
 
   <div id="vis-mode" hidden>
     <canvas id="big-visualizer"></canvas>
-    <div class="vis-hint">MOVE THE MOUSE, OR PRESS V / ESC, TO EXIT</div>
+    <div class="vis-hint" data-i18n>MOVE THE MOUSE, OR PRESS V / ESC, TO EXIT</div>
   </div>
 
   <div id="karaoke" hidden>
     <div id="karaoke-title"></div>
     <div id="karaoke-stage"><div id="karaoke-lines"></div></div>
-    <div class="vis-hint">CLICK A LINE TO JUMP TO IT · PRESS Y OR ESC TO EXIT</div>
+    <div class="vis-hint" data-i18n>CLICK A LINE TO JUMP TO IT · PRESS Y OR ESC TO EXIT</div>
   </div>
 
   <div id="shelf" hidden>
     <div id="shelf-head">
-      <div id="shelf-title">THE SHELF</div>
+      <div id="shelf-title" data-i18n>THE SHELF</div>
       <div id="shelf-count"></div>
       <span class="grow"></span>
       <input id="shelf-filter" class="text-input" placeholder="Find an album or artist" spellcheck="false">
-      <button class="pill small" id="shelf-here" title="Go to the album that's in the player" hidden>⌖ IN THE PLAYER</button>
-      <button class="pill small" id="shelf-check" title="Look for problems in your music folder: missing tags and covers, duplicates, gaps">CHECK</button>
-      <button class="pill small" id="shelf-pull" title="Take an album off the shelf at random — the dustier, the likelier">PULL ONE</button>
-      <button class="pill small" id="shelf-sort" title="How the shelf is sorted — click for the next way">SORT: ARTIST</button>
-      <button class="pill small" id="shelf-folder" title="Choose the folder your music is in">FOLDER…</button>
-      <button class="pill small" id="shelf-close">CLOSE</button>
+      <button class="pill small" id="shelf-here" title="Go to the album that's in the player" hidden data-i18n-title data-i18n>⌖ IN THE PLAYER</button>
+      <button class="pill small" id="shelf-check" title="Look for problems in your music folder: missing tags and covers, duplicates, gaps" data-i18n-title data-i18n>CHECK</button>
+      <button class="pill small" id="shelf-pull" title="Take an album off the shelf at random — the dustier, the likelier" data-i18n-title data-i18n>PULL ONE</button>
+      <button class="pill small" id="shelf-sort" title="How the shelf is sorted — click for the next way" data-i18n-title data-i18n>SORT: ARTIST</button>
+      <button class="pill small" id="shelf-folder" title="Choose the folder your music is in" data-i18n-title data-i18n>FOLDER…</button>
+      <button class="pill small" id="shelf-close" data-i18n>CLOSE</button>
     </div>
     <div id="shelf-body" class="scroll"></div>
     <nav id="shelf-index" aria-label="Jump to a section"></nav>

@@ -1,6 +1,7 @@
 // Custom-painted controls matching the Java app's look: canvas sliders (accent-gradient track, round thumb with a
 // halo, optional waveform), pill buttons with an animated ON state, and round transport / mode buttons.
 import { colors, rgb, onColorsChanged } from './theme.js';
+import { t } from './i18n.js';
 import { glyphSvg } from './glyphs.js';
 
 export const anim = { enabled: true };
@@ -36,13 +37,13 @@ export function pill(caption, onClick, title) {
 
 /** An ON/OFF pill (Settings toggles): gradient fill when on, crossfaded, with a squish pulse on change. */
 export function toggle(isOn, onClick) {
-  const b = pill(isOn ? 'ON' : 'OFF', onClick);
+  const b = pill(isOn ? t('ON') : t('OFF'), onClick);
   b.classList.toggle('on', isOn);
   return b;
 }
 export function setToggle(button, isOn) {
   if (button.classList.contains('on') === isOn) return;
-  button.textContent = isOn ? 'ON' : 'OFF';
+  button.textContent = isOn ? t('ON') : t('OFF');
   button.classList.toggle('on', isOn);
   pulse(button);
 }

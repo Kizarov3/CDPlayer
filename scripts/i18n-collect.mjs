@@ -4,13 +4,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const unescape = (s) => s.replace(/\\(.)/g, (_, c) => (c === 'n' ? '\n' : c));
+const ENTITIES = { nbsp: '\u00a0', amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" };
+const decode = (s) => s.replace(/&(nbsp|amp|lt|gt|quot|#39);/g, (_, e) => ENTITIES[e]);
 
 export function collectStrings(files) {
   const keys = new Set();
   for (const { path: p, text } of files) {
     if (p.endsWith('.html')) {
-      for (const m of text.matchAll(/<[^>]*\bdata-i18n\b[^>]*>([^<]+)</g)) keys.add(m[1].trim());
-      for (const m of text.matchAll(/<[^>]*\bdata-i18n-title\b[^>]*>/g)) { const tm = /\btitle="([^"]*)"/.exec(m[0]); if (tm) keys.add(tm[1]); }
+      for (const m of text.matchAll(/<[^>]*\bdata-i18n(?![-\w])[^>]*>([^<]+)</g)) keys.add(decode(m[1]).trim());
+      for (const m of text.matchAll(/<[^>]*\bdata-i18n-title\b[^>]*>/g)) { const tm = /\btitle="([^"]*)"/.exec(m[0]); if (tm) keys.add(decode(tm[1])); }
     } else {
       for (const m of text.matchAll(/(?<![\w.$])t\(\s*(['"`])((?:\\.|(?!\1)[^\\])*)\1/g)) {
         if (m[1] === '`' && m[2].includes('${')) continue;
@@ -60,6 +62,6 @@ export function untranslated(files, allow) {
   return out;
 }
 /** Files already converted (each conversion task adds its own). */
-export const CONVERTED = [];
+export const CONVERTED = ['src/renderer/js/app.js', 'src/renderer/js/widgets.js', 'src/renderer/js/keys.js'];
 /** Literal text that is shown as it is in every language. */
 export const ALLOW = [];

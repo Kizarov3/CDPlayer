@@ -8,14 +8,14 @@
 </head>
 <body>
   <div id="panel">
-    <button id="close" class="no-drag" title="Back to the full player (M)">
+    <button id="close" class="no-drag" title="Back to the full player (M)" data-i18n-title>
       <svg viewBox="0 0 10 10"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5"/></svg>
     </button>
 
     <div id="top">
-      <div id="disc-wrap" class="no-drag" title="Click to play or pause"><canvas id="disc"></canvas></div>
+      <div id="disc-wrap" class="no-drag" title="Click to play or pause" data-i18n-title><canvas id="disc"></canvas></div>
       <div id="meta">
-        <div id="title" class="line">Pick a track to get started.</div>
+        <div id="title" class="line" data-i18n>Pick a track to get started.</div>
         <div id="subtitle" class="line"></div>
       </div>
       <canvas id="vis"></canvas>
@@ -25,13 +25,13 @@
     <div id="times"><span id="elapsed">0:00</span><span id="remaining">-0:00</span></div>
 
     <div id="controls">
-      <button id="shuffle" class="mode no-drag" title="Shuffle"></button>
+      <button id="shuffle" class="mode no-drag" title="Shuffle" data-i18n-title></button>
       <div id="center">
-        <button id="prev" class="no-drag" title="Previous track (J)"></button>
-        <button id="play" class="no-drag" title="Play/Pause (Space)"></button>
-        <button id="next" class="no-drag" title="Next track (L)"></button>
+        <button id="prev" class="no-drag" title="Previous track (J)" data-i18n-title></button>
+        <button id="play" class="no-drag" title="Play/Pause (Space)" data-i18n-title></button>
+        <button id="next" class="no-drag" title="Next track (L)" data-i18n-title></button>
       </div>
-      <button id="repeat" class="mode no-drag" title="Repeat"><span id="badge"></span></button>
+      <button id="repeat" class="mode no-drag" title="Repeat" data-i18n-title><span id="badge"></span></button>
     </div>
   </div>
   <script type="module" src="js/mini.js"></script>

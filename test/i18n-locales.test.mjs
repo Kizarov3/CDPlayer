@@ -56,3 +56,11 @@ test('other languages: how far along (never failing)', () => {
     console.log(`${file}: ${done}/${total}`);
   }
 });
+
+test('no file that translates has a variable of its own called t (it would hide the translating one)', () => {
+  const own = /(?:\b(?:const|let|var)\s+t\b|[(,]\s*t\s*[,)=]|\bt\s*=>|for\s*\(\s*(?:const|let)\s+t\b)/;
+  for (const file of sourceFiles('src').filter((f) => /\bt\(['"`]/.test(f.text) && f.path.endsWith('.js'))) {
+    const lines = file.text.split('\n').filter((l) => own.test(l) && !/^\s*(\/\/|\*)/.test(l) && !/export const t =|const t = \(text, vars\)/.test(l));
+    assert.deepStrictEqual(lines, [], file.path);
+  }
+});
