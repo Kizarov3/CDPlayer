@@ -1,19 +1,19 @@
 // Themes: palette definitions, the live (possibly mid-transition) colors every canvas reads each frame, the
 // animated color transition, and AUTO's palette derivation from album art.
 
-const t = (name, bg, card, accent, accent2, text, muted) => ({ name, bg, card, accent, accent2, text, muted });
+const palette = (name, bg, card, accent, accent2, text, muted) => ({ name, bg, card, accent, accent2, text, muted });
 export const THEMES = [
-  t('RED', [17, 17, 19], [31, 31, 34], [196, 20, 28], [180, 186, 194], [232, 233, 236], [138, 142, 148]),
-  t('BLUE', [6, 10, 22], [13, 19, 36], [46, 116, 255], [150, 210, 255], [232, 240, 250], [120, 134, 160]),
-  t('SUNSET', [24, 15, 18], [38, 24, 28], [255, 106, 61], [255, 71, 133], [250, 238, 230], [176, 148, 142]),
-  t('FOREST', [11, 17, 14], [20, 30, 24], [52, 199, 123], [178, 214, 58], [230, 240, 228], [128, 148, 130]),
-  t('GALAXY', [7, 7, 18], [14, 14, 30], [150, 120, 255], [90, 200, 255], [238, 236, 250], [140, 140, 172]),
-  t('OCEAN', [4, 14, 20], [9, 24, 33], [40, 190, 210], [60, 130, 220], [226, 246, 250], [110, 152, 166]),
-  t('MATRIX', [4, 8, 5], [9, 15, 10], [64, 230, 120], [140, 255, 170], [214, 250, 224], [96, 140, 108]),
-  t('AUTUMN', [20, 12, 8], [34, 21, 14], [224, 122, 40], [200, 60, 46], [250, 236, 220], [168, 132, 108]),
-  t('SNOW', [14, 16, 20], [23, 26, 30], [214, 44, 54], [46, 168, 96], [248, 248, 250], [152, 154, 160]),
+  palette('RED', [17, 17, 19], [31, 31, 34], [196, 20, 28], [180, 186, 194], [232, 233, 236], [138, 142, 148]),
+  palette('BLUE', [6, 10, 22], [13, 19, 36], [46, 116, 255], [150, 210, 255], [232, 240, 250], [120, 134, 160]),
+  palette('SUNSET', [24, 15, 18], [38, 24, 28], [255, 106, 61], [255, 71, 133], [250, 238, 230], [176, 148, 142]),
+  palette('FOREST', [11, 17, 14], [20, 30, 24], [52, 199, 123], [178, 214, 58], [230, 240, 228], [128, 148, 130]),
+  palette('GALAXY', [7, 7, 18], [14, 14, 30], [150, 120, 255], [90, 200, 255], [238, 236, 250], [140, 140, 172]),
+  palette('OCEAN', [4, 14, 20], [9, 24, 33], [40, 190, 210], [60, 130, 220], [226, 246, 250], [110, 152, 166]),
+  palette('MATRIX', [4, 8, 5], [9, 15, 10], [64, 230, 120], [140, 255, 170], [214, 250, 224], [96, 140, 108]),
+  palette('AUTUMN', [20, 12, 8], [34, 21, 14], [224, 122, 40], [200, 60, 46], [250, 236, 220], [168, 132, 108]),
+  palette('SNOW', [14, 16, 20], [23, 26, 30], [214, 44, 54], [46, 168, 96], [248, 248, 250], [152, 154, 160]),
   // AUTO's colors are placeholders, always replaced by deriveAutoTheme() before being shown.
-  t('AUTO', [10, 10, 12], [18, 18, 21], [150, 150, 160], [190, 190, 200], [232, 232, 236], [140, 140, 148]),
+  palette('AUTO', [10, 10, 12], [18, 18, 21], [150, 150, 160], [190, 190, 200], [232, 232, 236], [140, 140, 148]),
 ];
 const KEYS = ['bg', 'card', 'accent', 'accent2', 'text', 'muted'];
 export const BUILTIN_COUNT = THEMES.length;
@@ -158,7 +158,7 @@ export function deriveAutoTheme(image) {
     } else { monochrome = true; sat = 0.05; }
   }
   const accent2Hue = hue2 != null ? hue2 : (hue + 0.06) % 1;
-  return t('AUTO',
+  return palette('AUTO',
     hsbToRgb(hue, Math.min(0.55, sat * 0.6), 0.06),
     hsbToRgb(hue, Math.min(0.5, sat * 0.55), 0.12),
     hsbToRgb(hue, sat, 0.72),

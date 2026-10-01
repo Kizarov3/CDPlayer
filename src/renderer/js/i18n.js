@@ -1,4 +1,4 @@
-// The interface in the user's language: t('THEME') → 'ТЕМА'. The dictionary comes from the main process as this module
+// The interface in the user's language: THEME → ТЕМА. The dictionary comes from the main process as this module
 // loads (before anything is built), so module-level text can be translated too; under node (tests) it's English.
 import { format } from './i18n-format.js';
 

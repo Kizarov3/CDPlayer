@@ -1,4 +1,8 @@
 {
   "_language": "Русский",
-  "_locale": "ru"
+  "_locale": "ru",
+  "LANGUAGE": "ЯЗЫК",
+  "RESTART": "ПЕРЕЗАПУСТИТЬ",
+  "Takes effect after a restart.": "Заработает после перезапуска.",
+  "The language of the interface": "Язык интерфейса"
 }

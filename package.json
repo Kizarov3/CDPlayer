@@ -10,6 +10,7 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test test/*.test.js test/*.test.mjs",
+    "i18n": "node scripts/i18n.mjs",
     "dist": "electron-builder",
     "dist:mac": "electron-builder --mac",
     "dist:win": "electron-builder --win",
