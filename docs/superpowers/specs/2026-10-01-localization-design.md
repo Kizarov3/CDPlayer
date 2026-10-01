@@ -77,11 +77,8 @@ can be added by the community as one file, with a tool that shows what's left to
 
 ## Handwriting
 
-Marker Felt and Bradley Hand have no Cyrillic on macOS. Bundle **Caveat** (SIL OFL 1.1, Cyrillic and Latin) as
-`src/renderer/fonts/Caveat.woff2` with its licence, declared with `@font-face` (`font-src` falls under `default-src
-'self'`), and put `"Caveat"` right after `"Marker Felt"` in the marker font lists (CSS and `MARKER_FONT` in disc.js and
-share-card.js). Latin keeps its look; Cyrillic falls through to Caveat. Canvas text waits for `document.fonts.load` of
-Caveat before the first draw that needs it.
+No change needed: checked on macOS, Marker Felt and Bradley Hand draw Cyrillic; Windows' Segoe Print has it too. (A
+bundled Cyrillic hand-written font was planned and dropped once this was seen.)
 
 ## Tooling
 
