@@ -1063,17 +1063,17 @@ function refreshAutoTheme() {
   THEMES[i] = deriveAutoTheme(state.cover);
   return THEMES[i];
 }
-function applyThemeModes(name) {
-  particles.setMode(particleModeFor(name));
-  visualizer.setMode(visualizerModeFor(name));
-  bigVisualizer.setMode(visualizerModeFor(name));
-  panels.updateThemeButton(app, name);
+function applyThemeModes(theme) {
+  particles.setMode(particleModeFor(theme));
+  visualizer.setMode(visualizerModeFor(theme));
+  bigVisualizer.setMode(visualizerModeFor(theme));
+  panels.updateThemeButton(app, theme.name);
 }
 function switchTheme(index, { instant = false } = {}) {
   if (index === state.themeIndex && !instant) return;
   state.themeIndex = index;
   let theme = THEMES[index];
-  applyThemeModes(theme.name);
+  applyThemeModes(theme);
   if (theme.name === 'AUTO') theme = refreshAutoTheme();
   setColors(theme, anim.enabled && !instant);
   saveSettingsSoon();
@@ -1236,7 +1236,7 @@ function pushMini(full = false) {
     const cover = state.cover ? state.cover.src : null;
     if (cover !== lastMiniCover) { lastMiniCover = cover; miniCoverKey++; }
     Object.assign(msg, {
-      colors, animations: anim.enabled, visMode: visualizerModeFor(THEMES[state.themeIndex].name),
+      colors, animations: anim.enabled, visMode: visualizerModeFor(THEMES[state.themeIndex]),
       shuffle: state.shuffle, repeat: state.repeat,
       track: {
         title: state.titleText || 'Pick a track to get started.', artist: state.artistText || null, album: d && d.album ? d.album : null,

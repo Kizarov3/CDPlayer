@@ -16,6 +16,7 @@ export const THEMES = [
   t('AUTO', [10, 10, 12], [18, 18, 21], [150, 150, 160], [190, 190, 200], [232, 232, 236], [140, 140, 148]),
 ];
 const KEYS = ['bg', 'card', 'accent', 'accent2', 'text', 'muted'];
+export const BUILTIN_COUNT = THEMES.length;
 
 /** The colors on screen right now — canvases read these every frame, so they follow a transition smoothly. */
 export const colors = { bg: [...THEMES[0].bg], card: [...THEMES[0].card], accent: [...THEMES[0].accent], accent2: [...THEMES[0].accent2], text: [...THEMES[0].text], muted: [...THEMES[0].muted] };
@@ -166,7 +167,60 @@ export function deriveAutoTheme(image) {
     hsbToRgb(hue, 0.1, 0.58));
 }
 
-export const visualizerModeFor = (name) => ({ SNOW: 'TREE', GALAXY: 'CONSTELLATION', OCEAN: 'WAVES', MATRIX: 'MATRIX_RAIN', AUTUMN: 'LEAVES' }[name] || 'BARS');
-export const particleModeFor = (name) => (['SNOW', 'GALAXY', 'OCEAN', 'MATRIX', 'AUTUMN'].includes(name) ? name : 'NONE');
+// ---- Scenes: the visualizer's shape and what falls behind the player ----------------------------------------------
+
+export const SCENES = ['BARS', 'SNOW', 'GALAXY', 'OCEAN', 'MATRIX', 'AUTUMN'];
+const VISUALIZERS = { BARS: 'BARS', SNOW: 'TREE', GALAXY: 'CONSTELLATION', OCEAN: 'WAVES', MATRIX: 'MATRIX_RAIN', AUTUMN: 'LEAVES' };
+export const sceneModes = (scene) => ({ visualizer: VISUALIZERS[scene] || 'BARS', particles: scene in VISUALIZERS && scene !== 'BARS' ? scene : 'NONE' });
+/** A theme's scene: the one picked for a theme of your own, the built-in theme's by its name. */
+export const sceneOf = (theme) => theme.scene || (SCENES.includes(theme.name) ? theme.name : 'BARS');
+export const visualizerModeFor = (theme) => sceneModes(sceneOf(theme)).visualizer;
+export const particleModeFor = (theme) => sceneModes(sceneOf(theme)).particles;
+
+// ---- Themes people make (theme-editor.js; kept by the main process's user-themes.js) ------------------------------
+
+const luminance = (c) => {
+  const [r, g, b] = c.map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+/** How far apart two colors are to read, as WCAG measures it: 1 (the same) to 21 (black on white). */
+export function contrast(a, b) {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+export const hex = (c) => `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+export const fromHex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+
+/** A theme file (.cdtheme) → a theme for the list, and back. */
+export function fromFile(f) {
+  return { name: f.name, ...Object.fromEntries(KEYS.map((k) => [k, [...f.colors[k]]])), scene: f.scene, image: f.image || null, blur: f.blur, dim: f.dim, user: true };
+}
+export function toFile(t) {
+  return { cdtheme: 1, name: t.name, colors: Object.fromEntries(KEYS.map((k) => [k, [...t[k]]])), scene: sceneOf(t), image: t.image || null, blur: t.blur ?? 0, dim: t.dim ?? 30 };
+}
+/** The list is the built-in themes, then these (files, as the main process keeps them). */
+export function setUserThemes(files) { THEMES.splice(BUILTIN_COUNT, Infinity, ...files.map(fromFile)); }
+
+/** A copy of `base` to change in the editor, named `name`. */
+export function draftFrom(base, name) {
+  return { ...fromFile(toFile(base)), name };
+}
+/** START FROM: another theme's colors (and its scene, unless `keepScene`) into the draft; its image and name stay. */
+export function startFrom(draft, source, { keepScene = false } = {}) {
+  for (const k of KEYS) draft[k] = [...source[k]];
+  if (!keepScene) draft.scene = sceneOf(source);
+}
+
+/** A theme's background image over w×h of a canvas: filling it, blurred and dimmed as the theme says. */
+export function drawThemeImage(g, w, h, img, { blur = 0, dim = 30 } = {}) {
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+  const s = Math.max(w / iw, h / ih) * (blur ? 1.08 : 1), dw = iw * s, dh = ih * s;
+  g.save();
+  if (blur) g.filter = `blur(${Math.round((blur * w) / 1280)}px)`;
+  g.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  g.restore();
+  g.fillStyle = `rgba(0,0,0,${dim / 100})`;
+  g.fillRect(0, 0, w, h);
+}
 
 export const FONT = '"Lucida Grande", "Segoe UI", "DejaVu Sans", "Helvetica Neue", Arial, sans-serif';
