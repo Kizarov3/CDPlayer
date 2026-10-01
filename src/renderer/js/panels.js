@@ -226,6 +226,7 @@ function buildSettings(app) {
     row('THEME', themeButton),
     row('WAVEFORM', waveform),
     row('AMBIENT BACKGROUND', ambient),
+    app.shownTheme().image ? hint('The theme’s own image is the background while it’s on.') : null,
     row('DISC WEAR', discWear),
     hint('A disc played a lot looks it: scratches from ten plays of its album, fingerprints from fifty, chips from a hundred.'),
     row('ANIMATIONS', animations), gap(18),

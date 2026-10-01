@@ -1,6 +1,6 @@
 // CDPlayer — main controller: playback, queue, themes, view modes (CD View, Visualizer Mode, Mini Mode,
 // fullscreen), keyboard shortcuts, persistence, and the per-frame render loop.
-import { THEMES, colors, setColors, deriveAutoTheme, visualizerModeFor, particleModeFor, rgb, onColorsChanged } from './theme.js';
+import { THEMES, colors, setColors, deriveAutoTheme, visualizerModeFor, particleModeFor, rgb, onColorsChanged, setUserThemes, toFile } from './theme.js';
 import { AudioEngine } from './audio.js';
 import { Disc } from './disc.js';
 import { Visualizer } from './visualizer.js';
@@ -585,19 +585,6 @@ function refreshDockSoon() {
     if (dockKey === key) cdp.dockDisc(png);
   }, 400);
 }
-function onCoverChanged() {
-  const backdrop = $('backdrop'), art = $('backdrop-art');
-  if (state.ambient && state.cover) {
-    // A 48×48 center crop, stretched to fill the window — the browser's bilinear upscale makes it a soft glow.
-    art.width = art.height = 48;
-    const g = art.getContext('2d');
-    const iw = state.cover.naturalWidth, ih = state.cover.naturalHeight, s = Math.min(iw, ih);
-    g.drawImage(state.cover, (iw - s) / 2, (ih - s) / 2, s, s, 0, 0, 48, 48);
-    art.style.objectFit = 'cover';
-    backdrop.classList.add('has-art');
-  } else backdrop.classList.remove('has-art');
-  if (THEMES[state.themeIndex].name === 'AUTO') setColors(refreshAutoTheme(), anim.enabled);
-}
 
 function setPlaying(playing) {
   disc.spinning = playing;
@@ -1069,14 +1056,97 @@ function applyThemeModes(theme) {
   bigVisualizer.setMode(visualizerModeFor(theme));
   panels.updateThemeButton(app, theme.name);
 }
+let shownTheme = THEMES[0]; // the theme on screen: the one chosen, or the one being made in the editor
+function paintCoverGlow() {
+  const backdrop = $('backdrop'), art = $('backdrop-art');
+  if (!shownTheme.image && state.ambient && state.cover) {
+    // A 48×48 center crop, stretched to fill the window — the browser's bilinear upscale makes it a soft glow.
+    art.width = art.height = 48;
+    const g = art.getContext('2d');
+    const iw = state.cover.naturalWidth, ih = state.cover.naturalHeight, s = Math.min(iw, ih);
+    g.drawImage(state.cover, (iw - s) / 2, (ih - s) / 2, s, s, 0, 0, 48, 48);
+    art.style.objectFit = 'cover';
+    backdrop.classList.add('has-art');
+  } else backdrop.classList.remove('has-art');
+}
+// A theme's own image is the background while it's on, in place of the cover's glow.
+function applyBackdrop(theme) {
+  const backdrop = $('backdrop'), img = $('backdrop-theme');
+  if (theme.image) {
+    if (img.getAttribute('src') !== theme.image) img.src = theme.image;
+    const blur = theme.blur || 0;
+    img.style.filter = `blur(${blur}px) brightness(${1 - (theme.dim ?? 30) / 100})`;
+    img.style.transform = blur ? 'scale(1.06)' : ''; // so the blur's soft edge stays off screen
+    backdrop.classList.add('has-theme-image');
+  } else backdrop.classList.remove('has-theme-image');
+}
+function onCoverChanged() {
+  paintCoverGlow();
+  if (shownTheme.name === 'AUTO') { shownTheme = refreshAutoTheme(); setColors(shownTheme, anim.enabled); }
+}
+function showTheme(theme, animate) {
+  const hadImage = !!shownTheme.image;
+  shownTheme = theme;
+  applyThemeModes(theme);
+  applyBackdrop(theme);
+  paintCoverGlow();
+  setColors(theme, animate);
+  if (hadImage !== !!theme.image) panels.refreshSettingsIfOpen(app); // AMBIENT BACKGROUND's note
+}
 function switchTheme(index, { instant = false } = {}) {
   if (index === state.themeIndex && !instant) return;
   state.themeIndex = index;
   let theme = THEMES[index];
-  applyThemeModes(theme);
   if (theme.name === 'AUTO') theme = refreshAutoTheme();
-  setColors(theme, anim.enabled && !instant);
+  showTheme(theme, anim.enabled && !instant);
   saveSettingsSoon();
+}
+// The editor's live preview, and putting the chosen theme back when it's cancelled.
+const previewTheme = (theme) => showTheme(theme, false);
+function restoreTheme() { const i = state.themeIndex; state.themeIndex = -1; switchTheme(i, { instant: true }); }
+
+// ---- Themes people make (theme-editor.js; the files are the main process's user-themes.js) ------------------------
+
+// Reads the kept themes into the list again, and puts on `select` (or the theme that was on; RED if it's gone).
+async function reloadUserThemes(select = null) {
+  const name = select || THEMES[state.themeIndex].name;
+  setUserThemes(await cdp.themes.list());
+  state.themeIndex = -1;
+  switchTheme(Math.max(0, THEMES.findIndex((t) => t.name === name)));
+}
+async function saveTheme(theme, oldName = null) {
+  const saved = await cdp.themes.save(toFile(theme), oldName);
+  if (!saved) { setStatus("COULDN'T SAVE THE THEME"); return null; }
+  await reloadUserThemes(saved.name);
+  setStatus('THEME SAVED');
+  return saved;
+}
+async function importTheme(path = null) {
+  const r = await cdp.themes.importFile(path);
+  if (r.canceled) return;
+  if (r.error) { setStatus(r.error); return; }
+  await reloadUserThemes(r.theme.name);
+  setStatus('THEME ADDED');
+}
+async function pasteThemeCode() {
+  const theme = await cdp.themes.decode(await cdp.clipboardText());
+  if (!theme) { setStatus("THAT CODE ISN'T A THEME"); return; }
+  const saved = await cdp.themes.save(theme, null);
+  if (!saved) { setStatus("COULDN'T SAVE THE THEME"); return; }
+  await reloadUserThemes(saved.name);
+  setStatus('THEME ADDED');
+}
+async function exportTheme(name) { if (await cdp.themes.exportFile(name)) setStatus('THEME EXPORTED'); }
+async function copyThemeCode(theme) {
+  const code = await cdp.themes.encode(toFile(theme));
+  if (!code) return;
+  await cdp.copyText(code);
+  setStatus('CODE COPIED · PASTE IT IN A CHAT');
+}
+async function deleteTheme(name) {
+  await cdp.themes.remove(name);
+  await reloadUserThemes(THEMES[state.themeIndex].name === name ? 'RED' : null);
+  setStatus('THEME DELETED');
 }
 
 // ---- Settings setters ------------------------------------------------------------------------------------------
@@ -1236,7 +1306,7 @@ function pushMini(full = false) {
     const cover = state.cover ? state.cover.src : null;
     if (cover !== lastMiniCover) { lastMiniCover = cover; miniCoverKey++; }
     Object.assign(msg, {
-      colors, animations: anim.enabled, visMode: visualizerModeFor(THEMES[state.themeIndex]),
+      colors, animations: anim.enabled, visMode: visualizerModeFor(shownTheme),
       shuffle: state.shuffle, repeat: state.repeat,
       track: {
         title: state.titleText || 'Pick a track to get started.', artist: state.artistText || null, album: d && d.album ? d.album : null,
@@ -1477,7 +1547,10 @@ function setupDragAndDrop() {
     e.preventDefault(); depth = 0; document.body.classList.remove('drop-target');
     if (anyOverlayOpen()) return; // an open panel blocks drops, the same way it blocks clicks
     const paths = [...e.dataTransfer.files].map((f) => cdp.pathForFile(f)).filter(Boolean);
-    if (paths.length) addToQueue(paths).catch(() => setStatus("COULDN'T LOAD THAT FILE"));
+    const isTheme = (p) => /\.cdtheme$/i.test(p);
+    for (const p of paths.filter(isTheme)) importTheme(p);
+    const songs = paths.filter((p) => !isTheme(p));
+    if (songs.length) addToQueue(songs).catch(() => setStatus("COULDN'T LOAD THAT FILE"));
   });
 }
 
@@ -1576,7 +1649,8 @@ export const app = {
   detailsFor: (p) => detailsCache.get(p),
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) { state.index = i; load(state.queue[i]); } },
   coverSource: () => { const s = $('track-source').textContent; return /COVER ART|ALBUM ART/.test(s) ? s.split(' · ')[0].replace(/ COVER ART$/, '').replace('EMBEDDED ALBUM ART', 'In the file') : null; },
-  switchTheme, setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setOutput, listOutputs, currentOutputName,
+  switchTheme, previewTheme, restoreTheme, shownTheme: () => shownTheme, saveTheme, importTheme, pasteThemeCode, exportTheme, copyThemeCode, deleteTheme,
+  setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setOutput, listOutputs, currentOutputName,
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
   saveEq: () => cdp.saveEqPresets(state.customPresets),
@@ -1638,6 +1712,7 @@ async function start() {
   state.lyricsOffset = s.lyricsOffset || 0;
   state.shelfSort = s.shelfSort || 'ARTIST';
   setEq(s.eq);
+  setUserThemes(saved.themes || []);
   const themeIndex = Math.max(0, THEMES.findIndex((t) => t.name === s.theme));
   state.themeIndex = -1;
   switchTheme(themeIndex, { instant: true });
