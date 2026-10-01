@@ -731,7 +731,7 @@ function promptSpotifySignIn(app, pendingUrl) {
     connect.disabled = true;
     setSearchStatus(t('OPENING SPOTIFY LOGIN IN YOUR BROWSER…'));
     const message = await app.cdp.spotifySignIn();
-    setSearchStatus(message);
+    setSearchStatus(message === 'SPOTIFY CONNECTED' ? t('SPOTIFY CONNECTED') : message);
     if (message === 'SPOTIFY CONNECTED') { search.lastSpotifyUrl = null; importSpotifyLink(app, pendingUrl, true); }
     else connect.disabled = false;
   });

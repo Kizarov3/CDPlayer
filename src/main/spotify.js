@@ -178,18 +178,18 @@ async function verifyAccount() {
 /** What went wrong (a code) → { step: the wizard step that fixes it, text: what to do }. */
 function diagnose(code) {
   return ({
-    BAD_KEYS: { step: 2, text: 'Spotify doesn’t know this Client ID and Secret. Copy them again from your app’s Settings on the dashboard — the Secret is under View client secret.' },
-    NO_ANSWER: { step: 1, text: 'The browser never came back. If Spotify’s page said “Invalid redirect URI”, the app’s Redirect URI isn’t exactly http://127.0.0.1:8080/callback — fix it in your app’s Settings, then connect again.' },
-    NOT_REGISTERED: { step: 3, text: 'Spotify says this account isn’t one your app lets in. In your app’s User Management, add the email of the Spotify account you signed in with.' },
-    NO_PREMIUM: { step: 4, text: 'This Spotify account isn’t Premium, and Spotify only lets Premium accounts play in other apps. Your own music plays as always.' },
-  })[code] || { step: 4, text: 'Spotify didn’t let CDPlayer in. Try connecting again.' };
+    BAD_KEYS: { step: 2, text: t('Spotify doesn’t know this Client ID and Secret. Copy them again from your app’s Settings on the dashboard — the Secret is under View client secret.') },
+    NO_ANSWER: { step: 1, text: t('The browser never came back. If Spotify’s page said “Invalid redirect URI”, the app’s Redirect URI isn’t exactly http://127.0.0.1:8080/callback — fix it in your app’s Settings, then connect again.') },
+    NOT_REGISTERED: { step: 3, text: t('Spotify says this account isn’t one your app lets in. In your app’s User Management, add the email of the Spotify account you signed in with.') },
+    NO_PREMIUM: { step: 4, text: t('This Spotify account isn’t Premium, and Spotify only lets Premium accounts play in other apps. Your own music plays as always.') },
+  })[code] || { step: 4, text: t('Spotify didn’t let CDPlayer in. Try connecting again.') };
 }
 
 function spotifySignIn() {
   if (signInInProgress) return signInInProgress;
   signInInProgress = (async () => {
     const { clientId } = credentials();
-    if (!clientId) return 'SPOTIFY APP CREDENTIALS NOT CONFIGURED';
+    if (!clientId) return t('SPOTIFY APP CREDENTIALS NOT CONFIGURED');
     const state = crypto.randomBytes(8).toString('hex');
     const page = (h, p) => `<html><body style="font-family:sans-serif"><h2>${h}</h2><p>${p}</p></body></html>`;
     try {
@@ -218,10 +218,10 @@ function spotifySignIn() {
       const granted = String(json.scope || SCOPES.join(' ')).split(/\s+/).filter(Boolean);
       writeCredentials({ ...credentials(), refreshToken: json.refresh_token, scopes: granted });
       tokens.invalid = false;
-      return 'SPOTIFY CONNECTED';
+      return 'SPOTIFY CONNECTED'; // a code the window checks for, and shows translated
     } catch (e) {
       const why = e && !e.status ? networkErrorCode(e) : null;
-      return why ? `COULDN'T REACH SPOTIFY · ${why}` : `SPOTIFY SIGN-IN FAILED${e && e.message ? ` — ${e.message.toUpperCase()}` : ''}`;
+      return why ? t("COULDN'T REACH SPOTIFY · {why}", { why }) : e && e.message ? t('SPOTIFY SIGN-IN FAILED — {why}', { why: e.message.toUpperCase() }) : t('SPOTIFY SIGN-IN FAILED');
     }
   })().finally(() => { signInInProgress = null; });
   return signInInProgress;

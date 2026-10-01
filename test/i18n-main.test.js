@@ -40,3 +40,12 @@ test('loaded: its dictionary; English and broken files: none', () => {
   assert.strictEqual(i18n.t('THEME'), 'THEME');
   assert.deepStrictEqual(i18n.loadLocale('broken', ['xx'], dir), { code: 'en', dict: {} });
 });
+
+test('the Spotify wizard\'s advice comes in the interface\'s language', () => {
+  const spotify = require('../src/main/spotify');
+  i18n.loadLocale('ru', []);
+  try {
+    for (const code of ['BAD_KEYS', 'NO_ANSWER', 'NOT_REGISTERED', 'NO_PREMIUM', 'ANYTHING']) assert.match(spotify.diagnose(code).text, /[а-я]/, code);
+  } finally { i18n.loadLocale('en', []); }
+  assert.match(spotify.diagnose('BAD_KEYS').text, /^Spotify doesn’t know/);
+});
