@@ -3,6 +3,7 @@
 // with a centered card that grows and fades in, and shrinks and fades out.
 import { THEMES, draftFrom } from './theme.js';
 import { buildThemeEditor } from './theme-editor.js';
+import { t } from './i18n.js';
 import { EQ_FREQUENCIES } from './audio.js';
 import { el, pill, toggle, setToggle, Slider, anim } from './widgets.js';
 import { GUIDE, FAQ, SHORTCUTS } from './help.js';
@@ -202,6 +203,21 @@ function buildSettings(app) {
 
   const mono = toggle(s.mono, () => { app.setMono(!s.mono); setToggle(mono, s.mono); });
   const waveform = toggle(s.waveform, () => { app.setWaveform(!s.waveform); setToggle(waveform, s.waveform); });
+  const languageButton = pill('…', async () => {
+    const { locales, auto } = await app.cdp.listLanguages(), nameOf = (c) => (c === 'en' ? 'ENGLISH' : (locales.find((l) => l.code === c) || {}).name || c);
+    showMenu(languageButton, [
+      { label: `AUTO · ${nameOf(auto).toUpperCase()}`, current: s.language === 'AUTO', pick: () => pickLanguage('AUTO') },
+      { label: 'ENGLISH', current: s.language === 'en', pick: () => pickLanguage('en') },
+      ...locales.map((l) => ({ label: l.name.toUpperCase(), current: s.language === l.code, pick: () => pickLanguage(l.code) })),
+    ]);
+  }, t('The language of the interface'));
+  const languageNote = el('div', { class: 'row-pills' });
+  const pickLanguage = (code) => { app.setLanguage(code); languageNote.replaceChildren(hint(t('Takes effect after a restart.')), pill(t('RESTART'), () => app.relaunch())); refreshLanguageName(); };
+  const refreshLanguageName = () => app.cdp.listLanguages().then(({ locales, auto }) => {
+    const code = s.language === 'AUTO' ? auto : s.language, l = locales.find((x) => x.code === code);
+    languageButton.textContent = s.language === 'AUTO' ? `AUTO · ${(code === 'en' ? 'ENGLISH' : l ? l.name : code).toUpperCase()}` : (code === 'en' ? 'ENGLISH' : l ? l.name.toUpperCase() : code);
+  });
+  refreshLanguageName();
   const ambient = toggle(s.ambient, () => { app.setAmbient(!s.ambient); setToggle(ambient, s.ambient); });
   const animations = toggle(anim.enabled, () => { app.setAnimations(!anim.enabled); setToggle(animations, anim.enabled); });
   const mini = toggle(s.miniMode, () => app.setMiniMode(!s.miniMode));
@@ -225,6 +241,7 @@ function buildSettings(app) {
     hint('A real player’s sounds: a faint hiss, the tray motor, the disc spinning up — and a skip when you shake the window.'), gap(18),
     section('LOOK'),
     row('THEME', themeButton),
+    row(t('LANGUAGE'), languageButton), languageNote,
     row('WAVEFORM', waveform),
     row('AMBIENT BACKGROUND', ambient),
     app.shownTheme().image ? hint('The theme’s own image is the background while it’s on.') : null,

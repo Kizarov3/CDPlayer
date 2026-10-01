@@ -51,8 +51,9 @@ can be added by the community as one file, with a tool that shows what's left to
 - Renderer: `preload.js` exposes `i18nDict()` (`ipcRenderer.sendSync('i18n:dict')`), so `i18n.js` has the dictionary
   at import time — module-level constants (GUIDE, FAQ, SHORTCUTS, hints) can call `t()`. Under node (tests) there's no
   `window.cdp`: English.
-- `index.html`: elements with `data-i18n` get their text translated, with `data-i18n-title` their `title`, by
-  `translatePage(document)` before the app builds anything.
+- `index.html` and `mini.html`: `data-i18n` marks an element whose own (English) text is translated, `data-i18n-title`
+  one whose `title` is — the English stays in the page once, as the key — by `translatePage(document)` before the app
+  builds anything.
 - `<html lang>` is set to the active code.
 
 ## Setting

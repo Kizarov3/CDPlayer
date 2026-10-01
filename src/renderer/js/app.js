@@ -15,6 +15,7 @@ import { dockIcon } from './dock-disc.js';
 import { drawCard, lyricChoices, cardSubtitle, quoteLines, MAX_QUOTE_LINES } from './share-card.js';
 import { recordVideo } from './share-video.js';
 import * as panels from './panels.js';
+import { translatePage } from './i18n.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
 import { wearFor } from './disc-wear.js';
 import { pickOutput, outputName } from './output.js';
@@ -57,6 +58,7 @@ const state = {
   ripping: false,   // RIP is saving the disc into the music folder
   rip: null,        // the rip for its panel: { album, artist, year, folder, tracks, stages, sizes, done, percent, finished, ok, message }
   themeIndex: 0, eq: new Array(10).fill(0), customPresets: [], history: [],
+  language: 'AUTO', // Settings → LANGUAGE (applies after a restart)
   loadedPath: null, details: null, detailsPath: null, lyrics: null, cover: null, loadToken: 0, crossfadeStarted: false,
   cdView: false, visualizerMode: false, fullscreen: false,
   sleepRemaining: 0, sleepMinutes: 0,
@@ -1384,7 +1386,7 @@ function appendAndPlay(p) {
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort };
+  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -1655,6 +1657,8 @@ export const app = {
   setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setOutput, listOutputs, currentOutputName,
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
+  setLanguage: (code) => { state.language = code; cdp.saveSettings(settingsSnapshot()); },
+  relaunch: async () => { await cdp.saveSettings(settingsSnapshot()); cdp.relaunch(); },
   saveEq: () => cdp.saveEqPresets(state.customPresets),
   lyricsLines: () => (state.lyrics ? parseLrc(state.lyrics) : []),
   openKaraoke: () => toggleKaraoke(),
@@ -1676,6 +1680,7 @@ async function checkForUpdate() {
 }
 
 async function start() {
+  translatePage(document);
   buildStaticUi();
   setupMediaSession();
   setupDragAndDrop();
@@ -1713,6 +1718,7 @@ async function start() {
   state.saveFound = !!s.saveFound;
   state.lyricsOffset = s.lyricsOffset || 0;
   state.shelfSort = s.shelfSort || 'ARTIST';
+  state.language = s.language || 'AUTO';
   setEq(s.eq);
   setUserThemes(saved.themes || []);
   const themeIndex = Math.max(0, THEMES.findIndex((t) => t.name === s.theme));

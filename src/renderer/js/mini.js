@@ -5,8 +5,10 @@ import { Disc } from './disc.js';
 import { Visualizer } from './visualizer.js';
 import { glyphSvg } from './glyphs.js';
 import { shortcutKey } from './keys.js';
+import { translatePage } from './i18n.js';
 
 const cdp = window.cdp;
+translatePage(document);
 const $ = (id) => document.getElementById(id);
 const send = (action, value) => cdp.sendMiniCommand({ action, value });
 const formatTime = (sec) => { const s = Math.max(0, Math.floor(sec || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
