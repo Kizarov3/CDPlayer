@@ -2,8 +2,9 @@
 // by artist (a card for each letter), newest in the music folder first (a card for each month), most played (a card
 // before the albums not played yet), by year (a card for each decade), or by colour, round the rainbow (a card for each).
 import { t } from './i18n.js';
+import { priceBand } from './shelf-discogs.js';
 
-export const SORTS = ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR'];
+export const SORTS = ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR', 'PRICE'];
 
 /** Whether an album shows for what's typed in the shelf's filter: every word somewhere in its artist, title, year or note. */
 export function matchesFilter(album, query) {
@@ -88,6 +89,10 @@ export function arrange(albums, sort) {
   } else if (sort === 'YEAR') {
     list.sort((a, b) => (!a.year - !b.year) || (Number(a.year) || 0) - (Number(b.year) || 0));
     section = (a) => decadeOf(a.year);
+  } else if (sort === 'PRICE') {
+    const price = (a) => (a.pressing && a.pressing.price && typeof a.pressing.price.lowest === 'number' ? a.pressing.price.lowest : null);
+    list.sort((a, b) => (price(b) ?? -1) - (price(a) ?? -1));
+    section = (a) => priceBand(price(a), a.pressing && a.pressing.price ? a.pressing.price.currency : 'USD');
   } else {
     section = (a) => letterOf(a.artist);
   }

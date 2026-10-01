@@ -75,7 +75,7 @@ export function untranslated(files, allow) {
 export const CONVERTED = ['src/renderer/js/app.js', 'src/renderer/js/widgets.js', 'src/renderer/js/keys.js', 'src/renderer/js/panels.js', 'src/renderer/js/help.js', 'src/renderer/js/theme-editor.js',
   'src/renderer/js/shelf.js', 'src/renderer/js/shelf-missing.js', 'src/renderer/js/shelf-notes.js', 'src/renderer/js/shelf-order.js', 'src/renderer/js/shelf-receipt.js',
   'src/renderer/js/booklet.js', 'src/renderer/js/booklet-content.js', 'src/renderer/js/disc.js', 'src/renderer/js/karaoke.js', 'src/renderer/js/mini.js',
-  'src/renderer/js/share-card.js', 'src/renderer/js/share-video.js', 'src/renderer/js/output.js'];
+  'src/renderer/js/share-card.js', 'src/renderer/js/share-video.js', 'src/renderer/js/output.js', 'src/renderer/js/shelf-discogs.js'];
 /** Literal text that is shown as it is in every language. */
 export const ALLOW = [
   'ENGLISH', // a language's name, shown in its own language

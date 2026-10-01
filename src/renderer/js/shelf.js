@@ -30,7 +30,7 @@ const redraw = renderGate({ render: () => { if (shelf.open) render(); }, busy: (
 // The album whose disc is in the player (a track of it loaded, playing or paused) stands a little proud of the others,
 // lit in the theme's colour.
 const IN_PLAYER = t('IN THE PLAYER');
-const SORT_LABELS = { ARTIST: t('ARTIST'), NEW: t('NEW|sort'), PLAYED: t('MOST PLAYED'), YEAR: t('YEAR'), COLOR: t('COLOR') };
+const SORT_LABELS = { ARTIST: t('ARTIST'), NEW: t('NEW|sort'), PLAYED: t('MOST PLAYED'), YEAR: t('YEAR'), COLOR: t('COLOR'), PRICE: t('PRICE') };
 const holds = (a, path) => !!path && a.tracks.some((t) => t.path === path);
 const spineTitle = (a) => [a.artist, a.title, a.year, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ') + (a.note ? `\n\n${a.note}` : '');
 /** The track now in the player (null: none), so its album's spine can show it. */

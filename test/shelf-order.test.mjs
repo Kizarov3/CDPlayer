@@ -6,8 +6,8 @@ const DAY = 86400000;
 const album = (artist, title, extra = {}) => ({ id: `${artist}/${title}`, artist, title, year: null, added: null, plays: 0, ...extra });
 const show = (items) => items.map((x) => (x.divider ? `[${x.divider}]` : x.title));
 
-test('four ways to sort, in the order the button goes round', () => {
-  assert.deepStrictEqual(SORTS, ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR']);
+test('the ways to sort, in the order the button goes round', () => {
+  assert.deepStrictEqual(SORTS, ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR', 'PRICE']);
 });
 
 test('by artist: the order the shelf already has, a letter card where the letter changes, "The" ignored, digits under #', () => {
