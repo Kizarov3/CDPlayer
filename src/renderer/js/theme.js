@@ -191,6 +191,9 @@ export function contrast(a, b) {
 export const hex = (c) => `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 export const fromHex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 
+/** A name as it's typed in the editor: in capitals, without the characters a theme file won't take. */
+export const typedName = (text) => text.toUpperCase().replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, '');
+
 /** A theme file (.cdtheme) → a theme for the list, and back. */
 export function fromFile(f) {
   return { name: f.name, ...Object.fromEntries(KEYS.map((k) => [k, [...f.colors[k]]])), scene: f.scene, image: f.image || null, blur: f.blur, dim: f.dim, user: true };

@@ -105,3 +105,16 @@ test('exported and imported: the same theme, under a new name if that one is tak
   assert.strictEqual(themes.importFile(path.join(home, 'themes', 'broken.cdtheme')), null);
   assert.strictEqual(themes.importFile(path.join(home, 'missing.cdtheme')), null);
 });
+
+test('a code changed on the way — a byte added, cut short, junk on the end — is not a theme', () => {
+  const code = themes.encodeCode(themes.parseTheme(good()));
+  const bytes = Buffer.from(code.slice('cdtheme:'.length), 'base64url');
+  const as = (b) => `cdtheme:${Buffer.from(b).toString('base64url')}`;
+  const changed = [
+    as([...bytes.subarray(0, 10), 7, ...bytes.subarray(10)]),
+    code.slice(0, -2),
+    as([...bytes, 1, 2]),
+    as([...bytes.subarray(0, 5), bytes[5] ^ 1, ...bytes.subarray(6)]),
+  ];
+  for (const c of changed) assert.strictEqual(themes.decodeCode(c), null, c);
+});

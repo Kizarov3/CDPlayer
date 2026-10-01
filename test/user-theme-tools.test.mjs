@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { createRequire } from 'node:module';
 import {
   THEMES, BUILTIN_COUNT, SCENES, sceneOf, sceneModes, visualizerModeFor, particleModeFor, contrast, hex, fromHex,
-  fromFile, toFile, setUserThemes, draftFrom, startFrom,
+  fromFile, toFile, setUserThemes, draftFrom, startFrom, typedName,
 } from '../src/renderer/js/theme.js';
 
 const require = createRequire(import.meta.url);
@@ -67,4 +67,10 @@ test('a draft is a copy to change freely; START FROM takes colors and scene, not
   assert.deepStrictEqual([d.name, d.image, d.scene, d.accent], ['MY THEME', base.image, 'SNOW', [214, 44, 54]]);
   startFrom(d, THEMES[0], { keepScene: true });
   assert.strictEqual(d.scene, 'SNOW');
+});
+
+test('the name as typed: capitals, and none of the characters a theme file refuses', () => {
+  assert.strictEqual(typedName('ac/dc: "live"?'), 'ACDC LIVE');
+  assert.strictEqual(typedName('a\tb<c>|d*e\\f'), 'ABCDEF');
+  assert.strictEqual(main.parseTheme({ ...file, name: typedName('ac/dc: "live"?') }).name, 'ACDC LIVE');
 });

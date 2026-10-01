@@ -50,24 +50,29 @@ function uniqueName(name, taken) {
   }
 }
 
-// The code: version, scene, the 18 color values and the name, as bytes in base64url — about 50 characters.
+// The code: version, scene, the 18 color values, the name's length and the name, and a checksum byte, as bytes in
+// base64url — about 50 characters. The length and the checksum turn a code changed on the way (a chat cutting it short,
+// a character added) into no theme rather than a wrong one.
 const CODE_PREFIX = 'cdtheme:';
+const checksum = (bytes) => bytes.reduce((sum, b) => (sum + b) & 255, 0);
 function encodeCode(theme) {
   const t = parseTheme(theme);
   if (!t || t.image) return null;
-  const bytes = Buffer.concat([Buffer.from([1, SCENES.indexOf(t.scene)]), Buffer.from(COLOR_KEYS.flatMap((k) => t.colors[k])), Buffer.from(t.name, 'utf8')]);
-  return CODE_PREFIX + bytes.toString('base64url');
+  const name = Buffer.from(t.name, 'utf8');
+  const body = [1, SCENES.indexOf(t.scene), ...COLOR_KEYS.flatMap((k) => t.colors[k]), name.length, ...name];
+  return CODE_PREFIX + Buffer.from([...body, checksum(body)]).toString('base64url');
 }
 function decodeCode(text) {
   if (typeof text !== 'string') return null;
   const s = text.replace(/\s+/g, '');
   if (!s.toLowerCase().startsWith(CODE_PREFIX)) return null;
-  const body = s.slice(CODE_PREFIX.length);
-  if (!/^[A-Za-z0-9_-]+$/.test(body)) return null;
-  const b = Buffer.from(body, 'base64url');
-  if (b.length < 21 || b[0] !== 1 || b[1] >= SCENES.length) return null;
-  const colors = Object.fromEntries(COLOR_KEYS.map((k, i) => [k, [...b.subarray(2 + i * 3, 5 + i * 3)]]));
-  return parseTheme({ cdtheme: 1, name: b.subarray(20).toString('utf8'), colors, scene: SCENES[b[1]] });
+  const encoded = s.slice(CODE_PREFIX.length);
+  if (!/^[A-Za-z0-9_-]+$/.test(encoded)) return null;
+  const b = [...Buffer.from(encoded, 'base64url')];
+  if (b.length < 23 || b[0] !== 1 || b[1] >= SCENES.length || b.length !== 22 + b[20]) return null;
+  if (checksum(b.slice(0, -1)) !== b[b.length - 1]) return null;
+  const colors = Object.fromEntries(COLOR_KEYS.map((k, i) => [k, b.slice(2 + i * 3, 5 + i * 3)]));
+  return parseTheme({ cdtheme: 1, name: Buffer.from(b.slice(21, -1)).toString('utf8'), colors, scene: SCENES[b[1]] });
 }
 
 // ---- Where they're kept: <data dir>/themes/, a file per theme named after a hash of its name ----------------------

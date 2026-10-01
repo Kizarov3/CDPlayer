@@ -50,7 +50,8 @@ integers 0–255; `scene` is from the list (missing → `BARS`); `image` is null
 ## Code
 
 `cdtheme:` + base64url of bytes: version `1`, the scene's index in the list, the 18 color values in the order bg, card,
-accent, accent2, text, muted, then the name in UTF-8 (about 50 characters; short enough for the 200-character
+accent, accent2, text, muted, the name's length in bytes, the name in UTF-8, and a checksum byte (the sum of the
+others mod 256), so a code changed on the way is refused rather than read as a different theme (about 50 characters; short enough for the 200-character
 clipboard read that `clipboard:text` does). `decodeCode` strips
 whitespace, checks the prefix, decodes and runs `parseTheme`. `encodeCode` refuses a theme with an image.
 

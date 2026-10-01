@@ -1,7 +1,7 @@
 // The theme editor (Settings → THEME → + NEW THEME, or EDIT on one of yours): six colors, a scene, and a picture behind
 // the player — the player itself recolored as you go. The panel is opened and closed by panels.js.
 import { el, pill, Slider } from './widgets.js';
-import { THEMES, SCENES, contrast, hex, fromHex, startFrom, deriveAutoTheme } from './theme.js';
+import { THEMES, SCENES, contrast, hex, fromHex, startFrom, deriveAutoTheme, typedName } from './theme.js';
 
 const COLOR_ROWS = [['BACKGROUND', 'bg'], ['CARDS', 'card'], ['ACCENT', 'accent'], ['ACCENT 2', 'accent2'], ['TEXT', 'text'], ['MUTED', 'muted']];
 const MAX_SIDE = 1920, MAX_BYTES = 1024 * 1024, QUALITIES = [0.85, 0.75, 0.65, 0.55];
@@ -70,7 +70,7 @@ export function buildThemeEditor(app, ctx, ui) {
   }
 
   const name = el('input', { class: 'theme-name', value: d.name, maxlength: 16, spellcheck: 'false',
-    onInput: (e) => { const at = e.target.selectionStart; e.target.value = e.target.value.toUpperCase(); e.target.setSelectionRange(at, at); d.name = e.target.value; } });
+    onInput: (e) => { const f = e.target, cut = f.value.length - typedName(f.value).length, at = f.selectionStart - cut; f.value = typedName(f.value); f.setSelectionRange(at, at); d.name = f.value; } });
   const save = async () => {
     if (!d.name.trim()) { name.focus(); return; }
     if (await app.saveTheme(d, ctx.editing ? ctx.editing.name : null)) { ctx.saved = true; ui.close(); }
