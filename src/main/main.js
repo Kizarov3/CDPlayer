@@ -304,7 +304,8 @@ handle('spotify:signIn', () => spotify.spotifySignIn());
 handle('spotify:checkKeys', (creds) => spotify.checkCredentials(creds || {}));
 handle('spotify:verify', () => spotify.verifyAccount());
 handle('spotify:diagnose', (code) => spotify.diagnose(code));
-handle('clipboard:text', () => clipboard.readText().trim().slice(0, 200));
+// Electron 44's clipboard reads and writes are async (they may return a promise), so they're awaited.
+handle('clipboard:text', async () => String((await clipboard.readText()) || '').trim().slice(0, 200));
 handle('spotify:status', () => spotify.status());
 handle('spotify:disconnect', () => spotify.disconnect());
 handle('spotify:saveCredentials', (c) => spotify.saveCredentials(c));
@@ -584,7 +585,7 @@ handle('win:isFullscreen', () => !!(win && win.isFullScreen()));
 handle('updates:check', () => (smokeDir ? null : updates.checkForUpdate(APP_VERSION)));
 handle('updates:openReleases', () => shell.openExternal(updates.RELEASES_PAGE));
 // Text for the user to paste elsewhere (the Spotify dashboard's Redirect URI). Only short plain text.
-handle('clipboard:write', (text) => { if (typeof text === 'string' && text.length <= 2000) clipboard.writeText(text); return true; });
+handle('clipboard:write', async (text) => { if (typeof text === 'string' && text.length <= 2000) await clipboard.writeText(text); return true; });
 handle('shell:openGitHub', (user) => { if (/^[A-Za-z0-9-]+$/.test(user)) shell.openExternal(`https://github.com/${user}`); });
 
 // ---- Audio CDs ---------------------------------------------------------------------------------------------------
