@@ -39,7 +39,9 @@ integers 0–255; `scene` is from the list (missing → `BARS`); `image` is null
 
 ## Storage
 
-- `<data dir>/themes/<NAME>.cdtheme` (`~/.cdplayer` or `%LOCALAPPDATA%\CDPlayer`, as the store resolves it). Files that don't parse are skipped by `list()`.
+- `<data dir>/themes/<hash>.cdtheme` (`~/.cdplayer` or `%LOCALAPPDATA%\CDPlayer`, as the store resolves it). The file
+  name is the first 16 hex digits of the SHA-1 of the theme's name, so no name can make a bad file name (`CON` on
+  Windows, case-insensitive disks); the name itself is read from the file. Files that don't parse are skipped by `list()`.
 - A name equal to a built-in theme or an existing user theme gets " 2", " 3"… (`uniqueName`), on save of a new theme
   and on import. Editing an existing theme may keep its own name; renaming removes the old file.
 - The chosen theme is still line 5 of settings.txt, by name. At launch it's looked up among built-in and user themes;
@@ -47,7 +49,9 @@ integers 0–255; `scene` is from the list (missing → `BARS`); `image` is null
 
 ## Code
 
-`cdtheme:` + base64url of the JSON without `image`, `blur`, `dim` (about 120 characters). `decodeCode` strips
+`cdtheme:` + base64url of bytes: version `1`, the scene's index in the list, the 18 color values in the order bg, card,
+accent, accent2, text, muted, then the name in UTF-8 (about 50 characters; short enough for the 200-character
+clipboard read that `clipboard:text` does). `decodeCode` strips
 whitespace, checks the prefix, decodes and runs `parseTheme`. `encodeCode` refuses a theme with an image.
 
 ## Theme menu (Settings → THEME)
@@ -84,8 +88,9 @@ video draw their background from the theme's image (same blur/dim) when there is
   `save(theme, oldName?)`, `remove(name)`, `importFile(path)`, `exportFile(name, path)`. IPC `themes:list`, `themes:save`,
   `themes:delete`, `themes:import` (open dialog, or a given path for drops), `themes:export` (save dialog),
   `themes:decode`; preload `cdp.themes.*`.
-- `src/renderer/js/theme-editor.js` — the editor panel; pure `contrast(a, b)`, `sceneModes(scene)`,
-  `shrinkImage(blob)`.
+- `src/renderer/js/theme-editor.js` — the editor panel's contents and `shrinkImage(blob)` (needs the DOM).
+- Pure helpers live in `theme.js` so node tests can load them: `contrast(a, b)`, `sceneOf(theme)`, `sceneModes(scene)`,
+  `fromFile`/`toFile`, `draftFrom`, `startFrom`, `hex`/`fromHex`, `drawThemeImage`.
 - `theme.js` — built-in themes get `scene`; `visualizerModeFor`/`particleModeFor` take a theme (its `scene`);
   `setUserThemes(list)` rebuilds `THEMES` as built-in + user themes (user themes carry `user: true`).
 - `app.js` — `switchTheme` applies the backdrop; launch looks the theme up by name; drop of `.cdtheme`; the mini
@@ -106,7 +111,8 @@ video draw their background from the theme's image (same blur/dim) when there is
   out-of-range value, bad scene, non-data image, oversized image, bad name characters); `uniqueName`; code round trip;
   `encodeCode` refusing an image; `decodeCode` on garbage; store save/list/remove/import/export under a temp `CDPLAYER_HOME`
   (never the real `~/.cdplayer`).
-- `test/theme-editor.test.mjs`: `contrast` (black/white 21, equal 1), `sceneModes` for every scene.
+- `test/user-theme-tools.test.mjs`: `contrast` (black/white 21, equal 1), `sceneModes` for every scene, built-in
+  scenes, `fromFile`/`toFile` round trip, `setUserThemes`, the built-in names matching `user-themes.js`.
 - By hand in a test profile: make a theme with an image → restart → it's on with its background; export and import in a
   second profile; code round trip; the video card with the theme's background.
 
