@@ -53,12 +53,19 @@ export function coverage(dict, keys) {
 // Literal interface text handed straight to the helpers that put it on screen, without t(): two capitals in a row
 // (the interface writes its labels in capitals) or a sentence in a hint.
 const SHOWN = /\b(setStatus|pill|title|row|hint|section)\(\s*(['"`])((?:\\.|(?!\2)[^\\])*)\2/g;
+const LABELED = /\b(title|label|sublabel|placeholder):\s*(['"`])((?:\\.|(?!\2)[^\\])*)\2/g;
 export function untranslated(files, allow) {
   const out = [];
   for (const { path: p, text } of files) {
     for (const m of text.matchAll(SHOWN)) {
       const s = unescape(m[3]);
       if (!/[A-Z]{2}|[A-Za-z]{3,} [a-z]{3,}/.test(s) || allow.includes(s)) continue;
+      out.push({ path: p, text: s });
+    }
+    // …and tooltips and menu labels, a word or more (templates too: a `${name}` doesn't make it any less English).
+    for (const m of text.matchAll(LABELED)) {
+      const s = unescape(m[3]);
+      if (!/[A-Za-z]{2}/.test(s.replace(/\$\{[^}]*\}/g, '')) || allow.includes(s)) continue;
       out.push({ path: p, text: s });
     }
   }
@@ -70,7 +77,9 @@ export const CONVERTED = ['src/renderer/js/app.js', 'src/renderer/js/widgets.js'
   'src/renderer/js/booklet.js', 'src/renderer/js/booklet-content.js', 'src/renderer/js/disc.js', 'src/renderer/js/karaoke.js', 'src/renderer/js/mini.js',
   'src/renderer/js/share-card.js', 'src/renderer/js/share-video.js', 'src/renderer/js/output.js'];
 /** Literal text that is shown as it is in every language. */
-export const ALLOW = [];
+export const ALLOW = [
+  'ENGLISH', // a language's name, shown in its own language
+];
 
 // The names a function, block or loop declares itself (parameters, const/let/var, function names, catch and for-of
 // bindings) — not those of functions inside it.

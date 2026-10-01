@@ -221,7 +221,7 @@ function renderQueue() {
     const d = detailsCache.get(p);
     const remove = el('button', { class: 'glyph-x', title: t('Remove from queue'), onClick: (e) => { e.stopPropagation(); removeFromQueue(i); } }, '×');
     const next = !!state.nextUp && i > state.index && i >= state.nextUp.start && i < state.nextUp.end;
-    const row = el('div', { class: `queue-row${i === state.index ? ' active' : ''}${i === drag.index ? ' dragging' : ''}`, title: `Play ${queueDisplay(p)}` },
+    const row = el('div', { class: `queue-row${i === state.index ? ' active' : ''}${i === drag.index ? ' dragging' : ''}`, title: t('Play {song}', { song: queueDisplay(p) }) },
       el('span', { class: 'num' }, `${i + 1}.`),
       el('span', { class: 'entry' }, queueDisplay(p)),
       next ? el('span', { class: 'next-tag', title: t('Plays next') }, t('NEXT')) : null,

@@ -206,7 +206,7 @@ function buildSettings(app) {
   const languageButton = pill('…', async () => {
     const { locales, auto } = await app.cdp.listLanguages(), nameOf = (c) => (c === 'en' ? 'ENGLISH' : (locales.find((l) => l.code === c) || {}).name || c);
     showMenu(languageButton, [
-      { label: `AUTO · ${nameOf(auto).toUpperCase()}`, current: s.language === 'AUTO', pick: () => pickLanguage('AUTO') },
+      { label: `${t('AUTO')} · ${nameOf(auto).toUpperCase()}`, current: s.language === 'AUTO', pick: () => pickLanguage('AUTO') },
       { label: 'ENGLISH', current: s.language === 'en', pick: () => pickLanguage('en') },
       ...locales.map((l) => ({ label: l.name.toUpperCase(), current: s.language === l.code, pick: () => pickLanguage(l.code) })),
     ]);
@@ -215,7 +215,7 @@ function buildSettings(app) {
   const pickLanguage = (code) => { app.setLanguage(code); languageNote.replaceChildren(hint(t('Takes effect after a restart.')), pill(t('RESTART'), () => app.relaunch())); refreshLanguageName(); };
   const refreshLanguageName = () => app.cdp.listLanguages().then(({ locales, auto }) => {
     const code = s.language === 'AUTO' ? auto : s.language, l = locales.find((x) => x.code === code);
-    languageButton.textContent = s.language === 'AUTO' ? `AUTO · ${(code === 'en' ? 'ENGLISH' : l ? l.name : code).toUpperCase()}` : (code === 'en' ? 'ENGLISH' : l ? l.name.toUpperCase() : code);
+    languageButton.textContent = s.language === 'AUTO' ? `${t('AUTO')} · ${(code === 'en' ? 'ENGLISH' : l ? l.name : code).toUpperCase()}` : (code === 'en' ? 'ENGLISH' : l ? l.name.toUpperCase() : code);
   });
   refreshLanguageName();
   const ambient = toggle(s.ambient, () => { app.setAmbient(!s.ambient); setToggle(ambient, s.ambient); });
@@ -372,7 +372,7 @@ function buildEq(app) {
     ...app.BUILTIN_EQ_PRESETS.map((p) => pill(p.name, () => applyPreset(p.gains))),
     ...s.customPresets.map((p) => el('span', { class: 'preset-item' },
       pill(p.name, () => applyPreset(p.gains)),
-      el('button', { class: 'glyph-x', title: `Delete preset "${p.name}"`, onClick: () => {
+      el('button', { class: 'glyph-x', title: t('Delete preset “{name}”', { name: p.name }), onClick: () => {
         s.customPresets = s.customPresets.filter((c) => c.name !== p.name);
         app.saveEq(); refreshPanel('eq');
       } }, '×'))),
@@ -573,7 +573,7 @@ export function refreshHistoryIfOpen(app) { if (isOpen('history')) refreshPanel(
 function trackRow(app, path, label, onPlay) {
   const next = pill(t('NEXT'), (e) => { e.stopPropagation(); app.playNext([path], { sorted: true }); }, t('Play it next, after the song playing'));
   const add = pill(t('ADD'), (e) => { e.stopPropagation(); app.addToQueue([path], { sorted: true }); }, t('Add to queue'));
-  return el('div', { class: 'list-row', title: `Play ${label}`, onClick: onPlay }, el('span', { class: 'entry' }, label), next, add);
+  return el('div', { class: 'list-row', title: t('Play {song}', { song: label }), onClick: onPlay }, el('span', { class: 'entry' }, label), next, add);
 }
 function buildHistory(app) {
   const h = app.state.history;
@@ -829,7 +829,7 @@ async function putSpotifyOnTray(app, item) {
 
 // Text to paste somewhere else (the Spotify dashboard's Redirect URI): clicking it copies it, and it says so.
 function copyLink(app, text) {
-  const link = el('button', { class: 'copy-link', title: 'Copy' }, text);
+  const link = el('button', { class: 'copy-link', title: t('Copy') }, text);
   let timer = null;
   link.addEventListener('click', async () => {
     if (!(await app.cdp.copyText(text).catch(() => false))) return;
@@ -846,7 +846,7 @@ const changeAppPill = () => pill(t('CHANGE APP'), () => { sp.editing = true; sp.
 function spotifyWizard(app, a, status, foot) {
   const step = sp.step || (!a.configured || sp.editing ? 1 : 4);
   const go = (n) => { sp.step = n; sp.trouble = null; sp.status = ''; refreshPanel('spotify'); };
-  const dots = el('div', { class: 'guide-dots' }, [1, 2, 3, 4].map((n) => el('button', { class: `guide-dot${n === step ? ' on' : ''}`, title: `Step ${n}`, onClick: () => go(n) })));
+  const dots = el('div', { class: 'guide-dots' }, [1, 2, 3, 4].map((n) => el('button', { class: `guide-dot${n === step ? ' on' : ''}`, title: t('Step {n}', { n }), onClick: () => go(n) })));
   const heading = [title(t('SPOTIFY')), el('div', { class: 'subtitle' }, t('SET UP · {step} OF 4 — {what}', { step, what: [t('CREATE AN APP'), t('ITS KEYS'), t('LET YOURSELF IN'), t('CONNECT')][step - 1] })), gap(12)];
   const trouble = sp.trouble ? el('div', { class: 'spotify-trouble' }, el('div', {}, sp.trouble.text),
     sp.trouble.step !== step ? pill(t('GO TO STEP {step}', { step: sp.trouble.step }), () => go(sp.trouble.step)) : null) : null;
@@ -925,7 +925,7 @@ function buildSpotify(app) {
   const field = el('input', { class: 'text-input', type: 'text', placeholder: t('Search Spotify for an album or playlist'), value: sp.query, spellcheck: 'false' });
   field.addEventListener('input', () => searchSpotify(app, field.value));
   const items = sp.found || sp.lists[sp.tab] || [];
-  const rows = items.map((item) => el('div', { class: 'list-row', title: `Put ${item.name} on the tray`, onClick: () => putSpotifyOnTray(app, item) },
+  const rows = items.map((item) => el('div', { class: 'list-row', title: t('Put {name} on the tray', { name: item.name }), onClick: () => putSpotifyOnTray(app, item) },
     el('span', { class: 'entry' }, `${item.name}${item.owner ? ` · ${item.owner}` : ''}`),
     el('span', { class: 'duration' }, `${sp.found ? `${({ album: t('ALBUM'), playlist: t('PLAYLIST') })[item.kind] || item.kind.toUpperCase()} · ` : ''}${t('{n} TRACKS', { n: item.total })}`)));
   if (!sp.found && sp.next[sp.tab] !== null && sp.lists[sp.tab]) rows.push(el('div', { class: 'row-pills' }, pill(t('MORE'), () => loadSpotifyList(app, sp.tab))));

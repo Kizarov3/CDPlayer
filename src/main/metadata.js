@@ -10,6 +10,7 @@ const audioCd = require('./audio-cd');
 const winCd = require('./win-cd');
 const { describeFormat } = require('./audio-format');
 const { cleanTrackName, tidyNames, isJunkTitle } = require('./track-names');
+const { t } = require('./i18n');
 
 // The small print for the booklet's credits page and back cover — only the tags a file actually has.
 function creditsFrom(c) {
@@ -121,7 +122,7 @@ async function getCueTrackDetails(ref, withCover) {
 // its name from MusicBrainz (below) or else "Track N".
 function cdTrackDetails(p, info, { withCover = true } = {}) {
   return {
-    path: p, title: `Track ${info.number}`, artist: null, nameGuessed: false, unnamed: true, credits: {}, album: null,
+    path: p, title: t('Track {n}', { n: info.number }), artist: null, nameGuessed: false, unnamed: true, credits: {}, album: null,
     lyrics: null, duration: info.duration, ext: 'CDA', quality: 'CD AUDIO · 16-BIT · 44.1 KHZ', cover: withCover ? null : undefined,
   };
 }

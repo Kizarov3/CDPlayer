@@ -11,6 +11,11 @@ test('collected: t() with a plain string in any quotes, and the pages\' marked t
   assert.deepStrictEqual(keys, ['Find it', "IT'S", 'NOW PLAYING', 'PLAY NEXT', 'SHELF', 'Shuffle', 'THEME']);
 });
 
+test('untranslated text is found in tooltips and labels too, templates included', () => {
+  const found = untranslated([{ path: 'a.js', text: "el('b', { title: `Play ${x}` }); el('b', { title: 'Copy' }); el('b', { label: `AUTO · ${y}` }); el('b', { title: t('Fine') }); el('b', { class: 'two words' })" }], []);
+  assert.deepStrictEqual(found.map((f) => f.text), ['Play ${x}', 'Copy', 'AUTO · ${y}']);
+});
+
 test('a language file brought in step: new texts empty, gone ones dropped, the rest kept, metadata first', () => {
   const out = syncLocale({ _language: 'Русский', OLD: 'СТАРОЕ', THEME: 'ТЕМА' }, ['SHELF', 'THEME'], 'ru');
   assert.deepStrictEqual(Object.keys(out), ['_language', '_locale', 'SHELF', 'THEME']);
