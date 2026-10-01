@@ -72,4 +72,140 @@ function staleness(entry, now, currency) {
   return null;
 }
 
-module.exports = { CURRENCIES, discogsLink, pickRelease, summarize, staleness };
+function createDiscogs({ fetchJson, mbFetch, read = (f) => store.readText(f), write = (f, text) => store.writeText(f, text), now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), userAgent = 'CDPlayer' }) {
+  let cache = null, prefs = null, tokenDropped = false;
+  const albums = () => {
+    if (!cache) { try { const c = JSON.parse(read(CACHE_FILE) || ''); cache = c && c.version === 1 && c.albums ? c.albums : {}; } catch { cache = {}; } }
+    return cache;
+  };
+  const saveCache = () => write(CACHE_FILE, JSON.stringify({ version: 1, albums: albums() }));
+  const settingsOf = () => {
+    if (!prefs) {
+      const [token = '', currency = ''] = String(read(SETTINGS_FILE) || '').split('\n').map((s) => s.trim());
+      prefs = { token: token || null, currency: CURRENCIES.includes(currency) ? currency : 'USD' };
+    }
+    return prefs;
+  };
+  const savePrefs = () => write(SETTINGS_FILE, `${settingsOf().token || ''}\n${settingsOf().currency}\n`);
+
+  // One request at a time, as far apart as Discogs asks: 25 a minute, or 60 with a token.
+  let chain = Promise.resolve(), nextAt = 0;
+  function request(pathAndQuery) {
+    const run = async () => {
+      for (;;) {
+        const wait = nextAt - now();
+        if (wait > 0) await sleep(wait);
+        const token = settingsOf().token;
+        nextAt = now() + (token ? 1100 : 2500);
+        const headers = { 'User-Agent': userAgent, ...(token ? { Authorization: `Discogs token=${token}` } : {}) };
+        try { return await fetchJson(`${API}/${pathAndQuery}`, { headers }); } catch (e) {
+          if (e.status === 429) { await sleep(60000); continue; }
+          if (e.status === 401 && token) { settingsOf().token = null; tokenDropped = true; savePrefs(); continue; }
+          throw e;
+        }
+      }
+    };
+    const p = chain.then(run, run);
+    chain = p.catch(() => {});
+    return p;
+  }
+
+  async function findRelease(album) {
+    if (album.mbReleaseId && MBID.test(album.mbReleaseId)) {
+      const link = discogsLink(await mbFetch(`release/${album.mbReleaseId}?inc=url-rels&fmt=json`).catch(() => null));
+      if (link && link.kind === 'release') return link.id;
+      if (link) { const master = await request(`masters/${link.id}`); if (master.main_release) return master.main_release; }
+    }
+    const barcode = digits(album.barcode);
+    if (barcode.length >= 8 && barcode.length <= 14) {
+      const hit = pickRelease((await request(`database/search?barcode=${barcode}&type=release&per_page=10`)).results, album);
+      if (hit) return hit.id;
+    }
+    if (!album.title) return null;
+    const hit = pickRelease((await request(`database/search?${searchQuery(album, 25)}`)).results, album);
+    return hit ? hit.id : null;
+  }
+  const searchQuery = (album, n) => [album.artist && album.artist !== 'Various Artists' ? `artist=${encodeURIComponent(album.artist)}` : null,
+    `release_title=${encodeURIComponent(album.title)}`, 'format=CD', 'type=release', `per_page=${n}`].filter(Boolean).join('&');
+
+  async function priced(entry) {
+    const currency = settingsOf().currency;
+    const s = await request(`marketplace/stats/${entry.releaseId}?curr_abbr=${currency}`);
+    return { ...entry, price: { lowest: s.lowest_price ? s.lowest_price.value : null, currency, forSale: s.num_for_sale || 0 }, pricedAt: now() };
+  }
+  const keep = (album, entry) => { const e = { ...entry, title: album.title || null, artist: album.artist || null }; albums()[album.id] = e; saveCache(); return e; };
+
+  const inFlight = new Map();
+  function lookup(album) {
+    if (inFlight.has(album.id)) return inFlight.get(album.id);
+    const p = (async () => {
+      const old = albums()[album.id], stale = staleness(old, now(), settingsOf().currency);
+      if (!stale) return old;
+      if (stale === 'price') return keep(album, await priced(old));
+      const id = old && old.by === 'user' ? old.releaseId : await findRelease(album);
+      if (!id) return keep(album, { releaseId: null, by: 'auto', checkedAt: now() });
+      return keep(album, await priced({ releaseId: id, by: old && old.by === 'user' ? 'user' : 'auto', info: summarize(await request(`releases/${id}`)), checkedAt: now() }));
+    })().finally(() => inFlight.delete(album.id));
+    inFlight.set(album.id, p);
+    return p;
+  }
+
+  let appraisal = null;
+  function appraise(list, onProgress) {
+    if (appraisal) return appraisal.done;
+    const run = { stopped: false };
+    appraisal = run;
+    run.done = (async () => {
+      let done = 0;
+      try {
+        for (const album of list) {
+          if (run.stopped) return { stopped: true, done, total: list.length };
+          const entry = await lookup(album);
+          done++;
+          onProgress({ done, total: list.length, albumId: album.id, entry });
+        }
+        return run.stopped && done < list.length ? { stopped: true, done, total: list.length } : { done, total: list.length };
+      } catch (e) {
+        return { error: e && e.status ? 'DISCOGS' : 'OFFLINE', done, total: list.length };
+      } finally { appraisal = null; }
+    })();
+    return run.done;
+  }
+  const stopAppraise = () => { if (appraisal) appraisal.stopped = true; };
+
+  async function versions(masterId) {
+    const json = await request(`masters/${Number(masterId)}/versions?format=CD&per_page=50`);
+    return (json.versions || []).map((v) => ({ id: v.id, label: v.label || null, catno: v.catno || null, country: v.country || null, year: v.released ? String(v.released).slice(0, 4) : null, format: v.format || null }));
+  }
+  async function search(album) {
+    const json = await request(`database/search?${searchQuery(album, 10)}`);
+    return (json.results || []).map((r) => ({ id: r.id, title: r.title, label: (r.label || [])[0] || null, catno: r.catno || null, country: r.country || null, year: r.year ? String(r.year) : null }));
+  }
+  async function choose(album, releaseId) {
+    const id = Number(releaseId);
+    return keep(album, await priced({ releaseId: id, by: 'user', info: summarize(await request(`releases/${id}`)), checkedAt: now() }));
+  }
+  const known = (ids) => Object.fromEntries((ids || []).filter((id) => albums()[id]).map((id) => [id, albums()[id]]));
+  const notFound = () => Object.entries(albums()).filter(([, e]) => e.releaseId === null).map(([id, e]) => ({ id, title: e.title, artist: e.artist }));
+  const settings = () => ({ token: !!settingsOf().token, tokenDropped, currency: settingsOf().currency, currencies: CURRENCIES });
+
+  async function setToken(token) {
+    const value = String(token || '').trim();
+    if (!value) { settingsOf().token = null; savePrefs(); return { ok: true }; }
+    try {
+      const me = await fetchJson(`${API}/oauth/identity`, { headers: { 'User-Agent': userAgent, Authorization: `Discogs token=${value}` } });
+      settingsOf().token = value; tokenDropped = false; savePrefs();
+      nextAt = 0;
+      return { ok: true, username: me.username || null };
+    } catch (e) { return { error: e && e.status ? 'BAD_TOKEN' : 'OFFLINE' }; }
+  }
+  function setCurrency(code) {
+    if (!CURRENCIES.includes(code)) return false;
+    settingsOf().currency = code; savePrefs();
+    return true;
+  }
+
+  return { lookup, appraise, stopAppraise, versions, search, choose, known, notFound, settings, setToken, setCurrency };
+}
+
+module.exports = { CURRENCIES, discogsLink, pickRelease, summarize, staleness, createDiscogs };
