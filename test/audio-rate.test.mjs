@@ -15,6 +15,8 @@ globalThis.AudioContext = class {
   createBiquadFilter() { return { ...node(), type: '', frequency: param(), Q: param() }; }
   createAnalyser() { return { ...node(), fftSize: 0, frequencyBinCount: 1024, smoothingTimeConstant: 0 }; }
   createChannelSplitter() { return node(); }
+  createChannelMerger() { return node(); }
+  createDelay() { return { ...node(), delayTime: param() }; }
   createPanner() { return { ...node(), positionX: param(), positionY: param(), positionZ: param() }; }
   createConvolver() { return node(); }
   createBuffer(channels, length) { const d = Array.from({ length: channels }, () => new Float32Array(length)); return { getChannelData: (c) => d[c] }; }
