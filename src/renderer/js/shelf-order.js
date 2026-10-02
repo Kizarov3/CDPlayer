@@ -74,7 +74,7 @@ const decadeOf = (year) => (year ? t('{decade}s', { decade: Math.floor(Number(ye
  * Albums (in the scanner's by-artist order, each with `added` and `plays`) → the shelf as it stands under `sort`: the
  * albums, with { divider: 'label' } before each section.
  */
-export function arrange(albums, sort) {
+export function arrange(albums, sort, { currency = null } = {}) {
   let list = albums.slice(), section;
   if (sort === 'NEW') {
     list.sort((a, b) => (b.added || 0) - (a.added || 0));
@@ -90,9 +90,10 @@ export function arrange(albums, sort) {
     list.sort((a, b) => (!a.year - !b.year) || (Number(a.year) || 0) - (Number(b.year) || 0));
     section = (a) => decadeOf(a.year);
   } else if (sort === 'PRICE') {
-    const price = (a) => (a.pressing && a.pressing.price && typeof a.pressing.price.lowest === 'number' ? a.pressing.price.lowest : null);
+    // Only prices in the currency chosen now: one still in the old one (until it's asked again) counts as no price.
+    const price = (a) => { const p = a.pressing && a.pressing.price; return p && typeof p.lowest === 'number' && (!currency || p.currency === currency) ? p.lowest : null; };
     list.sort((a, b) => (price(b) ?? -1) - (price(a) ?? -1));
-    section = (a) => priceBand(price(a), a.pressing && a.pressing.price ? a.pressing.price.currency : 'USD');
+    section = (a) => priceBand(price(a), currency || (a.pressing && a.pressing.price ? a.pressing.price.currency : 'USD'));
   } else {
     section = (a) => letterOf(a.artist);
   }

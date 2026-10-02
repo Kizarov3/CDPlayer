@@ -159,6 +159,7 @@ let discogsSettings = null;
 async function loadDiscogsSettings(app) { discogsSettings = await app.cdp.discogsSettings().catch(() => null); }
 
 export function showSettings(app) {
+  loadDiscogsSettings(app).then(() => refreshSettingsIfOpen(app)); // a token Discogs dropped meanwhile shows at once
   openPanel('settings', () => buildSettings(app), { width: 420 });
 }
 export function refreshSettingsIfOpen(app) { if (isOpen('settings')) refreshPanel('settings'); }
@@ -185,12 +186,12 @@ function buildSettings(app) {
     ? [pill(t('REMOVE'), async () => { await app.cdp.discogsSetToken(null); await loadDiscogsSettings(app); refreshSettingsIfOpen(app); }, t('Forget the Discogs token'))]
     : [pill(t('GET A TOKEN'), () => app.cdp.openDiscogs('https://www.discogs.com/settings/developers'), t('Discogs → Settings → Developers → Generate new token')),
       pill(t('PASTE'), async () => {
-        const r = await app.cdp.discogsSetToken(await app.cdp.clipboardText());
-        app.setStatus(r.ok ? t('DISCOGS TOKEN SAVED') : r.error === 'BAD_TOKEN' ? t("TOKEN DIDN'T WORK") : t('DISCOGS UNAVAILABLE'));
+        const r = await app.cdp.discogsSetToken(await app.cdp.clipboardText(), { paste: true });
+        app.setStatus(r.ok ? t('DISCOGS TOKEN SAVED') : r.error === 'BAD_TOKEN' ? t("TOKEN DIDN'T WORK") : r.error === 'EMPTY' ? t('COPY THE TOKEN FIRST') : t('DISCOGS UNAVAILABLE'));
         await loadDiscogsSettings(app); refreshSettingsIfOpen(app);
       }, t('Paste the token you copied from Discogs'))]));
   const currencyButton = pill(discogs ? discogs.currency : 'USD', () => showMenu(currencyButton, ((discogs && discogs.currencies) || ['USD']).map((c) => ({
-    label: c, current: discogs && c === discogs.currency, pick: async () => { await app.cdp.discogsSetCurrency(c); await loadDiscogsSettings(app); refreshSettingsIfOpen(app); },
+    label: c, current: discogs && c === discogs.currency, pick: async () => { await app.cdp.discogsSetCurrency(c); await loadDiscogsSettings(app); app.discogsCurrencyChanged(); refreshSettingsIfOpen(app); },
   }))), t('The currency Discogs prices are shown in'));
   if (!discogs) loadDiscogsSettings(app).then(() => refreshSettingsIfOpen(app));
   const outputButton = pill('…', async () => {
@@ -1002,7 +1003,7 @@ async function runCheck(app) {
   const result = await app.cdp.checkLibrary().catch(() => null);
   if (!check) return;
   check.result = result;
-  if (result) result.notOnDiscogs = await app.cdp.discogsNotFound().catch(() => []);
+  if (result) result.notOnDiscogs = await app.cdp.discogsNotFound(app.shelfAlbumIds()).catch(() => []);
   const n = result ? ['untagged', 'noCover', 'duplicates', 'gaps', 'unreadable', 'notOnDiscogs'].reduce((s, k) => s + result[k].length, 0) : 0;
   check.status = !result ? t('CHOOSE YOUR MUSIC FOLDER ON THE SHELF FIRST') : n ? t('{n} THINGS TO LOOK AT', { n }) : t('NOTHING TO FIX ★');
   refreshPanel('check');

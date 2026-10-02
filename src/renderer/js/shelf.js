@@ -94,13 +94,15 @@ export function setupShelf(app) {
     shelf.discogs.set(key, { state, groups });
     if (shelf.open && shelf.app.state.shelfSort === 'ARTIST') redraw.request();
   });
-  $('shelf-appraise').addEventListener('click', () => { if (shelf.appraising && !shelf.appraising.finished) app.cdp.discogsStop(); else appraise(); });
+  $('shelf-appraise').addEventListener('click', () => {
+    if (shelf.appraising && !shelf.appraising.finished) { shelf.appraising.stopping = true; app.cdp.discogsStop(); updateAppraiseCount(); } else appraise();
+  });
   // Each album as the appraisal reaches it: its spine (and the shelf, sorted by price) brought up to date.
   app.cdp.onDiscogsProgress((p) => {
-    shelf.pressings.set(p.albumId, p.entry);
-    attachPressings();
+    if (p.entry) { shelf.pressings.set(p.albumId, p.entry); attachPressings(); }
+    if (p.waiting) { if (shelf.appraising && !shelf.appraising.finished) { shelf.appraisalNote = t('WAITING FOR DISCOGS…'); renderCount(); } return; }
     // (the last of these can arrive after the appraisal's own answer: it mustn't make a finished one look running)
-    if (!shelf.appraising || !shelf.appraising.finished) { shelf.appraising = { done: p.done, total: p.total }; updateAppraiseCount(); }
+    if (!shelf.appraising || !shelf.appraising.finished) { shelf.appraising = { ...shelf.appraising, done: p.done, total: p.total }; updateAppraiseCount(); }
     if (shelf.open && shelf.app.state.shelfSort === 'PRICE') redraw.request(); else markSpine(p.albumId);
   });
   app.cdp.onShelfProgress(({ done, total }) => { if (shelf.loading) $('shelf-count').textContent = t('READING YOUR MUSIC · {done} / {total}', { done, total }); });
@@ -165,7 +167,7 @@ function render() {
   shelf.onScreen.clear();
   if (sort !== 'ARTIST') stopLookups();
   const boxes = sort === 'ARTIST' ? boxesFor({ albums: shelf.albums, shown, discogs: shelf.discogs, hidden: shelf.hidden, open: shelf.openBoxes, query }) : new Map();
-  const arranged = arrange(shown, sort);
+  const arranged = arrange(shown, sort, { currency: (shelf.settings && shelf.settings.currency) || 'USD' });
   showIndex(jumpTargets(arranged));
   showHere();
   const items = withMissing(arranged, boxes).map((a) => {
@@ -815,18 +817,20 @@ export async function choosePressing(a, anchor, masterId, onChosen = () => {}) {
 
 // APPRAISE: every album's price, one after another (main/discogs.js keeps to Discogs' pace); STOP stops it.
 async function appraise() {
+  shelf.settings = await shelf.app.cdp.discogsSettings().catch(() => shelf.settings); // the currency may have changed
   shelf.appraising = { done: 0, total: shelf.albums.length };
   updateAppraiseCount();
   const result = await shelf.app.cdp.discogsAppraise(shelf.albums.map(albumQuery));
   shelf.appraising = { ...result, finished: true };
   if (!result.stopped && !result.error) shelf.appraised = true;
   if (result.error) shelf.app.setStatus(t('APPRAISAL STOPPED · NO CONNECTION'));
+  else if (result.skipped) shelf.app.setStatus(t('APPRAISED · DISCOGS COULDN’T ANSWER FOR {n}', { n: result.skipped }));
   updateAppraiseCount();
   if (shelf.open) render();
 }
 function updateAppraiseCount() {
   const p = shelf.appraising, running = p && !p.finished;
-  $('shelf-appraise').textContent = running ? t('STOP') : t('APPRAISE');
+  $('shelf-appraise').textContent = running ? (p.stopping ? t('STOPPING…') : t('STOP')) : t('APPRAISE');
   shelf.appraisalNote = running ? t('APPRAISING · {done} / {total}', { done: p.done, total: p.total }) : totalNote();
   renderCount();
 }
@@ -834,4 +838,14 @@ function totalNote() {
   const currency = (shelf.settings && shelf.settings.currency) || 'USD';
   const { value, count } = shelfTotal(shelf.albums.map((a) => a.pressing), currency);
   return count ? t('THE SHELF ≈ {value}', { value: money(value, currency) }) : null;
+}
+
+/** The ids of the albums on the shelf (null before it's been read): Library Check lists only these as not on Discogs. */
+export const shelfAlbumIds = () => (shelf.albums.length ? shelf.albums.map((a) => a.id) : null);
+/** Settings → DISCOGS → CURRENCY changed: prices are asked again in it at the next appraisal, and the shelf reshown. */
+export async function discogsCurrencyChanged() {
+  shelf.settings = await shelf.app.cdp.discogsSettings().catch(() => shelf.settings);
+  shelf.appraised = false;
+  shelf.appraisalNote = totalNote();
+  if (shelf.open) render();
 }

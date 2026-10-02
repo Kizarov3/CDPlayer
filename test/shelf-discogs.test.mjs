@@ -40,3 +40,9 @@ test('SORT: PRICE — dearest first, in bands', () => {
   const out = arrange([a('A', 5), a('B', 60), a('C'), a('D', 25)], 'PRICE');
   assert.deepStrictEqual(out.map((x) => x.divider || x.title), ['$50+', 'B', '$20–$50', 'D', 'UNDER $10', 'A', 'NO PRICE', 'C']);
 });
+
+test('SORT: PRICE after a currency change: prices in another currency go with the unpriced, never mixed in', () => {
+  const a = (title, lowest, currency) => ({ title, artist: 'X', pressing: entry(lowest, { price: { lowest, currency, forSale: 1 } }) });
+  const out = arrange([a('Yen', 3000, 'JPY'), a('Dollars', 25, 'USD')], 'PRICE', { currency: 'USD' });
+  assert.deepStrictEqual(out.map((x) => x.divider || x.title), ['$20–$50', 'Dollars', 'NO PRICE', 'Yen']);
+});

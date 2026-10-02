@@ -66,21 +66,22 @@ test('what needs looking up again', () => {
 // A fake Discogs and MusicBrainz, a clock that sleep() moves on, and storage in memory.
 function rig({ routes = {}, mb = {}, files = {} } = {}) {
   const clock = { now: 1000 * DAY }, calls = [], stored = { ...files };
+  let writes = 0;
   const fetchJson = async (url, init = {}) => {
     calls.push({ url: url.replace('https://api.discogs.com/', ''), at: clock.now, auth: (init.headers || {}).Authorization || null });
     const key = Object.keys(routes).find((k) => url.includes(k));
     const answer = key ? routes[key] : { status: 404 };
-    const value = typeof answer === 'function' ? answer(url) : answer;
+    const value = typeof answer === 'function' ? await answer(url) : answer;
     if (value && value.status) { const e = new Error(`HTTP ${value.status}`); e.status = value.status; throw e; }
     if (value instanceof Error) throw value;
     return value;
   };
   const engine = discogs.createDiscogs({
     fetchJson, mbFetch: async (q) => { if (!(q.split('?')[0] in mb)) throw new Error('404'); return mb[q.split('?')[0]]; },
-    read: (f) => stored[f] ?? null, write: (f, text) => { stored[f] = text; return true; },
+    read: (f) => stored[f] ?? null, write: (f, text) => { if (f === 'discogs.json') writes++; stored[f] = text; return true; },
     now: () => clock.now, sleep: async (ms) => { clock.now += ms; }, userAgent: 'test',
   });
-  return { engine, calls, clock, stored };
+  return { engine, calls, clock, stored, writes: () => writes };
 }
 const release = (id, extra = {}) => ({ id, master_id: 21491, country: 'UK', year: 2000, labels: [{ name: 'Parlophone', catno: 'X1' }], formats: [{ name: 'CD' }], community: { have: 50, want: 10 }, ...extra });
 const stats = (value, n = 3) => ({ num_for_sale: n, lowest_price: value === null ? null : { value, currency: 'USD' } });
@@ -232,4 +233,83 @@ test('what\'s kept survives a restart', async () => {
   const again = rig({ files: first.stored });
   assert.strictEqual(again.engine.known([album.id, 'nope'])[album.id].price.lowest, 7);
   assert.deepStrictEqual(Object.keys(again.engine.known([album.id, 'nope'])), [album.id]);
+});
+
+test('a Discogs release that\'s gone (404): not found, kept, and appraising goes on past it', async () => {
+  const albums = [{ id: 'g1', artist: 'Radiohead', title: 'T1' }, { id: 'g2', artist: 'Radiohead', title: 'T2' }];
+  const { engine } = rig({ routes: {
+    'release_title=T1': found({ id: 1, title: 'Radiohead - T1' }), 'release_title=T2': found({ id: 2, title: 'Radiohead - T2' }),
+    'releases/1': { status: 404 }, 'releases/2': release(2), 'marketplace/stats/2': stats(4),
+  } });
+  assert.deepStrictEqual(await engine.appraise(albums, () => {}), { done: 2, total: 2 });
+  assert.strictEqual(engine.known(['g1']).g1.releaseId, null);
+  assert.strictEqual(engine.known(['g2']).g2.releaseId, 2);
+});
+
+test('Discogs having trouble (5xx) with one album: skipped, not the end of the appraisal', async () => {
+  const albums = [{ id: 'h1', artist: 'Radiohead', title: 'T1' }, { id: 'h2', artist: 'Radiohead', title: 'T2' }];
+  const { engine } = rig({ routes: { 'release_title=T1': { status: 502 }, 'release_title=T2': found({ id: 2, title: 'Radiohead - T2' }), 'releases/2': release(2), 'marketplace/stats/2': stats(4) } });
+  const seen = [];
+  assert.deepStrictEqual(await engine.appraise(albums, (p) => seen.push(p.albumId)), { done: 2, total: 2, skipped: 1 });
+  assert.deepStrictEqual(seen, ['h1', 'h2']);
+});
+
+test('too many requests, again and again: three tries, a word while waiting, and STOP cuts the wait short', async () => {
+  const { engine } = rig({ routes: { 'database/search': { status: 429 } } });
+  const waits = [];
+  const out = await engine.appraise([{ id: 'w1', artist: 'A', title: 'B' }], (p) => { if (p.waiting) waits.push(p); });
+  assert.deepStrictEqual(out, { done: 1, total: 1, skipped: 1 });
+  assert.strictEqual(waits.length, 3);
+  const r2 = rig({ routes: { 'database/search': { status: 429 } } });
+  const run = r2.engine.appraise([{ id: 'w2', artist: 'A', title: 'B' }, { id: 'w3', artist: 'A', title: 'C' }], (p) => { if (p.waiting) r2.engine.stopAppraise(); });
+  assert.strictEqual((await run).stopped, true);
+});
+
+test('a 401 for an old token doesn\'t throw away a new one', async () => {
+  let release5;
+  const gate = new Promise((r) => { release5 = r; });
+  const { engine } = rig({ routes: { 'oauth/identity': { username: 'me' }, 'releases/5': (() => { let n = 0; return async () => (n++ ? release(5) : (await gate, { status: 401 })); })(), 'marketplace/stats/5': stats(1) } });
+  await engine.setToken('old');
+  const pending = engine.choose(album, 5).catch(() => null);
+  await new Promise((r) => setImmediate(r));
+  await engine.setToken('new');
+  release5();
+  await pending;
+  assert.strictEqual(engine.settings().token, true);
+});
+
+test('a name credited "(2)*" is still the artist', () => {
+  assert.strictEqual(discogs.pickRelease([{ id: 1, title: 'Nirvana (2)* - Nevermind' }], { ...album, artist: 'Nirvana', title: 'Nevermind' }).id, 1);
+});
+
+test('a pressing chosen while the appraisal looks the same album up stays the chosen one', async () => {
+  let go;
+  const gate = new Promise((r) => { go = r; });
+  const { engine } = rig({ routes: { 'database/search': async () => { await gate; return found({ id: 5, title: 'Radiohead - Kid A' }); }, 'releases/': (url) => release(Number(/releases\/(\d+)/.exec(url)[1])), 'marketplace/stats/': stats(2) } });
+  const looking = engine.lookup({ ...album, barcode: null });
+  const choosing = engine.choose(album, 9);
+  go();
+  await Promise.all([looking, choosing]);
+  assert.deepStrictEqual([engine.known([album.id])[album.id].releaseId, engine.known([album.id])[album.id].by], [9, 'user']);
+});
+
+test('not on Discogs: only the albums still on the shelf', async () => {
+  const { engine } = rig({ routes: { 'database/search': found() } });
+  await engine.lookup({ id: 'x1', artist: 'A', title: 'B' });
+  await engine.lookup({ id: 'x2', artist: 'A', title: 'C' });
+  assert.deepStrictEqual(engine.notFound(['x2']).map((x) => x.id), ['x2']);
+  assert.strictEqual(engine.notFound().length, 2);
+});
+
+test('an empty paste is not a token', async () => {
+  const { engine } = rig();
+  assert.deepStrictEqual(await engine.setToken('   ', { paste: true }), { error: 'EMPTY' });
+});
+
+test('appraising writes the cache now and then, not after every album', async () => {
+  const albums = Array.from({ length: 25 }, (_, i) => ({ id: `c${i}`, artist: 'A', title: `T${i}` }));
+  const r = rig({ routes: { 'database/search': found() } });
+  await r.engine.appraise(albums, () => {});
+  assert.ok(r.writes() <= 4, `wrote ${r.writes()} times`);
+  assert.strictEqual(Object.keys(JSON.parse(r.stored['discogs.json']).albums).length, 25);
 });

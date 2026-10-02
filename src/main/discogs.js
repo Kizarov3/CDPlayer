@@ -16,7 +16,7 @@ const MBID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 const digits = (s) => String(s || '').replace(/\D/g, '');
 const loose = (s) => String(s || '').replace(/[\s\-–.]/g, '').toLowerCase();
 // Discogs tells same-named artists and labels apart with "(2)", and marks a name as credited with "*".
-const bare = (name) => String(name || '').replace(/\s*\(\d+\)$/, '').replace(/\*$/, '').trim();
+const bare = (name) => String(name || '').replace(/\*$/, '').replace(/\s*\(\d+\)$/, '').trim();
 
 /** A MusicBrainz release's link to Discogs: { kind: 'release' | 'master', id }, the release when it has both; or null. */
 function discogsLink(mbRelease) {
@@ -80,7 +80,10 @@ function createDiscogs({ fetchJson, mbFetch, read = (f) => store.readText(f), wr
     if (!cache) { try { const c = JSON.parse(read(CACHE_FILE) || ''); cache = c && c.version === 1 && c.albums ? c.albums : {}; } catch { cache = {}; } }
     return cache;
   };
-  const saveCache = () => write(CACHE_FILE, JSON.stringify({ version: 1, albums: albums() }));
+  const writeCache = () => write(CACHE_FILE, JSON.stringify({ version: 1, albums: albums() }));
+  let unsaved = 0;
+  // Written as each case's lookup comes back; while appraising, every ten albums and at the end.
+  const saveCache = () => { if (appraisal && ++unsaved < 10) return; unsaved = 0; writeCache(); };
   const settingsOf = () => {
     if (!prefs) {
       const [token = '', currency = ''] = String(read(SETTINGS_FILE) || '').split('\n').map((s) => s.trim());
@@ -91,9 +94,10 @@ function createDiscogs({ fetchJson, mbFetch, read = (f) => store.readText(f), wr
   const savePrefs = () => write(SETTINGS_FILE, `${settingsOf().token || ''}\n${settingsOf().currency}\n`);
 
   // One request at a time, as far apart as Discogs asks: 25 a minute, or 60 with a token.
-  let chain = Promise.resolve(), nextAt = 0;
+  let chain = Promise.resolve(), nextAt = 0, onWaiting = () => {};
   function request(pathAndQuery) {
     const run = async () => {
+      let busy = 0;
       for (;;) {
         const wait = nextAt - now();
         if (wait > 0) await sleep(wait);
@@ -101,8 +105,10 @@ function createDiscogs({ fetchJson, mbFetch, read = (f) => store.readText(f), wr
         nextAt = now() + (token ? 1100 : 2500);
         const headers = { 'User-Agent': userAgent, ...(token ? { Authorization: `Discogs token=${token}` } : {}) };
         try { return await fetchJson(`${API}/${pathAndQuery}`, { headers }); } catch (e) {
-          if (e.status === 429) { await sleep(60000); continue; }
-          if (e.status === 401 && token) { settingsOf().token = null; tokenDropped = true; savePrefs(); continue; }
+          // Too many requests: wait a minute, three times at most — and not at all once the appraisal is stopped.
+          if (e.status === 429 && ++busy <= 3 && !(appraisal && appraisal.stopped)) { onWaiting(); await sleep(60000); continue; }
+          // A token Discogs no longer takes: dropped (unless it's been replaced meanwhile), and on without one.
+          if (e.status === 401 && token) { if (settingsOf().token === token) { settingsOf().token = null; tokenDropped = true; savePrefs(); } continue; }
           throw e;
         }
       }
@@ -135,8 +141,15 @@ function createDiscogs({ fetchJson, mbFetch, read = (f) => store.readText(f), wr
     const s = await request(`marketplace/stats/${entry.releaseId}?curr_abbr=${currency}`);
     return { ...entry, price: { lowest: s.lowest_price ? s.lowest_price.value : null, currency, forSale: s.num_for_sale || 0 }, pricedAt: now() };
   }
-  const keep = (album, entry) => { const e = { ...entry, title: album.title || null, artist: album.artist || null }; albums()[album.id] = e; saveCache(); return e; };
+  const keep = (album, entry) => {
+    const now_ = albums()[album.id];
+    if (now_ && now_.by === 'user' && entry.by !== 'user' && now_.releaseId !== entry.releaseId) return now_; // chosen by hand meanwhile
+    const e = { ...entry, title: album.title || null, artist: album.artist || null };
+    albums()[album.id] = e; saveCache(); return e;
+  };
 
+  // A release (or master) Discogs no longer has: as good as not found. Anything else goes on up.
+  const gone = (e) => { if (e && e.status === 404) return null; throw e; };
   const inFlight = new Map();
   function lookup(album) {
     if (inFlight.has(album.id)) return inFlight.get(album.id);
@@ -144,9 +157,11 @@ function createDiscogs({ fetchJson, mbFetch, read = (f) => store.readText(f), wr
       const old = albums()[album.id], stale = staleness(old, now(), settingsOf().currency);
       if (!stale) return old;
       if (stale === 'price') return keep(album, await priced(old));
-      const id = old && old.by === 'user' ? old.releaseId : await findRelease(album);
+      const id = old && old.by === 'user' ? old.releaseId : await findRelease(album).catch(gone);
       if (!id) return keep(album, { releaseId: null, by: 'auto', checkedAt: now() });
-      return keep(album, await priced({ releaseId: id, by: old && old.by === 'user' ? 'user' : 'auto', info: summarize(await request(`releases/${id}`)), checkedAt: now() }));
+      const release = await request(`releases/${id}`).catch(gone);
+      if (!release) return keep(album, { releaseId: null, by: 'auto', checkedAt: now() }); // removed from Discogs
+      return keep(album, await priced({ releaseId: id, by: old && old.by === 'user' ? 'user' : 'auto', info: summarize(release), checkedAt: now() }));
     })().finally(() => inFlight.delete(album.id));
     inFlight.set(album.id, p);
     return p;
@@ -158,18 +173,23 @@ function createDiscogs({ fetchJson, mbFetch, read = (f) => store.readText(f), wr
     const run = { stopped: false };
     appraisal = run;
     run.done = (async () => {
-      let done = 0;
+      let done = 0, skipped = 0;
+      onWaiting = () => onProgress({ waiting: true, done, total: list.length });
+      const result = (extra) => ({ ...extra, done, total: list.length, ...(skipped ? { skipped } : {}) });
       try {
         for (const album of list) {
-          if (run.stopped) return { stopped: true, done, total: list.length };
-          const entry = await lookup(album);
+          if (run.stopped) return result({ stopped: true });
+          let entry;
+          try { entry = await lookup(album); } catch (e) {
+            if (!e || !e.status) return result({ error: 'OFFLINE' }); // no connection: nothing more will come back
+            skipped++; // Discogs had trouble with this one: on to the next
+          }
           done++;
-          onProgress({ done, total: list.length, albumId: album.id, entry });
+          onProgress({ done, total: list.length, albumId: album.id, entry: entry || null });
+          if (run.stopped && done < list.length) return result({ stopped: true });
         }
-        return run.stopped && done < list.length ? { stopped: true, done, total: list.length } : { done, total: list.length };
-      } catch (e) {
-        return { error: e && e.status ? 'DISCOGS' : 'OFFLINE', done, total: list.length };
-      } finally { appraisal = null; }
+        return result({});
+      } finally { appraisal = null; onWaiting = () => {}; unsaved = 0; writeCache(); }
     })();
     return run.done;
   }
@@ -188,11 +208,12 @@ function createDiscogs({ fetchJson, mbFetch, read = (f) => store.readText(f), wr
     return keep(album, await priced({ releaseId: id, by: 'user', info: summarize(await request(`releases/${id}`)), checkedAt: now() }));
   }
   const known = (ids) => Object.fromEntries((ids || []).filter((id) => albums()[id]).map((id) => [id, albums()[id]]));
-  const notFound = () => Object.entries(albums()).filter(([, e]) => e.releaseId === null).map(([id, e]) => ({ id, title: e.title, artist: e.artist }));
+  const notFound = (ids = null) => Object.entries(albums()).filter(([id, e]) => e.releaseId === null && (!ids || ids.includes(id))).map(([id, e]) => ({ id, title: e.title, artist: e.artist }));
   const settings = () => ({ token: !!settingsOf().token, tokenDropped, currency: settingsOf().currency, currencies: CURRENCIES });
 
-  async function setToken(token) {
+  async function setToken(token, { paste = false } = {}) {
     const value = String(token || '').trim();
+    if (!value && paste) return { error: 'EMPTY' };
     if (!value) { settingsOf().token = null; savePrefs(); return { ok: true }; }
     try {
       const me = await fetchJson(`${API}/oauth/identity`, { headers: { 'User-Agent': userAgent, Authorization: `Discogs token=${value}` } });
