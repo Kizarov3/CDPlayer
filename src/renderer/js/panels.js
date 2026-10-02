@@ -155,6 +155,9 @@ export function showCard(app, { choices, maxLines, render, copy, save, video }) 
 let themeButton = null, presetButton = null;
 export function updateThemeButton(app, name) { if (themeButton) themeButton.lastChild.textContent = name; }
 
+let discogsSettings = null;
+async function loadDiscogsSettings(app) { discogsSettings = await app.cdp.discogsSettings().catch(() => null); }
+
 export function showSettings(app) {
   openPanel('settings', () => buildSettings(app), { width: 420 });
 }
@@ -176,6 +179,20 @@ function buildSettings(app) {
   presetButton = pill(presetName(app), () => showPresetMenu(app), t('Switch to another equalizer preset'));
   const eqButton = pill(t('EQ'), () => showEq(app), t('Adjust the 10 bands, or save your own preset'));
   // Where the sound goes: the button names it; the menu lists what's plugged in now.
+  // DISCOGS: a token (optional, it only speeds up appraising) and the currency prices are shown in.
+  const discogs = discogsSettings;
+  const discogsToken = el('div', { class: 'row-pills' }, ...(discogs && discogs.token
+    ? [pill(t('REMOVE'), async () => { await app.cdp.discogsSetToken(null); await loadDiscogsSettings(app); refreshSettingsIfOpen(app); }, t('Forget the Discogs token'))]
+    : [pill(t('GET A TOKEN'), () => app.cdp.openDiscogs('https://www.discogs.com/settings/developers'), t('Discogs → Settings → Developers → Generate new token')),
+      pill(t('PASTE'), async () => {
+        const r = await app.cdp.discogsSetToken(await app.cdp.clipboardText());
+        app.setStatus(r.ok ? t('DISCOGS TOKEN SAVED') : r.error === 'BAD_TOKEN' ? t("TOKEN DIDN'T WORK") : t('DISCOGS UNAVAILABLE'));
+        await loadDiscogsSettings(app); refreshSettingsIfOpen(app);
+      }, t('Paste the token you copied from Discogs'))]));
+  const currencyButton = pill(discogs ? discogs.currency : 'USD', () => showMenu(currencyButton, ((discogs && discogs.currencies) || ['USD']).map((c) => ({
+    label: c, current: discogs && c === discogs.currency, pick: async () => { await app.cdp.discogsSetCurrency(c); await loadDiscogsSettings(app); refreshSettingsIfOpen(app); },
+  }))), t('The currency Discogs prices are shown in'));
+  if (!discogs) loadDiscogsSettings(app).then(() => refreshSettingsIfOpen(app));
   const outputButton = pill('…', async () => {
     const devices = await app.listOutputs(), now = app.engine.outputId || '';
     showMenu(outputButton, [{ label: t('SYSTEM DEFAULT'), current: !now, pick: () => app.setOutput(null).then(() => refreshSettingsIfOpen(app)) },
@@ -259,6 +276,10 @@ function buildSettings(app) {
     section(t('SHARING')),
     row(t('DISCORD STATUS'), discord),
     hint(t('Shows the song you’re playing on your Discord profile, while the Discord app is open.')), gap(18),
+    section(t('DISCOGS')),
+    row(t('TOKEN'), discogsToken), row(t('CURRENCY'), currencyButton),
+    discogs && discogs.tokenDropped ? hint(t('TOKEN NO LONGER WORKS')) : null,
+    hint(t('Prices are the lowest on Discogs’ marketplace, refreshed monthly. A token makes appraising the shelf faster.')), gap(18),
     section(t('HELP')),
     el('div', { class: 'help-pills' },
       pill(t('SHOW THE GUIDE'), () => showGuide(app), t('The five cards shown the first time CDPlayer opened')),
@@ -981,7 +1002,8 @@ async function runCheck(app) {
   const result = await app.cdp.checkLibrary().catch(() => null);
   if (!check) return;
   check.result = result;
-  const n = result ? ['untagged', 'noCover', 'duplicates', 'gaps', 'unreadable'].reduce((s, k) => s + result[k].length, 0) : 0;
+  if (result) result.notOnDiscogs = await app.cdp.discogsNotFound().catch(() => []);
+  const n = result ? ['untagged', 'noCover', 'duplicates', 'gaps', 'unreadable', 'notOnDiscogs'].reduce((s, k) => s + result[k].length, 0) : 0;
   check.status = !result ? t('CHOOSE YOUR MUSIC FOLDER ON THE SHELF FIRST') : n ? t('{n} THINGS TO LOOK AT', { n }) : t('NOTHING TO FIX ★');
   refreshPanel('check');
 }
@@ -1022,6 +1044,8 @@ function buildCheck(app) {
         r.duplicates.map((copies) => row(baseName(copies[0]).replace(/\.[^.]+$/, ''), t('{n} copies', { n: copies.length }), ...copies.map((p) => pill(t('SHOW {format}', { format: (p.split('.').pop() || '').toUpperCase() }), () => app.cdp.showFile(p)))))),
       group('gaps', t('GAPS'), t('Albums missing some of their track numbers — a song or two may not have come across.'),
         r.gaps.map((g) => row(g.album, g.disc > 1 ? t('{artist} · DISC {disc} · missing {numbers}', { artist: g.artist, disc: g.disc, numbers: g.missing.join(', ') }) : t('{artist} · missing {numbers}', { artist: g.artist, numbers: g.missing.join(', ') }), pill(t('SHOW'), () => app.cdp.showFile(g.folder))))),
+      group('discogs', t('NOT ON DISCOGS'), t('Albums Discogs’ search didn’t find. CHOOSE PRESSING… lets you search and pick it.'),
+        (r.notOnDiscogs || []).map((x) => row(x.title || '—', x.artist || null, pill(t('CHOOSE PRESSING…'), (e) => app.choosePressingFor(x, e.currentTarget, () => runCheck(app)))))),
       group('unreadable', t('UNREADABLE'), t('Files CDPlayer couldn’t read any sound from — damaged, or not really music.'), r.unreadable.map((p) => row(baseName(p), null, show(p)))))
       : null,
     el('div', { class: 'close-row guide-actions' }, pill(t('CHECK AGAIN'), () => runCheck(app)), el('span', { class: 'grow' }), pill(t('CLOSE'), () => closePanel('check')))];

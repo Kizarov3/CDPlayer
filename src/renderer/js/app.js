@@ -19,7 +19,7 @@ import { t, translatePage } from './i18n.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
 import { wearFor } from './disc-wear.js';
 import { pickOutput, outputName } from './output.js';
-import { openShelf, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer } from './shelf.js';
+import { openShelf, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, choosePressing } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
 import { SpotifySession, SpotifyTrackElement, isSpotifyUri, spotifyUpcoming, loadSpotifySdk } from './spotify-deck.js';
 
@@ -1660,6 +1660,7 @@ export const app = {
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
   pressingMenu: (anchor, items) => panels.pressingMenu(anchor, items),
+  choosePressingFor: (album, anchor, onChosen) => choosePressing(album, anchor, null, onChosen),
   setLanguage: (code) => { state.language = code; cdp.saveSettings(settingsSnapshot()); },
   relaunch: async () => { await cdp.saveSettings(settingsSnapshot()); cdp.relaunch(); },
   saveEq: () => cdp.saveEqPresets(state.customPresets),

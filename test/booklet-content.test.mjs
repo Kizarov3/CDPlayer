@@ -79,3 +79,11 @@ test('the first spin and the last, in words', () => {
   assert.deepStrictEqual(notes([null], [NOW - 800 * DAY]), ['last: 2 years ago']);
   assert.deepStrictEqual(notes([null], [null]), []);
 });
+
+test('album credits fill in from Discogs what the tags lack, and add country and pressing', () => {
+  const details = [song({ label: 'Parlophone' })];
+  assert.deepStrictEqual(albumCredits(details, { label: 'EMI', catno: 'X1', barcode: '724', country: 'UK', formats: 'CD, Album' }),
+    [['LABEL', 'Parlophone'], ['CATALOG NO.', 'X1'], ['BARCODE', '724'], ['COUNTRY', 'UK'], ['PRESSING', 'CD, Album']]);
+  assert.deepStrictEqual(albumCredits(details), [['LABEL', 'Parlophone']]);
+  assert.deepStrictEqual(albumCredits([song({ barcode: '999' })]), [['BARCODE', '999']]);
+});

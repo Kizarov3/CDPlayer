@@ -262,6 +262,7 @@ async function songContent(app) {
 export async function albumBooklet(app, album, cover, { play, onClose = () => {} }) {
   const details = await Promise.all(album.tracks.map((t) => app.cdp.details(t.path, { withCover: false }).catch(() => null)));
   const plays = await Promise.all(album.tracks.map((t) => app.cdp.playCount(t.path).catch(() => 0)));
+  const pressing = ((await app.cdp.discogsKnown([album.id]).catch(() => ({})))[album.id] || {}).info || null;
   const times = await app.cdp.playTimes(album.tracks.map((t) => t.path)).catch(() => ({ first: [], last: [] }));
   const marks = ownerMarks({ plays, first: album.tracks.map((t, i) => times.first[i] || null), last: album.tracks.map((t, i) => times.last[i] || null) });
   const small = albumSmallPrint(details);
@@ -277,7 +278,7 @@ export async function albumBooklet(app, album, cover, { play, onClose = () => {}
       })),
     },
     lyrics: [],
-    credits: { sub: album.title, none: t('No credits in these files’ tags.'), rows: albumCredits(details), summaryTitle: t('THIS ALBUM'), summary: albumSummary({ details, plays, discs: album.discs }) },
+    credits: { sub: album.title, none: t('No credits in these files’ tags.'), rows: albumCredits(details, pressing), summaryTitle: t('THIS ALBUM'), summary: albumSummary({ details, plays, discs: album.discs }) },
     back: {
       title: album.title, artist: album.artist, names: album.tracks.map((t) => t.title), count: album.tracks.length,
       total: album.tracks.reduce((s, t) => s + (t.duration || 0), 0), ...small, notes: marks.notes,

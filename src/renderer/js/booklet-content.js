@@ -18,11 +18,14 @@ function mostSaid(details, pick) {
 }
 
 /** The CREDITS page's rows for an album: [[label, value]…], only the ones some song names. */
-export function albumCredits(details) {
+export function albumCredits(details, pressing = null) {
+  // pressing: what Discogs says of this album's release (main/discogs.js) — it fills in what the tags leave out.
+  const p = pressing || {};
   return [
     [t('PRODUCED BY'), mostSaid(details, (c) => c.producer)], [t('RELEASED'), mostSaid(details, (c) => c.released)],
-    [t('GENRE'), mostSaid(details, (c) => c.genre)], [t('LABEL'), mostSaid(details, (c) => c.label)],
-    [t('CATALOG NO.'), mostSaid(details, (c) => c.catalog)],
+    [t('GENRE'), mostSaid(details, (c) => c.genre)], [t('LABEL'), mostSaid(details, (c) => c.label) || p.label],
+    [t('CATALOG NO.'), mostSaid(details, (c) => c.catalog) || p.catno], [t('BARCODE'), mostSaid(details, (c) => c.barcode) || p.barcode],
+    [t('COUNTRY'), p.country], [t('PRESSING'), p.formats],
   ].filter(([, v]) => v);
 }
 
