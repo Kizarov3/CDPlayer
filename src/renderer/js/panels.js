@@ -1114,6 +1114,11 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.12.0', changes: [
+    '<b>Spatial audio</b>: Settings &rarr; SPATIAL AUDIO &mdash; on headphones, music comes from two speakers in front of you instead of from inside your head, on files and CDs alike; SPACE sets how much',
+    '<b>Sound quality, as in Apple Music</b>: Settings &rarr; QUALITY &mdash; LOSSLESS and HI-RES LOSSLESS play each song at its own sample rate, up to 192 kHz, with your output switched to match on Mac and Windows and put back when CDPlayer closes',
+    '<b>A LOSSLESS badge</b> under the title says, when you point at it, exactly what reaches your headphones',
+  ] },
   { version: '2.11.0', changes: [
     '<b>Discogs for collectors</b>: a pulled-out case shows its exact pressing and its lowest price on Discogs; <b>APPRAISE</b> values the whole shelf, <b>SORT: PRICE</b> stands it dearest first, and rare albums get a gold sticker',
     '<b>Themes of your own</b>: Settings &rarr; THEME &rarr; + NEW THEME &mdash; six colors, a scene and a picture behind the player; share one as a file or a one-line code',
