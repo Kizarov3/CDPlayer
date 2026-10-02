@@ -55,7 +55,8 @@ const pendingOpenFiles = [];
 function audioArgs(argv) {
   return argv.slice(1).filter((a) => !a.startsWith('-') && (library.isSupportedAudio(a) || cue.isCueFile(a)) && store.isFile(a));
 }
-if (!smokeDir && !app.requestSingleInstanceLock()) {
+const gotLock = !!smokeDir || app.requestSingleInstanceLock();
+if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', (_e, argv) => {
@@ -194,7 +195,7 @@ function runJson(cmd, args) {
   });
 }
 const outputRate = createOutputRate({ platform: process.platform, run: outputRateHelper(), file: path.join(store.dataDir(), 'output-rate.json') });
-if (!smokeDir) outputRate.restore(); // left over from a run that didn't get to quit
+if (!smokeDir && gotLock) outputRate.restore().catch(() => {}); // left over from a run that didn't get to quit (a second launch must not undo the first one's)
 handle('outputRate:list', () => outputRate.list());
 handle('outputRate:current', (device) => outputRate.current(device));
 handle('outputRate:set', (device, hz) => outputRate.set(device, hz));
@@ -789,9 +790,9 @@ let restoredRate = false;
 app.on('before-quit', (e) => {
   quitting = true;
   if (playsTimer) { clearTimeout(playsTimer); writePlays(); }
-  if (restoredRate || smokeDir) return;
+  if (restoredRate || smokeDir || !gotLock) return;
   e.preventDefault();
   restoredRate = true;
-  Promise.race([outputRate.restore(), new Promise((r) => setTimeout(r, 3000))]).finally(() => app.quit());
+  Promise.race([outputRate.restore(), new Promise((r) => setTimeout(r, 3000))]).catch(() => {}).finally(() => app.quit());
 });
 app.on('window-all-closed', () => app.quit());
