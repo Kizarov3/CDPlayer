@@ -13,38 +13,75 @@ export const EQ_FREQUENCIES = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16
 
 export class AudioEngine {
   constructor() {
-    const ctx = this.ctx = new AudioContext({ latencyHint: 'playback' });
-    this.input = ctx.createGain();
-    this.eq = EQ_FREQUENCIES.map((f) => {
-      const b = ctx.createBiquadFilter();
-      b.type = 'peaking'; b.frequency.value = f; b.Q.value = 1.2; b.gain.value = 0; // same RBJ peaking curve, Q 1.2, as the Java EQ
-      return b;
-    });
-    this.analyser = ctx.createAnalyser();
-    this.analyser.fftSize = 8192;
-    this.analyser.smoothingTimeConstant = 0;
-    this.master = ctx.createGain();
-    let node = this.input;
-    for (const b of this.eq) { node.connect(b); node = b; }
-    node.connect(this.analyser);
-    this.analyser.connect(this.master);
-    this.master.connect(ctx.destination);
-    this.samples = new Float32Array(this.analyser.fftSize);
+    this.volume = 1; this.mono = false; this.eqGains = new Array(EQ_FREQUENCIES.length).fill(0);
+    this.outputId = '';
+    this.customRate = null;    // Settings → QUALITY: the song's rate, or null for the system's
+    this.contextListeners = [];
+    this.build(null);
     this.deck = null;          // the current track
     this.fadingOut = null;     // the previous track, while a crossfade is in progress
     this.fadeTimer = null;
     this.onEnded = null;
   }
 
-  setVolume(v) { this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.01); }
-  setMono(on) {
+  /** The graph, in a new context at `rate` (null: the system's), with the volume, mono and EQ it had. */
+  build(rate) {
+    const ctx = new AudioContext(rate ? { sampleRate: rate, latencyHint: 'playback' } : { latencyHint: 'playback' });
+    this.ctx = ctx;
+    this.input = ctx.createGain();
+    this.eq = EQ_FREQUENCIES.map((f, i) => {
+      const b = ctx.createBiquadFilter();
+      b.type = 'peaking'; b.frequency.value = f; b.Q.value = 1.2; b.gain.value = this.eqGains[i]; // same RBJ peaking curve, Q 1.2, as the Java EQ
+      return b;
+    });
+    this.analyser = ctx.createAnalyser();
+    this.analyser.fftSize = 8192;
+    this.analyser.smoothingTimeConstant = 0;
+    this.master = ctx.createGain();
+    this.master.gain.value = this.volume;
+    let node = this.input;
+    for (const b of this.eq) { node.connect(b); node = b; }
+    node.connect(this.analyser);
+    this.analyser.connect(this.master);
+    this.master.connect(ctx.destination);
+    this.samples = new Float32Array(this.analyser.fftSize);
+    this.freq = null;
+    this.recDest = null;
+    this.applyMono();
+  }
+
+  get rate() { return this.ctx.sampleRate; }
+  onContextChange(fn) { this.contextListeners.push(fn); }
+  /**
+   * Plays at `rate` from now on (null: the system's rate), by building the graph again in a new context — Web Audio
+   * can't change a context's rate. Whatever was playing (and fading) is dropped: the caller loads the next song.
+   * → false if the browser won't make a context at that rate; the engine then stays at the rate it had.
+   */
+  async setRate(rate) {
+    if ((rate || null) === this.customRate && (!rate || rate === this.ctx.sampleRate)) return true;
+    this.stop();
+    const old = this.ctx, oldNodes = { input: this.input, eq: this.eq, analyser: this.analyser, master: this.master, samples: this.samples };
+    try { this.build(rate); } catch {
+      Object.assign(this, { ctx: old }, oldNodes);
+      return false;
+    }
+    this.customRate = rate || null;
+    if (this.outputId && this.ctx.setSinkId) await this.ctx.setSinkId(this.outputId).catch(() => {});
+    for (const fn of this.contextListeners) fn(this.ctx);
+    old.close().catch(() => {});
+    return true;
+  }
+
+  setVolume(v) { this.volume = v; this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.01); }
+  setMono(on) { this.mono = on; this.applyMono(); }
+  applyMono() {
     // A 1-channel "explicit" node makes Web Audio sum L+R (×0.5 each) — exactly the Java version's (L+R)/2 —
     // and the speakers then get that mono signal on both sides.
-    this.input.channelCount = on ? 1 : 2;
-    this.input.channelCountMode = on ? 'explicit' : 'max';
+    this.input.channelCount = this.mono ? 1 : 2;
+    this.input.channelCountMode = this.mono ? 'explicit' : 'max';
     this.input.channelInterpretation = 'speakers';
   }
-  setEq(gains) { gains.forEach((g, i) => this.eq[i].gain.setTargetAtTime(g, this.ctx.currentTime, 0.02)); }
+  setEq(gains) { this.eqGains = gains.slice(); gains.forEach((g, i) => this.eq[i].gain.setTargetAtTime(g, this.ctx.currentTime, 0.02)); }
 
   /** A deck for `url` — or, given `element` (a Spotify track), one that plays through it, outside Web Audio. */
   createDeck(url, element = null) {

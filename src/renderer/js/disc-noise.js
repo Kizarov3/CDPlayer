@@ -18,19 +18,25 @@ function noiseBuffer(ctx, seconds, brown = false) {
 export class DiscNoise {
   constructor(engine) {
     this.engine = engine;
-    this.ctx = engine.ctx;
-    this.out = this.ctx.createGain();
-    this.out.connect(engine.master);
     this.enabled = false;
-    this.white = noiseBuffer(this.ctx, 2);
-    this.brown = noiseBuffer(this.ctx, 2, true);
+    this.attach(engine.ctx);
+    // Settings → QUALITY rebuilds the engine at a song's rate: the noise moves into the new context with it.
+    engine.onContextChange((ctx) => this.attach(ctx));
+  }
+
+  attach(ctx) {
+    this.ctx = ctx;
+    this.out = ctx.createGain();
+    this.out.connect(this.engine.master);
+    this.white = noiseBuffer(ctx, 2);
+    this.brown = noiseBuffer(ctx, 2, true);
     // The hiss: looped white noise, band-limited to the airy top end, faded in only while playing.
-    this.hiss = this.ctx.createGain();
+    this.hiss = ctx.createGain();
     this.hiss.gain.value = 0;
-    const src = this.ctx.createBufferSource();
+    const src = ctx.createBufferSource();
     src.buffer = this.white; src.loop = true;
-    const hp = this.ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 3500;
-    const lp = this.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 11000;
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 3500;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 11000;
     src.connect(hp); hp.connect(lp); lp.connect(this.hiss); this.hiss.connect(this.out);
     src.start();
   }
