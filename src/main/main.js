@@ -31,6 +31,7 @@ const tagWriter = require('./tag-writer');
 const audioCd = require('./audio-cd');
 const rip = require('./rip');
 const { execFile } = require('child_process');
+const { createOutputRate } = require('./output-rate');
 
 const APP_VERSION = app.getVersion();
 const APP_ID = 'com.kizarov3.cdplayer'; // = build.appId in package.json
@@ -154,8 +155,11 @@ async function runSmokeTest() {
     const ok = !probe.error && probe.decoded > 0.3 && probe.element > 0.3 && !!details.title;
     results.push({ file: path.basename(p), ok, title: details.title, ...probe });
   }
-  const allOk = results.length > 0 && results.every((r) => r.ok);
-  process.stdout.write(`${JSON.stringify({ platform: process.platform, arch: process.arch, allOk, results }, null, 2)}\n`);
+  // The output-rate helper must start and answer in the packaged app (a CI machine may have no outputs: [] is fine).
+  const rateList = process.platform === 'linux' ? [] : await outputRate.list();
+  const rateOk = Array.isArray(rateList);
+  const allOk = results.length > 0 && results.every((r) => r.ok) && rateOk;
+  process.stdout.write(`${JSON.stringify({ platform: process.platform, arch: process.arch, allOk, outputRate: rateList, results }, null, 2)}\n`);
   app.exit(allOk ? 0 : 1);
 }
 
@@ -171,6 +175,30 @@ function buildMenu() {
 // ---- IPC ------------------------------------------------------------------------------------------------------
 
 const handle = (channel, fn) => ipcMain.handle(channel, (_e, ...args) => fn(...args));
+
+// Settings → QUALITY: the output device's rate, switched by a helper per system (src/main/output-rate.js).
+function outputRateHelper() {
+  if (process.platform === 'darwin') {
+    const bin = app.isPackaged ? path.join(process.resourcesPath, 'mac-rate') : path.join(__dirname, '..', '..', 'build', 'bin', 'mac-rate');
+    return (args) => runJson(bin, args);
+  }
+  const script = path.join(__dirname, 'win-rate', 'helper.ps1').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+  return (args) => runJson('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, ...args]);
+}
+function runJson(cmd, args) {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { timeout: 5000, windowsHide: true }, (err, stdout) => {
+      if (err) { reject(err); return; }
+      try { resolve(JSON.parse(String(stdout).trim())); } catch (e) { reject(e); }
+    });
+  });
+}
+const outputRate = createOutputRate({ platform: process.platform, run: outputRateHelper(), file: path.join(store.dataDir(), 'output-rate.json') });
+if (!smokeDir) outputRate.restore(); // left over from a run that didn't get to quit
+handle('outputRate:list', () => outputRate.list());
+handle('outputRate:current', (device) => outputRate.current(device));
+handle('outputRate:set', (device, hz) => outputRate.set(device, hz));
+handle('outputRate:restore', () => outputRate.restore());
 // Widevine arrives through castLabs' component updater (downloaded on first run), so it's awaited only when Spotify
 // needs it — never at startup, which must work offline and in the smoke test.
 function drmReady() {
@@ -757,8 +785,13 @@ app.whenReady().then(() => {
     else win.show();
   });
 });
-app.on('before-quit', () => {
+let restoredRate = false;
+app.on('before-quit', (e) => {
   quitting = true;
   if (playsTimer) { clearTimeout(playsTimer); writePlays(); }
+  if (restoredRate || smokeDir) return;
+  e.preventDefault();
+  restoredRate = true;
+  Promise.race([outputRate.restore(), new Promise((r) => setTimeout(r, 3000))]).finally(() => app.quit());
 });
 app.on('window-all-closed', () => app.quit());

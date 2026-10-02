@@ -103,7 +103,7 @@ async function getCueTrackDetails(ref, withCover) {
   const track = await cue.resolveRef(ref);
   const { cuePath, number } = cue.parseRef(ref);
   const fallback = `${displayName(cuePath)} · Track ${number}`;
-  if (!track) return { path: ref, title: fallback, artist: null, album: null, lyrics: null, duration: 0, ext: 'CUE', quality: 'CUE', cue: null, cover: withCover ? null : undefined };
+  if (!track) return { path: ref, title: fallback, artist: null, album: null, lyrics: null, duration: 0, ext: 'CUE', quality: 'CUE', format: null, cue: null, cover: withCover ? null : undefined };
   const file = await getDetails(track.file, { withCover });
   const end = track.end !== null ? track.end : file.duration;
   return {
@@ -123,7 +123,7 @@ async function getCueTrackDetails(ref, withCover) {
 function cdTrackDetails(p, info, { withCover = true } = {}) {
   return {
     path: p, title: t('Track {n}', { n: info.number }), artist: null, nameGuessed: false, unnamed: true, credits: {}, album: null,
-    lyrics: null, duration: info.duration, ext: 'CDA', quality: 'CD AUDIO · 16-BIT · 44.1 KHZ', cover: withCover ? null : undefined,
+    lyrics: null, duration: info.duration, ext: 'CDA', quality: 'CD AUDIO · 16-BIT · 44.1 KHZ', format: { sampleRate: 44100, bitsPerSample: 16, lossless: true }, cover: withCover ? null : undefined,
   };
 }
 
@@ -182,6 +182,11 @@ async function readDetails(filePath, { withCover = true } = {}) {
       duration,
       ext: path.extname(filePath).slice(1).toUpperCase(),
       quality: describeFormat(format, path.extname(filePath).slice(1).toUpperCase()),
+      format: format ? {
+        sampleRate: format.sampleRate || null,
+        bitsPerSample: format.bitsPerSample || null,
+        lossless: !!format.lossless || /^(FLAC|ALAC|WAV|AIFF|AIF)$/i.test(path.extname(filePath).slice(1)) || /alac|flac/i.test(String(format.codec || '')),
+      } : null,
     };
     detailsCache.set(filePath, details);
     if (withCover) coverCache.set(filePath, cover);

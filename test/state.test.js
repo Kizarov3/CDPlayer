@@ -20,7 +20,7 @@ test('reads a settings.txt written by the Java version', () => {
   assert.deepStrictEqual(s, {
     volume: 70, crossfade: 5, mono: true, animations: false, theme: 'OCEAN', eq: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
     waveform: false, miniMode: false, bounds: { x: 10, y: 20, width: 1200, height: 900 }, ambient: false, discord: true,
-    discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO',
+    discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH',
   });
 });
 
@@ -213,4 +213,13 @@ test('the language: AUTO unless set, kept, odd values back to AUTO', () => {
   assert.strictEqual(store.readSettings().language, 'ru');
   store.writeSettings({ ...store.readSettings(), language: 'ru/../x' });
   assert.strictEqual(store.readSettings().language, 'AUTO');
+});
+
+test('the sound quality: HIGH unless set, kept, odd values back to HIGH', () => {
+  store.writeSettings({ ...store.DEFAULT_SETTINGS });
+  assert.strictEqual(store.readSettings().quality, 'HIGH');
+  store.writeSettings({ ...store.readSettings(), quality: 'HIRES' });
+  assert.strictEqual(store.readSettings().quality, 'HIRES');
+  store.writeSettings({ ...store.readSettings(), quality: 'ULTRA' });
+  assert.strictEqual(store.readSettings().quality, 'HIGH');
 });

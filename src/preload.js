@@ -16,6 +16,12 @@ contextBridge.exposeInMainWorld('cdp', {
   saveHistory: invoke('state:saveHistory'),
   saveEqPresets: invoke('state:saveEqPresets'),
   markOnboarded: invoke('state:markOnboarded'),
+  outputRate: {
+    list: invoke('outputRate:list'),
+    current: invoke('outputRate:current'),
+    set: invoke('outputRate:set'),
+    restore: invoke('outputRate:restore'),
+  },
   writeLastVersion: invoke('state:writeLastVersion'),
 
   exists: invoke('fs:exists'),
