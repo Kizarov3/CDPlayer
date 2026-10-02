@@ -57,6 +57,7 @@ function createOutputRate({ platform, run, file, log = (msg) => console.warn(msg
   const fail = (e) => { if (!warned) { warned = true; log(`output rate: ${e && e.message ? e.message : e}`); } return null; };
   const readOriginals = () => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch { return {}; } };
   const writeOriginals = (o) => { if (Object.keys(o).length) fs.writeFileSync(file, JSON.stringify(o)); else fs.rmSync(file, { force: true }); };
+  const serial = (fn) => { const job = busy.then(fn, fn); busy = job.catch(() => {}); return job; };
 
   async function list() {
     if (!parse) return [];
@@ -67,9 +68,8 @@ function createOutputRate({ platform, run, file, log = (msg) => console.warn(msg
     const d = devices && findDevice(devices, device);
     return d ? d.rate : null;
   }
-  async function set(device, hz) {
+  async function setNow(device, hz) {
     if (!parse) return null;
-    await busy; // a restore still running (the one at startup) mustn't undo this
     const devices = await list();
     const d = devices && findDevice(devices, device);
     if (!d) return null;
@@ -85,17 +85,30 @@ function createOutputRate({ platform, run, file, log = (msg) => console.warn(msg
       return { rate: rate || d.rate, switched: rate === target, bluetooth: false };
     } catch (e) { return fail(e); }
   }
+  function set(device, hz) {
+    return serial(() => setNow(device, hz));
+  }
   function restore() {
-    const job = busy.then(restoreNow);
-    busy = job.catch(() => {});
-    return job;
+    return serial(restoreNow);
   }
   async function restoreNow() {
     if (!parse) return;
+    const devices = await list();
+    if (!devices) return; // list failed, keep everything untouched
     const originals = readOriginals();
     for (const [id, rate] of Object.entries(originals)) {
-      try { await run(['set', id, String(rate)]); } catch (e) { fail(e); } // unplugged: nothing to put back
-      delete originals[id];
+      const device = devices.find((d) => d.id === id);
+      if (!device) {
+        // unplugged: forget it
+        delete originals[id];
+        continue;
+      }
+      try {
+        await run(['set', id, String(rate)]);
+        delete originals[id]; // success: forget it
+      } catch (e) {
+        fail(e); // failure: keep it in the file
+      }
     }
     writeOriginals(originals);
   }

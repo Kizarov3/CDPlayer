@@ -126,3 +126,67 @@ test('a helper that fails: null, never a throw; Linux: no helper at all', async 
   await linux.restore();
   assert.strictEqual(ran, false);
 });
+
+test('set and restore are serialized: restore queues after set and puts the rate back', async () => {
+  const file = path.join(home, 'serial.json');
+  const devices = MAC.map((d) => ({ ...d }));
+  let releaseSet;
+  const run = async (args) => {
+    if (args[0] === 'list') return devices.map((d) => ({ ...d }));
+    if (args[0] === 'set') {
+      const d = devices.find((x) => x.uid === args[1]);
+      if (!d) throw new Error('no such device');
+      // For the first set to 44100, block waiting for signal
+      if (args[1] === 'BuiltInHeadphoneOutputDevice' && args[2] === '44100') {
+        await new Promise((resolve) => { releaseSet = resolve; });
+      }
+      d.rate = Number(args[2]);
+      return { rate: d.rate };
+    }
+  };
+  const rate = createOutputRate({ platform: 'darwin', run, file });
+  devices[1].rate = 96000;
+  fs.writeFileSync(file, JSON.stringify({ BuiltInHeadphoneOutputDevice: 48000 }));
+  const setPromise = rate.set(null, 44100);
+  const restorePromise = rate.restore();
+  await new Promise((r) => setImmediate(r));
+  releaseSet();
+  await Promise.all([setPromise, restorePromise]);
+  assert.strictEqual(devices[1].rate, 48000, 'restore ran after set');
+  assert.ok(!fs.existsSync(file));
+});
+
+test('a device whose restore set throws is kept in the file for the next try', async () => {
+  const file = path.join(home, 'restore-failure.json');
+  const devices = MAC.map((d) => ({ ...d }));
+  let failSet = false;
+  const run = async (args) => {
+    if (args[0] === 'list') return devices.map((d) => ({ ...d }));
+    if (args[0] === 'set') {
+      if (failSet) throw new Error('helper timeout');
+      const d = devices.find((x) => x.uid === args[1]);
+      if (!d) throw new Error('no such device');
+      d.rate = Number(args[2]);
+      return { rate: d.rate };
+    }
+  };
+  const rate = createOutputRate({ platform: 'darwin', run, file, log: () => {} });
+  fs.writeFileSync(file, JSON.stringify({ BuiltInHeadphoneOutputDevice: 48000 }));
+  devices[1].rate = 96000;
+  failSet = true;
+  await rate.restore();
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { BuiltInHeadphoneOutputDevice: 48000 }, 'entry kept after failed restore');
+  assert.strictEqual(devices[1].rate, 96000, 'device not restored');
+});
+
+test('if list fails during restore, the file is not touched', async () => {
+  const file = path.join(home, 'restore-list-fail.json');
+  const run = async (args) => {
+    if (args[0] === 'list') throw new Error('helper crashed');
+    throw new Error('should not set');
+  };
+  const rate = createOutputRate({ platform: 'darwin', run, file, log: () => {} });
+  fs.writeFileSync(file, JSON.stringify({ BuiltInHeadphoneOutputDevice: 48000, External: 96000 }));
+  await rate.restore();
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { BuiltInHeadphoneOutputDevice: 48000, External: 96000 }, 'file unchanged after list failure');
+});
