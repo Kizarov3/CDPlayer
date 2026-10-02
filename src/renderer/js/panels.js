@@ -8,6 +8,7 @@ import { EQ_FREQUENCIES } from './audio.js';
 import { el, pill, toggle, setToggle, Slider, anim } from './widgets.js';
 import { GUIDE, FAQ, SHORTCUTS } from './help.js';
 import { outputName } from './output.js';
+import { levelName, LEVELS } from './quality.js';
 import { catSvg } from './glyphs.js';
 import { isBookletOpen, closeBooklet } from './booklet.js';
 import { formatLyricsForDisplay } from './lyrics.js';
@@ -204,6 +205,10 @@ function buildSettings(app) {
       ...devices.map((d) => ({ label: outputName(d), current: d.deviceId === now, pick: () => app.setOutput(d).then(() => refreshSettingsIfOpen(app)) }))]);
   }, t('Where the sound comes out: speakers, headphones, AirPods…'));
   app.currentOutputName().then((name) => { outputButton.textContent = name; });
+  const qualityButton = pill(levelName(s.quality), () => showMenu(qualityButton, LEVELS.map((level) => ({
+    label: levelName(level, true), current: level === s.quality,
+    pick: () => app.setQuality(level).then(() => refreshSettingsIfOpen(app)),
+  }))), t('How the sound leaves CDPlayer'));
 
   const crossfadeValue = el('span', { class: 'row-value' }, s.crossfade ? t('{n}S', { n: s.crossfade }) : t('OFF'));
   const crossfade = new Slider({ min: 0, max: 15, value: s.crossfade, onInput: (v) => { crossfadeValue.textContent = v ? t('{n}S', { n: v }) : t('OFF'); app.setCrossfade(v); } });
@@ -257,6 +262,8 @@ function buildSettings(app) {
     unavailable(row(t('EQUALIZER'), el('div', { class: 'row-pills' }, presetButton, eqButton))),
     unavailable(sliderRow(t('CROSSFADE'), crossfade, crossfadeValue)),
     unavailable(row(t('OUTPUT'), outputButton)),
+    unavailable(row(t('QUALITY'), qualityButton)),
+    hint(t('Lossless plays each song at its own sample rate; CDPlayer switches your output’s rate to match and puts it back when it closes. Over Bluetooth, the wireless codec limits it.')),
     unavailable(row(t('MONO AUDIO'), mono)),
     hint(t('Sums the left and right channels together — for a single speaker or one earbud.')),
     row(t('DISC NOISE'), discNoise),

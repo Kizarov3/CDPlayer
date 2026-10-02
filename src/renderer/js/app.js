@@ -18,6 +18,7 @@ import * as panels from './panels.js';
 import { t, translatePage } from './i18n.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
 import { wearFor } from './disc-wear.js';
+import { targetRate, badgeLabel, badgeText, badgeExact, levelName, LEVELS } from './quality.js';
 import { pickOutput, outputName } from './output.js';
 import { openShelf, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, choosePressing, shelfAlbumIds, discogsCurrencyChanged } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
@@ -58,6 +59,7 @@ const state = {
   ripping: false,   // RIP is saving the disc into the music folder
   rip: null,        // the rip for its panel: { album, artist, year, folder, tracks, stages, sizes, done, percent, finished, ok, message }
   themeIndex: 0, eq: new Array(10).fill(0), customPresets: [], history: [],
+  quality: 'HIGH', rateInfo: null,
   language: 'AUTO', // Settings → LANGUAGE (applies after a restart)
   loadedPath: null, details: null, detailsPath: null, lyrics: null, cover: null, loadToken: 0, crossfadeStarted: false,
   cdView: false, visualizerMode: false, fullscreen: false,
@@ -348,11 +350,37 @@ function resetToIdle(message) {
 
 // ---- Loading & playback ----------------------------------------------------------------------------------------
 
+// Settings → QUALITY: before a song loads, the engine (and, through the main process, the output device) is set to
+// the rate it should play at. → true when the engine was rebuilt, so the song can't crossfade in.
+async function applyQuality(format, token) {
+  if (state.quality === 'HIGH') {
+    state.rateInfo = null;
+    return engine.customRate ? engine.setRate(null) : false;
+  }
+  const fileRate = format && format.sampleRate;
+  const aimed = targetRate(state.quality, fileRate);
+  if (!aimed) return false;
+  const known = state.rateInfo;
+  if (known && known.aimed === aimed && engine.rate === (known.switched ? known.deviceRate : aimed)) {
+    state.rateInfo = { ...known, fileRate };
+    return false;
+  }
+  const result = await cdp.outputRate.set(state.output, aimed).catch(() => null);
+  if (token !== state.loadToken) return false;
+  state.rateInfo = {
+    fileRate, aimed, deviceRate: result ? result.rate : engine.rate,
+    switched: !!(result && result.switched), bluetooth: !!(result && result.bluetooth),
+  };
+  const playAt = result && result.switched ? result.rate : aimed;
+  if (playAt === engine.rate) return false;
+  return engine.setRate(playAt);
+}
+
 async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0, reload = false } = {}) {
   const token = ++state.loadToken;
   dropJog();
   disc.discPresent = true;
-  const fade = allowCrossfade && engine.playing && state.crossfade > 0 ? state.crossfade : 0;
+  let fade = allowCrossfade && engine.playing && state.crossfade > 0 ? state.crossfade : 0;
   state.crossfadeStarted = false;
   if (state.loadedPath !== path) flushFoundSoon();
   state.loadedPath = path;
@@ -368,6 +396,11 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
     engine.stop(); setPlaying(false);
     setStatus((await cdp.exists(path)) ? t('TRACK NOT FOUND IN CUE SHEET') : t('FILE NO LONGER FOUND'));
     return;
+  }
+  if (state.quality !== 'HIGH' || engine.customRate) {
+    const rateChanged = await applyQuality(((await detailsPromise) || {}).format, token);
+    if (token !== state.loadToken) return;
+    if (rateChanged) fade = 0; // a new context: nothing left to fade out of
   }
   const url = cdp.mediaUrl(cue ? cue.file : path);
   if (cue && !fade && startAt === 0 && engine.continuesInto(url, cue.start)) {
@@ -399,6 +432,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   detailsCache.set(path, { ...details, cover: undefined, duration: details.duration || engine.duration });
   setTrackTitle(details.title, details.artist);
   updateWear();
+  updateQualityBadge();
   fadeInNowPlaying();
   const ext = details.quality || details.ext || extension(path);
   const canLookUp = !details.cover && !!details.title && !details.unnamed;
@@ -835,6 +869,7 @@ async function loadSpotify(path, token, { autoPlay, startAt }) {
   state.details = details; state.detailsPath = path;
   setTrackTitle(details.title, details.artist);
   updateWear();
+  updateQualityBadge();
   fadeInNowPlaying();
   $('track-source').textContent = `SPOTIFY${track.album ? ` · ${track.album.toUpperCase()}` : ''}`;
   state.lyrics = null; state.lyricsSource = null;
@@ -1034,6 +1069,27 @@ async function updateWear() {
   disc.setWear(state.discWear && album ? wearFor(album.plays, album.disc) : null);
   refreshDockSoon();
 }
+/** The ◈ LOSSLESS / ◈ HI-RES LOSSLESS badge under the title, and what reaches the output on hover. */
+function updateQualityBadge() {
+  const badge = $('quality-badge'), d = state.details;
+  const label = d && !isSpotifyUri(state.loadedPath || '') ? badgeLabel(d.format, state.quality) : null;
+  badge.hidden = !label;
+  if (!label) return;
+  const fileRate = d.format.sampleRate;
+  const info = state.rateInfo || { fileRate, aimed: targetRate(state.quality, fileRate), deviceRate: engine.rate, switched: false, bluetooth: false };
+  const full = { ...info, eq: state.eq.some((g) => g !== 0), mono: state.mono };
+  badge.textContent = label;
+  badge.title = badgeText(full);
+  badge.classList.toggle('dim', !badgeExact(full));
+}
+
+/** Settings → QUALITY. Applies from the next song; back to HIGH puts the outputs' rates back at once. */
+async function setQuality(level) {
+  state.quality = LEVELS.includes(level) ? level : 'HIGH';
+  saveSettingsSoon();
+  if (state.quality === 'HIGH') { state.rateInfo = null; await cdp.outputRate.restore().catch(() => {}); }
+  updateQualityBadge();
+}
 function setDiscWear(on) { state.discWear = on; updateWear(); saveSettingsSoon(); }
 
 function setupMediaSession() {
@@ -1174,12 +1230,12 @@ function toggleMute() {
   if (state.volumeBeforeMute >= 0) { setVolume(state.volumeBeforeMute); state.volumeBeforeMute = -1; }
   else { state.volumeBeforeMute = state.volume; setVolume(0); }
 }
-function setMono(on) { state.mono = on; engine.setMono(on); saveSettingsSoon(); }
+function setMono(on) { state.mono = on; engine.setMono(on); updateQualityBadge(); saveSettingsSoon(); }
 function setWaveform(on) { state.waveform = on; progress.setWaveformEnabled(on); saveSettingsSoon(); }
 function setAmbient(on) { state.ambient = on; onCoverChanged(); saveSettingsSoon(); }
 function setAnimations(on) { anim.enabled = on; document.body.classList.toggle('no-anim', !on); saveSettingsSoon(); }
 function setCrossfade(v) { state.crossfade = v; saveSettingsSoon(); }
-function setEq(gains) { state.eq = gains.slice(); engine.setEq(state.eq); saveSettingsSoon(); }
+function setEq(gains) { state.eq = gains.slice(); engine.setEq(state.eq); updateQualityBadge(); saveSettingsSoon(); }
 
 let sleepTimer = null;
 function armSleepTimer(minutes) {
@@ -1392,7 +1448,7 @@ function appendAndPlay(p) {
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language };
+  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -1660,7 +1716,7 @@ export const app = {
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) { state.index = i; load(state.queue[i]); } },
   coverSource: () => state.coverFrom || null,
   switchTheme, previewTheme, restoreTheme, shownTheme: () => shownTheme, saveTheme, importTheme, pasteThemeCode, exportTheme, copyThemeCode, deleteTheme,
-  setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setOutput, listOutputs, currentOutputName,
+  setQuality, setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setOutput, listOutputs, currentOutputName,
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
   pressingMenu: (anchor, items) => panels.pressingMenu(anchor, items),
@@ -1729,6 +1785,7 @@ async function start() {
   state.lyricsOffset = s.lyricsOffset || 0;
   state.shelfSort = s.shelfSort || 'ARTIST';
   state.language = s.language || 'AUTO';
+  state.quality = s.quality || 'HIGH';
   setEq(s.eq);
   setUserThemes(saved.themes || []);
   const themeIndex = Math.max(0, THEMES.findIndex((theme) => theme.name === s.theme));

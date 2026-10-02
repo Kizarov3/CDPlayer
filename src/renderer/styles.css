@@ -115,7 +115,10 @@ body.cd-view #cd-info { display: block !important; }
 #visualizer { width: 56px; height: 22px; }
 #track-title { margin-top: 12px; height: 44px; line-height: 44px; font-size: 34px; color: rgb(var(--text)); }
 #track-artist { margin-top: 4px; height: 20px; line-height: 20px; font-size: 15px; font-weight: normal; color: rgb(var(--accent2)); }
-#track-source { margin-top: 6px; height: 16px; line-height: 16px; font-size: 12px; font-weight: normal; color: rgb(var(--muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#source-row { margin-top: 6px; display: flex; align-items: center; gap: 8px; min-width: 0; }
+#quality-badge { flex: none; height: 16px; line-height: 16px; padding: 0 6px; border-radius: 4px; font-size: 10px; letter-spacing: 0.06em; color: rgb(var(--text)); background: rgba(var(--text), 0.12); cursor: default; }
+#quality-badge.dim { opacity: 0.45; }
+#track-source { min-width: 0; height: 16px; line-height: 16px; font-size: 12px; font-weight: normal; color: rgb(var(--muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fit { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .fade-in { animation: fadeIn 60ms linear; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
