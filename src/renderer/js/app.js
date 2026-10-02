@@ -49,7 +49,7 @@ export const BUILTIN_EQ_PRESETS = [
 
 const state = {
   queue: [], index: -1, shuffle: false, repeat: 'OFF',
-  volume: 100, volumeBeforeMute: -1, crossfade: 0, mono: false, waveform: true, ambient: true, miniMode: false, discord: true, discNoise: false, discWear: true,
+  volume: 100, volumeBeforeMute: -1, crossfade: 0, mono: false, spatial: false, spatialAmount: 50, waveform: true, ambient: true, miniMode: false, discord: true, discNoise: false, discWear: true,
   trayBusy: false, // the tray is moving or the disc is being read: transport presses wait
   saveFound: false, // covers and lyrics found online are written into the song's file
   lyricsOffset: 0,  // ms the lyrics are moved by (+ later), on top of the output latency
@@ -1243,6 +1243,9 @@ function toggleMute() {
   else { state.volumeBeforeMute = state.volume; setVolume(0); }
 }
 function setMono(on) { state.mono = on; engine.setMono(on); updateQualityBadge(); saveSettingsSoon(); }
+/** Settings → SPATIAL AUDIO (spatial.js): on or off, and how much room, 0–100. */
+function setSpatial(on) { state.spatial = on; engine.setSpatial(on, state.spatialAmount / 100); saveSettingsSoon(); }
+function setSpatialAmount(v) { state.spatialAmount = v; engine.setSpatial(state.spatial, v / 100); saveSettingsSoon(); }
 function setWaveform(on) { state.waveform = on; progress.setWaveformEnabled(on); saveSettingsSoon(); }
 function setAmbient(on) { state.ambient = on; onCoverChanged(); saveSettingsSoon(); }
 function setAnimations(on) { anim.enabled = on; document.body.classList.toggle('no-anim', !on); saveSettingsSoon(); }
@@ -1460,7 +1463,7 @@ function appendAndPlay(p) {
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality };
+  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -1728,7 +1731,7 @@ export const app = {
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) { state.index = i; load(state.queue[i]); } },
   coverSource: () => state.coverFrom || null,
   switchTheme, previewTheme, restoreTheme, shownTheme: () => shownTheme, saveTheme, importTheme, pasteThemeCode, exportTheme, copyThemeCode, deleteTheme,
-  setQuality, setMono, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setOutput, listOutputs, currentOutputName,
+  setQuality, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setOutput, listOutputs, currentOutputName,
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
   pressingMenu: (anchor, items) => panels.pressingMenu(anchor, items),
@@ -1785,6 +1788,8 @@ async function start() {
   setVolume(s.volume);
   state.crossfade = s.crossfade;
   setMono(s.mono);
+  state.spatialAmount = Number.isFinite(s.spatialAmount) ? s.spatialAmount : 50;
+  setSpatial(!!s.spatial);
   setWaveform(s.waveform);
   state.ambient = s.ambient;
   state.discord = s.discord !== false;

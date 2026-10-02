@@ -59,11 +59,11 @@ const safePath = (p) => typeof p === 'string' && !/[\r\n]/.test(p);
 
 // settings.txt — one value per line, in the Java app's order: volume, crossfade, mono, animations, theme, EQ
 // gains, waveform, mini mode, window bounds, ambient background, then Discord status, disc noise and saving found
-// art & lyrics into files, the lyrics offset in ms, how the shelf is sorted, disc wear, the audio output ("id<TAB>name") and the language (AUTO, en or a locale code), then the sound quality (HIGH, LOSSLESS or HIRES) (CDPlayer 2 only). Missing trailing
+// art & lyrics into files, the lyrics offset in ms, how the shelf is sorted, disc wear, the audio output ("id<TAB>name") and the language (AUTO, en or a locale code), then the sound quality (HIGH, LOSSLESS or HIRES), spatial audio (1/0) and its amount (0–100) (CDPlayer 2 only). Missing trailing
 // lines keep their defaults.
 const DEFAULT_SETTINGS = {
   volume: 100, crossfade: 0, mono: false, animations: true, theme: 'RED', eq: new Array(10).fill(0),
-  waveform: true, miniMode: false, bounds: null, ambient: true, discord: true, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH',
+  waveform: true, miniMode: false, bounds: null, ambient: true, discord: true, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50,
 };
 const SHELF_SORTS = ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR', 'PRICE'];
 const QUALITIES = ['HIGH', 'LOSSLESS', 'HIRES'];
@@ -99,6 +99,8 @@ function readSettings() {
   const language = l.length >= 18 ? l[17].trim() : '';
   s.language = LANGUAGE.test(language) ? language : 'AUTO';
   s.quality = l.length >= 19 && QUALITIES.includes(l[18].trim()) ? l[18].trim() : 'HIGH';
+  s.spatial = l.length >= 20 && l[19].trim() === '1';
+  s.spatialAmount = l.length >= 21 && l[20].trim() ? Math.max(0, Math.min(100, int(l[20], 50))) : 50;
   return s;
 }
 function writeSettings(s) {
@@ -109,7 +111,8 @@ function writeSettings(s) {
     SHELF_SORTS.includes(s.shelfSort) ? s.shelfSort : 'ARTIST', s.discWear === false ? 0 : 1,
     s.output && s.output.id ? `${s.output.id}\t${String(s.output.label || '').replace(/[\t\n]/g, ' ')}` : '',
     LANGUAGE.test(s.language || '') ? s.language : 'AUTO',
-    QUALITIES.includes(s.quality) ? s.quality : 'HIGH'].join('\n') + '\n';
+    QUALITIES.includes(s.quality) ? s.quality : 'HIGH', s.spatial ? 1 : 0,
+    Math.max(0, Math.min(100, Math.round(Number.isFinite(s.spatialAmount) ? s.spatialAmount : 50)))].join('\n') + '\n';
   return writeText(FILES.settings, content);
 }
 

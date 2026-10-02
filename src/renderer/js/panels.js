@@ -229,6 +229,10 @@ function buildSettings(app) {
   lyricsOffset.canvas.title = t('Move the lyrics later (+) or earlier (−) for a song timed a little off');
 
   const mono = toggle(s.mono, () => { app.setMono(!s.mono); setToggle(mono, s.mono); });
+  const spatial = toggle(s.spatial, () => { app.setSpatial(!s.spatial); setToggle(spatial, s.spatial); });
+  const spatialValue = el('span', { class: 'row-value' }, `${s.spatialAmount}%`);
+  const spatialAmount = new Slider({ min: 0, max: 100, value: s.spatialAmount, onInput: (v) => { spatialValue.textContent = `${v}%`; app.setSpatialAmount(v); } });
+  spatialAmount.canvas.title = t('How much room and space');
   const waveform = toggle(s.waveform, () => { app.setWaveform(!s.waveform); setToggle(waveform, s.waveform); });
   const languageButton = pill('…', async () => {
     const { locales, auto } = await app.cdp.listLanguages(), nameOf = (c) => (c === 'en' ? 'ENGLISH' : (locales.find((l) => l.code === c) || {}).name || c);
@@ -268,6 +272,9 @@ function buildSettings(app) {
       : t('Lossless plays each song at its own sample rate; CDPlayer switches your output’s rate to match and puts it back when it closes. Over Bluetooth, the wireless codec limits it.')),
     unavailable(row(t('MONO AUDIO'), mono)),
     hint(t('Sums the left and right channels together — for a single speaker or one earbud.')),
+    unavailable(row(t('SPATIAL AUDIO'), spatial)),
+    unavailable(sliderRow(t('SPACE'), spatialAmount, spatialValue)),
+    hint(t('For headphones: the music comes from two speakers in front of you instead of from inside your head. Off with mono, and best off on speakers.')),
     row(t('DISC NOISE'), discNoise),
     hint(t('A real player’s sounds: a faint hiss, the tray motor, the disc spinning up — and a skip when you shake the window.')), gap(18),
     section(t('LOOK')),

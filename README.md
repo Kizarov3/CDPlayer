@@ -30,6 +30,7 @@ The builds aren't signed with a paid certificate, so the first launch asks once:
 - **Spotify** (Premium) — your saved albums and playlists play as discs, with lyrics and karaoke
 - **Playback** — gapless CUE sheets, crossfade, 10-band EQ with presets, output device picker, sleep timer, `.m3u` playlists, media keys
 - **Quality** — like Apple Music's: LOSSLESS and HI-RES LOSSLESS play each song at its own sample rate (up to 192 kHz), switching your output's rate to match on macOS and Windows
+- **Spatial audio** — for headphones: any song heard from two speakers in front of you, in a small room, instead of from inside your head
 - **Now Playing card** (`P`) — a picture or short video of the album and lyrics to share; Discord *Listening to* status
 - **Make it yours** — ten themes with animated scenes, your own themes shared as a file or code, Mini Mode (`M`), CD view, Visualizer Mode
 - **Library tools** — fix tags from MusicBrainz, find missing covers, spot duplicates and broken files

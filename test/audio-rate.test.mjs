@@ -14,6 +14,10 @@ globalThis.AudioContext = class {
   createGain() { return node(); }
   createBiquadFilter() { return { ...node(), type: '', frequency: param(), Q: param() }; }
   createAnalyser() { return { ...node(), fftSize: 0, frequencyBinCount: 1024, smoothingTimeConstant: 0 }; }
+  createChannelSplitter() { return node(); }
+  createPanner() { return { ...node(), positionX: param(), positionY: param(), positionZ: param() }; }
+  createConvolver() { return node(); }
+  createBuffer(channels, length) { const d = Array.from({ length: channels }, () => new Float32Array(length)); return { getChannelData: (c) => d[c] }; }
   createMediaElementSource() { return node(); }
   setSinkId(id) { this.sinkId = id; return Promise.resolve(); }
   close() { this.closed = true; return Promise.resolve(); }
@@ -78,4 +82,18 @@ test('a rate the browser refuses: false, the engine keeps its rate', async () =>
   assert.strictEqual(await engine.setRate(999), false);
   assert.strictEqual(engine.rate, 48000);
   assert.strictEqual(engine.ctx.closed, false);
+});
+
+test('spatial audio sits after the EQ, survives a rate change, and waits while mono is on', async () => {
+  const engine = new AudioEngine();
+  assert.strictEqual(engine.spatial.dry.gain.value, 1, 'off by default: straight through');
+  engine.setSpatial(true, 0.8);
+  assert.strictEqual(engine.spatial.dry.gain.value, 0);
+  await engine.setRate(96000);
+  assert.strictEqual(engine.spatial.dry.gain.value, 0, 'still on in the new context');
+  assert.strictEqual(engine.spatialAmount, 0.8);
+  engine.setMono(true);
+  assert.strictEqual(engine.spatial.dry.gain.value, 1, 'mono: one channel would come from one speaker, so off');
+  engine.setMono(false);
+  assert.strictEqual(engine.spatial.dry.gain.value, 0);
 });

@@ -9,6 +9,10 @@ globalThis.AudioContext = class {
   createGain() { return node(); }
   createBiquadFilter() { return { ...node(), type: '', frequency: param(), Q: param() }; }
   createAnalyser() { return { ...node(), fftSize: 0, frequencyBinCount: 1024, smoothingTimeConstant: 0 }; }
+  createChannelSplitter() { return node(); }
+  createPanner() { return { ...node(), positionX: param(), positionY: param(), positionZ: param() }; }
+  createConvolver() { return node(); }
+  createBuffer(channels, length) { const d = Array.from({ length: channels }, () => new Float32Array(length)); return { getChannelData: (c) => d[c] }; }
   createMediaElementSource() { throw new Error('a supplied element must not be routed through Web Audio'); }
   resume() { return Promise.resolve(); }
 };

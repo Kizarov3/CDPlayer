@@ -77,7 +77,7 @@ test('no t() in the code is hidden by a variable called t', () => {
 test('every renderer file that shows text is checked for text left out of t()', () => {
   // These draw, decode or calculate; they show no words of their own.
   const silent = ['i18n.js', 'i18n-format.js', 'audio.js', 'theme.js', 'jog.js', 'play-next.js', 'disc-data.js', 'lyrics.js', 'glyphs.js',
-    'visualizer.js', 'particles.js', 'dock-disc.js', 'disc-noise.js', 'disc-wear.js', 'shelf-dust.js', 'shelf-stickers.js', 'booklet-layout.js',
+    'visualizer.js', 'particles.js', 'dock-disc.js', 'disc-noise.js', 'spatial.js', 'disc-wear.js', 'shelf-dust.js', 'shelf-stickers.js', 'booklet-layout.js',
     'spotify-deck.js'];
   const all = fs.readdirSync('src/renderer/js').filter((f) => f.endsWith('.js') && !silent.includes(f));
   assert.deepStrictEqual(all.filter((f) => !CONVERTED.includes(`src/renderer/js/${f}`)), []);

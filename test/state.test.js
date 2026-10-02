@@ -20,7 +20,7 @@ test('reads a settings.txt written by the Java version', () => {
   assert.deepStrictEqual(s, {
     volume: 70, crossfade: 5, mono: true, animations: false, theme: 'OCEAN', eq: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
     waveform: false, miniMode: false, bounds: { x: 10, y: 20, width: 1200, height: 900 }, ambient: false, discord: true,
-    discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH',
+    discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50,
   });
 });
 
@@ -222,4 +222,13 @@ test('the sound quality: HIGH unless set, kept, odd values back to HIGH', () => 
   assert.strictEqual(store.readSettings().quality, 'HIRES');
   store.writeSettings({ ...store.readSettings(), quality: 'ULTRA' });
   assert.strictEqual(store.readSettings().quality, 'HIGH');
+});
+
+test('spatial audio: off and 50 unless set, kept, the amount held to 0–100', () => {
+  store.writeSettings({ ...store.DEFAULT_SETTINGS });
+  assert.deepStrictEqual([store.readSettings().spatial, store.readSettings().spatialAmount], [false, 50]);
+  store.writeSettings({ ...store.readSettings(), spatial: true, spatialAmount: 80 });
+  assert.deepStrictEqual([store.readSettings().spatial, store.readSettings().spatialAmount], [true, 80]);
+  store.writeSettings({ ...store.readSettings(), spatialAmount: 400 });
+  assert.strictEqual(store.readSettings().spatialAmount, 100);
 });

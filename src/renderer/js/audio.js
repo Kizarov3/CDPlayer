@@ -2,12 +2,14 @@
 // protocol, so seeking is instant and memory stays flat), routed through one shared Web Audio graph:
 //
 //   deck gain (crossfade) ─┐
-//   deck gain (crossfade) ─┴→ mono downmix → 10-band EQ → analyser (visualizer/beats) → volume → speakers
+//   deck gain (crossfade) ─┴→ mono downmix → 10-band EQ → spatial audio → analyser (visualizer/beats) → volume → speakers
 //
 // That graph replaces the Java app's hand-written PCM pump: gain, mono, EQ and crossfade are all native nodes.
 //
 // A deck can also play just a stretch of its file — a cue sheet track inside an album-length rip. position,
 // duration and seek are then relative to that stretch, and reaching its end counts as the track ending.
+
+import { Spatializer } from './spatial.js';
 
 export const EQ_FREQUENCIES = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 
@@ -16,6 +18,7 @@ export class AudioEngine {
     this.volume = 1; this.mono = false; this.eqGains = new Array(EQ_FREQUENCIES.length).fill(0);
     this.outputId = '';
     this.customRate = null;    // Settings → QUALITY: the song's rate, or null for the system's
+    this.spatialOn = false; this.spatialAmount = 0.5; // Settings → SPATIAL AUDIO (spatial.js)
     this.contextListeners = [];
     this.build(null);
     this.deck = null;          // the current track
@@ -24,7 +27,7 @@ export class AudioEngine {
     this.onEnded = null;
   }
 
-  /** The graph, in a new context at `rate` (null: the system's), with the volume, mono and EQ it had. */
+  /** The graph, in a new context at `rate` (null: the system's), with the volume, mono, EQ and spatial audio it had. */
   build(rate) {
     const ctx = new AudioContext(rate ? { sampleRate: rate, latencyHint: 'playback' } : { latencyHint: 'playback' });
     this.ctx = ctx;
@@ -39,15 +42,18 @@ export class AudioEngine {
     this.analyser.smoothingTimeConstant = 0;
     this.master = ctx.createGain();
     this.master.gain.value = this.volume;
+    this.spatial = new Spatializer(ctx);
     let node = this.input;
     for (const b of this.eq) { node.connect(b); node = b; }
-    node.connect(this.analyser);
+    node.connect(this.spatial.input);
+    this.spatial.output.connect(this.analyser);
     this.analyser.connect(this.master);
     this.master.connect(ctx.destination);
     this.samples = new Float32Array(this.analyser.fftSize);
     this.freq = null;
     this.recDest = null;
     this.applyMono();
+    this.applySpatial({ now: true });
   }
 
   get rate() { return this.ctx.sampleRate; }
@@ -60,7 +66,7 @@ export class AudioEngine {
   async setRate(rate) {
     if ((rate || null) === this.customRate && (!rate || rate === this.ctx.sampleRate)) return true;
     this.stop();
-    const old = this.ctx, oldNodes = { input: this.input, eq: this.eq, analyser: this.analyser, master: this.master, samples: this.samples };
+    const old = this.ctx, oldNodes = { input: this.input, eq: this.eq, spatial: this.spatial, analyser: this.analyser, master: this.master, samples: this.samples };
     try { this.build(rate); } catch {
       Object.assign(this, { ctx: old }, oldNodes);
       return false;
@@ -73,7 +79,7 @@ export class AudioEngine {
   }
 
   setVolume(v) { this.volume = v; this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.01); }
-  setMono(on) { this.mono = on; this.applyMono(); }
+  setMono(on) { this.mono = on; this.applyMono(); this.applySpatial(); }
   applyMono() {
     // A 1-channel "explicit" node makes Web Audio sum L+R (×0.5 each) — exactly the Java version's (L+R)/2 —
     // and the speakers then get that mono signal on both sides.
@@ -81,6 +87,10 @@ export class AudioEngine {
     this.input.channelCountMode = this.mono ? 'explicit' : 'max';
     this.input.channelInterpretation = 'speakers';
   }
+  /** Settings → SPATIAL AUDIO: on or off, and how much room (0–1). */
+  setSpatial(on, amount = this.spatialAmount) { this.spatialOn = !!on; this.spatialAmount = amount; this.applySpatial(); }
+  // Mono has one channel left, which would come from the left speaker alone: spatial audio waits while it's on.
+  applySpatial(opts) { this.spatial.set(this.spatialOn && !this.mono, this.spatialAmount, opts); }
   setEq(gains) { this.eqGains = gains.slice(); gains.forEach((g, i) => this.eq[i].gain.setTargetAtTime(g, this.ctx.currentTime, 0.02)); }
 
   /** A deck for `url` — or, given `element` (a Spotify track), one that plays through it, outside Web Audio. */
