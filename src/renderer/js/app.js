@@ -1047,6 +1047,7 @@ async function listOutputs() {
 async function applyOutput(announce) {
   const devices = await listOutputs(), id = pickOutput(devices, state.output);
   if (id === (engine.outputId || '')) return;
+  state.rateInfo = null; updateQualityBadge(); // the rate known is for the old output; the next song switches this one afresh
   if (!(await engine.setOutput(id)) || !announce) return;
   const device = devices.find((d) => d.deviceId === id);
   setStatus(device ? t('PLAYING ON {device}', { device: outputName(device) }) : t('OUTPUT: SYSTEM DEFAULT'));
@@ -1054,7 +1055,9 @@ async function applyOutput(announce) {
 /** Settings → OUTPUT: a device ({ deviceId, label }), or null for the system default. */
 async function setOutput(device) {
   state.output = device ? { id: device.deviceId, label: device.label } : null;
+  state.rateInfo = null;
   await applyOutput(false);
+  updateQualityBadge();
   saveSettingsSoon();
 }
 const currentOutputName = async () => outputName((await listOutputs()).find((d) => d.deviceId === engine.outputId) || null);
@@ -1087,7 +1090,8 @@ function updateQualityBadge() {
 async function setQuality(level) {
   state.quality = LEVELS.includes(level) ? level : 'HIGH';
   saveSettingsSoon();
-  if (state.quality === 'HIGH') { state.rateInfo = null; await cdp.outputRate.restore().catch(() => {}); }
+  state.rateInfo = null;
+  if (state.quality === 'HIGH') { await cdp.outputRate.restore().catch(() => {}); }
   updateQualityBadge();
 }
 function setDiscWear(on) { state.discWear = on; updateWear(); saveSettingsSoon(); }
