@@ -42,7 +42,7 @@ test('the device by its Chromium label, or the default', () => {
   assert.strictEqual(findDevice(devices, null).id, 'BuiltInHeadphoneOutputDevice');
   assert.strictEqual(findDevice(devices, { id: 'hash', label: 'MacBook Pro Speakers (Built-in)' }).id, 'BuiltInSpeakerDevice');
   assert.strictEqual(findDevice(devices, { id: 'hash', label: 'AirPods Pro' }).id, 'AA-BB');
-  assert.strictEqual(findDevice(devices, { id: 'hash', label: 'Gone' }).id, 'BuiltInHeadphoneOutputDevice', 'unknown name: the default');
+  assert.strictEqual(findDevice(devices, { id: 'hash', label: 'Gone' }), null, 'a chosen device not found: not the default, which isn\'t what the user hears');
 });
 
 function fakeMac() {
@@ -189,4 +189,65 @@ test('if list fails during restore, the file is not touched', async () => {
   fs.writeFileSync(file, JSON.stringify({ BuiltInHeadphoneOutputDevice: 48000, External: 96000 }));
   await rate.restore();
   assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { BuiltInHeadphoneOutputDevice: 48000, External: 96000 }, 'file unchanged after list failure');
+});
+
+test('a chosen device that is gone: set switches nothing', async () => {
+  const fake = fakeMac();
+  const rate = createOutputRate({ platform: 'darwin', run: fake.run, file: path.join(home, 'gone.json') });
+  assert.strictEqual(await rate.set({ id: 'h', label: 'Gone' }, 96000), null);
+  assert.ok(!fake.calls.some((c) => c[0] === 'set'));
+});
+
+test('restore with nothing ever switched never starts the helper; pending() says so', async () => {
+  const file = path.join(home, 'none.json');
+  fs.rmSync(file, { force: true });
+  const fake = fakeMac();
+  const rate = createOutputRate({ platform: 'darwin', run: fake.run, file });
+  assert.strictEqual(rate.pending(), false);
+  await rate.restore();
+  assert.strictEqual(fake.calls.length, 0);
+  await rate.set(null, 96000);
+  assert.strictEqual(rate.pending(), true);
+  await rate.restore();
+  assert.strictEqual(rate.pending(), false);
+});
+
+test('the device list is reused for 10 s, kept current by set, dropped by restore and a failed set', async () => {
+  const file = path.join(home, 'cache.json');
+  fs.rmSync(file, { force: true });
+  const fake = fakeMac();
+  let t = 1000;
+  const rate = createOutputRate({ platform: 'darwin', run: fake.run, file, now: () => t, log: () => {} });
+  const count = (c) => fake.calls.filter((a) => a[0] === c).length;
+  await rate.set(null, 96000);
+  await rate.set(null, 44100);
+  assert.strictEqual(count('list'), 1, 'one list for two songs');
+  assert.strictEqual(count('set'), 2);
+  await rate.set(null, 44100);
+  assert.strictEqual(count('set'), 2, 'the cached rate is the new one: nothing to set');
+  t += 10001;
+  await rate.set(null, 96000);
+  assert.strictEqual(count('list'), 2, 'listed again after 10 s');
+  await rate.restore();
+  await rate.set(null, 96000);
+  assert.strictEqual(count('list'), 4, 'restore lists, then the cache is dropped');
+  fake.devices[1].rate = 48000;
+  const failing = async (args) => { if (args[0] === 'set') throw new Error('boom'); return fake.run(args); };
+  const bad = createOutputRate({ platform: 'darwin', run: failing, file: path.join(home, 'cache2.json'), now: () => t, log: () => {} });
+  fake.calls.length = 0;
+  assert.strictEqual(await bad.set(null, 96000), null);
+  assert.strictEqual(await bad.set(null, 96000), null);
+  assert.strictEqual(count('list'), 2, 'a failed set drops the cache');
+});
+
+test('after the final restore nothing is switched again', async () => {
+  const file = path.join(home, 'final.json');
+  fs.rmSync(file, { force: true });
+  const fake = fakeMac();
+  const rate = createOutputRate({ platform: 'darwin', run: fake.run, file });
+  await rate.set(null, 96000);
+  await rate.restore({ final: true });
+  assert.strictEqual(fake.devices[1].rate, 48000);
+  assert.strictEqual(await rate.set(null, 96000), null);
+  assert.strictEqual(fake.devices[1].rate, 48000);
 });

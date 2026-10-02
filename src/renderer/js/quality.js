@@ -51,7 +51,9 @@ export function badgeText({ fileRate, aimed, deviceRate, switched, bluetooth, eq
   let line;
   if (bluetooth) line = t('BLUETOOTH: QUALITY IS LIMITED BY THE WIRELESS CODEC');
   else if (deviceRate === aimed) {
-    line = aimed < fileRate
+    line = fileRate > CAP.HIRES
+      ? t('OUTPUT: {rate} — LOWERED FROM {file} (THE HIGHEST CDPLAYER PLAYS)', { rate: khz(aimed), file: khz(fileRate) })
+      : aimed < fileRate
       ? t('OUTPUT: {rate} — LOWERED FROM {file} (HI-RES LOSSLESS PLAYS IT IN FULL)', { rate: khz(aimed), file: khz(fileRate) })
       : t('OUTPUT: {rate} — NOT RESAMPLED', { rate: khz(aimed) });
   } else if (switched) line = t("OUTPUT: {rate} — RESAMPLED (THE DEVICE CAN'T PLAY {file})", { rate: khz(deviceRate), file: khz(aimed) });

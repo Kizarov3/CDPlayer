@@ -42,26 +42,41 @@ function parseWinList(json) {
   }));
 }
 
-/** The device Settings → OUTPUT means ({ id, label } from Chromium, or null): found by its name, else the default. */
+/** The device Settings → OUTPUT means ({ id, label } from Chromium, or null for the default): found by its name. A chosen
+ *  device that isn't found is null — the default isn't what the user hears then, so it must not be switched. */
 function findDevice(devices, device) {
-  const fallback = devices.find((d) => d.isDefault) || null;
-  if (!device || !device.label) return fallback;
+  if (!device || !device.label) return devices.find((d) => d.isDefault) || null;
   const label = device.label.replace(/^Default - /, '');
   const bare = label.replace(/\s*\([^)]*\)\s*$/, '');
-  return devices.find((d) => d.name === label) || devices.find((d) => d.name === bare) || fallback;
+  return devices.find((d) => d.name === label) || devices.find((d) => d.name === bare) || null;
 }
 
-function createOutputRate({ platform, run, file, log = (msg) => console.warn(msg) }) {
+const LIST_TTL = 10000; // a run of songs reuses one list: each helper call is a process (PowerShell on Windows)
+
+function createOutputRate({ platform, run, file, log = (msg) => console.warn(msg), now = Date.now }) {
   const parse = platform === 'darwin' ? parseMacList : platform === 'win32' ? parseWinList : null;
-  let warned = false, busy = Promise.resolve();
+  let warned = false, busy = Promise.resolve(), cache = null, closing = false, inflight = 0;
   const fail = (e) => { if (!warned) { warned = true; log(`output rate: ${e && e.message ? e.message : e}`); } return null; };
   const readOriginals = () => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch { return {}; } };
   const writeOriginals = (o) => { if (Object.keys(o).length) fs.writeFileSync(file, JSON.stringify(o)); else fs.rmSync(file, { force: true }); };
-  const serial = (fn) => { const job = busy.then(fn, fn); busy = job.catch(() => {}); return job; };
+  const serial = (fn) => {
+    inflight++;
+    const job = busy.then(fn, fn).finally(() => { inflight--; });
+    busy = job.catch(() => {});
+    return job;
+  };
 
   async function list() {
     if (!parse) return [];
-    try { return parse(await run(['list'])); } catch (e) { return fail(e); }
+    try {
+      const devices = parse(await run(['list']));
+      cache = { at: now(), devices };
+      return devices;
+    } catch (e) { cache = null; return fail(e); }
+  }
+  /** list(), or the last one when it's under 10 s old (set() keeps its rates up to date). */
+  async function cachedList() {
+    return cache && now() - cache.at < LIST_TTL ? cache.devices : list();
   }
   async function current(device) {
     const devices = await list();
@@ -69,8 +84,8 @@ function createOutputRate({ platform, run, file, log = (msg) => console.warn(msg
     return d ? d.rate : null;
   }
   async function setNow(device, hz) {
-    if (!parse) return null;
-    const devices = await list();
+    if (!parse || closing) return null;
+    const devices = await cachedList();
     const d = devices && findDevice(devices, device);
     if (!d) return null;
     if (d.bluetooth) return { rate: d.rate, switched: false, bluetooth: true };
@@ -82,20 +97,30 @@ function createOutputRate({ platform, run, file, log = (msg) => console.warn(msg
     try {
       const res = await run(['set', d.id, String(target)]);
       const rate = Number(res && res.rate) || null;
+      if (rate) d.rate = rate; // the cached device now has the new rate: the next song needn't ask again
+      else cache = null;
       return { rate: rate || d.rate, switched: rate === target, bluetooth: false };
-    } catch (e) { return fail(e); }
+    } catch (e) { cache = null; return fail(e); }
   }
   function set(device, hz) {
     return serial(() => setNow(device, hz));
   }
-  function restore() {
+  /** `final` is the quit's restore: after it nothing switches the device again (a song ending in the still-alive window). */
+  function restore({ final = false } = {}) {
+    if (final) closing = true;
     return serial(restoreNow);
+  }
+  /** True when there's a rate to put back (or a switch in progress), so quit has something to wait for. */
+  function pending() {
+    return !!parse && (inflight > 0 || Object.keys(readOriginals()).length > 0);
   }
   async function restoreNow() {
     if (!parse) return;
+    cache = null;
+    const originals = readOriginals();
+    if (!Object.keys(originals).length) return; // never switched: don't start the helper at all
     const devices = await list();
     if (!devices) return; // list failed, keep everything untouched
-    const originals = readOriginals();
     for (const [id, rate] of Object.entries(originals)) {
       const device = devices.find((d) => d.id === id);
       if (!device) {
@@ -111,8 +136,9 @@ function createOutputRate({ platform, run, file, log = (msg) => console.warn(msg
       }
     }
     writeOriginals(originals);
+    cache = null;
   }
-  return { list, current, set, restore };
+  return { list, current, set, restore, pending };
 }
 
 module.exports = { createOutputRate, deviceRate, findDevice, parseMacList, parseWinList };

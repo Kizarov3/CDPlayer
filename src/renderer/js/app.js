@@ -68,6 +68,7 @@ const state = {
   lastPath: null, version: '', platform: '',
 };
 const engine = new AudioEngine();
+state.systemRate = engine.rate; // the device's rate as CDPlayer found it, before any setRate: what HIGH plays at
 const disc = new Disc($('disc'));
 const visualizer = new Visualizer($('visualizer'));
 const bigVisualizer = new Visualizer($('big-visualizer'), { big: true });
@@ -365,10 +366,11 @@ async function applyQuality(format, token) {
     state.rateInfo = { ...known, fileRate };
     return false;
   }
+  engine.pause(); // the old song mustn't play on while the device's format changes under it (that pops on Windows)
   const result = await cdp.outputRate.set(state.output, aimed).catch(() => null);
   if (token !== state.loadToken) return false;
   state.rateInfo = {
-    fileRate, aimed, deviceRate: result ? result.rate : engine.rate,
+    fileRate, aimed, deviceRate: result ? result.rate : state.systemRate, // not switched: the device stays as the system has it
     switched: !!(result && result.switched), bluetooth: !!(result && result.bluetooth),
   };
   const playAt = result && result.switched ? result.rate : aimed;
@@ -1046,8 +1048,10 @@ async function listOutputs() {
 // changes by itself (headphones unplugged, AirPods back out of their case).
 async function applyOutput(announce) {
   const devices = await listOutputs(), id = pickOutput(devices, state.output);
+  // The rate known may be for another device: with OUTPUT = SYSTEM DEFAULT, plugging in headphones changes the OS default
+  // while Chromium's id stays '', so this runs before the early return; the next song switches the output afresh.
+  state.rateInfo = null; updateQualityBadge();
   if (id === (engine.outputId || '')) return;
-  state.rateInfo = null; updateQualityBadge(); // the rate known is for the old output; the next song switches this one afresh
   if (!(await engine.setOutput(id)) || !announce) return;
   const device = devices.find((d) => d.deviceId === id);
   setStatus(device ? t('PLAYING ON {device}', { device: outputName(device) }) : t('OUTPUT: SYSTEM DEFAULT'));
@@ -1079,7 +1083,7 @@ function updateQualityBadge() {
   badge.hidden = !label;
   if (!label) return;
   const fileRate = d.format.sampleRate;
-  const info = state.rateInfo || { fileRate, aimed: targetRate(state.quality, fileRate), deviceRate: engine.rate, switched: false, bluetooth: false };
+  const info = state.rateInfo || { fileRate, aimed: targetRate(state.quality, fileRate), deviceRate: state.systemRate, switched: false, bluetooth: false };
   const full = { ...info, eq: state.eq.some((g) => g !== 0), mono: state.mono };
   badge.textContent = label;
   badge.title = badgeText(full);
@@ -1091,7 +1095,11 @@ async function setQuality(level) {
   state.quality = LEVELS.includes(level) ? level : 'HIGH';
   saveSettingsSoon();
   state.rateInfo = null;
-  if (state.quality === 'HIGH') { await cdp.outputRate.restore().catch(() => {}); }
+  if (state.quality === 'HIGH') {
+    await cdp.outputRate.restore().catch(() => {});
+    const now = await cdp.outputRate.current(state.output).catch(() => null);
+    if (now > 0) state.systemRate = now; // the device's own rate again (engine.rate stays custom until the next load)
+  }
   updateQualityBadge();
 }
 function setDiscWear(on) { state.discWear = on; updateWear(); saveSettingsSoon(); }

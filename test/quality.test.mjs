@@ -47,6 +47,7 @@ test('what reaches the output, said plainly', () => {
   assert.strictEqual(badgeText({ ...base, fileRate: 192000, aimed: 192000 }), "OUTPUT: 96 KHZ — RESAMPLED (THE DEVICE CAN'T PLAY 192 KHZ)");
   assert.strictEqual(badgeText({ ...base, deviceRate: 48000, switched: false }), 'OUTPUT: 48 KHZ — RESAMPLED (SET THE RATE IN YOUR SOUND SETTINGS)');
   assert.strictEqual(badgeText({ ...base, aimed: 48000, deviceRate: 48000 }), 'OUTPUT: 48 KHZ — LOWERED FROM 96 KHZ (HI-RES LOSSLESS PLAYS IT IN FULL)');
+  assert.strictEqual(badgeText({ ...base, fileRate: 384000, aimed: 192000, deviceRate: 192000 }), 'OUTPUT: 192 KHZ — LOWERED FROM 384 KHZ (THE HIGHEST CDPLAYER PLAYS)');
   assert.ok(!badgeExact({ ...base, aimed: 48000, deviceRate: 48000 }));
   assert.strictEqual(badgeText({ ...base, bluetooth: true }), 'BLUETOOTH: QUALITY IS LIMITED BY THE WIRELESS CODEC');
   assert.ok(!badgeExact({ ...base, bluetooth: true }));

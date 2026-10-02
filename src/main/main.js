@@ -791,8 +791,10 @@ app.on('before-quit', (e) => {
   quitting = true;
   if (playsTimer) { clearTimeout(playsTimer); writePlays(); }
   if (restoredRate || smokeDir || !gotLock) return;
+  if (!outputRate.pending()) { outputRate.restore({ final: true }).catch(() => {}); return; } // nothing to put back: quit now, and no more switching
   e.preventDefault();
   restoredRate = true;
-  Promise.race([outputRate.restore(), new Promise((r) => setTimeout(r, 3000))]).catch(() => {}).finally(() => app.quit());
+  // a helper call can take 5 s, so the cap is longer; the final restore also stops any later switch
+  Promise.race([outputRate.restore({ final: true }), new Promise((r) => setTimeout(r, 8000))]).catch(() => {}).finally(() => app.quit());
 });
 app.on('window-all-closed', () => app.quit());

@@ -263,7 +263,9 @@ function buildSettings(app) {
     unavailable(sliderRow(t('CROSSFADE'), crossfade, crossfadeValue)),
     unavailable(row(t('OUTPUT'), outputButton)),
     unavailable(row(t('QUALITY'), qualityButton)),
-    hint(t('Lossless plays each song at its own sample rate; CDPlayer switches your output’s rate to match and puts it back when it closes. Over Bluetooth, the wireless codec limits it.')),
+    hint(document.body.dataset.platform === 'linux' // no output-rate helper there
+      ? t('Lossless plays each song at its own sample rate. On Linux, set your output’s rate in your sound settings (PipeWire can follow it by itself).')
+      : t('Lossless plays each song at its own sample rate; CDPlayer switches your output’s rate to match and puts it back when it closes. Over Bluetooth, the wireless codec limits it.')),
     unavailable(row(t('MONO AUDIO'), mono)),
     hint(t('Sums the left and right channels together — for a single speaker or one earbud.')),
     row(t('DISC NOISE'), discNoise),

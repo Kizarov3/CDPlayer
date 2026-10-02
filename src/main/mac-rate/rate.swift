@@ -1,6 +1,6 @@
 // CDPlayer's output-rate helper for macOS (see src/main/output-rate.js).
 //   mac-rate list                  → [{ name, uid, rate, rates, transport, isDefault }] for every output device
-//   mac-rate set <uid|default> <hz> → { rate } once the device reports the new rate (2 s at most)
+//   mac-rate set <uid|default> <hz> → { rate } once the device reports the new rate (3.5 s at most)
 import CoreAudio
 import Foundation
 
@@ -94,7 +94,7 @@ case "set":
   var r = Float64(hz)
   let status = AudioObjectSetPropertyData(device, &a, 0, nil, UInt32(MemoryLayout<Float64>.size), &r)
   if status != noErr { fail("set: \(status)") }
-  let deadline = Date().addingTimeInterval(2)
+  let deadline = Date().addingTimeInterval(3.5)
   while rate(device) != hz && Date() < deadline { usleep(50_000) }
   printJSON(["rate": rate(device)])
 default:
