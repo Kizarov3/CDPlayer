@@ -268,6 +268,7 @@ handle('themes:list', () => userThemes.list());
 handle('themes:save', (theme, oldName) => userThemes.save(theme, oldName || null));
 handle('themes:delete', (name) => userThemes.remove(name));
 handle('themes:import', async (source) => {
+  if (typeof source === 'string' && !/\.cdtheme$/i.test(source)) return { error: t('NOT A CDPLAYER THEME') };
   if (typeof source !== 'string') {
     const r = await dialog.showOpenDialog(win, { title: t('Import a Theme'), defaultPath: app.getPath('downloads'), properties: ['openFile'], filters: [{ name: t('CDPlayer theme'), extensions: ['cdtheme'] }] });
     if (r.canceled || !r.filePaths.length) return { canceled: true };
@@ -279,8 +280,8 @@ handle('themes:import', async (source) => {
 handle('themes:export', async (name) => {
   const safe = String(name || 'Theme').replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Theme';
   const r = await dialog.showSaveDialog(win, { title: t('Export the Theme'), defaultPath: path.join(app.getPath('documents'), `${safe}.cdtheme`), filters: [{ name: t('CDPlayer theme'), extensions: ['cdtheme'] }] });
-  if (r.canceled || !r.filePath) return false;
-  return userThemes.exportFile(name, /\.cdtheme$/i.test(r.filePath) ? r.filePath : `${r.filePath}.cdtheme`);
+  if (r.canceled || !r.filePath) return { canceled: true };
+  return userThemes.exportFile(name, /\.cdtheme$/i.test(r.filePath) ? r.filePath : `${r.filePath}.cdtheme`) ? { ok: true } : { error: true };
 });
 handle('themes:encode', (theme) => userThemes.encodeCode(theme));
 handle('themes:decode', (text) => userThemes.decodeCode(text));

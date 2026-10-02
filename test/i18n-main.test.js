@@ -25,6 +25,9 @@ test('AUTO: the first system language with a file, the most specific first; else
   assert.strictEqual(i18n.resolveLocale('AUTO', ['pt-PT'], have), 'en');
   assert.strictEqual(i18n.resolveLocale('AUTO', ['de-DE'], have), 'en');
   assert.strictEqual(i18n.resolveLocale('AUTO', [], have), 'en');
+  // a system with a script in its tag still finds a file named by language and region
+  assert.strictEqual(i18n.resolveLocale('AUTO', ['zh-Hant-TW'], ['zh-TW', 'zh']), 'zh-TW');
+  assert.strictEqual(i18n.resolveLocale('AUTO', ['zh-Hans-CN'], ['zh-TW', 'zh']), 'zh');
 });
 
 test('a language picked in Settings, if its file is there', () => {

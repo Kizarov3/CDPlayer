@@ -65,6 +65,7 @@ test('other languages: how far along (never failing)', () => {
 test('a t() hidden by a variable of the same name is found', () => {
   assert.deepStrictEqual(hiddenT("import { t } from './i18n.js';\nconst a = (t) => t('X');\nconst b = () => t('Y');\nfunction c(list) { for (const t of list) t('Z'); }"), [2, 4]);
   assert.deepStrictEqual(hiddenT("import { t } from './i18n.js';\nconst a = (t) => t + 1;\nt('X');"), []);
+  assert.deepStrictEqual(hiddenT("import { t } from './i18n.js';\nswitch (x) {\n  case 1: const t = 2; t('X');\n}"), [3]);
 });
 
 test('no t() in the code is hidden by a variable called t', () => {

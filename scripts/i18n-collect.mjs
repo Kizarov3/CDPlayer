@@ -98,7 +98,8 @@ function declares(scope) {
   if (NESTED.has(scope.type)) { for (const p of scope.params) namesOf(p, names); if (scope.id && scope.type === 'FunctionExpression') names.add(scope.id.name); }
   if (scope.type === 'CatchClause') namesOf(scope.param, names);
   if (/^For(Of|In)?Statement$/.test(scope.type)) { const init = scope.init || scope.left; if (init && init.type === 'VariableDeclaration') for (const d of init.declarations) namesOf(d.id, names); }
-  const body = scope.type === 'BlockStatement' ? scope.body : NESTED.has(scope.type) && scope.body.type === 'BlockStatement' ? scope.body.body : [];
+  const body = scope.type === 'BlockStatement' || scope.type === 'StaticBlock' ? scope.body : scope.type === 'SwitchCase' ? scope.consequent
+    : NESTED.has(scope.type) && scope.body.type === 'BlockStatement' ? scope.body.body : [];
   for (const stmt of body) {
     if (stmt.type === 'VariableDeclaration') for (const d of stmt.declarations) namesOf(d.id, names);
     if (stmt.type === 'FunctionDeclaration') names.add(stmt.id.name);

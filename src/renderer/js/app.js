@@ -1088,7 +1088,7 @@ function applyBackdrop(theme) {
 }
 function onCoverChanged() {
   paintCoverGlow();
-  if (shownTheme.name === 'AUTO') { shownTheme = refreshAutoTheme(); setColors(shownTheme, anim.enabled); }
+  if (shownTheme.name === 'AUTO' && !shownTheme.user && THEMES[state.themeIndex] === shownTheme) { shownTheme = refreshAutoTheme(); setColors(shownTheme, anim.enabled); }
 }
 function showTheme(theme, animate) {
   const hadImage = !!shownTheme.image;
@@ -1142,7 +1142,11 @@ async function pasteThemeCode() {
   await reloadUserThemes(saved.name);
   setStatus(t('THEME ADDED'));
 }
-async function exportTheme(name) { if (await cdp.themes.exportFile(name)) setStatus(t('THEME EXPORTED')); }
+async function exportTheme(name) {
+  const r = await cdp.themes.exportFile(name).catch(() => ({ error: true }));
+  if (r.ok) setStatus(t('THEME EXPORTED'));
+  else if (!r.canceled) setStatus(t("COULDN'T EXPORT THE THEME"));
+}
 async function copyThemeCode(theme) {
   const code = await cdp.themes.encode(toFile(theme));
   if (!code) return;

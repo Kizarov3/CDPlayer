@@ -365,6 +365,7 @@ body.cd-view #cd-info { display: block !important; }
 .color-well::-webkit-color-swatch-wrapper { padding: 2px; }
 .color-well::-webkit-color-swatch { border: none; border-radius: 2px; }
 .theme-warning { color: rgb(var(--accent)); font-size: 10px; font-weight: bold; }
+.theme-problem { margin: 6px 0 2px; }
 .theme-name { width: 170px; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .118); color: rgb(var(--text)); font: inherit; font-size: 12px; padding: 5px 8px; }
 .swatch { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .235); }
 

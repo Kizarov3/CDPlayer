@@ -51,7 +51,7 @@ export function buildThemeEditor(app, ctx, ui) {
   }))), t('The visualizer, and what falls behind the player'));
 
   const useImage = async (blob) => {
-    try { d.image = await shrinkImage(blob); } catch (err) { app.setStatus(err.message === 'too big' ? t('IMAGE TOO BIG') : t("CAN'T READ THAT IMAGE")); return; }
+    try { d.image = await shrinkImage(blob); ctx.problem = null; } catch (err) { ctx.problem = err.message === 'too big' ? t('IMAGE TOO BIG') : t("CAN'T READ THAT IMAGE"); ui.refresh(); return; }
     ui.refresh(); preview();
   };
   const picker = el('input', { type: 'file', accept: 'image/*', hidden: true, onChange: (e) => { if (e.target.files[0]) useImage(e.target.files[0]); e.target.value = ''; } });
@@ -62,7 +62,10 @@ export function buildThemeEditor(app, ctx, ui) {
     const dim = new Slider({ min: 0, max: 90, value: d.dim, onInput: (v) => { d.dim = v; dimValue.textContent = `${v}%`; preview(); } });
     imageRows = [
       ui.row(t('IMAGE'), el('div', { class: 'row-pills' },
-        pill(t('COLORS FROM IMAGE'), async () => { startFrom(d, deriveAutoTheme(await loadImage(d.image)), { keepScene: true }); ui.refresh(); preview(); }, t('Colors to go with the picture')),
+        pill(t('COLORS FROM IMAGE'), async () => {
+          try { startFrom(d, deriveAutoTheme(await loadImage(d.image)), { keepScene: true }); } catch { ctx.problem = t("CAN'T READ THAT IMAGE"); ui.refresh(); return; }
+          ui.refresh(); preview();
+        }, t('Colors to go with the picture')),
         pill(t('CHANGE…'), () => picker.click()), pill(t('REMOVE'), () => { d.image = null; ui.refresh(); preview(); }))),
       ui.sliderRow(t('BLUR'), blur, blurValue), ui.sliderRow(t('DIM'), dim, dimValue),
     ];
@@ -84,6 +87,7 @@ export function buildThemeEditor(app, ctx, ui) {
   ui.row(t('START FROM'), startButton), ui.gap(10),
   ...COLOR_ROWS.map(colorRow), ui.gap(10),
   ui.row(t('SCENE'), sceneButton), ...imageRows, ui.gap(10),
+  ctx.problem ? el('div', { class: 'theme-warning theme-problem' }, ctx.problem) : null, // said here: the status line is under the panel
   ui.row(t('NAME'), name), picker);
   return [ui.title(ctx.editing ? t('EDIT {theme}', { theme: ctx.editing.name }) : t('NEW THEME')), ui.gap(14), body,
     el('div', { class: 'close-row split' }, pill(t('CANCEL'), ui.close), el('button', { class: 'pill on', onClick: save }, t('SAVE')))];

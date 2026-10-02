@@ -77,7 +77,8 @@ function staleness(entry, now, currency) {
 function createDiscogs({ fetchJson, mbFetch, read = (f) => store.readText(f), write = (f, text) => store.writeText(f, text), now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), userAgent = 'CDPlayer' }) {
   let cache = null, prefs = null, tokenDropped = false;
   const albums = () => {
-    if (!cache) { try { const c = JSON.parse(read(CACHE_FILE) || ''); cache = c && c.version === 1 && c.albums ? c.albums : {}; } catch { cache = {}; } }
+    if (!cache) { try { const c = JSON.parse(read(CACHE_FILE) || ''); cache = Object.assign(Object.create(null), c && c.version === 1 && c.albums ? c.albums : {}); } catch { cache = Object.create(null); } }
+    // (no prototype: an album id is only ever an id, even "__proto__")
     return cache;
   };
   const writeCache = () => write(CACHE_FILE, JSON.stringify({ version: 1, albums: albums() }));
@@ -207,7 +208,7 @@ function createDiscogs({ fetchJson, mbFetch, read = (f) => store.readText(f), wr
     const id = Number(releaseId);
     return keep(album, await priced({ releaseId: id, by: 'user', info: summarize(await request(`releases/${id}`)), checkedAt: now() }));
   }
-  const known = (ids) => Object.fromEntries((ids || []).filter((id) => albums()[id]).map((id) => [id, albums()[id]]));
+  const known = (ids) => Object.fromEntries((ids || []).filter((id) => typeof id === 'string' && Object.hasOwn(albums(), id)).map((id) => [id, albums()[id]]));
   const notFound = (ids = null) => Object.entries(albums()).filter(([id, e]) => e.releaseId === null && (!ids || ids.includes(id))).map(([id, e]) => ({ id, title: e.title, artist: e.artist }));
   const settings = () => ({ token: !!settingsOf().token, tokenDropped, currency: settingsOf().currency, currencies: CURRENCIES });
 

@@ -159,8 +159,12 @@ let discogsSettings = null;
 async function loadDiscogsSettings(app) { discogsSettings = await app.cdp.discogsSettings().catch(() => null); }
 
 export function showSettings(app) {
-  loadDiscogsSettings(app).then(() => refreshSettingsIfOpen(app)); // a token Discogs dropped meanwhile shows at once
-  openPanel('settings', () => buildSettings(app), { width: 420 });
+  const open = () => openPanel('settings', () => buildSettings(app), { width: 420 });
+  // DISCOGS's token and currency, asked each time (a token Discogs dropped shows at once); the first time, before
+  // the panel opens, so it never shows defaults for a moment.
+  if (!discogsSettings) { loadDiscogsSettings(app).then(open); return; }
+  open();
+  loadDiscogsSettings(app).then(() => refreshSettingsIfOpen(app));
 }
 export function refreshSettingsIfOpen(app) { if (isOpen('settings')) refreshPanel('settings'); }
 
@@ -280,7 +284,8 @@ function buildSettings(app) {
     section(t('DISCOGS')),
     row(t('TOKEN'), discogsToken), row(t('CURRENCY'), currencyButton),
     discogs && discogs.tokenDropped ? hint(t('TOKEN NO LONGER WORKS')) : null,
-    hint(t('Prices are the lowest on Discogs’ marketplace, refreshed monthly. A token makes appraising the shelf faster.')), gap(18),
+    hint(t('Prices are the lowest on Discogs’ marketplace, refreshed monthly. A token makes appraising the shelf faster.')),
+    hint(t('Pressings and prices come from Discogs’ API. CDPlayer isn’t affiliated with, sponsored or endorsed by Discogs; “Discogs” is a trademark of Zink Media, LLC.')), gap(18),
     section(t('HELP')),
     el('div', { class: 'help-pills' },
       pill(t('SHOW THE GUIDE'), () => showGuide(app), t('The five cards shown the first time CDPlayer opened')),
@@ -1093,6 +1098,13 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.11.0', changes: [
+    '<b>Discogs for collectors</b>: a pulled-out case shows its exact pressing and its lowest price on Discogs; <b>APPRAISE</b> values the whole shelf, <b>SORT: PRICE</b> stands it dearest first, and rare albums get a gold sticker',
+    '<b>Themes of your own</b>: Settings &rarr; THEME &rarr; + NEW THEME &mdash; six colors, a scene and a picture behind the player; share one as a file or a one-line code',
+    '<b>CDPlayer in Russian</b>: Settings &rarr; LANGUAGE (AUTO follows your system) &mdash; and any other language can be added as one file',
+    '<b>The Now Playing card as a video</b>: eight seconds of the disc turning, the lyrics as they&rsquo;re sung and the song itself, for Stories or chats',
+    '<b>Spotify set up in four steps</b>, with the keys checked and what&rsquo;s wrong explained; <b>OUTPUT</b> picks your speakers or AirPods; <b>CHECK</b> on the shelf finds untagged songs, missing covers and duplicates',
+  ] },
   { version: '2.10.0', changes: [
     '<b>The shelf comes alive</b>: albums you leave alone gather dust (rub a spine to wipe it), new ones come shrink-wrapped, cases carry a sticky note and the shop&rsquo;s receipt, and SORT now goes round the rainbow by colour',
     '<b>Missing albums</b>: sorted by artist, each artist&rsquo;s studio albums you don&rsquo;t have stand as see-through places &mdash; and a case lists the songs you don&rsquo;t have in grey',

@@ -32,10 +32,10 @@ function resolveLocale(choice, systemLanguages, available) {
   for (const tag of systemLanguages || []) {
     const parts = String(tag).toLowerCase().split(/[-_]/);
     if (parts[0] === 'en') return 'en';
-    for (let i = parts.length; i > 0; i--) {
-      const c = parts.slice(0, i).join('-');
-      if (lower.has(c)) return lower.get(c);
-    }
+    // The most specific first: zh-Hant-TW, then zh-TW (without its script), zh-Hant, zh.
+    const noScript = parts.filter((p, i) => !(i > 0 && p.length === 4)).join('-');
+    const tries = [parts.join('-'), noScript, ...parts.map((_, i) => parts.slice(0, parts.length - 1 - i).join('-'))].filter(Boolean);
+    for (const c of tries) if (lower.has(c)) return lower.get(c);
   }
   return 'en';
 }

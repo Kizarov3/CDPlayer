@@ -313,3 +313,10 @@ test('appraising writes the cache now and then, not after every album', async ()
   assert.ok(r.writes() <= 4, `wrote ${r.writes()} times`);
   assert.strictEqual(Object.keys(JSON.parse(r.stored['discogs.json']).albums).length, 25);
 });
+
+test('an album id that\'s also an object\'s own word is just an id', async () => {
+  const { engine } = rig({ routes: { 'releases/9': release(9), 'marketplace/stats/9': stats(2) } });
+  await engine.choose({ ...album, id: '__proto__' }, 9);
+  assert.strictEqual(engine.known(['__proto__', 'constructor']).__proto__.releaseId, 9);
+  assert.deepStrictEqual(Object.keys(engine.known(['constructor'])), []);
+});
