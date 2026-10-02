@@ -92,6 +92,9 @@ The first time it opens, CDPlayer shows a short guide — five cards: putting mu
 <p align="center">
   <img src="docs/screenshots/booklet.jpg" width="70%" alt="An album's booklet marked in pen: tally marks for each song's plays, the favourite circled, and the lyrics">
 </p>
+<p align="center">
+  <img src="docs/screenshots/shelf-discogs.jpg" width="70%" alt="A case pulled out with its pressing from Discogs: Vertigo, 838 141-2, Europe, 1989, from $4.47, 15 for sale, 4,534 have">
+</p>
 
 **Spotify** (Premium)
 - **SPOTIFY** lists your saved albums and playlists, with a search. Click one and it goes in as a disc and plays — the tray, the disc, Up Next, shuffle and repeat, lyrics and karaoke all work as for your files, and an album plays through without gaps
@@ -181,10 +184,18 @@ The first time it opens, CDPlayer shows a short guide — five cards: putting mu
   - **MATRIX** — falling green code rain; a miniature rain driven by the audio
   - **AUTUMN** — tumbling leaves; a branch whose leaves grow with the music
 
+<p align="center">
+  <img src="docs/screenshots/theme-editor.jpg" width="70%" alt="The theme editor over a theme of your own: six colours, the GALAXY scene and a night-drive picture behind the player">
+</p>
+
 ## Languages
 
 CDPlayer speaks **English** and **Russian**. **Settings → LANGUAGE**: AUTO follows your system's language, or pick one;
 it applies after a restart. Your language missing? Adding it is one file — see [docs/TRANSLATING.md](docs/TRANSLATING.md).
+
+<p align="center">
+  <img src="docs/screenshots/russian.jpg" width="70%" alt="CDPlayer in Russian, playing with a theme of your own">
+</p>
 
 ## Keyboard shortcuts
 
@@ -228,7 +239,7 @@ Spotify’s audio is protected, so it plays outside CDPlayer’s sound engine: t
 Those are missing albums: sorted by artist, each artist’s studio albums you don’t have stand as see-through places, from MusicBrainz. Click one to see it, or NOT INTERESTED to hide it for good.
 
 **Does CDPlayer send anything over the internet?**<br>
-Only lookups: covers and lyrics by artist and title, album details from MusicBrainz, and a check for a new version on GitHub. No account, no tracking, nothing about you. Spotify talks to Spotify only if you connect it.
+Only lookups: covers and lyrics by artist and title, album details from MusicBrainz, an album’s pressing and price from Discogs when you open its case or appraise the shelf, and a check for a new version on GitHub. No account, no tracking, nothing about you. Spotify talks to Spotify only if you connect it.
 
 **Why are some albums dusty, or wrapped in plastic?**<br>
 An album nobody has played in a month gathers dust (rub the mouse over its spine to wipe it); one new in your music folder comes shrink-wrapped until you play it or pull the film off its case.

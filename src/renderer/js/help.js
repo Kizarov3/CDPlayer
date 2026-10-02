@@ -37,7 +37,7 @@ export const FAQ = [
   { q: t('How do I choose the folder my music is in?'), a: t('Open the SHELF and click FOLDER… (the first time, it asks). The shelf shows the albums in that folder and everything under it. Songs outside it still play — drop them on the window.') },
   { q: t('Why doesn’t the equalizer work on Spotify?'), a: t('Spotify’s audio is protected, so it plays outside CDPlayer’s sound engine: the equalizer, crossfade, mono, visualizer and waveform can’t reach it. Your own files get all of them.') },
   { q: t('What are the see-through “missing” albums on my shelf?'), a: t('Those are missing albums: sorted by artist, each artist’s studio albums you don’t have stand as see-through places, from MusicBrainz. Click one to see it, or NOT INTERESTED to hide it for good.') },
-  { q: t('Does CDPlayer send anything over the internet?'), a: t('Only lookups: covers and lyrics by artist and title, album details from MusicBrainz, and a check for a new version on GitHub. No account, no tracking, nothing about you. Spotify talks to Spotify only if you connect it.') },
+  { q: t('Does CDPlayer send anything over the internet?'), a: t('Only lookups: covers and lyrics by artist and title, album details from MusicBrainz, an album’s pressing and price from Discogs when you open its case or appraise the shelf, and a check for a new version on GitHub. No account, no tracking, nothing about you. Spotify talks to Spotify only if you connect it.') },
   { q: t('Why are some albums dusty, or wrapped in plastic?'), a: t('An album nobody has played in a month gathers dust (rub the mouse over its spine to wipe it); one new in your music folder comes shrink-wrapped until you play it or pull the film off its case.') },
 ];
 

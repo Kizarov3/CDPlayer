@@ -394,7 +394,7 @@
   "Oct": "окт",
   "On your app’s page on the dashboard, open Settings. Copy the Client ID, and the Client Secret (under View client secret), and paste them here.": "На странице своего приложения в дашборде открой Settings. Скопируй Client ID и Client Secret (под View client secret) и вставь их сюда.",
   "Online": "Онлайн",
-  "Only lookups: covers and lyrics by artist and title, album details from MusicBrainz, and a check for a new version on GitHub. No account, no tracking, nothing about you. Spotify talks to Spotify only if you connect it.": "Только запросы: обложки и тексты по исполнителю и названию, данные альбомов с MusicBrainz и проверка новой версии на GitHub. Ни аккаунта, ни слежки, ничего о тебе. Spotify общается со Spotify, только если ты его подключишь.",
+  "Only lookups: covers and lyrics by artist and title, album details from MusicBrainz, an album’s pressing and price from Discogs when you open its case or appraise the shelf, and a check for a new version on GitHub. No account, no tracking, nothing about you. Spotify talks to Spotify only if you connect it.": "Только запросы: обложки и тексты по исполнителю и названию, данные альбомов с MusicBrainz, издание и цена альбома с Discogs, когда открываешь его коробку или оцениваешь полку, и проверка новой версии на GitHub. Ни аккаунта, ни слежки, ничего о тебе. Spotify общается со Spotify, только если ты его подключишь.",
   "Open / close the disc tray": "Открыть / закрыть лоток",
   "Open / close the disc tray (E)": "Открыть / закрыть лоток (E)",
   "Open GitHub profile": "Открыть профиль на GitHub",
