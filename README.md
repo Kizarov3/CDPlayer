@@ -29,8 +29,8 @@ The builds aren't signed with a paid certificate, so the first launch asks once:
 - **Lyrics & Karaoke** (`Y`) — lyrics found online, highlighted word by word as they're sung
 - **Spotify** (Premium) — your saved albums and playlists play as discs, with lyrics and karaoke
 - **Playback** — gapless CUE sheets, crossfade, 10-band EQ with presets, output device picker, sleep timer, `.m3u` playlists, media keys
-- **Quality** — like Apple Music's: LOSSLESS and HI-RES LOSSLESS play each song at its own sample rate (up to 192 kHz), switching your output's rate to match on macOS and Windows
-- **Spatial audio** — for headphones: any song heard from two speakers in front of you, in a small room, instead of from inside your head
+- **Spatial audio** — for headphones: any song — a file, a CD or a rip — heard from two speakers in front of you instead of from inside your head; **SPACE** sets how much
+- **Quality** — as in Apple Music: LOSSLESS and HI-RES LOSSLESS play each song at its own sample rate (up to 192 kHz), with your headphones' or DAC's rate switched to match on macOS and Windows and put back when CDPlayer closes; a ◈ LOSSLESS badge says what reaches the output
 - **Now Playing card** (`P`) — a picture or short video of the album and lyrics to share; Discord *Listening to* status
 - **Make it yours** — ten themes with animated scenes, your own themes shared as a file or code, Mini Mode (`M`), CD view, Visualizer Mode
 - **Library tools** — fix tags from MusicBrainz, find missing covers, spot duplicates and broken files
@@ -75,6 +75,12 @@ Open the SHELF and click FOLDER…. Songs outside it still play — drop them on
 
 **Where is my data kept?**<br>
 In `~/.cdplayer` on Mac and Linux, `%LOCALAPPDATA%\CDPlayer` on Windows. Your music files are never changed unless you save tags or found art into them.
+
+**I switched QUALITY to HI-RES and hear no difference — is it working?**<br>
+Point at the ◈ badge under the title: it says what reaches your output. MP3 and AAC files have no badge — QUALITY only plays lossless files (FLAC, ALAC, WAV, AIFF, CDs) at their own rate — and over Bluetooth the wireless codec decides. Even when it works, the difference is subtle; for a change you'll hear at once on headphones, turn on **SPATIAL AUDIO**.
+
+**Does spatial audio work on CDs?**<br>
+Yes — on CDs, rips and every file. Not on Spotify, whose audio is protected (the same reason the EQ can't reach it).
 
 **Does CDPlayer send anything over the internet?**<br>
 Only lookups — covers, lyrics, album details from MusicBrainz and Discogs — and a check for a new version on GitHub. No account, no tracking. Spotify is contacted only if you connect it.
