@@ -8,6 +8,7 @@
   "homepage": "https://github.com/Kizarov3/CDPlayer",
   "main": "src/main/main.js",
   "scripts": {
+    "prestart": "node scripts/build-mac-rate.js",
     "start": "electron .",
     "test": "node --test test/*.test.js test/*.test.mjs",
     "i18n": "node scripts/i18n.mjs",
@@ -39,6 +40,7 @@
     "electronDownload": {
       "mirror": "https://github.com/castlabs/electron-releases/releases/download/"
     },
+    "beforePack": "build/before-pack.js",
     "afterPack": "build/vmp-sign.js",
     "afterSign": "build/vmp-sign-after-sign.js",
     "files": [
@@ -83,7 +85,9 @@
         }
       ],
       "identity": "-",
-      "hardenedRuntime": false
+      "hardenedRuntime": false,
+      "extraResources": [{ "from": "build/bin/mac-rate", "to": "mac-rate" }],
+      "x64ArchFiles": "Contents/Resources/mac-rate"
     },
     "dmg": {
       "title": "CDPlayer ${version}",
