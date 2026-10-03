@@ -1123,6 +1123,9 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.13.1', changes: [
+    '<b>Updating from inside the app works on Windows</b>: RESTART TO UPDATE closed CDPlayer and nothing came back &mdash; now the new version is put in place and opens, as on Mac and Linux',
+  ] },
   { version: '2.13.0', changes: [
     '<b>Updates from inside the app</b>: from now on, when a new version is out, click its button in the top-left corner to download it, then RESTART TO UPDATE &mdash; no more fetching it from GitHub by hand',
     '<b>Discogs prices on the case</b>: the receipt behind the cover, the obi and the price sticker show what the album goes for on Discogs, once it&rsquo;s known',
