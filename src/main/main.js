@@ -332,18 +332,9 @@ function setWindowAppId(id) {
   windowAppId = id;
   const exe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
   win.setAppDetails({ appId: id, appIconPath: exe, appIconIndex: 0, relaunchCommand: `"${exe}"`, relaunchDisplayName: 'CDPlayer' });
-}
-function pinnedOnWindowsTaskbar() {
-  const exe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
-  const dir = path.join(app.getPath('appData'), 'Microsoft', 'Internet Explorer', 'Quick Launch', 'User Pinned', 'TaskBar');
-  try {
-    return fs.readdirSync(dir).filter((f) => f.toLowerCase().endsWith('.lnk')).some((f) => {
-      try {
-        const link = shell.readShortcutLink(path.join(dir, f));
-        return link.appUserModelId === APP_ID || (link.target || '').toLowerCase() === exe.toLowerCase();
-      } catch { return false; }
-    });
-  } catch { return false; }
+  // The taskbar reads a window's ID when it makes its button: take the button away and back, so it's made anew (the
+  // window itself stays as it is).
+  if (win.isVisible() && !miniMode) { win.setSkipTaskbar(true); win.setSkipTaskbar(false); }
 }
 handle('dock:disc', (png) => {
   if (!png && !dockShowsDisc) return;
@@ -352,8 +343,9 @@ handle('dock:disc', (png) => {
   if (process.platform === 'darwin') { app.dock.setIcon(img); return; }
   if (!win || win.isDestroyed()) return;
   win.setIcon(img); // first, so a button of its own starts out with the disc
-  // Asked each time: it may have been pinned or unpinned since.
-  if (process.platform === 'win32') setWindowAppId(png && pinnedOnWindowsTaskbar() ? NOW_PLAYING_ID : APP_ID);
+  // Whether it's pinned isn't asked: a pin can start any copy of the .exe, from anywhere, so it can't be told reliably
+  // from here — and unpinned, the window's button is the only one either way.
+  if (process.platform === 'win32') setWindowAppId(png ? NOW_PLAYING_ID : APP_ID);
 });
 handle('online:cover', (query) => online.findCover(query));
 handle('online:coverUrl', (query) => online.findCoverUrl(query));
