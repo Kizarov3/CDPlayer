@@ -85,6 +85,7 @@ cdp.onMiniState(async (s) => {
     }
   }
   if ('animations' in s) document.body.classList.toggle('no-anim', !s.animations);
+  if ('shine' in s) disc.setShine(s.shine);
   if (s.track) {
     const track = s.track;
     $('title').textContent = track.title || t('Pick a track to get started.');

@@ -49,7 +49,7 @@ export const BUILTIN_EQ_PRESETS = [
 
 const state = {
   queue: [], index: -1, shuffle: false, repeat: 'OFF',
-  volume: 100, volumeBeforeMute: -1, crossfade: 0, mono: false, spatial: false, spatialAmount: 50, waveform: true, ambient: true, miniMode: false, discord: true, discNoise: false, discWear: true,
+  volume: 100, volumeBeforeMute: -1, crossfade: 0, mono: false, spatial: false, spatialAmount: 50, waveform: true, ambient: true, miniMode: false, discord: true, discNoise: false, discWear: true, discShine: true,
   trayBusy: false, // the tray is moving or the disc is being read: transport presses wait
   saveFound: false, // covers and lyrics found online are written into the song's file
   lyricsOffset: 0,  // ms the lyrics are moved by (+ later), on top of the output latency
@@ -1103,6 +1103,7 @@ async function setQuality(level) {
   updateQualityBadge();
 }
 function setDiscWear(on) { state.discWear = on; updateWear(); saveSettingsSoon(); }
+function setDiscShine(on) { state.discShine = on; disc.setShine(on); pushMini(true); saveSettingsSoon(); }
 
 function setupMediaSession() {
   if (!('mediaSession' in navigator)) return;
@@ -1387,7 +1388,7 @@ function pushMini(full = false) {
     const cover = state.cover ? state.cover.src : null;
     if (cover !== lastMiniCover) { lastMiniCover = cover; miniCoverKey++; }
     Object.assign(msg, {
-      colors, animations: anim.enabled, visMode: visualizerModeFor(shownTheme),
+      colors, animations: anim.enabled, shine: state.discShine, visMode: visualizerModeFor(shownTheme),
       shuffle: state.shuffle, repeat: state.repeat,
       track: {
         title: state.titleText || t('Pick a track to get started.'), artist: state.artistText || null, album: d && d.album ? d.album : null,
@@ -1463,7 +1464,7 @@ function appendAndPlay(p) {
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount };
+  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -1732,7 +1733,7 @@ export const app = {
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) { state.index = i; load(state.queue[i]); } },
   coverSource: () => state.coverFrom || null,
   switchTheme, previewTheme, restoreTheme, shownTheme: () => shownTheme, saveTheme, importTheme, pasteThemeCode, exportTheme, copyThemeCode, deleteTheme,
-  setQuality, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setOutput, listOutputs, currentOutputName,
+  setQuality, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setOutput, listOutputs, currentOutputName,
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
   pressingMenu: (anchor, items) => panels.pressingMenu(anchor, items),
@@ -1841,6 +1842,7 @@ async function start() {
   state.discord = s.discord !== false;
   setDiscNoise(!!s.discNoise);
   state.discWear = s.discWear !== false;
+  state.discShine = s.discShine !== false; disc.setShine(state.discShine);
   state.output = s.output || null;
   applyOutput(false);
   navigator.mediaDevices.addEventListener('devicechange', () => applyOutput(true));

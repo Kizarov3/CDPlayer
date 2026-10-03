@@ -60,6 +60,7 @@ export class Disc {
     this.artRect = null;          // where the clickable cover is drawn right now (canvas CSS px)
     // The light the disc reflects: it follows the mouse anywhere in the window, like tilting a CD under a lamp.
     this.light = { angle: -Math.PI * 0.75, target: -Math.PI * 0.75, strength: 0.6, targetStrength: 0.6, movedAt: 0 };
+    this.shineOn = true; // Settings → DISC SHINE: off, no reflection (nor scratches catching it), so nothing follows the mouse
     this.center = null; // the disc's center and radius on screen, from the last frame
     // Turning the disc by hand: a press on it becomes a grab once the mouse moves (so clicks and the double-click
     // still work); let go with a spin and it coasts. The app says whether there's a song to turn through
@@ -188,6 +189,8 @@ export class Disc {
   }
   // Lets go of the disc without a spin — its song changed, or the tray is opening.
   drop() { this.press = null; if (this.held) { this.held = null; this.canvas.style.cursor = ''; } this.endJog(); }
+
+  setShine(on) { this.shineOn = !!on; this.lastLook = ''; }
 
   aimLight(x, y) {
     const c = this.center;
@@ -575,7 +578,7 @@ export class Disc {
     // Nothing that shows has changed since the last frame (a paused disc, the light at rest): leave the canvas be —
     // redrawing it 60 times a second anyway kept the GPU busy for nothing.
     const l = this.light;
-    const look = [pw, ph, side, x, y, this.angle, this.speed, l.angle, l.strength, tray, art, eject, wobble, this.mode,
+    const look = [pw, ph, side, x, y, this.angle, this.speed, this.shineOn && l.angle, this.shineOn && l.strength, tray, art, eject, wobble, this.mode,
       this.faceKey, this.coverVersion, this.lookingUp, this.label && this.label.title, this.label && this.label.artist,
       this.discPresent, colors.accent, colors.accent2, colors.bg, dpr, this.flipT, this.data && this.data.key,
       this.flipT > 0 && this.data && this.position ? Math.round(radiusAt(this.data.layout, this.position()) * 2000) : 0].join('|');
@@ -659,8 +662,8 @@ export class Disc {
     g.imageSmoothingQuality = 'high';
     g.drawImage(face.canvas, x, y, side, side);
     g.restore();
-    this.drawShine(g, cx, cy, side, dpr);
-    if (this.wear && side >= WEAR_MIN_SIDE && !dataSide) this.drawGlint(g, cx, cy, side, dpr);
+    if (this.shineOn) this.drawShine(g, cx, cy, side, dpr);
+    if (this.shineOn && this.wear && side >= WEAR_MIN_SIDE && !dataSide) this.drawGlint(g, cx, cy, side, dpr);
     if (dataSide) this.drawLaser(g, cx, cy, side);
     if (this.speed < 0.99) { // a stopped disc sits a little darker, brightening as it gets up to speed
       g.fillStyle = `rgba(10,11,16,${(0.35 * (1 - this.speed)).toFixed(3)})`;
