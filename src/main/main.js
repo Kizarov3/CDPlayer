@@ -321,8 +321,18 @@ handle('menu:disc', (loaded) => new Promise((resolve) => {
 }));
 // The Dock (macOS) or taskbar (Windows, Linux) icon: the disc that's in (drawn by dock-disc.js), or the app's own
 // icon when nothing is. A taskbar button pinned on Windows always shows its pin's icon, whatever the window's is — so
-// there the disc goes on it as an overlay, in the corner (as a mail app's unread count does).
+// there, while a disc is in, the window takes an ID of its own (NOW_PLAYING_ID) and with it a button of its own beside
+// the pin, which wears the disc; with the disc out it goes back under the pin. Relaunch details say what pinning that
+// button would start: the app, by its own name.
 let dockShowsDisc = false;
+const NOW_PLAYING_ID = `${APP_ID}.nowplaying`;
+let windowAppId = APP_ID;
+function setWindowAppId(id) {
+  if (id === windowAppId || !win || win.isDestroyed()) return;
+  windowAppId = id;
+  const exe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+  win.setAppDetails({ appId: id, appIconPath: exe, appIconIndex: 0, relaunchCommand: `"${exe}"`, relaunchDisplayName: 'CDPlayer' });
+}
 function pinnedOnWindowsTaskbar() {
   const exe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
   const dir = path.join(app.getPath('appData'), 'Microsoft', 'Internet Explorer', 'Quick Launch', 'User Pinned', 'TaskBar');
@@ -341,12 +351,9 @@ handle('dock:disc', (png) => {
   const img = png ? nativeImage.createFromBuffer(Buffer.from(png)) : nativeImage.createFromPath(path.join(__dirname, '..', 'renderer', 'icon.png'));
   if (process.platform === 'darwin') { app.dock.setIcon(img); return; }
   if (!win || win.isDestroyed()) return;
-  if (process.platform === 'win32') {
-    const pinned = pinnedOnWindowsTaskbar(); // asked each time: it may have been pinned or unpinned since
-    win.setOverlayIcon(png && pinned ? img.resize({ width: 32, height: 32, quality: 'best' }) : null, png && pinned ? t('Now playing') : '');
-    if (pinned && png) return; // the window's own icon stays the app's, for the title bar and Alt+Tab
-  }
-  win.setIcon(img);
+  win.setIcon(img); // first, so a button of its own starts out with the disc
+  // Asked each time: it may have been pinned or unpinned since.
+  if (process.platform === 'win32') setWindowAppId(png && pinnedOnWindowsTaskbar() ? NOW_PLAYING_ID : APP_ID);
 });
 handle('online:cover', (query) => online.findCover(query));
 handle('online:coverUrl', (query) => online.findCoverUrl(query));
