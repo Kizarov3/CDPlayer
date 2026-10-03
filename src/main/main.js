@@ -833,6 +833,18 @@ function registerWindowsShortcut() {
     });
   } catch { /* best effort — only the media controls' app name depends on it */ }
 }
+// The window's own ID while it has a button of its own (NOW_PLAYING_ID, see dock:disc) has no shortcut, so it's named
+// in the registry instead — "CDPlayer" with the app's icon — or the media controls would say "Unknown app" while a
+// disc is in. (A second shortcut would do it too, but would show CDPlayer twice in the Start menu.)
+function registerNowPlayingId() {
+  if (process.platform !== 'win32' || !app.isPackaged || smokeDir || process.env.CDPLAYER_HOME) return;
+  const icon = path.join(app.getPath('userData'), 'app-icon.png'); // outside app.asar, where Windows can read it
+  try { fs.mkdirSync(path.dirname(icon), { recursive: true }); fs.copyFileSync(path.join(__dirname, '..', 'renderer', 'icon.png'), icon); } catch { /* no icon then */ }
+  const key = `HKCU\\Software\\Classes\\AppUserModelId\\${NOW_PLAYING_ID}`;
+  const reg = (name, value) => execFile('reg.exe', ['add', key, '/v', name, '/t', 'REG_SZ', '/d', value, '/f'], { windowsHide: true }, () => {});
+  reg('DisplayName', 'CDPlayer');
+  reg('IconUri', icon);
+}
 
 // ---- Lifecycle --------------------------------------------------------------------------------------------------
 
@@ -840,6 +852,7 @@ app.whenReady().then(() => {
   i18n.loadLocale(settings.language, app.getPreferredSystemLanguages());
   protocol.handle('cdp', media.handle);
   registerWindowsShortcut();
+  registerNowPlayingId();
   buildMenu();
   createWindow();
   if (!smokeDir && (process.platform === 'darwin' || process.platform === 'linux' || process.platform === 'win32' || process.env.CDPLAYER_CD_ROOT)) {
