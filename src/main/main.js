@@ -324,11 +324,12 @@ handle('menu:disc', (loaded) => new Promise((resolve) => {
 // gets an ID of its own (win-taskbar-disc.js).
 let dockShowsDisc = false;
 let windowAppId = APP_ID;
-function setWindowAppId(id) {
+// The window's app ID, and its relaunch icon — what Windows draws its taskbar button with (the .exe's own, or a disc's).
+function setWindowAppId(id, icon) {
   if (id === windowAppId || !win || win.isDestroyed()) return;
   windowAppId = id;
   const exe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
-  win.setAppDetails({ appId: id, appIconPath: exe, appIconIndex: 0, relaunchCommand: `"${exe}"`, relaunchDisplayName: 'CDPlayer' });
+  win.setAppDetails({ appId: id, appIconPath: icon || exe, appIconIndex: 0, relaunchCommand: `"${exe}"`, relaunchDisplayName: 'CDPlayer' });
   // The taskbar reads a window's ID when it makes its button: take the button away and back, so it's made anew (the
   // window itself stays as it is).
   if (win.isVisible() && !miniMode) { win.setSkipTaskbar(true); win.setSkipTaskbar(false); }

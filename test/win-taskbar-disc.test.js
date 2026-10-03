@@ -4,7 +4,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { createTaskbarDisc, registerArgs, REG_ROOT } = require('../src/main/win-taskbar-disc');
+const { createTaskbarDisc, registerArgs, pngToIco, REG_ROOT } = require('../src/main/win-taskbar-disc');
 
 const APP = 'com.kizarov3.cdplayer';
 const PNG1 = Buffer.from('disc one'), PNG2 = Buffer.from('disc two');
@@ -20,8 +20,9 @@ function world({ fail = false } = {}) {
     if (op === 'delete') return registry.delete(key);
     return false;
   };
-  const disc = (extra = {}) => createTaskbarDisc({ appId: APP, dataDir, setWindowAppId: (id) => ids.push(id), reg, ...extra });
-  return { dataDir, registry, ids, disc, done: () => fs.rmSync(dataDir, { recursive: true, force: true }) };
+  const icons = [];
+  const disc = (extra = {}) => createTaskbarDisc({ appId: APP, dataDir, setWindowAppId: (id, ico) => { ids.push(id); icons.push(ico); }, reg, ...extra });
+  return { dataDir, registry, ids, icons, disc, done: () => fs.rmSync(dataDir, { recursive: true, force: true }) };
 }
 const keyOf = (id) => `${REG_ROOT}\\${id}`;
 
@@ -42,6 +43,9 @@ test('a disc gets an ID of its own, named CDPlayer with its picture; the next di
     const v = w.registry.get(keyOf(first));
     assert.strictEqual(v.DisplayName, 'CDPlayer');
     assert.deepStrictEqual(fs.readFileSync(v.IconUri), PNG1);
+    // …and the same picture as an .ico for the window's relaunch icon, which the button is drawn with
+    assert.match(w.icons.at(-1), /\.ico$/);
+    assert.ok(fs.readFileSync(w.icons.at(-1)).subarray(22).equals(PNG1));
 
     await d.show(PNG1); // the same disc again: nothing to do
     assert.strictEqual(w.ids.length, 1);
@@ -51,6 +55,7 @@ test('a disc gets an ID of its own, named CDPlayer with its picture; the next di
     assert.notStrictEqual(second, first);
     assert.ok(!w.registry.has(keyOf(first)));
     assert.ok(!fs.existsSync(path.join(w.dataDir, 'taskbar', `${first}.png`)));
+    assert.ok(!fs.existsSync(path.join(w.dataDir, 'taskbar', `${first}.ico`)));
 
     await d.show(null); // the disc out: the app's own ID, and nothing left in the registry
     assert.strictEqual(w.ids.at(-1), APP);
@@ -89,4 +94,15 @@ test('when the registry can\'t be written, the window keeps the app\'s ID (never
     await w.disc().show(PNG1);
     assert.deepStrictEqual(w.ids, [APP]);
   } finally { w.done(); }
+});
+
+test('the .ico holds the PNG whole, with a header Windows reads', () => {
+  const png = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'icon.png'));
+  const ico = pngToIco(png, 128);
+  assert.deepStrictEqual([ico.readUInt16LE(0), ico.readUInt16LE(2), ico.readUInt16LE(4)], [0, 1, 1]);
+  assert.deepStrictEqual([ico[6], ico[7]], [128, 128]);
+  assert.strictEqual(ico.readUInt32LE(14), png.length);
+  assert.strictEqual(ico.readUInt32LE(18), 22);
+  assert.ok(ico.subarray(22).equals(png));
+  assert.deepStrictEqual([pngToIco(png, 256)[6], pngToIco(png, 256)[7]], [0, 0]); // 0 = 256
 });
