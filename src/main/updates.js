@@ -15,7 +15,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const { Readable, Transform } = require('stream');
 const { pipeline } = require('stream/promises');
 const { httpFetch } = require('./http');
@@ -188,18 +188,44 @@ nohup ${T} >/dev/null 2>&1 &
 ` };
 }
 
-// Writes installScript's script next to the download and starts it, detached, to outlive this process.
-function startInstaller(platform, { pid, file, target }) {
+/**
+ * The PowerShell command that has Windows itself (WMI's Win32_Process.Create) start `commandLine`, with no window,
+ * and exits with Create's result (0 = started). A process CDPlayer starts the ordinary way is closed along with it,
+ * `detached` or not (it shares CDPlayer's job), so the installer would die the moment CDPlayer quits; one WMI starts
+ * belongs to nobody and outlives it.
+ */
+function wmiStartCommand(commandLine) {
+  return [
+    "$si = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]0 }",
+    `$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = ${psQuote(commandLine)}; ProcessStartupInformation = $si }`,
+    'exit [int]$r.ReturnValue',
+  ].join('; ');
+}
+
+/**
+ * Writes installScript's script next to the download and starts it so that it outlives this process. → a Promise
+ * that settles once it's started — CDPlayer should quit only then. Windows: by WMI (see wmiStartCommand), or, if that
+ * fails, the ordinary way; elsewhere a detached process outlives its parent anyway.
+ */
+function startInstaller(platform, { pid, file, target }, { run = execFile, start = spawn } = {}) {
   const { name, text } = installScript(platform, { pid, file, target });
   const script = path.join(path.dirname(file), name);
   fs.writeFileSync(script, text, { mode: 0o755 });
-  const [cmd, args] = platform === 'win32'
-    ? ['powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script]]
-    : ['/bin/sh', [script]];
-  spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+  if (platform !== 'win32') {
+    start('/bin/sh', [script], { detached: true, stdio: 'ignore' }).unref();
+    return Promise.resolve();
+  }
+  const args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script];
+  const commandLine = ['powershell.exe', ...args].map((a) => (/[\s"]/.test(a) ? `"${a}"` : a)).join(' ');
+  return new Promise((resolve) => {
+    run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', wmiStartCommand(commandLine)], { windowsHide: true, timeout: 20000 }, (e) => {
+      if (e) start('powershell.exe', args, { detached: true, stdio: 'ignore', windowsHide: true }).unref(); // better than nothing
+      resolve();
+    });
+  });
 }
 
 // Where a download goes: a temporary folder when it's swapped in and removed, Downloads when the person opens it.
 const downloadDir = (plan, downloadsDir) => (plan.kind === 'replace' ? path.join(os.tmpdir(), 'cdplayer-update') : downloadsDir);
 
-module.exports = { checkForUpdate, isNewer, pickAsset, installPlan, downloadAsset, installScript, startInstaller, downloadDir, RELEASES_PAGE };
+module.exports = { checkForUpdate, isNewer, pickAsset, installPlan, downloadAsset, installScript, startInstaller, wmiStartCommand, downloadDir, RELEASES_PAGE };

@@ -690,7 +690,7 @@ handle('updates:install', async () => {
   const { plan, promise } = updateDownload;
   const file = await promise;
   if (plan.kind === 'replace') {
-    updates.startInstaller(process.platform, { pid: process.pid, file, target: plan.target });
+    await updates.startInstaller(process.platform, { pid: process.pid, file, target: plan.target });
     app.quit();
   } else if (process.platform === 'darwin') {
     await shell.openPath(file);

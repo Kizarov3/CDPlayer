@@ -138,3 +138,31 @@ test('the AppImage script swaps the file once the old app has quit, and starts t
     assert.ok(!fs.existsSync(file));
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('Windows: the installer is started by WMI, so it outlives CDPlayer, and CDPlayer waits for that before quitting', async () => {
+  const { startInstaller, wmiStartCommand } = require('../src/main/updates');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cdplayer-inst-'));
+  try {
+    const file = path.join(dir, 'CDPlayer-2.13.0-windows.exe');
+    const calls = [], started = [];
+    const run = (cmd, args, opts, cb) => { calls.push([cmd, args]); setTimeout(() => cb(null), 10); };
+    const start = (...a) => { started.push(a); return { unref() {} }; };
+    let done = false;
+    const p = startInstaller('win32', { pid: 7, file, target: 'C:\\My Apps\\CDPlayer.exe' }, { run, start }).then(() => { done = true; });
+    assert.strictEqual(done, false); // not before WMI has answered
+    await p;
+    assert.ok(fs.existsSync(path.join(dir, 'install.ps1')));
+    assert.strictEqual(calls[0][0], 'powershell.exe');
+    const command = calls[0][1].at(-1);
+    assert.match(command, /Invoke-CimMethod -ClassName Win32_Process -MethodName Create/);
+    assert.ok(command.includes(`-File ${path.join(dir, 'install.ps1')}`) || command.includes(`-File "${path.join(dir, 'install.ps1')}"`));
+    assert.deepStrictEqual(started, []); // WMI started it: no ordinary child
+    assert.match(wmiStartCommand("a 'quoted' path"), /CommandLine = 'a ''quoted'' path'/);
+
+    // WMI failing: the ordinary way, as a last resort
+    const failing = (cmd, args, opts, cb) => cb(new Error('no WMI'));
+    await startInstaller('win32', { pid: 7, file, target: 'C:\\x.exe' }, { run: failing, start });
+    assert.strictEqual(started.length, 1);
+    assert.strictEqual(started[0][0], 'powershell.exe');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
