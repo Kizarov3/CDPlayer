@@ -11,7 +11,7 @@ import { el, pill, anim } from './widgets.js';
 import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './booklet.js';
 import { stickersFor } from './shelf-stickers.js';
 import { arrange, SORTS, matchesFilter, dominantColor, jumpTargets } from './shelf-order.js';
-import { pressingLine, marketLine, money, isRare, shelfTotal } from './shelf-discogs.js';
+import { pressingLine, marketLine, money, isRare, shelfTotal, discogsPrice } from './shelf-discogs.js';
 import { hash } from './disc-wear.js';
 import { stickyNote, noteLook } from './shelf-notes.js';
 import { receiptFor } from './shelf-receipt.js';
@@ -686,12 +686,21 @@ async function openCase(a, spine) {
   addNote.hidden = !!a.note;
   const rare = el('div', { class: 'sticker-rare', hidden: !isRare(a.pressing) }, t('★ RARE'));
   const receipt = receiptSlip(a, st);
+  // The price on the obi or the sticker: what it goes for on Discogs once that's known, else the shop's.
+  const tag = st.price ? el('div', { class: st.obi ? '' : 'sticker-price' }) : null;
+  const showTag = (entry) => {
+    if (!tag) return;
+    tag.textContent = discogsPrice(entry) || st.price;
+    // The obi is narrow: a long price ("1 234,50 CA$") gets smaller type to fit across it.
+    if (st.obi) tag.style.fontSize = tag.textContent.length > 7 ? `${Math.max(6, Math.floor(70 / tag.textContent.length))}px` : '';
+  };
+  showTag(a.pressing);
   const caseFront = el('div', { class: 'case-front' }, receipt, front, rare,
       st.obi ? el('div', { class: 'case-obi' },
         el('div', { class: 'obi-top' }, 'CD'),
         el('div', { class: 'obi-title' }, a.title),
-        el('div', { class: 'obi-foot' }, el('div', {}, st.obi.catalog), el('div', {}, st.price))) : null,
-      !st.obi && st.price ? el('div', { class: 'sticker-price' }, st.price) : null,
+        el('div', { class: 'obi-foot' }, el('div', {}, st.obi.catalog), tag)) : null,
+      !st.obi ? tag : null,
       st.isNew ? el('div', { class: 'sticker-new' }, t('NEW')) : null,
       film,
       a.note ? stickyNote({ id: a.id, text: a.note, onSave: saveNote }) : null);
@@ -701,7 +710,7 @@ async function openCase(a, spine) {
       el('div', { class: 'case-title' }, a.title),
       el('div', { class: 'case-artist' }, [a.artist, a.year].filter(Boolean).join(' · ')),
       el('div', { class: 'case-meta' }, [a.tracks.length === 1 ? t('1 TRACK') : t('{n} TRACKS', { n: a.tracks.length }), a.duration ? app.formatTime(a.duration) : null, a.discs > 1 ? t('{n} DISCS', { n: a.discs }) : null, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ')),
-      pressingBlock(a, rare, receipt),
+      pressingBlock(a, rare, (entry) => { if (receipt) receipt.showPressing(entry); showTag(entry); }),
       trackList,
       el('div', { class: 'case-actions' },
         pill(t('BACK ON THE SHELF'), () => closeCase()),
@@ -780,11 +789,11 @@ function renderCount() {
 }
 
 // The case's PRESSING: what's known at once, then Discogs' answer as the case comes out.
-function pressingBlock(a, rare, receipt) {
+function pressingBlock(a, rare, onEntry) {
   const box = el('div', { class: 'case-pressing' });
   const show = (entry) => {
     rare.hidden = !isRare(entry);
-    if (receipt && entry && !entry.error) receipt.showPressing(entry);
+    if (entry && !entry.error) onEntry(entry); // the receipt's and the price tag's price
     if (entry && entry.error) { box.replaceChildren(el('div', { class: 'pressing-line' }, t('DISCOGS UNAVAILABLE'))); return; }
     if (!entry || !entry.releaseId) {
       box.replaceChildren(el('div', { class: 'pressing-line' }, t('NOT ON DISCOGS')),

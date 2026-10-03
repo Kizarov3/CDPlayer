@@ -4,7 +4,7 @@
 // the album's name, so a receipt reads the same every time.
 import { hash, random } from './disc-wear.js';
 import { t } from './i18n.js';
-import { money } from './shelf-discogs.js';
+import { discogsPrice } from './shelf-discogs.js';
 
 const SHOPS = [
   { shop: 'SPINDLE RECORDS', address: '214 4TH ST · EAST VILLAGE' },
@@ -44,8 +44,7 @@ export function receiptFor(album, stickers, pressing = null) {
   const paid = rnd() < 0.45 ? t('CASH') : t('CARD {number}', { number: `****${pad(Math.floor(rnd() * 10000), 4)}` });
   const number = `${pad(Math.floor(rnd() * 10000), 4)}-${pad(Math.floor(rnd() * 1e6), 6)}`;
   const barcode = Array.from({ length: 12 }, () => Math.floor(rnd() * 10)).join('');
-  const p = pressing && pressing.price;
-  const discogs = !!(p && typeof p.lowest === 'number' && p.currency);
-  if (discogs) price = money(p.lowest, p.currency, { cents: true });
+  const fromDiscogs = discogsPrice(pressing), discogs = !!fromDiscogs;
+  if (discogs) price = fromDiscogs;
   return { shop, address, date, time, item: `${album.artist || t('Unknown Artist')} — ${album.title}`, price, total: price, paid, number, barcode, discogs };
 }

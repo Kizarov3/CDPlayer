@@ -9,6 +9,11 @@ export function money(value, currency, { cents = false } = {}) {
   const whole = currency === 'JPY' || (!cents && value >= 10);
   return new Intl.NumberFormat(numberLocale(), { style: 'currency', currency, minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2 }).format(value);
 }
+/** What an album goes for on Discogs, as a price tag reads ('$7.50', '¥2,548'), or null when there's no price. */
+export function discogsPrice(entry) {
+  const p = entry && !entry.error && entry.price;
+  return p && typeof p.lowest === 'number' && p.currency ? money(p.lowest, p.currency, { cents: true }) : null;
+}
 export const pressingLine = (info) => [info.label, info.catno, info.country, info.year, info.formats].filter(Boolean).join(' · ');
 export function marketLine(entry) {
   const p = entry.price, i = entry.info || {};
