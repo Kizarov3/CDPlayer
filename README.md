@@ -17,14 +17,21 @@ Grab the file for your system from [**Releases**](https://github.com/Kizarov3/CD
 | **Windows** 10 / 11 | `CDPlayer-x.y.z-windows.exe` | Double-click — no installation |
 | **Linux** | `CDPlayer-x.y.z-linux.AppImage` | `chmod +x`, then double-click |
 
-The builds aren't signed with a paid certificate, so the first launch asks once: on macOS right-click the app → **Open** → **Open**; on Windows **More info** → **Run anyway**. When a new version is out, an **AVAILABLE** button appears in the player: click it to download the update, then **RESTART TO UPDATE**.
+The builds aren't signed with a paid certificate, so the first launch asks once: on macOS right-click the app → **Open** → **Open**; on Windows **More info** → **Run anyway**. ### Updating
+
+When a new version is out, an **AVAILABLE** button appears in the player's top-left corner: click it to download the update (checked against the release's SHA-256), then **RESTART TO UPDATE** — CDPlayer puts the new version in place of the one you run and opens it, your queue kept. This works from 2.13.0 on.
+
+- **macOS** — keep CDPlayer in **Applications**. Run from the disk image or from Downloads, it can't replace itself: the update is saved to Downloads and **INSTALL** opens it to drag into Applications.
+- **Windows** — run the `.exe` from a folder, not from inside a .zip. It's updated where it is, so it keeps its old file name.
+- **Linux** — the AppImage updates itself; a CDPlayer installed from a package is updated the usual way (the button saves the download and shows it).
+- In a folder CDPlayer can't write to, the update is saved to Downloads and shown to you.
 
 ## Features
 
-- **The disc** — spins in its jewel case with your cover printed on it, catches the light as you move the mouse, wears scratches as you play it, turns over (`B`) to show a ring for each track, and can be turned by hand like a DJ's jog wheel
+- **The disc** — spins in its jewel case with your cover printed on it, catches the light as you move the mouse (**DISC SHINE** turns it off), wears scratches as you play it, turns over (`B`) to show a ring for each track, can be turned by hand like a DJ's jog wheel, and shows on the Dock or taskbar icon (**DISC ICON**)
 - **The CD shelf** (`S`) — every album in your music folder spine-out, sorted by artist, year, most played or colour. Unplayed albums gather dust (wipe it off with the mouse), new ones come shrink-wrapped, sticky notes on cases, and the studio albums you're missing stand as see-through places
 - **The booklet** — the album's tracklist, lyrics and credits, marked in pen as you play: tally marks per song, your favourite circled
-- **Discogs** — each album's exact pressing and market price; **APPRAISE** values your whole shelf
+- **Discogs** — each album's exact pressing and market price, on its case, sticker and receipt; **APPRAISE** values your whole shelf
 - **Audio CDs** — play a real CD, named from MusicBrainz, or **RIP** it to verified, tagged FLAC in one click
 - **Lyrics & Karaoke** (`Y`) — lyrics found online, highlighted word by word as they're sung
 - **Spotify** (Premium) — your saved albums and playlists play as discs, with lyrics and karaoke
