@@ -1124,6 +1124,10 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.13.2', changes: [
+    '<b>The version you have</b> is at the bottom of Settings',
+    '<b>Updating is sturdier</b>: a download that stalls is given up instead of hanging, RESTART TO UPDATE can&rsquo;t be set off twice, and a CDPlayer kept in a protected folder is offered the download instead of an update that couldn&rsquo;t succeed',
+  ] },
   { version: '2.13.1', changes: [
     '<b>Updating from inside the app works on Windows</b>: RESTART TO UPDATE closed CDPlayer and nothing came back &mdash; now the new version is put in place and opens, as on Mac and Linux',
   ] },
