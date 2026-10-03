@@ -20,7 +20,7 @@ test('reads a settings.txt written by the Java version', () => {
   assert.deepStrictEqual(s, {
     volume: 70, crossfade: 5, mono: true, animations: false, theme: 'OCEAN', eq: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
     waveform: false, miniMode: false, bounds: { x: 10, y: 20, width: 1200, height: 900 }, ambient: false, discord: true,
-    discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true,
+    discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: false,
   });
 });
 
@@ -240,4 +240,12 @@ test('the disc\'s shine is on unless turned off, and survives a save', () => {
   assert.strictEqual(store.readSettings().discShine, false);
   store.writeSettings({ ...store.readSettings(), discShine: true });
   assert.strictEqual(store.readSettings().discShine, true);
+});
+
+test('the disc on the Windows taskbar is off unless turned on, and survives a save', () => {
+  fs.writeFileSync(path.join(home, 'settings.txt'), '70\n5\n1\n0\nOCEAN\n0,0,0,0,0,0,0,0,0,0\n0\n0\n\n0\n1\n');
+  assert.strictEqual(store.readSettings().taskbarDisc, false);
+  store.writeSettings({ ...store.readSettings(), taskbarDisc: true });
+  assert.strictEqual(store.readSettings().taskbarDisc, true);
+  assert.strictEqual(store.readSettings().discShine, true); // the line before it is untouched
 });

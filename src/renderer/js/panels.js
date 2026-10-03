@@ -256,6 +256,8 @@ function buildSettings(app) {
   const discNoise = toggle(s.discNoise, () => { app.setDiscNoise(!s.discNoise); setToggle(discNoise, s.discNoise); });
   const discWear = toggle(s.discWear, () => { app.setDiscWear(!s.discWear); setToggle(discWear, s.discWear); });
   const discShine = toggle(s.discShine, () => { app.setDiscShine(!s.discShine); setToggle(discShine, s.discShine); });
+  const taskbarDisc = toggle(s.taskbarDisc, () => { app.setTaskbarDisc(!s.taskbarDisc); setToggle(taskbarDisc, s.taskbarDisc); });
+  const onWindows = document.body.dataset.platform === 'win32';
   const saveFound = toggle(s.saveFound, () => { app.setSaveFound(!s.saveFound); setToggle(saveFound, s.saveFound); });
   // A Spotify disc plays outside Web Audio: the EQ, crossfade and mono can't shape it.
   const forSpotify = app.spotifyActive();
@@ -288,6 +290,8 @@ function buildSettings(app) {
     hint(t('A disc played a lot looks it: scratches from ten plays of its album, fingerprints from fifty, chips from a hundred.')),
     row(t('DISC SHINE'), discShine),
     hint(t('The rainbow reflection on the disc that follows your mouse, like a CD tilted under a lamp.')),
+    onWindows ? row(t('TASKBAR DISC'), taskbarDisc) : null,
+    onWindows ? hint(t('The taskbar button shows the disc that’s in, as on the Mac. While it’s on, CDPlayer pinned to the taskbar opens as a button of its own beside the pin.')) : null,
     row(t('ANIMATIONS'), animations), gap(18),
     section(t('PLAYBACK')),
     sliderRow(t('SLEEP TIMER'), sleep, sleepValue),

@@ -320,33 +320,35 @@ handle('menu:disc', (loaded) => new Promise((resolve) => {
   menu.popup({ window: win, callback: () => setTimeout(() => resolve(null), 0) });
 }));
 // The Dock (macOS) or taskbar (Windows, Linux) icon: the disc that's in (drawn by dock-disc.js), or the app's own
-// icon when nothing is. On Windows the taskbar draws the button from the window's relaunch icon, not its icon — there
-// the disc becomes that (win-taskbar-disc.js).
-let dockShowsDisc = false;
-// The window's relaunch icon — what Windows draws its taskbar button with: a disc's .ico, or the .exe's own (null). The
-// app ID stays CDPlayer's, so pinning it pins CDPlayer.
-let windowIcon = null;
-function setWindowIcon(icon) {
-  if (icon === windowIcon || !win || win.isDestroyed()) return;
-  windowIcon = icon;
+// icon when nothing is. On Windows the taskbar draws the button from the window's app ID, not its icon — there the disc
+// gets an ID of its own (win-taskbar-disc.js), if Settings → TASKBAR DISC is on: it costs a pin that works.
+let dockShowsDisc = false, dockPng = null;
+let windowAppId = APP_ID;
+// The window's app ID, and its relaunch icon — what Windows draws its taskbar button with (the .exe's own, or a disc's).
+function setWindowAppId(id, icon) {
+  if (id === windowAppId || !win || win.isDestroyed()) return;
+  windowAppId = id;
   const exe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
-  win.setAppDetails({ appId: APP_ID, appIconPath: icon || exe, appIconIndex: 0, relaunchCommand: `"${exe}"`, relaunchDisplayName: 'CDPlayer' });
-  // The taskbar reads these when it makes a window's button: take the button away and back, so it's made anew (the
+  win.setAppDetails({ appId: id, appIconPath: icon || exe, appIconIndex: 0, relaunchCommand: `"${exe}"`, relaunchDisplayName: 'CDPlayer' });
+  // The taskbar reads a window's ID when it makes its button: take the button away and back, so it's made anew (the
   // window itself stays as it is).
   if (win.isVisible() && !miniMode) { win.setSkipTaskbar(true); win.setSkipTaskbar(false); }
 }
 const taskbarDisc = process.platform === 'win32' && app.isPackaged && !smokeDir && !process.env.CDPLAYER_HOME
-  ? require('./win-taskbar-disc').createTaskbarDisc({ appId: APP_ID, dataDir: app.getPath('userData'), setWindowIcon })
+  ? require('./win-taskbar-disc').createTaskbarDisc({ appId: APP_ID, dataDir: app.getPath('userData'), setWindowAppId })
   : null;
+const showTaskbarDisc = () => { if (taskbarDisc) taskbarDisc.show(settings.taskbarDisc ? dockPng : null).catch(() => {}); };
 handle('dock:disc', (png) => {
   if (!png && !dockShowsDisc) return;
   dockShowsDisc = !!png;
+  dockPng = png || null;
   const img = png ? nativeImage.createFromBuffer(Buffer.from(png)) : nativeImage.createFromPath(path.join(__dirname, '..', 'renderer', 'icon.png'));
   if (process.platform === 'darwin') { app.dock.setIcon(img); return; }
   if (!win || win.isDestroyed()) return;
   win.setIcon(img); // the title bar and Alt+Tab (and the taskbar on Linux)
-  if (taskbarDisc) { try { taskbarDisc.show(png); } catch { /* the button keeps the app's icon */ } }
+  showTaskbarDisc();
 });
+handle('dock:taskbarDisc', (on) => { settings.taskbarDisc = !!on; persistSettings(); showTaskbarDisc(); });
 handle('online:cover', (query) => online.findCover(query));
 handle('online:coverUrl', (query) => online.findCoverUrl(query));
 handle('online:lyrics', (details) => online.findLyrics(details));

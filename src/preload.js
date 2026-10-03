@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld('cdp', {
   openMusicBrainz: invoke('discography:open'),
   onDiscography: on('discography'),
   dockDisc: invoke('dock:disc'),
+  setTaskbarDisc: invoke('dock:taskbarDisc'),
   copyImage: invoke('clipboard:image'),
   saveCard: invoke('dialog:saveCard'),
   saveVideo: invoke('dialog:saveVideo'),
