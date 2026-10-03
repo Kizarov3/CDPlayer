@@ -4,9 +4,9 @@ import { t, locale } from './i18n.js';
 
 const numberLocale = () => (locale === 'en' ? 'en-US' : locale);
 const count = (n) => new Intl.NumberFormat(numberLocale()).format(n);
-/** An amount as the shelf shows it: whole from 10 up, with cents below. */
-export function money(value, currency) {
-  const whole = value >= 10 || currency === 'JPY';
+/** An amount as the shelf shows it: whole from 10 up, with cents below — or always with cents, as a till prints it. */
+export function money(value, currency, { cents = false } = {}) {
+  const whole = currency === 'JPY' || (!cents && value >= 10);
   return new Intl.NumberFormat(numberLocale(), { style: 'currency', currency, minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2 }).format(value);
 }
 export const pressingLine = (info) => [info.label, info.catno, info.country, info.year, info.formats].filter(Boolean).join(' · ');

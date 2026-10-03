@@ -50,3 +50,26 @@ test('a shop, a way of paying, a receipt number and a barcode; the shops vary', 
 test('no date it turned up, no receipt', () => {
   assert.strictEqual(receiptFor({ ...albums[0], added: null }, stickersFor(albums[0])), null);
 });
+
+test('once Discogs has a price, the receipt shows it — and everything else stays as it was', () => {
+  for (const a of albums.slice(0, 30)) {
+    const st = stickersFor(a), before = receiptFor(a, st);
+    const after = receiptFor(a, st, { releaseId: 1, price: { lowest: 7.5, currency: 'USD', forSale: 3 } });
+    assert.strictEqual(after.price, '$7.50');
+    assert.strictEqual(after.total, '$7.50');
+    assert.strictEqual(after.discogs, true);
+    assert.strictEqual(before.discogs, false);
+    for (const k of ['shop', 'address', 'date', 'time', 'item', 'paid', 'number', 'barcode']) assert.strictEqual(after[k], before[k], k);
+  }
+  const a = albums[0], st = stickersFor(a);
+  assert.strictEqual(receiptFor(a, st, { releaseId: 1, price: { lowest: 2548, currency: 'JPY', forSale: 1 } }).price, '¥2,548');
+  assert.strictEqual(receiptFor(a, st, { releaseId: 1, price: { lowest: 24, currency: 'EUR', forSale: 1 } }).price, '€24.00');
+  assert.strictEqual(receiptFor(a, st, { releaseId: 1, price: { lowest: 12.4, currency: 'USD', forSale: 1 } }).price, '$12.40'); // a till prints the cents
+});
+
+test('no Discogs price (not for sale, not found, not looked up yet): the sticker\'s price as before', () => {
+  for (const pressing of [null, { releaseId: null }, { releaseId: 1, price: { lowest: null, currency: 'USD', forSale: 0 } }, { error: 'offline' }]) {
+    const a = albums[3], st = stickersFor(a);
+    assert.deepStrictEqual(receiptFor(a, st, pressing), receiptFor(a, st));
+  }
+});

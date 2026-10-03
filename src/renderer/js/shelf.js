@@ -495,20 +495,29 @@ function showNoteTab(spine) {
 // ---- The receipt ------------------------------------------------------------------------------------------------
 
 // The receipt behind a case's cover (shelf-receipt.js): its edge peeks out under the cover; click it and it's pulled
-// out and laid over the case, click again and it goes back.
+// out and laid over the case, click again and it goes back. Its price is Discogs' once the case's lookup has one —
+// slip.showPressing(entry) puts it on when the answer comes in after the case is out.
 function receiptSlip(a, stickers) {
-  const r = receiptFor(a, stickers);
+  const r = receiptFor(a, stickers, a.pressing);
   if (!r) return null;
-  const row = (left, right) => el('div', { class: 'rc-row' }, el('span', {}, left), el('span', {}, right));
+  const price = el('span', {}, r.price), total = el('span', {}, r.total);
+  const priceTitle = (receipt) => (receipt.discogs ? t('The lowest price on Discogs') : '');
+  const row = (left, right) => el('div', { class: 'rc-row' }, el('span', {}, left), typeof right === 'string' ? el('span', {}, right) : right);
   const bars = el('div', { class: 'rc-bars' }, ...[...r.barcode].map((d) => el('i', { style: `width:${1 + (Number(d) % 3)}px;margin-right:${1 + (Number(d) % 2)}px` })));
   const slip = el('div', { class: 'receipt', title: t('The receipt') },
     el('div', { class: 'rc-shop' }, r.shop), el('div', { class: 'rc-center' }, r.address),
     el('div', { class: 'rc-rule' }), row(r.date, r.time), el('div', { class: 'rc-rule' }),
-    el('div', { class: 'rc-item' }, r.item), row(t('CD × 1'), r.price),
-    el('div', { class: 'rc-rule' }), row(t('TOTAL'), r.total), row(r.paid, ''),
+    el('div', { class: 'rc-item' }, r.item), row(t('CD × 1'), price),
+    el('div', { class: 'rc-rule' }), row(t('TOTAL'), total), row(r.paid, ''),
     el('div', { class: 'rc-rule' }), el('div', { class: 'rc-center' }, `NO. ${r.number}`), bars,
     el('div', { class: 'rc-center rc-small' }, t('THANK YOU · NO REFUNDS ON OPENED CDs')));
   slip.addEventListener('click', (e) => { e.stopPropagation(); slip.classList.toggle('out'); });
+  slip.showPressing = (entry) => {
+    const now = receiptFor(a, stickers, entry);
+    price.textContent = now.price; total.textContent = now.total;
+    price.title = total.title = priceTitle(now);
+  };
+  price.title = total.title = priceTitle(r);
   return slip;
 }
 
@@ -676,7 +685,8 @@ async function openCase(a, spine) {
   const addNote = pill(t('+ NOTE'), () => { addNote.hidden = true; caseFront.append(stickyNote({ id: a.id, text: '', onSave: saveNote })); }, t('Stick a note on the case'));
   addNote.hidden = !!a.note;
   const rare = el('div', { class: 'sticker-rare', hidden: !isRare(a.pressing) }, t('★ RARE'));
-  const caseFront = el('div', { class: 'case-front' }, receiptSlip(a, st), front, rare,
+  const receipt = receiptSlip(a, st);
+  const caseFront = el('div', { class: 'case-front' }, receipt, front, rare,
       st.obi ? el('div', { class: 'case-obi' },
         el('div', { class: 'obi-top' }, 'CD'),
         el('div', { class: 'obi-title' }, a.title),
@@ -691,7 +701,7 @@ async function openCase(a, spine) {
       el('div', { class: 'case-title' }, a.title),
       el('div', { class: 'case-artist' }, [a.artist, a.year].filter(Boolean).join(' · ')),
       el('div', { class: 'case-meta' }, [a.tracks.length === 1 ? t('1 TRACK') : t('{n} TRACKS', { n: a.tracks.length }), a.duration ? app.formatTime(a.duration) : null, a.discs > 1 ? t('{n} DISCS', { n: a.discs }) : null, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ')),
-      pressingBlock(a, rare),
+      pressingBlock(a, rare, receipt),
       trackList,
       el('div', { class: 'case-actions' },
         pill(t('BACK ON THE SHELF'), () => closeCase()),
@@ -770,10 +780,11 @@ function renderCount() {
 }
 
 // The case's PRESSING: what's known at once, then Discogs' answer as the case comes out.
-function pressingBlock(a, rare) {
+function pressingBlock(a, rare, receipt) {
   const box = el('div', { class: 'case-pressing' });
   const show = (entry) => {
     rare.hidden = !isRare(entry);
+    if (receipt && entry && !entry.error) receipt.showPressing(entry);
     if (entry && entry.error) { box.replaceChildren(el('div', { class: 'pressing-line' }, t('DISCOGS UNAVAILABLE'))); return; }
     if (!entry || !entry.releaseId) {
       box.replaceChildren(el('div', { class: 'pressing-line' }, t('NOT ON DISCOGS')),

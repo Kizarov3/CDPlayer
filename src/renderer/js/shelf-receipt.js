@@ -1,8 +1,10 @@
 // The receipt tucked in behind a case's cover: the shop the album was "bought" at, on the day it turned up in the
-// music folder, for the price on its sticker. The shops are made up; which one, the time, the way it was paid and the
-// numbers all come from the album's name, so a receipt reads the same every time.
+// music folder, for what it goes for on Discogs (the lowest price on its marketplace, once that's known) — or else the
+// price on its sticker. The shops are made up; which one, the time, the way it was paid and the numbers all come from
+// the album's name, so a receipt reads the same every time.
 import { hash, random } from './disc-wear.js';
 import { t } from './i18n.js';
+import { money } from './shelf-discogs.js';
 
 const SHOPS = [
   { shop: 'SPINDLE RECORDS', address: '214 4TH ST · EAST VILLAGE' },
@@ -21,10 +23,11 @@ const YEN = [2300, 2427, 2548, 2621, 2800, 3000, 3146];
 const pad = (n, w = 2) => String(n).padStart(w, '0');
 
 /**
- * An album ({ artist, title, added }) and its stickers (shelf-stickers.js) → its receipt: { shop, address, date, time,
- * item, price, total, paid, number, barcode } — or null when the day it turned up isn't known.
+ * An album ({ artist, title, added }), its stickers (shelf-stickers.js) and its Discogs entry if known (main/discogs.js)
+ * → its receipt: { shop, address, date, time, item, price, total, paid, number, barcode, discogs } — or null when the
+ * day it turned up isn't known. `discogs` says the price is Discogs'.
  */
-export function receiptFor(album, stickers) {
+export function receiptFor(album, stickers, pressing = null) {
   if (!album.added) return null;
   const rnd = random(hash(`receipt\n${album.artist || ''}\n${album.title || ''}`));
   const pick = (list) => list[Math.floor(rnd() * list.length)];
@@ -41,5 +44,8 @@ export function receiptFor(album, stickers) {
   const paid = rnd() < 0.45 ? t('CASH') : t('CARD {number}', { number: `****${pad(Math.floor(rnd() * 10000), 4)}` });
   const number = `${pad(Math.floor(rnd() * 10000), 4)}-${pad(Math.floor(rnd() * 1e6), 6)}`;
   const barcode = Array.from({ length: 12 }, () => Math.floor(rnd() * 10)).join('');
-  return { shop, address, date, time, item: `${album.artist || t('Unknown Artist')} — ${album.title}`, price, total: price, paid, number, barcode };
+  const p = pressing && pressing.price;
+  const discogs = !!(p && typeof p.lowest === 'number' && p.currency);
+  if (discogs) price = money(p.lowest, p.currency, { cents: true });
+  return { shop, address, date, time, item: `${album.artist || t('Unknown Artist')} — ${album.title}`, price, total: price, paid, number, barcode, discogs };
 }
