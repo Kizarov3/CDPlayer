@@ -136,6 +136,7 @@ test('the AppImage script swaps the file once the old app has quit, and starts t
     assert.match(fs.readFileSync(target, 'utf8'), /echo new/);
     assert.strictEqual(fs.readFileSync(`${target}.ran`, 'utf8'), 'new\n');
     assert.ok(!fs.existsSync(file));
+    assert.ok(!fs.existsSync(script)); // the script cleans up after itself
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

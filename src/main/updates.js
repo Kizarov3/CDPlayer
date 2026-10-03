@@ -145,7 +145,7 @@ function installScript(platform, { pid, file, target }) {
 # CDPlayer's updater: wait for the old app to quit, copy the new one off the disk image in its place, open it.
 while kill -0 ${pid} 2>/dev/null; do sleep 0.3; done
 mnt=$(mktemp -d /tmp/cdplayer-update.XXXXXX)
-fail() { hdiutil detach -quiet "$mnt" 2>/dev/null; rmdir "$mnt" 2>/dev/null; rm -rf ${shQuote(`${target}.new`)}; open ${T}; open -R ${F}; exit 1; }
+fail() { hdiutil detach -quiet "$mnt" 2>/dev/null; rmdir "$mnt" 2>/dev/null; rm -rf ${shQuote(`${target}.new`)}; open ${T}; open -R ${F}; rm -f "$0"; exit 1; }
 hdiutil attach -nobrowse -readonly -noautoopen -mountpoint "$mnt" ${F} >/dev/null 2>&1 ||
   diskutil image attach --mountOptions nobrowse --readOnly --mountPoint "$mnt" ${F} >/dev/null 2>&1 || fail
 app=$(find "$mnt" -maxdepth 1 -name '*.app' | head -n 1)
@@ -159,6 +159,7 @@ if mv ${shQuote(`${target}.new`)} ${T}; then rm -rf ${shQuote(`${target}.old`)};
 xattr -dr com.apple.quarantine ${T} 2>/dev/null
 rm -f ${F}
 open ${T}
+rm -f "$0"
 ` };
   }
   if (platform === 'win32') {
@@ -170,12 +171,13 @@ $deadline = (Get-Date).AddSeconds(60)
 while ($true) {
   try { Copy-Item -LiteralPath ${F} -Destination ${T} -Force -ErrorAction Stop; break }
   catch {
-    if ((Get-Date) -gt $deadline) { Start-Process -FilePath ${T}; Start-Process explorer.exe -ArgumentList ('/select,"' + ${F} + '"'); exit 1 }
+    if ((Get-Date) -gt $deadline) { Start-Process -FilePath ${T}; Start-Process explorer.exe -ArgumentList ('/select,"' + ${F} + '"'); Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue; exit 1 }
     Start-Sleep -Milliseconds 500
   }
 }
 Remove-Item -LiteralPath ${F} -Force -ErrorAction SilentlyContinue
 Start-Process -FilePath ${T}
+Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
 ` };
   }
   const T = shQuote(target), F = shQuote(file);
@@ -185,6 +187,7 @@ while kill -0 ${pid} 2>/dev/null; do sleep 0.3; done
 chmod +x ${F}
 if cp -f ${F} ${shQuote(`${target}.new`)} && mv -f ${shQuote(`${target}.new`)} ${T}; then rm -f ${F}; else rm -f ${shQuote(`${target}.new`)}; fi
 nohup ${T} >/dev/null 2>&1 &
+rm -f "$0"
 ` };
 }
 
