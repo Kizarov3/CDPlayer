@@ -321,32 +321,18 @@ handle('menu:disc', (loaded) => new Promise((resolve) => {
 }));
 // The Dock (macOS) or taskbar (Windows, Linux) icon: the disc that's in (drawn by dock-disc.js), or the app's own
 // icon when nothing is. A taskbar button pinned on Windows always shows its pin's icon, whatever the window's is — so
-// there the disc goes on it as an overlay, in the corner (as a mail app's unread count does).
+// there the pin's shortcut gets the disc instead (win-taskbar-icon.js), and its own icon back on the way out.
 let dockShowsDisc = false;
-function pinnedOnWindowsTaskbar() {
-  const exe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
-  const dir = path.join(app.getPath('appData'), 'Microsoft', 'Internet Explorer', 'Quick Launch', 'User Pinned', 'TaskBar');
-  try {
-    return fs.readdirSync(dir).filter((f) => f.toLowerCase().endsWith('.lnk')).some((f) => {
-      try {
-        const link = shell.readShortcutLink(path.join(dir, f));
-        return link.appUserModelId === APP_ID || (link.target || '').toLowerCase() === exe.toLowerCase();
-      } catch { return false; }
-    });
-  } catch { return false; }
-}
+const pinnedIcon = process.platform === 'win32' && app.isPackaged && !smokeDir && !process.env.CDPLAYER_HOME
+  ? require('./win-taskbar-icon').createPinnedIcon({ shell, appData: app.getPath('appData'), dataDir: app.getPath('userData'), appId: APP_ID, exe: process.env.PORTABLE_EXECUTABLE_FILE || process.execPath })
+  : null;
 handle('dock:disc', (png) => {
   if (!png && !dockShowsDisc) return;
   dockShowsDisc = !!png;
   const img = png ? nativeImage.createFromBuffer(Buffer.from(png)) : nativeImage.createFromPath(path.join(__dirname, '..', 'renderer', 'icon.png'));
   if (process.platform === 'darwin') { app.dock.setIcon(img); return; }
-  if (!win || win.isDestroyed()) return;
-  if (process.platform === 'win32') {
-    const pinned = pinnedOnWindowsTaskbar(); // asked each time: it may have been pinned or unpinned since
-    win.setOverlayIcon(png && pinned ? img.resize({ width: 32, height: 32, quality: 'best' }) : null, png && pinned ? t('Now playing') : '');
-    if (pinned && png) return; // the window's own icon stays the app's, for the title bar and Alt+Tab
-  }
-  win.setIcon(img);
+  if (pinnedIcon) { try { pinnedIcon.show(png); } catch { /* the pin keeps its icon */ } }
+  if (win && !win.isDestroyed()) win.setIcon(img); // unpinned, the window's icon is the button's
 });
 handle('online:cover', (query) => online.findCover(query));
 handle('online:coverUrl', (query) => online.findCoverUrl(query));
@@ -830,6 +816,7 @@ function registerWindowsShortcut() {
 // ---- Lifecycle --------------------------------------------------------------------------------------------------
 
 app.whenReady().then(() => {
+  if (pinnedIcon) { try { pinnedIcon.restore(); } catch { /* still the disc's */ } } // last run didn't get to (a crash)
   i18n.loadLocale(settings.language, app.getPreferredSystemLanguages());
   protocol.handle('cdp', media.handle);
   registerWindowsShortcut();
@@ -848,6 +835,7 @@ app.whenReady().then(() => {
 let restoredRate = false;
 app.on('before-quit', (e) => {
   quitting = true;
+  if (pinnedIcon) { try { pinnedIcon.restore(); } catch { /* left for the next launch */ } }
   if (playsTimer) { clearTimeout(playsTimer); writePlays(); }
   if (restoredRate || smokeDir || !gotLock) return;
   if (!outputRate.pending()) { outputRate.restore({ final: true }).catch(() => {}); return; } // nothing to put back: quit now, and no more switching
