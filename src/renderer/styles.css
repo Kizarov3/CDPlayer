@@ -297,6 +297,7 @@ body.cd-view #cd-info { display: block !important; }
 .theme-pill .swatch { background: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent2))); }
 .settings-foot { margin-top: 18px; display: flex; align-items: center; justify-content: space-between; }
 .settings-foot .github-link { margin-top: 0; }
+.settings-version { font-size: 11px; color: rgb(var(--muted)); font-variant-numeric: tabular-nums; user-select: text; }
 .github-link { margin-top: 18px; display: flex; justify-content: center; align-items: center; gap: 6px; font-size: 11px; color: rgb(var(--muted)); cursor: pointer; transition: color var(--hover) linear; }
 .github-link:hover { color: rgb(var(--text)); }
 .github-link svg { width: 15px; height: 15px; }

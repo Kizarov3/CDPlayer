@@ -316,7 +316,8 @@ function buildSettings(app) {
       pill(t('SHOW THE GUIDE'), () => showGuide(app), t('The five cards shown the first time CDPlayer opened')),
       pill(t('FAQ'), () => showFaq(), t('Answers to what people ask the first time')),
       pill(t('KEYBOARD SHORTCUTS'), () => showShortcuts(), t('Every key, also with ?'))));
-  return [title(t('SETTINGS')), gap(18), body, el('div', { class: 'settings-foot' }, github, pill(t('CLOSE'), () => closePanel('settings')))];
+  const version = el('div', { class: 'settings-version' }, `CDPlayer ${app.state.version}`);
+  return [title(t('SETTINGS')), gap(18), body, el('div', { class: 'settings-foot' }, github, version, pill(t('CLOSE'), () => closePanel('settings')))];
 }
 
 // ---- Drop-down menus (theme picker, EQ presets) ------------------------------------------------------------------
