@@ -17,7 +17,7 @@ Grab the file for your system from [**Releases**](https://github.com/Kizarov3/CD
 | **Windows** 10 / 11 | `CDPlayer-x.y.z-windows.exe` | Double-click — no installation |
 | **Linux** | `CDPlayer-x.y.z-linux.AppImage` | `chmod +x`, then double-click |
 
-The builds aren't signed with a paid certificate, so the first launch asks once: on macOS right-click the app → **Open** → **Open**; on Windows **More info** → **Run anyway**. When a new version is out, an **AVAILABLE** button appears in the player.
+The builds aren't signed with a paid certificate, so the first launch asks once: on macOS right-click the app → **Open** → **Open**; on Windows **More info** → **Run anyway**. When a new version is out, an **AVAILABLE** button appears in the player: click it to download the update, then **RESTART TO UPDATE**.
 
 ## Features
 
@@ -83,7 +83,7 @@ Point at the ◈ badge under the title: it says what reaches your output. MP3 an
 Yes — on CDs, rips and every file. Not on Spotify, whose audio is protected (the same reason the EQ can't reach it).
 
 **Does CDPlayer send anything over the internet?**<br>
-Only lookups — covers, lyrics, album details from MusicBrainz and Discogs — and a check for a new version on GitHub. No account, no tracking. Spotify is contacted only if you connect it.
+Only lookups — covers, lyrics, album details from MusicBrainz and Discogs — and a check for a new version on GitHub (downloaded only when you click it). No account, no tracking. Spotify is contacted only if you connect it.
 
 ## Coming from the Java version?
 

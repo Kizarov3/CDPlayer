@@ -1123,6 +1123,11 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.13.0', changes: [
+    '<b>Updates from inside the app</b>: from now on, when a new version is out, click its button in the top-left corner to download it, then RESTART TO UPDATE &mdash; no more fetching it from GitHub by hand',
+    '<b>Discogs prices on the case</b>: the receipt behind the cover, the obi and the price sticker show what the album goes for on Discogs, once it&rsquo;s known',
+    '<b>Two new switches</b> in Settings &rarr; LOOK: DISC SHINE turns off the rainbow reflection that follows your mouse, and DISC ICON puts the disc that&rsquo;s in on the Dock or taskbar icon, or CDPlayer&rsquo;s own &mdash; on Windows too now',
+  ] },
   { version: '2.12.0', changes: [
     '<b>Spatial audio</b>: Settings &rarr; SPATIAL AUDIO &mdash; on headphones, music comes from two speakers in front of you instead of from inside your head, on files and CDs alike; SPACE sets how much',
     '<b>Sound quality, as in Apple Music</b>: Settings &rarr; QUALITY &mdash; LOSSLESS and HI-RES LOSSLESS play each song at its own sample rate, up to 192 kHz, with your output switched to match on Mac and Windows and put back when CDPlayer closes',
