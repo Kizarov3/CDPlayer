@@ -320,14 +320,33 @@ handle('menu:disc', (loaded) => new Promise((resolve) => {
   menu.popup({ window: win, callback: () => setTimeout(() => resolve(null), 0) });
 }));
 // The Dock (macOS) or taskbar (Windows, Linux) icon: the disc that's in (drawn by dock-disc.js), or the app's own
-// icon when nothing is.
+// icon when nothing is. A taskbar button pinned on Windows always shows its pin's icon, whatever the window's is — so
+// there the disc goes on it as an overlay, in the corner (as a mail app's unread count does).
 let dockShowsDisc = false;
+function pinnedOnWindowsTaskbar() {
+  const exe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+  const dir = path.join(app.getPath('appData'), 'Microsoft', 'Internet Explorer', 'Quick Launch', 'User Pinned', 'TaskBar');
+  try {
+    return fs.readdirSync(dir).filter((f) => f.toLowerCase().endsWith('.lnk')).some((f) => {
+      try {
+        const link = shell.readShortcutLink(path.join(dir, f));
+        return link.appUserModelId === APP_ID || (link.target || '').toLowerCase() === exe.toLowerCase();
+      } catch { return false; }
+    });
+  } catch { return false; }
+}
 handle('dock:disc', (png) => {
   if (!png && !dockShowsDisc) return;
   dockShowsDisc = !!png;
   const img = png ? nativeImage.createFromBuffer(Buffer.from(png)) : nativeImage.createFromPath(path.join(__dirname, '..', 'renderer', 'icon.png'));
-  if (process.platform === 'darwin') app.dock.setIcon(img);
-  else if (win && !win.isDestroyed()) win.setIcon(img);
+  if (process.platform === 'darwin') { app.dock.setIcon(img); return; }
+  if (!win || win.isDestroyed()) return;
+  if (process.platform === 'win32') {
+    const pinned = pinnedOnWindowsTaskbar(); // asked each time: it may have been pinned or unpinned since
+    win.setOverlayIcon(png && pinned ? img.resize({ width: 32, height: 32, quality: 'best' }) : null, png && pinned ? t('Now playing') : '');
+    if (pinned && png) return; // the window's own icon stays the app's, for the title bar and Alt+Tab
+  }
+  win.setIcon(img);
 });
 handle('online:cover', (query) => online.findCover(query));
 handle('online:coverUrl', (query) => online.findCoverUrl(query));
