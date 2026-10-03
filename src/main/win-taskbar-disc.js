@@ -11,7 +11,7 @@
  * left by a run that didn't get to it (a crash) at the next launch.
  *
  * Under its app ID of its own the window isn't CDPlayer's pin: pinned, CDPlayer opens as a button beside it, and pinning
- * that button pins the one disc. So it's a choice — Settings → TASKBAR DISC, off unless turned on — and the app ID can't
+ * that button pins the one disc. So it's a choice — Settings → DISC ICON, off on Windows unless turned on — and the app ID can't
  * stay CDPlayer's: with it, the taskbar draws the button from the Start menu shortcut, whatever the relaunch icon.
  */
 const fs = require('fs');

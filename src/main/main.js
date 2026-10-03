@@ -321,8 +321,9 @@ handle('menu:disc', (loaded) => new Promise((resolve) => {
 }));
 // The Dock (macOS) or taskbar (Windows, Linux) icon: the disc that's in (drawn by dock-disc.js), or the app's own
 // icon when nothing is. On Windows the taskbar draws the button from the window's app ID, not its icon — there the disc
-// gets an ID of its own (win-taskbar-disc.js), if Settings → TASKBAR DISC is on: it costs a pin that works.
-let dockShowsDisc = false, dockPng = null;
+// gets an ID of its own (win-taskbar-disc.js). Settings → DISC ICON turns it off for the app's own icon — on Windows it's
+// off unless turned on, as the disc there costs a pin that works.
+let dockPng = null, dockShown;
 let windowAppId = APP_ID;
 // The window's app ID, and its relaunch icon — what Windows draws its taskbar button with (the .exe's own, or a disc's).
 function setWindowAppId(id, icon) {
@@ -337,18 +338,19 @@ function setWindowAppId(id, icon) {
 const taskbarDisc = process.platform === 'win32' && app.isPackaged && !smokeDir && !process.env.CDPLAYER_HOME
   ? require('./win-taskbar-disc').createTaskbarDisc({ appId: APP_ID, dataDir: app.getPath('userData'), setWindowAppId })
   : null;
-const showTaskbarDisc = () => { if (taskbarDisc) taskbarDisc.show(settings.taskbarDisc ? dockPng : null).catch(() => {}); };
-handle('dock:disc', (png) => {
-  if (!png && !dockShowsDisc) return;
-  dockShowsDisc = !!png;
-  dockPng = png || null;
+function showDockIcon() {
+  const png = settings.taskbarDisc ? dockPng : null;
+  if (png === dockShown) return;
+  if (dockShown === undefined && !png) { dockShown = null; return; } // the app's own icon is already there
+  if (process.platform !== 'darwin' && (!win || win.isDestroyed())) return;
+  dockShown = png;
   const img = png ? nativeImage.createFromBuffer(Buffer.from(png)) : nativeImage.createFromPath(path.join(__dirname, '..', 'renderer', 'icon.png'));
   if (process.platform === 'darwin') { app.dock.setIcon(img); return; }
-  if (!win || win.isDestroyed()) return;
   win.setIcon(img); // the title bar and Alt+Tab (and the taskbar on Linux)
-  showTaskbarDisc();
-});
-handle('dock:taskbarDisc', (on) => { settings.taskbarDisc = !!on; persistSettings(); showTaskbarDisc(); });
+  if (taskbarDisc) taskbarDisc.show(png).catch(() => {});
+}
+handle('dock:disc', (png) => { dockPng = png || null; showDockIcon(); });
+handle('dock:taskbarDisc', (on) => { settings.taskbarDisc = !!on; persistSettings(); showDockIcon(); });
 handle('online:cover', (query) => online.findCover(query));
 handle('online:coverUrl', (query) => online.findCoverUrl(query));
 handle('online:lyrics', (details) => online.findLyrics(details));

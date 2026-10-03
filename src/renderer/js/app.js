@@ -49,7 +49,7 @@ export const BUILTIN_EQ_PRESETS = [
 
 const state = {
   queue: [], index: -1, shuffle: false, repeat: 'OFF',
-  volume: 100, volumeBeforeMute: -1, crossfade: 0, mono: false, spatial: false, spatialAmount: 50, waveform: true, ambient: true, miniMode: false, discord: true, discNoise: false, discWear: true, discShine: true, taskbarDisc: false,
+  volume: 100, volumeBeforeMute: -1, crossfade: 0, mono: false, spatial: false, spatialAmount: 50, waveform: true, ambient: true, miniMode: false, discord: true, discNoise: false, discWear: true, discShine: true, taskbarDisc: true,
   trayBusy: false, // the tray is moving or the disc is being read: transport presses wait
   saveFound: false, // covers and lyrics found online are written into the song's file
   lyricsOffset: 0,  // ms the lyrics are moved by (+ later), on top of the output latency
@@ -1844,7 +1844,7 @@ async function start() {
   setDiscNoise(!!s.discNoise);
   state.discWear = s.discWear !== false;
   state.discShine = s.discShine !== false; disc.setShine(state.discShine);
-  state.taskbarDisc = !!s.taskbarDisc;
+  state.taskbarDisc = !!s.taskbarDisc; // its default is the system's (main/store.js)
   state.output = s.output || null;
   applyOutput(false);
   navigator.mediaDevices.addEventListener('devicechange', () => applyOutput(true));

@@ -257,7 +257,7 @@ function buildSettings(app) {
   const discWear = toggle(s.discWear, () => { app.setDiscWear(!s.discWear); setToggle(discWear, s.discWear); });
   const discShine = toggle(s.discShine, () => { app.setDiscShine(!s.discShine); setToggle(discShine, s.discShine); });
   const taskbarDisc = toggle(s.taskbarDisc, () => { app.setTaskbarDisc(!s.taskbarDisc); setToggle(taskbarDisc, s.taskbarDisc); });
-  const onWindows = document.body.dataset.platform === 'win32';
+  const platform = document.body.dataset.platform;
   const saveFound = toggle(s.saveFound, () => { app.setSaveFound(!s.saveFound); setToggle(saveFound, s.saveFound); });
   // A Spotify disc plays outside Web Audio: the EQ, crossfade and mono can't shape it.
   const forSpotify = app.spotifyActive();
@@ -290,8 +290,10 @@ function buildSettings(app) {
     hint(t('A disc played a lot looks it: scratches from ten plays of its album, fingerprints from fifty, chips from a hundred.')),
     row(t('DISC SHINE'), discShine),
     hint(t('The rainbow reflection on the disc that follows your mouse, like a CD tilted under a lamp.')),
-    onWindows ? row(t('TASKBAR DISC'), taskbarDisc) : null,
-    onWindows ? hint(t('The taskbar button shows the disc that’s in, as on the Mac. While it’s on, CDPlayer pinned to the taskbar opens as a button of its own beside the pin.')) : null,
+    row(t('DISC ICON'), taskbarDisc),
+    hint(platform === 'darwin' ? t('The Dock icon shows the disc that’s in. Off, it’s CDPlayer’s own icon.')
+      : platform === 'win32' ? t('The taskbar button shows the disc that’s in. While it’s on, CDPlayer pinned to the taskbar opens as a button of its own beside the pin.')
+      : t('The taskbar icon shows the disc that’s in. Off, it’s CDPlayer’s own icon.')),
     row(t('ANIMATIONS'), animations), gap(18),
     section(t('PLAYBACK')),
     sliderRow(t('SLEEP TIMER'), sleep, sleepValue),
