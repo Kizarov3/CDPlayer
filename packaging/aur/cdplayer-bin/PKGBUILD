@@ -1,0 +1,52 @@
+# Maintainer: Kizarov3 <artemdoktorov0 at gmail dot com>
+
+pkgname=cdplayer-bin
+_pkgname=cdplayer
+pkgver=2.12.0
+pkgrel=1
+pkgdesc='A desktop music player that recreates the tactile feel of a physical CD player'
+arch=('x86_64')
+url='https://github.com/Kizarov3/CDPlayer'
+license=('MIT')
+depends=('alsa-lib' 'at-spi2-core' 'gtk3' 'hicolor-icon-theme' 'libcups' 'libdrm' 'libxkbcommon' 'mesa' 'nss')
+optdepends=('gvfs: play audio CDs'
+            'libnotify: desktop notifications')
+provides=("$_pkgname")
+conflicts=("$_pkgname")
+options=('!strip' '!debug')
+source=("$_pkgname-$pkgver.AppImage::$url/releases/download/v$pkgver/CDPlayer-$pkgver-linux.AppImage"
+        "LICENSE-$pkgver::https://raw.githubusercontent.com/Kizarov3/CDPlayer/v$pkgver/LICENSE"
+        "$_pkgname.desktop"
+        "$_pkgname.sh")
+noextract=("$_pkgname-$pkgver.AppImage")
+sha256sums=('7cbe8b11372960fa90842464207e98bea0dc49524cbe88001e65be9df5650bf3'
+            '1ce2178aa85c1c875187ef532bcaffb15554beda4a9917b0acee06e694771825'
+            '2ec00cb2914828f4f9b729a5400f4e74de580d0ecee7d40535c767bc9fc931dc'
+            'b6aa7e66d2de7fc304389e2baf93544ea93ad90a583eafc462afb00a434ac8f0')
+
+prepare() {
+  chmod +x "$_pkgname-$pkgver.AppImage"
+  rm -rf squashfs-root
+  "./$_pkgname-$pkgver.AppImage" --appimage-extract >/dev/null
+}
+
+package() {
+  cd squashfs-root
+
+  # Everything but the AppImage wrapping (AppRun, bundled usr/, desktop entry, icon links)
+  install -d "$pkgdir/opt/$_pkgname"
+  cp -a --no-preserve=ownership \
+    "$_pkgname" chrome-sandbox chrome_crashpad_handler \
+    ./*.pak ./*.bin ./*.dat ./*.so ./*.so.* ./*.json \
+    LICENSE.electron.txt LICENSES.chromium.html locales resources \
+    "$pkgdir/opt/$_pkgname/"
+  chmod 4755 "$pkgdir/opt/$_pkgname/chrome-sandbox"
+
+  install -Dm755 "$srcdir/$_pkgname.sh" "$pkgdir/usr/bin/$_pkgname"
+  install -Dm644 "$srcdir/$_pkgname.desktop" "$pkgdir/usr/share/applications/$_pkgname.desktop"
+  install -Dm644 "usr/share/icons/hicolor/1024x1024/apps/$_pkgname.png" \
+    "$pkgdir/usr/share/icons/hicolor/1024x1024/apps/$_pkgname.png"
+  install -Dm644 "usr/share/icons/hicolor/1024x1024/apps/$_pkgname.png" \
+    "$pkgdir/usr/share/pixmaps/$_pkgname.png"
+  install -Dm644 "$srcdir/LICENSE-$pkgver" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

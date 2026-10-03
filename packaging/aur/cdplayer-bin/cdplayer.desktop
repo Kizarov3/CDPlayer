@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=CDPlayer
+Comment=A desktop music player that recreates the tactile feel of a physical CD player
+Exec=cdplayer %U
+Terminal=false
+Type=Application
+Icon=cdplayer
+StartupWMClass=cdplayer
+Categories=AudioVideo;Audio;Player;
+MimeType=audio/mpeg;audio/mp4;audio/x-m4a;audio/aac;audio/flac;audio/x-flac;audio/wav;audio/x-wav;audio/aiff;audio/x-aiff;audio/basic;audio/ogg;audio/x-vorbis+ogg;audio/opus;application/x-cue;
