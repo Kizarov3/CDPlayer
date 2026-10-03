@@ -1555,7 +1555,8 @@ function buildStaticUi() {
   $('history-button').addEventListener('click', () => panels.showHistory(app));
   $('settings-button').addEventListener('click', () => panels.showSettings(app));
   $('cd-view-button').addEventListener('click', toggleCdView);
-  $('update-button').addEventListener('click', () => cdp.openReleasesPage());
+  $('update-button').addEventListener('click', onUpdateClick);
+  cdp.onUpdateProgress((fraction) => { if (updateState.phase === 'downloading') { updateState.progress = fraction; showUpdatePill(); } });
   $('sleep-indicator').addEventListener('click', () => { armSleepTimer(0); panels.refreshSettingsIfOpen(app); });
   $('vis-mode').addEventListener('mousedown', () => { if (state.visualizerMode) toggleVisualizerMode(); });
   disc.onEjectPeak = () => nextTrack();
@@ -1749,14 +1750,59 @@ export const app = {
 
 // ---- Startup ---------------------------------------------------------------------------------------------------
 
-// A newer release on GitHub shows a pill in the header; clicking it opens the download page. Nothing is installed.
-// When GitHub can't be reached, the pill is left as it was.
-async function checkForUpdate() {
-  const update = await cdp.checkForUpdate().catch(() => ({ offline: true }));
-  if (update && update.offline) return;
+// A newer release on GitHub shows a pill in the header. Clicking it downloads the release (the pill counts the
+// percent), and clicking again restarts into the new version — or, where this copy can't be replaced in place, opens
+// the download. A release with no file for this system, or a failed download clicked again, opens the download page.
+// When GitHub can't be reached, the pill is left as it was; while a download is on, later checks leave it be.
+const updateState = { version: null, canDownload: false, phase: 'idle', install: null, failed: false }; // phase: idle | downloading | ready
+
+function showUpdatePill() {
   const button = $('update-button');
-  button.hidden = !update;
-  if (update) button.textContent = t('{version} AVAILABLE', { version: update.version });
+  const u = updateState;
+  button.hidden = !u.version;
+  if (!u.version) return;
+  if (u.phase === 'downloading') {
+    button.textContent = t('DOWNLOADING {percent}%', { percent: Math.round((u.progress || 0) * 100) });
+    button.title = t('Downloading CDPlayer {version}…', { version: u.version });
+  } else if (u.phase === 'ready') {
+    button.textContent = u.install === 'replace' ? t('RESTART TO UPDATE') : t('INSTALL {version}', { version: u.version });
+    button.title = u.install === 'replace' ? t('Install CDPlayer {version} and restart — your queue is kept', { version: u.version }) : t('Open the downloaded CDPlayer {version} to install it', { version: u.version });
+  } else {
+    button.textContent = t('{version} AVAILABLE', { version: u.version });
+    button.title = u.canDownload && !u.failed ? t('A newer CDPlayer is out — click to download it') : t('A newer CDPlayer is out — opens the download page');
+  }
+}
+
+async function checkForUpdate() {
+  if (updateState.phase !== 'idle') return;
+  const update = await cdp.checkForUpdate().catch(() => ({ offline: true }));
+  if ((update && update.offline) || updateState.phase !== 'idle') return;
+  if (!update || update.version !== updateState.version) updateState.failed = false;
+  updateState.version = update ? update.version : null;
+  updateState.canDownload = !!(update && update.canDownload);
+  showUpdatePill();
+}
+
+async function onUpdateClick() {
+  const u = updateState;
+  if (u.phase === 'downloading') return;
+  if (u.phase === 'ready') {
+    if (u.install === 'replace') { setStatus(t('UPDATING — BACK IN A MOMENT')); saveEverythingNow(); }
+    await cdp.installUpdate().catch(() => { setStatus(t('COULDN’T INSTALL THE UPDATE')); cdp.openReleasesPage(); });
+    return;
+  }
+  if (!u.canDownload || u.failed) { cdp.openReleasesPage(); return; }
+  u.phase = 'downloading'; u.progress = 0;
+  showUpdatePill();
+  try {
+    const done = await cdp.downloadUpdate();
+    Object.assign(u, { phase: 'ready', install: done.install, version: done.version });
+    setStatus(t('CDPLAYER {version} DOWNLOADED', { version: done.version }));
+  } catch {
+    Object.assign(u, { phase: 'idle', failed: true });
+    setStatus(t('UPDATE DOWNLOAD FAILED'));
+  }
+  showUpdatePill();
 }
 
 async function start() {

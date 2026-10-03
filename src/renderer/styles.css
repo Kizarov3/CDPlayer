@@ -68,7 +68,7 @@ button { font-family: inherit; outline: none; }
 #cd-button { color: rgb(var(--accent2)); max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 #rip-button { color: rgb(var(--accent2)); }
 #rip-button.ripping { color: rgb(var(--accent)); font-variant-numeric: tabular-nums; }
-#update-button { color: rgb(var(--accent)); }
+#update-button { color: rgb(var(--accent)); font-variant-numeric: tabular-nums; }
 #status-pill {
   justify-self: center;
   padding: 6px 16px; border-radius: 2px;

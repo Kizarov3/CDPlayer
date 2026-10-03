@@ -122,6 +122,9 @@ contextBridge.exposeInMainWorld('cdp', {
   },
   checkForUpdate: invoke('updates:check'),
   openReleasesPage: invoke('updates:openReleases'),
+  downloadUpdate: invoke('updates:download'),
+  installUpdate: invoke('updates:install'),
+  onUpdateProgress: on('update-progress'),
   setDiscordTrack: (track) => ipcRenderer.send('discord:track', track),
 
   pathForFile: (file) => webUtils.getPathForFile(file),

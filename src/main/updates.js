@@ -1,14 +1,29 @@
 'use strict';
 /**
- * The "x.y.z AVAILABLE" check. Every check asks GitHub for the latest published release and compares it with the
+ * Updates from inside the app. Every check asks GitHub for the latest published release and compares it with the
  * running version — nothing is remembered between checks, so the pill always names the newest release there is right
- * now (the renderer asks at launch and every 15 minutes). It never downloads or installs anything: the pill just
- * opens the Releases page. When GitHub can't be reached the result says so, and the pill stays as it was.
+ * now (the renderer asks at launch and every 15 minutes). When GitHub can't be reached the result says so, and the
+ * pill stays as it was.
+ *
+ * Clicking the pill downloads this system's file from that release (the .dmg, the portable .exe or the .AppImage);
+ * clicking it again quits, and a small script swaps the new app in for this one once it has exited and opens it.
+ * electron-updater can't do this here — Squirrel.Mac wants a Developer ID signature (ours is ad hoc) and it has
+ * nothing for a portable .exe. Where the app can't be replaced in place (run from the disk image, from a folder it
+ * can't write to, or not as an AppImage), the download is saved to Downloads and opened or shown instead.
  */
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const crypto = require('crypto');
+const { spawn } = require('child_process');
+const { Readable, Transform } = require('stream');
+const { pipeline } = require('stream/promises');
 const { httpFetch } = require('./http');
 const LATEST_RELEASE_API = 'https://api.github.com/repos/Kizarov3/CDPlayer/releases/latest';
 const RELEASES_PAGE = 'https://github.com/Kizarov3/CDPlayer/releases/latest';
 const TIMEOUT_MS = 8000;
+// The release's file for each system, by the end of its name (package.json → build → artifactName).
+const ASSET_SUFFIX = { darwin: '-mac.dmg', win32: '-windows.exe', linux: '-linux.AppImage' };
 
 function parseVersion(v) {
   const m = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(String(v || '').trim());
@@ -21,7 +36,17 @@ function isNewer(a, b) {
   return false;
 }
 
-async function fetchLatestVersion(currentVersion) {
+// This system's download in a release's assets: { name, url, size, sha256 } or null.
+function pickAsset(assets, platform = process.platform) {
+  const suffix = ASSET_SUFFIX[platform];
+  const a = suffix && (assets || []).find((x) => x && typeof x.name === 'string' && x.name.endsWith(suffix) && x.browser_download_url);
+  if (!a) return null;
+  const digest = /^sha256:([0-9a-f]{64})$/i.exec(a.digest || '');
+  return { name: a.name, url: a.browser_download_url, size: Number(a.size) || 0, sha256: digest ? digest[1].toLowerCase() : null };
+}
+
+// → { version, asset } for the latest release, or null when there's none worth announcing.
+async function fetchLatestRelease(currentVersion) {
   const res = await httpFetch(LATEST_RELEASE_API, {
     headers: { Accept: 'application/vnd.github+json', 'User-Agent': `CDPlayer/${currentVersion}` },
     signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -31,19 +56,150 @@ async function fetchLatestVersion(currentVersion) {
   const json = await res.json();
   // A release whose downloads aren't attached yet (CI still building) isn't worth announcing.
   if (json.draft || json.prerelease || !Array.isArray(json.assets) || !json.assets.length) return null;
-  return parseVersion(json.tag_name) ? json.tag_name.trim().replace(/^v/, '') : null;
+  if (!parseVersion(json.tag_name)) return null;
+  return { version: json.tag_name.trim().replace(/^v/, ''), asset: pickAsset(json.assets) };
 }
 
-// → { version } when a newer release than currentVersion is out, null when currentVersion is the newest, and
-//   { offline: true } when GitHub couldn't be reached (offline, rate-limited).
-async function checkForUpdate(currentVersion, { fetchLatest = fetchLatestVersion } = {}) {
+// → { version, asset } when a newer release than currentVersion is out (asset null when it has no file for this
+//   system), null when currentVersion is the newest, and { offline: true } when GitHub couldn't be reached.
+async function checkForUpdate(currentVersion, { fetchLatest = fetchLatestRelease } = {}) {
   let latest;
   try {
     latest = await fetchLatest(currentVersion);
   } catch {
     return { offline: true };
   }
-  return latest && isNewer(latest, currentVersion) ? { version: latest } : null;
+  return latest && isNewer(latest.version, currentVersion) ? { version: latest.version, asset: latest.asset || null } : null;
 }
 
-module.exports = { checkForUpdate, isNewer, RELEASES_PAGE };
+/**
+ * How this copy of the app gets replaced: { kind: 'replace', target } — the .app bundle, portable .exe or .AppImage
+ * the new one is put in place of — or { kind: 'open' } when it can't be (the download is opened or shown instead).
+ */
+function installPlan({ platform = process.platform, execPath = process.execPath, env = process.env, canWrite = writable } = {}) {
+  let target = null;
+  if (platform === 'darwin') {
+    const m = /^(.+?\.app)\/Contents\/MacOS\//.exec(execPath);
+    // Still on the disk image, or translocated by Gatekeeper (opened where it was downloaded): read-only either way.
+    if (m && !m[1].startsWith('/Volumes/') && !m[1].includes('/AppTranslocation/')) target = m[1];
+  } else if (platform === 'win32') {
+    target = env.PORTABLE_EXECUTABLE_FILE || null; // set by the portable .exe's launcher; absent in win-unpacked
+  } else if (platform === 'linux') {
+    target = env.APPIMAGE || null; // set by the AppImage runtime; absent for a packaged (AUR) install
+  }
+  if (target && canWrite(path.dirname(target)) && canWrite(target)) return { kind: 'replace', target };
+  return { kind: 'open' };
+}
+function writable(p) {
+  try { fs.accessSync(p, fs.constants.W_OK); return true; } catch { return false; }
+}
+
+/**
+ * Downloads `asset` into `dir` as its own name, checking its size and (when GitHub gave one) its SHA-256.
+ * onProgress(fraction) as it comes in. → the file's path. A part-done or bad file is removed.
+ */
+async function downloadAsset(asset, dir, onProgress = () => {}, { fetchImpl = httpFetch } = {}) {
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, asset.name);
+  const part = `${file}.part`;
+  try {
+    const res = await fetchImpl(asset.url, { headers: { 'User-Agent': 'CDPlayer' } });
+    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+    const total = asset.size || Number(res.headers.get('content-length')) || 0;
+    const hash = crypto.createHash('sha256');
+    let got = 0, lastReport = 0;
+    const count = new Transform({
+      transform(chunk, _enc, done) {
+        got += chunk.length;
+        hash.update(chunk);
+        const now = Date.now();
+        if (total && now - lastReport > 250) { lastReport = now; onProgress(Math.min(1, got / total)); }
+        done(null, chunk);
+      },
+    });
+    await pipeline(Readable.fromWeb(res.body), count, fs.createWriteStream(part));
+    if (asset.size && got !== asset.size) throw new Error(`got ${got} of ${asset.size} bytes`);
+    if (asset.sha256 && hash.digest('hex') !== asset.sha256) throw new Error('checksum mismatch');
+    fs.renameSync(part, file);
+    onProgress(1);
+    return file;
+  } catch (e) {
+    fs.rmSync(part, { force: true });
+    throw e;
+  }
+}
+
+// Single-quoted for sh / PowerShell.
+const shQuote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+const psQuote = (s) => `'${String(s).replace(/'/g, "''")}'`;
+
+/**
+ * The script that, once process `pid` has exited, puts `file` (the download) in place of `target` and opens it.
+ * If the swap fails, the old app is opened again and the download shown, so nothing is lost.
+ * → { name, text } — the file name to write it as, and its contents.
+ */
+function installScript(platform, { pid, file, target }) {
+  if (platform === 'darwin') {
+    const T = shQuote(target), F = shQuote(file);
+    return { name: 'install.sh', text: `#!/bin/sh
+# CDPlayer's updater: wait for the old app to quit, copy the new one off the disk image in its place, open it.
+while kill -0 ${pid} 2>/dev/null; do sleep 0.3; done
+mnt=$(mktemp -d /tmp/cdplayer-update.XXXXXX)
+fail() { hdiutil detach -quiet "$mnt" 2>/dev/null; rmdir "$mnt" 2>/dev/null; rm -rf ${shQuote(`${target}.new`)}; open ${T}; open -R ${F}; exit 1; }
+hdiutil attach -nobrowse -readonly -noautoopen -mountpoint "$mnt" ${F} >/dev/null 2>&1 ||
+  diskutil image attach --mountOptions nobrowse --readOnly --mountPoint "$mnt" ${F} >/dev/null 2>&1 || fail
+app=$(find "$mnt" -maxdepth 1 -name '*.app' | head -n 1)
+[ -n "$app" ] || fail
+rm -rf ${shQuote(`${target}.new`)}
+ditto "$app" ${shQuote(`${target}.new`)} || fail
+hdiutil detach -quiet "$mnt"; rmdir "$mnt" 2>/dev/null
+rm -rf ${shQuote(`${target}.old`)}
+mv ${T} ${shQuote(`${target}.old`)} || fail
+if mv ${shQuote(`${target}.new`)} ${T}; then rm -rf ${shQuote(`${target}.old`)}; else mv ${shQuote(`${target}.old`)} ${T}; fail; fi
+xattr -dr com.apple.quarantine ${T} 2>/dev/null
+rm -f ${F}
+open ${T}
+` };
+  }
+  if (platform === 'win32') {
+    const T = psQuote(target), F = psQuote(file);
+    return { name: 'install.ps1', text: `# CDPlayer's updater: wait for the old app to quit, copy the new .exe over it, start it.
+try { Wait-Process -Id ${pid} -Timeout 60 -ErrorAction Stop } catch {}
+# The portable launcher holds its .exe until it has cleaned up after the app, so keep trying for a while.
+$deadline = (Get-Date).AddSeconds(60)
+while ($true) {
+  try { Copy-Item -LiteralPath ${F} -Destination ${T} -Force -ErrorAction Stop; break }
+  catch {
+    if ((Get-Date) -gt $deadline) { Start-Process -FilePath ${T}; Start-Process explorer.exe -ArgumentList ('/select,"' + ${F} + '"'); exit 1 }
+    Start-Sleep -Milliseconds 500
+  }
+}
+Remove-Item -LiteralPath ${F} -Force -ErrorAction SilentlyContinue
+Start-Process -FilePath ${T}
+` };
+  }
+  const T = shQuote(target), F = shQuote(file);
+  return { name: 'install.sh', text: `#!/bin/sh
+# CDPlayer's updater: wait for the old app to quit, put the new AppImage in its place, start it.
+while kill -0 ${pid} 2>/dev/null; do sleep 0.3; done
+chmod +x ${F}
+if cp -f ${F} ${shQuote(`${target}.new`)} && mv -f ${shQuote(`${target}.new`)} ${T}; then rm -f ${F}; else rm -f ${shQuote(`${target}.new`)}; fi
+nohup ${T} >/dev/null 2>&1 &
+` };
+}
+
+// Writes installScript's script next to the download and starts it, detached, to outlive this process.
+function startInstaller(platform, { pid, file, target }) {
+  const { name, text } = installScript(platform, { pid, file, target });
+  const script = path.join(path.dirname(file), name);
+  fs.writeFileSync(script, text, { mode: 0o755 });
+  const [cmd, args] = platform === 'win32'
+    ? ['powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script]]
+    : ['/bin/sh', [script]];
+  spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+}
+
+// Where a download goes: a temporary folder when it's swapped in and removed, Downloads when the person opens it.
+const downloadDir = (plan, downloadsDir) => (plan.kind === 'replace' ? path.join(os.tmpdir(), 'cdplayer-update') : downloadsDir);
+
+module.exports = { checkForUpdate, isNewer, pickAsset, installPlan, downloadAsset, installScript, startInstaller, downloadDir, RELEASES_PAGE };

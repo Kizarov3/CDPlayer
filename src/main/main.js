@@ -635,8 +635,48 @@ ipcMain.on('mini:command', (_e, c) => { if (win) win.webContents.send('mini-comm
 ipcMain.on('discord:track', (_e, track) => { if (!smokeDir) discord.setTrack(track); });
 handle('win:toggleFullscreen', () => { if (win && !miniMode) win.setFullScreen(!win.isFullScreen()); });
 handle('win:isFullscreen', () => !!(win && win.isFullScreen()));
-handle('updates:check', () => (smokeDir ? null : updates.checkForUpdate(APP_VERSION)));
+// The newest release the last check found (with this system's file), and its download once one has started.
+let latestUpdate = null;
+let updateDownload = null; // { version, plan, promise → file }
+handle('updates:check', async () => {
+  if (smokeDir) return null;
+  const update = await updates.checkForUpdate(APP_VERSION);
+  if (update && update.offline) return update;
+  latestUpdate = update;
+  return update && { version: update.version, canDownload: !!update.asset };
+});
 handle('updates:openReleases', () => shell.openExternal(updates.RELEASES_PAGE));
+// Downloads the latest release's file (once — asking again while it's coming or done gets the same one). Progress goes
+// to the window as 'update-progress' (0…1). → { version, install: 'replace' | 'open' }.
+handle('updates:download', async () => {
+  const update = latestUpdate;
+  if (!update || !update.asset) throw new Error('no update to download');
+  if (!updateDownload || updateDownload.version !== update.version) {
+    const plan = app.isPackaged ? updates.installPlan() : { kind: 'open' }; // never swap out node_modules' Electron
+    const promise = updates.downloadAsset(update.asset, updates.downloadDir(plan, app.getPath('downloads')),
+      (fraction) => { if (win) win.webContents.send('update-progress', fraction); });
+    updateDownload = { version: update.version, plan, promise };
+    promise.catch(() => { if (updateDownload && updateDownload.promise === promise) updateDownload = null; });
+  }
+  await updateDownload.promise;
+  return { version: updateDownload.version, install: updateDownload.plan.kind };
+});
+// Puts the downloaded release in place and restarts into it — or, where this copy can't be replaced, opens the disk
+// image (macOS) or shows the file (Windows, Linux) for the person to take from there.
+handle('updates:install', async () => {
+  if (!updateDownload) return false;
+  const { plan, promise } = updateDownload;
+  const file = await promise;
+  if (plan.kind === 'replace') {
+    updates.startInstaller(process.platform, { pid: process.pid, file, target: plan.target });
+    app.quit();
+  } else if (process.platform === 'darwin') {
+    await shell.openPath(file);
+  } else {
+    shell.showItemInFolder(file);
+  }
+  return true;
+});
 // Text for the user to paste elsewhere (the Spotify dashboard's Redirect URI). Only short plain text.
 handle('clipboard:write', async (text) => { if (typeof text === 'string' && text.length <= 2000) await clipboard.writeText(text); return true; });
 handle('shell:openGitHub', (user) => { if (/^[A-Za-z0-9-]+$/.test(user)) shell.openExternal(`https://github.com/${user}`); });
