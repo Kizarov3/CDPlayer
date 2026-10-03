@@ -92,7 +92,7 @@ function createTaskbarDisc({ appId, dataDir, setWindowAppId, reg = runReg, size 
     let ok = true;
     for (const args of registerArgs(id, icon)) ok = (await reg(args)) && ok;
     if (mine !== turn) return;
-    if (!ok) { setWindowAppId(appId); return; } // unnamed, the media controls would say "Unknown app": keep the app's ID
+    if (!ok) { current = null; setWindowAppId(appId); return; } // unnamed, the media controls would say "Unknown app": keep the app's ID
     current = id;
     setWindowAppId(id, ico);
     await forget(id);

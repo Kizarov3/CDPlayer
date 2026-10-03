@@ -1756,7 +1756,7 @@ export const app = {
 // percent), and clicking again restarts into the new version — or, where this copy can't be replaced in place, opens
 // the download. A release with no file for this system, or a failed download clicked again, opens the download page.
 // When GitHub can't be reached, the pill is left as it was; while a download is on, later checks leave it be.
-const updateState = { version: null, canDownload: false, phase: 'idle', install: null, failed: false }; // phase: idle | downloading | ready
+const updateState = { version: null, canDownload: false, phase: 'idle', install: null, failed: false }; // phase: idle | downloading | ready | installing
 
 function showUpdatePill() {
   const button = $('update-button');
@@ -1787,10 +1787,13 @@ async function checkForUpdate() {
 
 async function onUpdateClick() {
   const u = updateState;
-  if (u.phase === 'downloading') return;
+  if (u.phase === 'downloading' || u.phase === 'installing') return;
   if (u.phase === 'ready') {
+    // One click: a second while the first is starting the installer would start another, racing it for the same files.
+    u.phase = 'installing';
     if (u.install === 'replace') { setStatus(t('UPDATING — BACK IN A MOMENT')); saveEverythingNow(); }
     await cdp.installUpdate().catch(() => { setStatus(t('COULDN’T INSTALL THE UPDATE')); cdp.openReleasesPage(); });
+    u.phase = 'ready'; // still here: the download was opened or shown (or installing failed), so it can be again
     return;
   }
   if (!u.canDownload || u.failed) { cdp.openReleasesPage(); return; }

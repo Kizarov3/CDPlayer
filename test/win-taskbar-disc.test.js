@@ -106,3 +106,25 @@ test('the .ico holds the PNG whole, with a header Windows reads', () => {
   assert.ok(ico.subarray(22).equals(png));
   assert.deepStrictEqual([pngToIco(png, 256)[6], pngToIco(png, 256)[7]], [0, 0]); // 0 = 256
 });
+
+test('a disc whose ID couldn\'t be registered doesn\'t stand in the way of the one before coming back', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cdplayer-taskbar-'));
+  try {
+    let failing = false;
+    const registry = new Map(), ids = [];
+    const reg = async (args) => {
+      if (failing) return false;
+      if (args[0] === 'add') { registry.set(args[1], true); return true; }
+      return registry.delete(args[1]);
+    };
+    const d = createTaskbarDisc({ appId: APP, dataDir, setWindowAppId: (id) => ids.push(id), reg });
+    await d.show(PNG1);
+    const first = ids.at(-1);
+    failing = true;
+    await d.show(PNG2);
+    assert.strictEqual(ids.at(-1), APP); // B couldn't be named: the app's own ID
+    failing = false;
+    await d.show(PNG1);
+    assert.strictEqual(ids.at(-1), first); // A back on the button
+  } finally { fs.rmSync(dataDir, { recursive: true, force: true }); }
+});

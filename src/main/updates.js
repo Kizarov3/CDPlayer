@@ -22,6 +22,7 @@ const { httpFetch } = require('./http');
 const LATEST_RELEASE_API = 'https://api.github.com/repos/Kizarov3/CDPlayer/releases/latest';
 const RELEASES_PAGE = 'https://github.com/Kizarov3/CDPlayer/releases/latest';
 const TIMEOUT_MS = 8000;
+const STALL_MS = 60000; // a download that's had nothing for this long is given up (the connection's gone)
 // The release's file for each system, by the end of its name (package.json → build → artifactName).
 const ASSET_SUFFIX = { darwin: '-mac.dmg', win32: '-windows.exe', linux: '-linux.AppImage' };
 
@@ -90,26 +91,44 @@ function installPlan({ platform = process.platform, execPath = process.execPath,
   if (target && canWrite(path.dirname(target)) && canWrite(target)) return { kind: 'replace', target };
   return { kind: 'open' };
 }
+// Whether a file or folder can be written. A folder is tried for real — a file made and removed in it — as on Windows
+// the access check only looks at the read-only flag, not the folder's permissions (C:\Program Files says yes).
 function writable(p) {
-  try { fs.accessSync(p, fs.constants.W_OK); return true; } catch { return false; }
+  try {
+    if (fs.statSync(p).isDirectory()) {
+      const probe = path.join(p, `.cdplayer-write-test-${process.pid}`);
+      fs.writeFileSync(probe, '');
+      fs.rmSync(probe, { force: true });
+      return true;
+    }
+    fs.accessSync(p, fs.constants.W_OK);
+    return true;
+  } catch { return false; }
 }
 
 /**
  * Downloads `asset` into `dir` as its own name, checking its size and (when GitHub gave one) its SHA-256.
  * onProgress(fraction) as it comes in. → the file's path. A part-done or bad file is removed.
  */
-async function downloadAsset(asset, dir, onProgress = () => {}, { fetchImpl = httpFetch } = {}) {
+async function downloadAsset(asset, dir, onProgress = () => {}, { fetchImpl = httpFetch, stallMs = STALL_MS } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, asset.name);
   const part = `${file}.part`;
+  // Given up when nothing arrives for stallMs — while connecting or mid-way (Wi-Fi gone, the Mac asleep) — rather than
+  // hanging at "DOWNLOADING n%" for good.
+  const abort = new AbortController();
+  let stall = null;
+  const quiet = () => { clearTimeout(stall); stall = setTimeout(() => abort.abort(new Error('the download stalled')), stallMs); };
+  quiet();
   try {
-    const res = await fetchImpl(asset.url, { headers: { 'User-Agent': 'CDPlayer' } });
+    const res = await fetchImpl(asset.url, { headers: { 'User-Agent': 'CDPlayer' }, signal: abort.signal });
     if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
     const total = asset.size || Number(res.headers.get('content-length')) || 0;
     const hash = crypto.createHash('sha256');
     let got = 0, lastReport = 0;
     const count = new Transform({
       transform(chunk, _enc, done) {
+        quiet();
         got += chunk.length;
         hash.update(chunk);
         const now = Date.now();
@@ -117,7 +136,7 @@ async function downloadAsset(asset, dir, onProgress = () => {}, { fetchImpl = ht
         done(null, chunk);
       },
     });
-    await pipeline(Readable.fromWeb(res.body), count, fs.createWriteStream(part));
+    await pipeline(Readable.fromWeb(res.body), count, fs.createWriteStream(part), { signal: abort.signal });
     if (asset.size && got !== asset.size) throw new Error(`got ${got} of ${asset.size} bytes`);
     if (asset.sha256 && hash.digest('hex') !== asset.sha256) throw new Error('checksum mismatch');
     fs.renameSync(part, file);
@@ -125,7 +144,9 @@ async function downloadAsset(asset, dir, onProgress = () => {}, { fetchImpl = ht
     return file;
   } catch (e) {
     fs.rmSync(part, { force: true });
-    throw e;
+    throw abort.signal.aborted ? abort.signal.reason : e;
+  } finally {
+    clearTimeout(stall);
   }
 }
 
@@ -231,4 +252,4 @@ function startInstaller(platform, { pid, file, target }, { run = execFile, start
 // Where a download goes: a temporary folder when it's swapped in and removed, Downloads when the person opens it.
 const downloadDir = (plan, downloadsDir) => (plan.kind === 'replace' ? path.join(os.tmpdir(), 'cdplayer-update') : downloadsDir);
 
-module.exports = { checkForUpdate, isNewer, pickAsset, installPlan, downloadAsset, installScript, startInstaller, wmiStartCommand, downloadDir, RELEASES_PAGE };
+module.exports = { checkForUpdate, isNewer, pickAsset, installPlan, writable, downloadAsset, installScript, startInstaller, wmiStartCommand, downloadDir, RELEASES_PAGE };

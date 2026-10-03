@@ -167,3 +167,29 @@ test('Windows: the installer is started by WMI, so it outlives CDPlayer, and CDP
     assert.strictEqual(started[0][0], 'powershell.exe');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('a download that goes quiet is given up, connecting or mid-way, and leaves nothing behind', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cdplayer-dl-'));
+  try {
+    const asset = { name: 'a.dmg', url: 'u', size: 100, sha256: null };
+    // Some bytes, then nothing more, ever.
+    const stalls = async () => new Response(new ReadableStream({ start(c) { c.enqueue(new Uint8Array(10)); } }));
+    await assert.rejects(downloadAsset(asset, dir, undefined, { fetchImpl: stalls, stallMs: 100 }), /stalled/);
+    // No answer at all.
+    const hangs = (_u, { signal }) => new Promise((_res, rej) => signal.addEventListener('abort', () => rej(signal.reason)));
+    await assert.rejects(downloadAsset(asset, dir, undefined, { fetchImpl: hangs, stallMs: 100 }), /stalled/);
+    assert.deepStrictEqual(fs.readdirSync(dir), []);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a folder counts as writable only if a file can really be made in it', { skip: process.platform === 'win32' || process.getuid?.() === 0 }, () => {
+  const { writable } = require('../src/main/updates');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cdplayer-w-'));
+  try {
+    assert.strictEqual(writable(dir), true);
+    assert.deepStrictEqual(fs.readdirSync(dir), []); // the probe is gone
+    fs.chmodSync(dir, 0o555);
+    assert.strictEqual(writable(dir), false);
+    assert.strictEqual(writable(path.join(dir, 'missing')), false);
+  } finally { fs.chmodSync(dir, 0o755); fs.rmSync(dir, { recursive: true, force: true }); }
+});
