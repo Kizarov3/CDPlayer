@@ -320,12 +320,9 @@ handle('menu:disc', (loaded) => new Promise((resolve) => {
   menu.popup({ window: win, callback: () => setTimeout(() => resolve(null), 0) });
 }));
 // The Dock (macOS) or taskbar (Windows, Linux) icon: the disc that's in (drawn by dock-disc.js), or the app's own
-// icon when nothing is. A taskbar button pinned on Windows always shows its pin's icon, whatever the window's is — so
-// there, while a disc is in, the window takes an ID of its own (NOW_PLAYING_ID) and with it a button of its own beside
-// the pin, which wears the disc; with the disc out it goes back under the pin. Relaunch details say what pinning that
-// button would start: the app, by its own name.
+// icon when nothing is. On Windows the taskbar draws the button from the window's app ID, not its icon — there the disc
+// gets an ID of its own (win-taskbar-disc.js).
 let dockShowsDisc = false;
-const NOW_PLAYING_ID = `${APP_ID}.nowplaying`;
 let windowAppId = APP_ID;
 function setWindowAppId(id) {
   if (id === windowAppId || !win || win.isDestroyed()) return;
@@ -336,16 +333,17 @@ function setWindowAppId(id) {
   // window itself stays as it is).
   if (win.isVisible() && !miniMode) { win.setSkipTaskbar(true); win.setSkipTaskbar(false); }
 }
+const taskbarDisc = process.platform === 'win32' && app.isPackaged && !smokeDir && !process.env.CDPLAYER_HOME
+  ? require('./win-taskbar-disc').createTaskbarDisc({ appId: APP_ID, dataDir: app.getPath('userData'), setWindowAppId })
+  : null;
 handle('dock:disc', (png) => {
   if (!png && !dockShowsDisc) return;
   dockShowsDisc = !!png;
   const img = png ? nativeImage.createFromBuffer(Buffer.from(png)) : nativeImage.createFromPath(path.join(__dirname, '..', 'renderer', 'icon.png'));
   if (process.platform === 'darwin') { app.dock.setIcon(img); return; }
   if (!win || win.isDestroyed()) return;
-  win.setIcon(img); // first, so a button of its own starts out with the disc
-  // Whether it's pinned isn't asked: a pin can start any copy of the .exe, from anywhere, so it can't be told reliably
-  // from here — and unpinned, the window's button is the only one either way.
-  if (process.platform === 'win32') setWindowAppId(png ? NOW_PLAYING_ID : APP_ID);
+  win.setIcon(img); // the title bar and Alt+Tab (and the taskbar on Linux)
+  if (taskbarDisc) taskbarDisc.show(png).catch(() => {});
 });
 handle('online:cover', (query) => online.findCover(query));
 handle('online:coverUrl', (query) => online.findCoverUrl(query));
@@ -825,17 +823,12 @@ function registerWindowsShortcut() {
     });
   } catch { /* best effort — only the media controls' app name depends on it */ }
 }
-// The window's own ID while it has a button of its own (NOW_PLAYING_ID, see dock:disc) has no shortcut, so it's named
-// in the registry instead — "CDPlayer" with the app's icon — or the media controls would say "Unknown app" while a
-// disc is in. (A second shortcut would do it too, but would show CDPlayer twice in the Start menu.)
-function registerNowPlayingId() {
-  if (process.platform !== 'win32' || !app.isPackaged || smokeDir || process.env.CDPLAYER_HOME) return;
-  const icon = path.join(app.getPath('userData'), 'app-icon.png'); // outside app.asar, where Windows can read it
-  try { fs.mkdirSync(path.dirname(icon), { recursive: true }); fs.copyFileSync(path.join(__dirname, '..', 'renderer', 'icon.png'), icon); } catch { /* no icon then */ }
-  const key = `HKCU\\Software\\Classes\\AppUserModelId\\${NOW_PLAYING_ID}`;
-  const reg = (name, value) => execFile('reg.exe', ['add', key, '/v', name, '/t', 'REG_SZ', '/d', value, '/f'], { windowsHide: true }, () => {});
-  reg('DisplayName', 'CDPlayer');
-  reg('IconUri', icon);
+// Taskbar IDs a run that didn't get to it left in the registry (see win-taskbar-disc.js), and 2.12's one ID for all
+// discs, which was named with the app's own icon.
+function cleanUpTaskbarIds() {
+  if (!taskbarDisc) return;
+  taskbarDisc.cleanUp().catch(() => {});
+  execFile('reg.exe', ['delete', `HKCU\\Software\\Classes\\AppUserModelId\\${APP_ID}.nowplaying`, '/f'], { windowsHide: true }, () => {});
 }
 
 // ---- Lifecycle --------------------------------------------------------------------------------------------------
@@ -844,7 +837,7 @@ app.whenReady().then(() => {
   i18n.loadLocale(settings.language, app.getPreferredSystemLanguages());
   protocol.handle('cdp', media.handle);
   registerWindowsShortcut();
-  registerNowPlayingId();
+  cleanUpTaskbarIds();
   buildMenu();
   createWindow();
   if (!smokeDir && (process.platform === 'darwin' || process.platform === 'linux' || process.platform === 'win32' || process.env.CDPLAYER_CD_ROOT)) {
