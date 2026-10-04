@@ -63,7 +63,7 @@ const state = {
   themeIndex: 0, eq: new Array(10).fill(0), customPresets: [], history: [],
   quality: 'HIGH', rateInfo: null, soundCheck: 'OFF', soundCheckInfo: null,
   language: 'AUTO', // Settings → LANGUAGE (applies after a restart)
-  loadedPath: null, details: null, detailsPath: null, lyrics: null, cover: null, loadToken: 0, crossfadeStarted: false,
+  loadedPath: null, details: null, detailsPath: null, lyrics: null, cover: null, loadToken: 0, deckToken: 0, crossfadeStarted: false,
   cdView: false, visualizerMode: false, fullscreen: false,
   sleepRemaining: 0, sleepMinutes: 0,
   lastActivity: Date.now(), lastCdMouse: Date.now(), cursorHidden: false, visualizerEnteredAt: 0,
@@ -155,6 +155,8 @@ function pumpDetails() {
 
 let shuffleCache = { index: NaN, size: -1, value: -1 };
 let preparedNext = null; // gapless: { path, index, token } — the track waiting on the engine's standby deck
+// …dropped when something it was prepared for changes (repeat, quality, Sound Check, crossfade); prepared again on a tick.
+function dropPrepared() { engine.cancelPrepared(); preparedNext = null; }
 function nextIndex() {
   if (!state.queue.length) return -1;
   const pinned = pinnedNext(state.index, state.nextUp, state.queue.length); // PLAY NEXT comes first, shuffled or not
@@ -425,14 +427,17 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   const trim = knownLevel ? knownLevel.linear : 1;
   const url = cdp.mediaUrl(cue ? cue.file : path);
   if (seamless) {
-    // the prepared deck is already playing, at the trim it was prepared with
+    engine.setTrim(trim); // the prepared deck is already playing; Sound Check as it is now (it may have changed since)
+    state.deckToken = token;
   } else if (cue && !fade && startAt === 0 && engine.continuesInto(url, cue.start)) {
     engine.setSegment(cue); // the previous track runs straight into this one: keep playing, no reload, no gap
     engine.setTrim(trim);
+    state.deckToken = token;
   } else {
     try {
       const ok = await engine.load(url, { autoPlay: false, crossfadeSeconds: fade, segment: cue, trim });
       if (!ok || token !== state.loadToken) return;
+      state.deckToken = token; // the engine holds this load's track now: its next one may be prepared
     } catch {
       if (token !== state.loadToken) return;
       setPlaying(false);
@@ -705,9 +710,10 @@ function continuesCurrent(p, { atBoundary = true } = {}) {
 // Gapless: the queue's next track, loaded on the engine's standby deck while this one plays its last seconds, so it
 // starts the moment this one ends. Re-done when what comes next changes; dropped by any other load.
 async function prepareNext() {
+  if (state.deckToken !== state.loadToken) return; // a track is still loading: what's playing is on its way out
   const next = upcomingIndex(), path = next >= 0 ? state.queue[next] : null;
   if (preparedNext && preparedNext.path === path && preparedNext.index === next) return;
-  if (preparedNext || engine.prepared) { engine.cancelPrepared(); preparedNext = null; }
+  if (preparedNext || engine.prepared) dropPrepared();
   if (!path || isSpotifyUri(path)) return;
   const token = state.loadToken, mark = { path, index: next, token };
   preparedNext = mark;
@@ -1166,6 +1172,7 @@ function followSoundCheck(path, mode, token) {
 }
 /** Settings → SOUND CHECK: OFF, TRACK or ALBUM; applied to the song playing now, over half a second. */
 async function setSoundCheck(mode) {
+  dropPrepared(); // the next track was prepared at the old level
   state.soundCheck = ['OFF', 'TRACK', 'ALBUM'].includes(mode) ? mode : 'OFF';
   saveSettingsSoon();
   const p = state.loadedPath, token = state.loadToken;
@@ -1179,6 +1186,7 @@ async function setSoundCheck(mode) {
 
 /** Settings → QUALITY. Applies from the next song; back to HIGH puts the outputs' rates back at once. */
 async function setQuality(level) {
+  dropPrepared(); // the next track may need another rate now
   state.quality = LEVELS.includes(level) ? level : 'HIGH';
   saveSettingsSoon();
   state.rateInfo = null;
@@ -1338,7 +1346,7 @@ function setSpatialAmount(v) { state.spatialAmount = v; engine.setSpatial(state.
 function setWaveform(on) { state.waveform = on; progress.setWaveformEnabled(on); saveSettingsSoon(); }
 function setAmbient(on) { state.ambient = on; onCoverChanged(); saveSettingsSoon(); }
 function setAnimations(on) { anim.enabled = on; document.body.classList.toggle('no-anim', !on); saveSettingsSoon(); }
-function setCrossfade(v) { state.crossfade = v; saveSettingsSoon(); if (v > 0) { engine.cancelPrepared(); preparedNext = null; } }
+function setCrossfade(v) { state.crossfade = v; saveSettingsSoon(); if (v > 0) dropPrepared(); }
 function setEq(gains) { state.eq = gains.slice(); engine.setEq(state.eq); updateQualityBadge(); saveSettingsSoon(); }
 
 let sleepTimer = null;
@@ -1591,6 +1599,7 @@ function cycleRepeat() {
   repeatButton.setOn(state.repeat !== 'OFF');
   repeatButton.setBadge(state.repeat === 'ONE' ? '1' : null);
   repeatButton.title = state.repeat === 'OFF' ? t('Repeat') : state.repeat === 'ONE' ? t('Repeat: one track') : t('Repeat: whole queue');
+  dropPrepared(); // REPEAT ONE plays this one again; ALL may wrap round to the first
   renderQueue();
   pushMini(true);
   spotifyResync();
