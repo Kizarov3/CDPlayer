@@ -1,8 +1,8 @@
 // Playback engine. Each track plays from its own "deck" (an <audio> element streaming from the cdp:// media
 // protocol, so seeking is instant and memory stays flat), routed through one shared Web Audio graph:
 //
-//   deck gain (crossfade) ─┐
-//   deck gain (crossfade) ─┴→ mono downmix → 10-band EQ → spatial audio → analyser (visualizer/beats) → volume → speakers
+//   deck → trim (Sound Check) → deck gain (crossfade) ─┐
+//   deck → trim (Sound Check) → deck gain (crossfade) ─┴→ mono downmix → 10-band EQ → spatial audio → analyser (visualizer/beats) → volume → speakers
 //
 // That graph replaces the Java app's hand-written PCM pump: gain, mono, EQ and crossfade are all native nodes.
 //
@@ -80,6 +80,14 @@ export class AudioEngine {
   }
 
   setVolume(v) { this.volume = v; this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.01); }
+  /** Sound Check: the playing deck's own gain, before the crossfade's (1 = as it is). Ramped over `seconds`. */
+  setTrim(linear, seconds = 0) {
+    const t = this.deck && this.deck.trim;
+    if (!t) return;
+    t.gain.cancelScheduledValues(this.ctx.currentTime);
+    if (seconds > 0) t.gain.setTargetAtTime(linear, this.ctx.currentTime, seconds / 3);
+    else t.gain.value = linear;
+  }
   setMono(on) { this.mono = on; this.applyMono(); this.applySpatial(); }
   applyMono() {
     // A 1-channel "explicit" node makes Web Audio sum L+R (×0.5 each) — exactly the Java version's (L+R)/2 —
@@ -95,18 +103,22 @@ export class AudioEngine {
   setEq(gains) { this.eqGains = gains.slice(); gains.forEach((g, i) => this.eq[i].gain.setTargetAtTime(g, this.ctx.currentTime, 0.02)); }
 
   /** A deck for `url` — or, given `element` (a Spotify track), one that plays through it, outside Web Audio. */
-  createDeck(url, element = null) {
+  createDeck(url, element = null, trim = 1) {
     const el = element || new Audio();
     let source = null;
     const gain = this.ctx.createGain();
+    let trimNode = null;
     if (!element) {
       el.preload = 'auto';
       el.src = url;
       source = this.ctx.createMediaElementSource(el);
-      source.connect(gain);
+      trimNode = this.ctx.createGain();
+      trimNode.gain.value = trim;
+      source.connect(trimNode);
+      trimNode.connect(gain);
       gain.connect(this.input);
     }
-    const deck = { el, source, gain, url, start: 0, end: null, endFired: false };
+    const deck = { el, source, trim: trimNode, gain, url, start: 0, end: null, endFired: false };
     el.addEventListener('ended', () => { if (this.onEnded) this.onEnded(deck); });
     return deck;
   }
@@ -116,6 +128,7 @@ export class AudioEngine {
     deck.el.removeAttribute('src');
     deck.el.load();
     if (deck.source) deck.source.disconnect();
+    if (deck.trim) deck.trim.disconnect();
     deck.gain.disconnect();
   }
 
@@ -125,13 +138,13 @@ export class AudioEngine {
    * Resolves once the new track's duration is known; rejects if it can't be decoded. `segment` ({ start, end } in
    * seconds, end null for "to the end of the file") plays only that part of the file.
    */
-  async load(url, { autoPlay = true, crossfadeSeconds = 0, segment = null, element = null } = {}) {
+  async load(url, { autoPlay = true, crossfadeSeconds = 0, segment = null, element = null, trim = 1 } = {}) {
     this.cancelCrossfade();
     const outgoing = this.deck;
     // A Spotify track plays outside Web Audio, so there's nothing to fade — in or out.
     const doCrossfade = crossfadeSeconds > 0 && !element && outgoing && outgoing.source && !outgoing.el.paused;
     if (!doCrossfade) { this.disposeDeck(outgoing); this.deck = null; }
-    const deck = this.createDeck(url, element);
+    const deck = this.createDeck(url, element, trim);
     this.deck = deck;
     await new Promise((resolve, reject) => {
       const ok = () => { cleanup(); resolve(); };

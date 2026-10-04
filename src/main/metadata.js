@@ -123,8 +123,27 @@ async function getCueTrackDetails(ref, withCover) {
 function cdTrackDetails(p, info, { withCover = true } = {}) {
   return {
     path: p, title: t('Track {n}', { n: info.number }), artist: null, nameGuessed: false, unnamed: true, credits: {}, album: null,
-    lyrics: null, duration: info.duration, ext: 'CDA', quality: 'CD AUDIO · 16-BIT · 44.1 KHZ', format: { sampleRate: 44100, bitsPerSample: 16, lossless: true }, cover: withCover ? null : undefined,
+    lyrics: null, duration: info.duration, ext: 'CDA', quality: 'CD AUDIO · 16-BIT · 44.1 KHZ', format: { sampleRate: 44100, bitsPerSample: 16, lossless: true }, replayGain: null, cover: withCover ? null : undefined,
   };
+}
+
+// Sound Check: a file's ReplayGain tags (dB to -18 LUFS, peaks linear), or an Opus/Vorbis file's R128 gains — Q7.8 dB
+// to -23 LUFS, so 5 dB more. → null when it has none.
+function replayGainFrom(meta) {
+  const c = meta.common || {}, num = (v) => (Number.isFinite(v) ? v : null);
+  const out = {
+    trackGain: num(c.replaygain_track_gain && c.replaygain_track_gain.dB), trackPeak: num(c.replaygain_track_peak && c.replaygain_track_peak.ratio),
+    albumGain: num(c.replaygain_album_gain && c.replaygain_album_gain.dB), albumPeak: num(c.replaygain_album_peak && c.replaygain_album_peak.ratio),
+  };
+  for (const tags of Object.values(meta.native || {})) {
+    for (const { id, value } of tags) {
+      const q = parseInt(value, 10);
+      if (!Number.isFinite(q)) continue;
+      if (/^R128_TRACK_GAIN$/i.test(id) && out.trackGain === null) out.trackGain = q / 256 + 5;
+      if (/^R128_ALBUM_GAIN$/i.test(id) && out.albumGain === null) out.albumGain = q / 256 + 5;
+    }
+  }
+  return Object.values(out).some((v) => v !== null) ? out : null;
 }
 
 /** A track's details: its tags, cover and lyrics — and for a track of an audio CD, the names the disc was looked up by. */
@@ -149,7 +168,7 @@ async function readDetails(filePath, { withCover = true } = {}) {
   const key = `${filePath}\0${withCover}`;
   if (inflight.has(key)) return inflight.get(key);
   const job = (async () => {
-    let title = null, artist = null, album = null, lyrics = null, duration = 0, cover = null, format = null, credits = {};
+    let title = null, artist = null, album = null, lyrics = null, duration = 0, cover = null, format = null, credits = {}, replayGain = null;
     try {
       const meta = await parse(filePath, { covers: withCover });
       const c = meta.common;
@@ -160,6 +179,7 @@ async function readDetails(filePath, { withCover = true } = {}) {
       credits = creditsFrom(c);
       duration = meta.format.duration || 0;
       format = meta.format;
+      replayGain = replayGainFrom(meta);
       if (withCover && c.picture && c.picture.length) {
         const front = c.picture.find((p) => /front/i.test(p.type || '')) || c.picture[0];
         cover = coverToDataUrl(front);
@@ -187,6 +207,7 @@ async function readDetails(filePath, { withCover = true } = {}) {
         bitsPerSample: format.bitsPerSample || null,
         lossless: !!format.lossless || /^(FLAC|ALAC|WAV|AIFF|AIF)$/i.test(path.extname(filePath).slice(1)) || /alac|flac/i.test(String(format.codec || '')),
       } : null,
+      replayGain,
     };
     detailsCache.set(filePath, details);
     if (withCover) coverCache.set(filePath, cover);

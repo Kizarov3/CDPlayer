@@ -270,6 +270,15 @@ handle('plays:album', (p) => {
   const counts = plays(), album = shelf.albumOf(p);
   return { plays: (album ? album.paths : [p]).reduce((n, t) => n + (counts.get(t) || 0), 0), disc: album ? album.id : p };
 });
+// Sound Check (sound-check.js): songs measured before, kept in soundcheck.json; and the shelf album a song is on.
+const soundCheckCache = require('./soundcheck-cache').createSoundCheckCache({
+  read: () => store.readText('soundcheck.json'),
+  write: (s) => store.writeText('soundcheck.json', s),
+  stat: (f) => { try { return fs.statSync(f); } catch { return null; } },
+});
+handle('soundcheck:get', (files) => soundCheckCache.get(Array.isArray(files) ? files.filter((f) => typeof f === 'string') : []));
+handle('soundcheck:put', (file, entry) => { if (typeof file === 'string' && entry && typeof entry === 'object') soundCheckCache.put(file, entry); });
+handle('soundcheck:album', (p) => { const a = shelf.albumOf(p); return a ? a.paths : null; });
 // The now-playing card (share-card.js), onto the clipboard as a picture.
 handle('clipboard:image', (png) => clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]));
 // …or saved as a picture, named after the song, in the Pictures folder to start with. → true once saved.
@@ -427,7 +436,11 @@ handle('tags:write', async (p, changes) => {
   if (result.ok) { metadata.forget(p); shelf.forget(p); }
   return result;
 });
+// The music folder, watched so an open shelf keeps up with it (library-watch.js); it follows the folder the shelf reads.
+const libraryWatch = require('./library-watch').createLibraryWatch({ onChange: () => { if (win && !win.isDestroyed()) win.webContents.send('library-changed'); } });
+const watchMusicFolder = () => { if (!smokeDir) { const f = store.readLastPath(); libraryWatch.start(f && store.isDir(f) ? f : null); } };
 handle('shelf:albums', async () => {
+  watchMusicFolder();
   const result = await shelf.scanAlbums((done, total) => { if (win) win.webContents.send('shelf-progress', { done, total }); });
   // How many times each album's songs have been played, for the shelf's MOST PLAYED order.
   const counts = plays();
@@ -843,6 +856,7 @@ app.whenReady().then(() => {
   cleanUpTaskbarIds();
   buildMenu();
   createWindow();
+  watchMusicFolder();
   if (!smokeDir && (process.platform === 'darwin' || process.platform === 'linux' || process.platform === 'win32' || process.env.CDPLAYER_CD_ROOT)) {
     setTimeout(pollDiscs, 1500);
     setInterval(pollDiscs, 3000);
@@ -857,6 +871,7 @@ let restoredRate = false;
 app.on('before-quit', (e) => {
   quitting = true;
   if (playsTimer) { clearTimeout(playsTimer); writePlays(); }
+  libraryWatch.stop();
   if (restoredRate || smokeDir || !gotLock) return;
   if (!outputRate.pending()) { outputRate.restore({ final: true }).catch(() => {}); return; } // nothing to put back: quit now, and no more switching
   e.preventDefault();
