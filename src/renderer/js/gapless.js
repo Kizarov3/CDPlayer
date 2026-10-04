@@ -15,7 +15,7 @@ export function rateFits({ quality, fileRate, customRate, rateInfo, engineRate }
 
 /** The queue's next track as { url, segment } to prepare, or null when it can't follow without a gap. */
 export function seamlessNext({ crossfade, repeat, spotify, nextPath, nextDetails, isCdTrack, sameFileCue, quality, customRate, rateInfo, engineRate, mediaUrl }) {
-  if (crossfade > 0 || repeat === 'ONE' || spotify || isCdTrack || sameFileCue) return null;
+  if (crossfade > 0 || repeat === 'TRACK' || spotify || isCdTrack || sameFileCue) return null;
   if (!nextPath || /^spotify:/.test(nextPath) || !nextDetails) return null;
   const fileRate = nextDetails.format && nextDetails.format.sampleRate;
   if (!rateFits({ quality, fileRate, customRate, rateInfo, engineRate })) return null;

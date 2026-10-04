@@ -18,8 +18,8 @@ test('a cue track in another file follows from its start', () => {
   assert.deepStrictEqual(seamlessNext({ ...base, nextPath: '/m/b.cue#1', nextDetails }), { url: 'cdp://app/media?p=/m/b.flac', segment: { start: 0, end: 300 } });
 });
 
-test('not with crossfade, REPEAT ONE, Spotify, a CD, a same-file cue track, or nothing next', () => {
-  for (const change of [{ crossfade: 3 }, { repeat: 'ONE' }, { spotify: true }, { isCdTrack: true }, { sameFileCue: true }, { nextPath: null }, { nextPath: 'spotify:track:x' }, { nextDetails: null }]) {
+test('not with crossfade, REPEAT TRACK, Spotify, a CD, a same-file cue track, or nothing next', () => {
+  for (const change of [{ crossfade: 3 }, { repeat: 'TRACK' }, { spotify: true }, { isCdTrack: true }, { sameFileCue: true }, { nextPath: null }, { nextPath: 'spotify:track:x' }, { nextDetails: null }]) {
     assert.strictEqual(seamlessNext({ ...base, ...change }), null, JSON.stringify(change));
   }
   assert.ok(seamlessNext({ ...base, repeat: 'ALL' }));
