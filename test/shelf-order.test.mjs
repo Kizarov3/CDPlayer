@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { arrange, SORTS, dominantColor, colorBand, jumpTargets } from '../src/renderer/js/shelf-order.js';
+import { arrange, SORTS, dominantColor, colorBand, jumpTargets, shelfSignature } from '../src/renderer/js/shelf-order.js';
 
 const DAY = 86400000;
 const album = (artist, title, extra = {}) => ({ id: `${artist}/${title}`, artist, title, year: null, added: null, plays: 0, ...extra });
@@ -80,4 +80,15 @@ test('the sections to jump to: the divider cards in order, short names shortened
   assert.deepStrictEqual(jumpTargets(played).map((t) => t.short), ['NOT']);
   const colours = arrange([album('X', 'One', { color: [240, 140, 20] }), album('Y', 'Two', { color: [230, 210, 40] })], 'COLOR');
   assert.deepStrictEqual(jumpTargets(colours).map((t) => t.short), ['ORA', 'YEL']);
+});
+
+test('same albums → same signature, in any order; a new, gone or retitled song → another', () => {
+  const a = { id: 'a', title: 'A', artist: 'X', tracks: [{ path: '/a/1.flac', title: 'One' }, { path: '/a/2.flac', title: 'Two' }] };
+  const b = { id: 'b', title: 'B', artist: 'Y', tracks: [{ path: '/b/1.flac', title: 'Uno' }] };
+  const sig = shelfSignature([a, b]);
+  assert.strictEqual(shelfSignature([b, a]), sig);
+  assert.notStrictEqual(shelfSignature([a]), sig);
+  assert.notStrictEqual(shelfSignature([a, { ...b, tracks: [...b.tracks, { path: '/b/2.flac', title: 'Dos' }] }]), sig);
+  assert.notStrictEqual(shelfSignature([a, { ...b, title: 'B (Remastered)' }]), sig);
+  assert.notStrictEqual(shelfSignature([a, { ...b, tracks: [{ path: '/b/1.flac', title: 'Eins' }] }]), sig);
 });

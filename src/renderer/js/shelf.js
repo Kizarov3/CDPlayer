@@ -10,7 +10,7 @@
 import { el, pill, anim } from './widgets.js';
 import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './booklet.js';
 import { stickersFor } from './shelf-stickers.js';
-import { arrange, SORTS, matchesFilter, dominantColor, jumpTargets } from './shelf-order.js';
+import { arrange, SORTS, matchesFilter, dominantColor, jumpTargets, shelfSignature } from './shelf-order.js';
 import { pressingLine, marketLine, money, isRare, shelfTotal, discogsPrice } from './shelf-discogs.js';
 import { hash } from './disc-wear.js';
 import { stickyNote, noteLook } from './shelf-notes.js';
@@ -26,6 +26,12 @@ const shelf = { open: false, albums: [], loading: false, covers: new Map(), colo
 export const isShelfOpen = () => shelf.open;
 // Discographies arriving redraw the shelf — once for a burst, and not while a case is out, a spine is carried or one
 // is about to be pulled out (a redraw would take the shelf out from under them).
+// The music folder changed (library-watch.js): the shelf, if it's open, reads it again quietly — once the case,
+// booklet or spine in hand is put back, and after a load that's already running.
+const refresh = renderGate({
+  render: () => { if (shelf.open) load({ quiet: true }); },
+  busy: () => shelf.loading || !!shelf.caseOpen || isBookletOpen() || shelf.pulling || $('shelf').classList.contains('carrying'),
+});
 const redraw = renderGate({ render: () => { if (shelf.open) render(); }, busy: () => !!shelf.caseOpen || shelf.pulling || $('shelf').classList.contains('carrying') });
 
 // The album whose disc is in the player (a track of it loaded, playing or paused) stands a little proud of the others,
@@ -105,6 +111,7 @@ export function setupShelf(app) {
     if (!shelf.appraising || !shelf.appraising.finished) { shelf.appraising = { ...shelf.appraising, done: p.done, total: p.total }; updateAppraiseCount(); }
     if (shelf.open && shelf.app.state.shelfSort === 'PRICE') redraw.request(); else markSpine(p.albumId);
   });
+  app.cdp.onLibraryChanged(() => { if (shelf.open) refresh.request(); });
   app.cdp.onShelfProgress(({ done, total }) => { if (shelf.loading) $('shelf-count').textContent = t('READING YOUR MUSIC · {done} / {total}', { done, total }); });
 }
 
@@ -113,15 +120,20 @@ async function pickFolder() {
   if (folder) await load();
 }
 
-async function load() {
+async function load({ quiet = false } = {}) {
   const generation = ++shelf.generation;
   shelf.loading = true;
-  $('shelf-count').textContent = t('READING YOUR MUSIC…');
-  $('shelf-body').replaceChildren();
+  if (!quiet) {
+    $('shelf-count').textContent = t('READING YOUR MUSIC…');
+    $('shelf-body').replaceChildren();
+  }
   let result;
   try { result = await shelf.app.cdp.shelfAlbums(); } catch { result = { folder: null, albums: [], error: true }; }
   if (generation !== shelf.generation) return;
   shelf.loading = false;
+  // The music folder changed, but nothing the shelf shows did: leave it as it is.
+  if (quiet && (result.name || null) === shelf.folderName && shelfSignature(result.albums) === shelfSignature(shelf.albums)) return;
+  const scroll = quiet ? $('shelf-body').scrollTop : 0;
   shelf.albums = result.albums;
   // Colours worked out before: spines in them at once, and a colour-sorted shelf ready.
   shelf.colorCache = await shelf.app.cdp.shelfColors().catch(() => ({})) || {};
@@ -138,6 +150,7 @@ async function load() {
   shelf.hidden = new Set(result.hiddenMissing || []);
   shelf.folderName = result.name || null;
   render();
+  if (quiet) $('shelf-body').scrollTop = scroll;
 }
 
 function render() {

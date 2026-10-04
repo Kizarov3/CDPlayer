@@ -29,7 +29,7 @@ When a new version is out, an **AVAILABLE** button appears in the player's top-l
 ## Features
 
 - **The disc** — spins in its jewel case with your cover printed on it, catches the light as you move the mouse (**DISC SHINE** turns it off), wears scratches as you play it, turns over (`B`) to show a ring for each track, can be turned by hand like a DJ's jog wheel, and shows on the Dock or taskbar icon (**DISC ICON**)
-- **The CD shelf** (`S`) — every album in your music folder spine-out, sorted by artist, year, most played or colour. Unplayed albums gather dust (wipe it off with the mouse), new ones come shrink-wrapped, sticky notes on cases, and the studio albums you're missing stand as see-through places
+- **The CD shelf** (`S`) — every album in your music folder spine-out, kept up to date as you add, rip or remove albums, sorted by artist, year, most played or colour. Unplayed albums gather dust (wipe it off with the mouse), new ones come shrink-wrapped, sticky notes on cases, and the studio albums you're missing stand as see-through places
 - **The booklet** — the album's tracklist, lyrics and credits, marked in pen as you play: tally marks per song, your favourite circled
 - **Discogs** — each album's exact pressing and market price, on its case, sticker and receipt; **APPRAISE** values your whole shelf
 - **Audio CDs** — play a real CD, named from MusicBrainz, or **RIP** it to verified, tagged FLAC in one click

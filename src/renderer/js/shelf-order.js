@@ -12,6 +12,11 @@ export function matchesFilter(album, query) {
   const text = `${album.artist || ''} ${album.title} ${album.year || ''} ${album.note || ''}`.toLowerCase();
   return words.every((w) => text.includes(w));
 }
+/** What the shelf shows, as one string: each album's id, title, artist, year and its songs' paths and titles — so a
+ * change in the music folder that doesn't change any of that redraws nothing. */
+export function shelfSignature(albums) {
+  return albums.map((a) => JSON.stringify([a.id, a.title, a.artist || null, a.year || null, a.tracks.map((t) => [t.path, t.title])])).sort().join('\n');
+}
 const MONTHS = [t('JAN'), t('FEB'), t('MAR'), t('APR'), t('MAY'), t('JUN'), t('JUL'), t('AUG'), t('SEP'), t('OCT'), t('NOV'), t('DEC')];
 
 // The letter an artist is filed under: "The Beatles" under B, "Björk" under B, "311" under #, no artist under ?.
