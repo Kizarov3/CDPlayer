@@ -270,6 +270,15 @@ handle('plays:album', (p) => {
   const counts = plays(), album = shelf.albumOf(p);
   return { plays: (album ? album.paths : [p]).reduce((n, t) => n + (counts.get(t) || 0), 0), disc: album ? album.id : p };
 });
+// Sound Check (sound-check.js): songs measured before, kept in soundcheck.json; and the shelf album a song is on.
+const soundCheckCache = require('./soundcheck-cache').createSoundCheckCache({
+  read: () => store.readText('soundcheck.json'),
+  write: (s) => store.writeText('soundcheck.json', s),
+  stat: (f) => { try { return fs.statSync(f); } catch { return null; } },
+});
+handle('soundcheck:get', (files) => soundCheckCache.get(Array.isArray(files) ? files.filter((f) => typeof f === 'string') : []));
+handle('soundcheck:put', (file, entry) => { if (typeof file === 'string' && entry && typeof entry === 'object') soundCheckCache.put(file, entry); });
+handle('soundcheck:album', (p) => { const a = shelf.albumOf(p); return a ? a.paths : null; });
 // The now-playing card (share-card.js), onto the clipboard as a picture.
 handle('clipboard:image', (png) => clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]));
 // …or saved as a picture, named after the song, in the Pictures folder to start with. → true once saved.
