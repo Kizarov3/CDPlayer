@@ -20,6 +20,7 @@ import { DiscNoise, ShakeDetector } from './disc-noise.js';
 import { wearFor } from './disc-wear.js';
 import { targetRate, badgeLabel, badgeText, badgeExact, levelName, LEVELS } from './quality.js';
 import { createSoundCheck, measureFile } from './sound-check.js';
+import { seamlessNext, PREPARE_SECONDS } from './gapless.js';
 import { pickOutput, outputName } from './output.js';
 import { openShelf, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, choosePressing, shelfAlbumIds, discogsCurrencyChanged } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
@@ -153,6 +154,7 @@ function pumpDetails() {
 // ---- Queue ---------------------------------------------------------------------------------------------------
 
 let shuffleCache = { index: NaN, size: -1, value: -1 };
+let preparedNext = null; // gapless: { path, index, token } — the track waiting on the engine's standby deck
 function nextIndex() {
   if (!state.queue.length) return -1;
   const pinned = pinnedNext(state.index, state.nextUp, state.queue.length); // PLAY NEXT comes first, shuffled or not
@@ -386,8 +388,11 @@ async function applyQuality(format, token) {
   return engine.setRate(playAt);
 }
 
-async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0, reload = false } = {}) {
+// `seamless`: the track is already playing — started on the standby deck as the last one ended (gapless) — so only
+// what's shown and kept is brought up to date.
+async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0, reload = false, seamless = false } = {}) {
   const token = ++state.loadToken;
+  preparedNext = null;
   dropJog();
   disc.discPresent = true;
   let fade = allowCrossfade && engine.playing && state.crossfade > 0 ? state.crossfade : 0;
@@ -408,7 +413,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
     setStatus((await cdp.exists(path)) ? t('TRACK NOT FOUND IN CUE SHEET') : t('FILE NO LONGER FOUND'));
     return;
   }
-  if (state.quality !== 'HIGH' || engine.customRate) {
+  if (!seamless && (state.quality !== 'HIGH' || engine.customRate)) {
     const rateChanged = await applyQuality(((await detailsPromise) || {}).format, token);
     if (token !== state.loadToken) return;
     if (rateChanged) fade = 0; // a new context: nothing left to fade out of
@@ -419,7 +424,9 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   showSoundCheck(knownLevel);
   const trim = knownLevel ? knownLevel.linear : 1;
   const url = cdp.mediaUrl(cue ? cue.file : path);
-  if (cue && !fade && startAt === 0 && engine.continuesInto(url, cue.start)) {
+  if (seamless) {
+    // the prepared deck is already playing, at the trim it was prepared with
+  } else if (cue && !fade && startAt === 0 && engine.continuesInto(url, cue.start)) {
     engine.setSegment(cue); // the previous track runs straight into this one: keep playing, no reload, no gap
     engine.setTrim(trim);
   } else {
@@ -435,7 +442,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
     if (startAt > 0) engine.seek(Math.min(startAt, engine.duration));
   }
   followSoundCheck(path, soundMode, token);
-  if (autoPlay) { if (!reload) recordHistory(path); await engine.play(); }
+  if (autoPlay) { if (!reload) recordHistory(path); if (!seamless) await engine.play(); }
   if (token !== state.loadToken) return;
   setPlaying(autoPlay);
   if (fade) setStatus(t('CROSSFADING'));
@@ -694,6 +701,28 @@ function continuesCurrent(p, { atBoundary = true } = {}) {
   if (!d || !d.cue) return false;
   const url = cdp.mediaUrl(d.cue.file);
   return atBoundary ? engine.continuesInto(url, d.cue.start) : engine.runsInto(url, d.cue.start);
+}
+// Gapless: the queue's next track, loaded on the engine's standby deck while this one plays its last seconds, so it
+// starts the moment this one ends. Re-done when what comes next changes; dropped by any other load.
+async function prepareNext() {
+  const next = upcomingIndex(), path = next >= 0 ? state.queue[next] : null;
+  if (preparedNext && preparedNext.path === path && preparedNext.index === next) return;
+  if (preparedNext || engine.prepared) { engine.cancelPrepared(); preparedNext = null; }
+  if (!path || isSpotifyUri(path)) return;
+  const token = state.loadToken, mark = { path, index: next, token };
+  preparedNext = mark;
+  const nextDetails = detailsCache.get(path) || await cdp.details(path, { withCover: false }).catch(() => null);
+  if (preparedNext !== mark || token !== state.loadToken) return;
+  const plan = seamlessNext({
+    crossfade: state.crossfade, repeat: state.repeat, spotify: spotifyActive(), nextPath: path, nextDetails,
+    isCdTrack: isAudioCdTrack(path), sameFileCue: continuesCurrent(path, { atBoundary: false }),
+    quality: state.quality, customRate: engine.customRate, rateInfo: state.rateInfo, engineRate: engine.rate,
+    mediaUrl: (p) => cdp.mediaUrl(p),
+  });
+  if (!plan) return; // stays marked, so it isn't asked again every tick; the 'ended' path plays it
+  const level = await soundCheck.known(path, evensOut(path) ? state.soundCheck : 'OFF').catch(() => null);
+  if (preparedNext !== mark || token !== state.loadToken) return;
+  await engine.prepare(plan.url, { segment: plan.segment, trim: level ? level.linear : 1 });
 }
 function trackFinished(deck) {
   if (deck !== engine.deck) return;
@@ -1309,7 +1338,7 @@ function setSpatialAmount(v) { state.spatialAmount = v; engine.setSpatial(state.
 function setWaveform(on) { state.waveform = on; progress.setWaveformEnabled(on); saveSettingsSoon(); }
 function setAmbient(on) { state.ambient = on; onCoverChanged(); saveSettingsSoon(); }
 function setAnimations(on) { anim.enabled = on; document.body.classList.toggle('no-anim', !on); saveSettingsSoon(); }
-function setCrossfade(v) { state.crossfade = v; saveSettingsSoon(); }
+function setCrossfade(v) { state.crossfade = v; saveSettingsSoon(); if (v > 0) { engine.cancelPrepared(); preparedNext = null; } }
 function setEq(gains) { state.eq = gains.slice(); engine.setEq(state.eq); updateQualityBadge(); saveSettingsSoon(); }
 
 let sleepTimer = null;
@@ -1632,6 +1661,13 @@ function buildStaticUi() {
   disc.position = discPosition;
   disc.onTrackPick = (k) => { const i = discStart + k; if (i === state.index) return; state.index = i; load(state.queue[i]); };
   engine.onEnded = trackFinished;
+  engine.onAdvance = () => { // gapless: the prepared track has just taken over
+    const mark = preparedNext;
+    preparedNext = null;
+    if (!mark) return;
+    state.index = mark.index;
+    load(mark.path, { seamless: true });
+  };
   engine.onCrossfadeDone = () => { if (engine.playing) setStatus(t('NOW SPINNING')); };
   setupQueueDrag();
   drawDivider();
@@ -1714,6 +1750,12 @@ let sessionTick = 0, miniLevelsAt = 0;
 function playbackTick() {
   if (!engine.deck || !engine.playing || jog) return; // the snatches heard while the disc is turned by hand aren't playing
   engine.watchSegmentEnd();
+  if (state.crossfade === 0 && !spotifyActive()) { // gapless: the next track waits on the standby deck for the seam
+    const left = engine.duration - engine.position;
+    if (left > 0 && left <= PREPARE_SECONDS) prepareNext();
+    else if (preparedNext && left > PREPARE_SECONDS + 1) { engine.cancelPrepared(); preparedNext = null; } // seeked back
+    engine.watchSeam();
+  }
   if (spotifyActive()) { if (spotifySession) spotifySession.tick(); }
   // Crossfade into the next track once we're within the crossfade window of the end — except between cue sheet
   // tracks that run into each other in the same file, which play on through, as on the album.
