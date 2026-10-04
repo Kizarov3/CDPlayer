@@ -119,7 +119,8 @@ export function showCard(app, { choices, maxLines, render, copy, save, video }) 
     busy = true;
     try { if (await action(picked)) closePanel('card'); } finally { busy = false; }
   };
-  // VIDEO 9:16 / 1:1: eight seconds recorded as the song plays, counting down on the button, then saved.
+  // VIDEO 9:16 / 1:1: the picked lines (or eight seconds) recorded as the song plays, counting down on the button, then
+  // saved.
   const videoButton = (format, tip) => {
     const b = pill(t('VIDEO {format}', { format }), async () => {
       if (busy || !video) return;
@@ -127,9 +128,9 @@ export function showCard(app, { choices, maxLines, render, copy, save, video }) 
       const buttons = [...b.parentNode.querySelectorAll('button')];
       buttons.forEach((x) => { x.disabled = true; });
       b.textContent = t('RECORDING…');
-      try { if (await video(format, (left) => { b.textContent = t('RECORDING · {left}', { left }); })) closePanel('card'); }
+      try { if (await video(format, picked, (left) => { b.textContent = t('RECORDING · {left}', { left }); })) closePanel('card'); }
       finally { busy = false; buttons.forEach((x) => { x.disabled = false; }); b.textContent = t('VIDEO {format}', { format }); }
-    }, `${tip} — eight seconds of the disc turning, with the song`);
+    }, `${tip} — the disc turning as the picked lines are sung, with the song`);
     return b;
   };
   const onKey = (e) => {

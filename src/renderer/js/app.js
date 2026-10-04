@@ -13,7 +13,7 @@ import { jogSeconds } from './jog.js';
 import { insertNext, pinnedNext, afterRemove } from './play-next.js';
 import { dockIcon } from './dock-disc.js';
 import { drawCard, lyricChoices, cardSubtitle, quoteLines, MAX_QUOTE_LINES } from './share-card.js';
-import { recordVideo } from './share-video.js';
+import { recordVideo, videoSpan, VIDEO_SECONDS } from './share-video.js';
 import * as panels from './panels.js';
 import { t, translatePage } from './i18n.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
@@ -592,15 +592,27 @@ function shareCard() {
     render: async (picked) => URL.createObjectURL(new Blob([await png(picked)], { type: 'image/png' })),
     copy: attempt(async (bytes) => { await cdp.copyImage(bytes); return true; }, t('CARD COPIED · PASTE IT ANYWHERE')),
     save: attempt((bytes) => cdp.saveCard(bytes, [song.artist, song.title].filter(Boolean).join(' - ')), t('CARD SAVED')),
-    // The video: eight seconds recorded as it plays — started for it if it was paused, and paused again after.
-    video: async (format, onTick) => {
+    // The video: the picked lines, recorded as they play from the first one's start (eight seconds from here, with
+    // none) — the song started for it if it was paused, and paused again after.
+    video: async (format, picked, onTick) => {
       const wasPlaying = engine.playing, withSound = !spotifyActive();
-      if (!wasPlaying && engine.deck) { await engine.play(); setPlaying(engine.playing); }
+      const timed = state.lyrics ? parseLrc(state.lyrics) : [];
+      const span = engine.deck ? videoSpan(timed, picked, heardPosition(engine.duration, 0, state.lyricsOffset)) : null;
+      const begin = async () => {
+        if (span) {
+          seekTo(playbackTimeFor(span.start, 0, state.lyricsOffset));
+          const el = engine.deck && engine.deck.el;
+          if (el && el.seeking) await new Promise((resolve) => el.addEventListener('seeked', resolve, { once: true }));
+        }
+        if (!engine.playing && engine.deck) { await engine.play(); setPlaying(engine.playing); }
+      };
       try {
-        const made = await recordVideo({ format, audio: withSound ? engine.recordingStream() : null, onTick, song: {
-          ...song, face: disc.renderFace(512, 1).canvas, colors: { ...colors },
-          timed: state.lyrics ? parseLrc(state.lyrics) : [], start: lyricsPosition(),
-        } });
+        const made = await recordVideo({ format, audio: withSound ? engine.recordingStream() : null, onTick, begin,
+          seconds: span ? span.end - span.start : VIDEO_SECONDS, song: {
+            ...song, face: disc.renderFace(512, 1).canvas, colors: { ...colors }, timed,
+            // Where the song is as each frame is drawn: what's recorded is taken before the output, so no delay for it.
+            position: () => heardPosition(engine.position, 0, state.lyricsOffset),
+          } });
         if (!made) { setStatus(t("VIDEO CAN'T BE MADE HERE")); return false; }
         const saved = await cdp.saveVideo(made.bytes, [song.artist, song.title].filter(Boolean).join(' - '), made.ext);
         if (saved) setStatus(t('VIDEO SAVED'));

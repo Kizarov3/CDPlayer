@@ -52,6 +52,7 @@ export class AudioEngine {
     this.samples = new Float32Array(this.analyser.fftSize);
     this.freq = null;
     this.recDest = null;
+    this.closeRecordingContext();
     this.applyMono();
     this.applySpatial({ now: true });
   }
@@ -288,13 +289,26 @@ export class AudioEngine {
    * A band's loudness is its average power, tilted up 3 dB per octave above 1 kHz (music gets quieter towards the
    * treble, so without it the right half would barely move), mapped from −78…−18 dB.
    */
-  /** What's playing as a MediaStream, to record (the card's video); stopRecording() lets go of it. */
+  /**
+   * What's playing as a MediaStream, to record (the card's video); stopRecording() lets go of it. Hi-res (above
+   * 48 kHz, played at the file's own rate) comes through a 48 kHz context: the recorder's AAC can't start at more.
+   */
   recordingStream() {
     if (!this.recDest) this.recDest = this.ctx.createMediaStreamDestination();
     this.master.connect(this.recDest);
-    return this.recDest.stream;
+    if (this.ctx.sampleRate <= 48000) return this.recDest.stream;
+    // A new one each time: one suspended and resumed for the next video records a second of it, without sound.
+    this.closeRecordingContext();
+    this.recCtx = new AudioContext({ sampleRate: 48000 });
+    const out = this.recCtx.createMediaStreamDestination();
+    this.recCtx.createMediaStreamSource(this.recDest.stream).connect(out);
+    return out.stream;
   }
-  stopRecording() { if (this.recDest) try { this.master.disconnect(this.recDest); } catch { /* not connected */ } }
+  stopRecording() {
+    if (this.recDest) try { this.master.disconnect(this.recDest); } catch { /* not connected */ }
+    this.closeRecordingContext();
+  }
+  closeRecordingContext() { if (this.recCtx) this.recCtx.close().catch(() => {}); this.recCtx = null; }
   /** Plays through the output device `id` ('' for the system default), without a pause. → false if it can't. */
   async setOutput(id) {
     if (!this.ctx.setSinkId) return false;
