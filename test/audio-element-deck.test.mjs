@@ -57,3 +57,35 @@ test('no crossfade out of a supplied element: it stops as the next track loads',
   engine.stop();
   assert.strictEqual(b.loads, 1);
 });
+
+class RoutedContext extends globalThis.AudioContext { createMediaElementSource() { return { connect() {}, disconnect() {} }; } }
+const routedEngine = () => { const e = new AudioEngine(); e.ctx = new RoutedContext(); return e; };
+globalThis.Audio = class extends FakeElement {};
+
+test('a deck starts at the trim it was loaded with, and setTrim changes it', async () => {
+  const engine = routedEngine();
+  await engine.load('cdp://app/media?p=a', { autoPlay: false, trim: 0.5 });
+  assert.strictEqual(engine.deck.trim.gain.value, 0.5);
+  let target = null;
+  engine.deck.trim.gain.setTargetAtTime = (v) => { target = v; };
+  engine.setTrim(0.25, 1);
+  assert.strictEqual(target, 0.25);
+  engine.setTrim(0.75);
+  assert.strictEqual(engine.deck.trim.gain.value, 0.75);
+});
+
+test('trim survives the crossfade curves', async () => {
+  const engine = routedEngine();
+  await engine.load('cdp://app/media?p=a', { autoPlay: true, trim: 0.5 });
+  await engine.load('cdp://app/media?p=b', { autoPlay: false, crossfadeSeconds: 2, trim: 0.3 });
+  engine.cancelCrossfade();
+  assert.strictEqual(engine.deck.trim.gain.value, 0.3);
+  assert.strictEqual(engine.deck.gain.gain.value, 1);
+});
+
+test('a supplied element has no trim, and setTrim leaves it alone', async () => {
+  const engine = new AudioEngine();
+  await engine.load('spotify:track:A', { autoPlay: false, element: new FakeElement() });
+  assert.strictEqual(engine.deck.trim, null);
+  engine.setTrim(0.5); // no throw
+});
