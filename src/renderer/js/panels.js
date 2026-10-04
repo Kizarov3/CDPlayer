@@ -1125,6 +1125,11 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.13.3', changes: [
+    '<b>The card&rsquo;s video runs as long as the lines you picked</b>: it starts where the first one is sung and ends with the last &mdash; the line being sung, if you didn&rsquo;t pick any',
+    '<b>The video&rsquo;s lyrics glide</b> from line to line, and keep up with the song',
+    '<b>Hi-res songs record with sound</b>: a video of a 96 or 192 kHz song came out empty, or a second long and silent',
+  ] },
   { version: '2.13.2', changes: [
     '<b>The version you have</b> is at the bottom of Settings',
     '<b>Updating is sturdier</b>: a download that stalls is given up instead of hanging, RESTART TO UPDATE can&rsquo;t be set off twice, and a CDPlayer kept in a protected folder is offered the download instead of an update that couldn&rsquo;t succeed',
