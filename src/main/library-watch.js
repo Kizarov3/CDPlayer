@@ -15,6 +15,10 @@ function relevant(filename) {
   if (filename === null || filename === undefined) return true; // some systems don't say what changed
   const name = path.basename(String(filename));
   if (name.startsWith('.')) return false;
+  // A folder moved in or out (dragged in, put in the Trash) comes as one change named after the folder alone: a name
+  // without a file's extension ("OK Computer", "Vol. 2") counts too.
+  const ext = path.extname(name);
+  if (!ext || !/^\.[a-z0-9]{1,5}$/i.test(ext)) return true;
   return isSupportedAudio(name) || /\.cue$/i.test(name) || COVER_FILE.test(name);
 }
 

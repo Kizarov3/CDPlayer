@@ -29,6 +29,11 @@ test('what counts: audio, cue sheets and covers — not hidden or temporary file
   for (const n of ['.DS_Store', 'Album/._01.flac', 'Album/.cdplayer-rip-3.flac', 'Album/.01 Song.cdplayer-1-2.flac', 'notes.txt', 'Album/booklet.pdf']) assert.strictEqual(relevant(n), false, n);
 });
 
+test('a folder moved in or out counts: the system names only the folder', () => {
+  for (const n of ['Radiohead - OK Computer', 'Artist/Album (1997)', 'Artist/Vol. 2', 'CD1']) assert.strictEqual(relevant(n), true, n);
+  for (const n of ['.Trashes', 'Album/.hidden folder', 'Album/scans.zip', 'Album/rip.log']) assert.strictEqual(relevant(n), false, n);
+});
+
 test('a burst is one change, once the folder has been quiet', () => {
   const { watch, made } = fakeWatch(), timers = fakeTimers();
   let changes = 0;

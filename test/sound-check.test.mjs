@@ -21,7 +21,10 @@ function world({ details = {}, albums = {}, cached = {}, loudness = {} } = {}) {
       if (waiting.length) { idle = 0; waiting.shift().go(); } else idle++;
     }
   };
-  return { sc, store, measured, flush };
+  // Answers the next measurement, once one is asked for.
+  const next = async () => { while (!waiting.length) await new Promise((r) => setTimeout(r, 0)); waiting.shift().go(); await new Promise((r) => setTimeout(r, 0)); };
+  const asked = async () => { while (!waiting.length) await new Promise((r) => setTimeout(r, 0)); };
+  return { sc, store, measured, flush, next, asked };
 }
 const applied = () => { const list = []; return { list, apply: (info, ramp) => list.push({ db: Math.round(info.db * 10) / 10, scope: info.scope, source: info.source, ramp }) }; };
 
@@ -82,6 +85,39 @@ test('cue tracks share their file\'s measurement', async () => {
   const a = applied(); w.sc.follow('/album.cue#1', 'ALBUM', a.apply); await w.flush();
   assert.deepStrictEqual(w.measured, ['/album.flac']);
   assert.strictEqual(a.list.at(-1).db, -6);
+});
+
+test('a hi-res file too big to decode safely is left alone; the same length at 44.1 kHz is measured', async () => {
+  const w = world({
+    details: {
+      '/hires.flac': { duration: 600, replayGain: null, cue: null, format: { sampleRate: 192000 } },
+      '/cd.flac': { duration: 600, replayGain: null, cue: null, format: { sampleRate: 44100 } },
+    },
+    loudness: { '/cd.flac': -12 },
+  });
+  const a = applied(); w.sc.follow('/hires.flac', 'TRACK', a.apply); await w.flush();
+  w.sc.follow('/cd.flac', 'TRACK', a.apply); await w.flush();
+  assert.deepStrictEqual(w.measured, ['/cd.flac']);
+});
+
+test('an album left behind stops being measured', async () => {
+  const w = world({ albums: { '/a1.flac': ['/a1.flac', '/a2.flac', '/a3.flac'] }, loudness: { '/a1.flac': -10, '/a2.flac': -10, '/a3.flac': -10, '/c.flac': -14 } });
+  const a = applied(), c = applied();
+  w.sc.follow('/a1.flac', 'ALBUM', a.apply);
+  await w.next(); // the song itself
+  await w.asked(); // the album's second song is being measured — the loop over the album is running
+  w.sc.follow('/c.flac', 'TRACK', c.apply); // and now the listener has moved on
+  await w.flush();
+  assert.deepStrictEqual(w.measured, ['/a1.flac', '/a2.flac', '/c.flac']);
+  assert.strictEqual(c.list.length, 1);
+});
+
+test('follow() answers what it settled on: nothing for a file it can\'t measure', async () => {
+  const w = world({ loudness: { '/x.flac': 'broken', '/y.flac': -12 } });
+  const x = w.sc.follow('/x.flac', 'TRACK', () => {}); await w.flush();
+  assert.strictEqual(await x, null);
+  const y = w.sc.follow('/y.flac', 'TRACK', () => {}); await w.flush();
+  assert.strictEqual(Math.round((await y).db), -6);
 });
 
 test('a song not on the shelf is evened out on its own in ALBUM', async () => {

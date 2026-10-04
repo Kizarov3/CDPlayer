@@ -3,6 +3,10 @@
 // shelf's), keeping an album's quiet and loud songs as they were made; until all of an album is known, its song's own.
 import { integratedLoudness, levelFromLoudness, albumLevel, trimFor, MAX_MEASURE_SECONDS } from './loudness.js';
 
+// Chromium decodes a file at its own rate before resampling it to 16 kHz: a 15-minute 192 kHz file would be ~1.4 GB of
+// samples in the renderer. Files that would decode to more than this (as stereo floats) are left to their tags.
+const MAX_DECODE_BYTES = 400e6;
+
 /** Decodes `url` at 16 kHz (as computeWaveform does at 8) and measures it → { loudness, peak, duration }. */
 export async function measureFile(url) {
   const buf = await (await fetch(url)).arrayBuffer();
@@ -22,8 +26,11 @@ export function createSoundCheck({ details, cache, measure }) {
 
   const fileOf = (d, p) => (d && d.cue ? d.cue.file : p);
   const info = (level, source, scope) => (level ? { ...trimFor(level), source, scope } : null);
-  // How long the file is that would be decoded: a cue track's is its whole album file's.
-  const fileDuration = async (d) => (d && d.cue ? ((await details(d.cue.file)) || {}).duration : d && d.duration);
+  // What would be decoded — a cue track's whole album file — and whether that's safe to: { duration, rate }.
+  const fileSize = async (d) => {
+    const f = d && d.cue ? (await details(d.cue.file)) || {} : d || {};
+    return { duration: f.duration, rate: (f.format && f.format.sampleRate) || 48000 };
+  };
 
   async function trackLevel(p) {
     const d = await details(p);
@@ -44,9 +51,11 @@ export function createSoundCheck({ details, cache, measure }) {
     return info(albumLevel(files.map((f) => got[f])), 'MEASURED', 'ALBUM');
   }
 
-  function measureOnce(file, duration) {
-    if (failed.has(file) || !(duration > 0) || duration > MAX_MEASURE_SECONDS) return Promise.resolve(null);
+  // `wanted()` is asked again when the job's turn comes: an album's songs queued for a song since left are skipped.
+  function measureOnce(file, { duration, rate }, wanted = () => true) {
+    if (failed.has(file) || !(duration > 0) || duration > MAX_MEASURE_SECONDS || duration * rate * 2 * 4 > MAX_DECODE_BYTES) return Promise.resolve(null);
     const job = queue.then(async () => {
+      if (!wanted()) return null;
       const cached = (await cache.get([file]))[file];
       if (cached) return cached;
       try { const m = await measure(file); await cache.put(file, m); return m; } catch { failed.add(file); return null; }
@@ -63,29 +72,36 @@ export function createSoundCheck({ details, cache, measure }) {
       if (mode === 'ALBUM') { const a = await albumLevelOf(p, t.d); if (a) return a; }
       return info(t.level, t.source, 'TRACK');
     },
-    /** Measures what the song (and in ALBUM, its album) still needs, calling apply(info, ramp) as each answer is better. */
+    /**
+     * Measures what the song (and in ALBUM, its album) still needs, calling apply(info, ramp) as each answer is better.
+     * → what it settled on, or null: nothing to go by (silence, a file it can't or won't decode), or another song followed.
+     */
     async follow(p, mode, apply) {
       const token = ++current;
-      if (mode === 'OFF') return;
+      if (mode === 'OFF') return null;
       const live = () => token === current;
       const t = await trackLevel(p);
-      let measuredNow = false;
+      let settled = info(t.level, t.source, 'TRACK'), measuredNow = false;
       if (!t.level && t.source === 'MEASURED') {
-        const m = await measureOnce(t.file, await fileDuration(t.d));
+        const m = await measureOnce(t.file, await fileSize(t.d));
         const level = m ? levelFromLoudness(m) : null;
-        if (level && live()) { apply(info(level, 'MEASURED', 'TRACK'), 1); measuredNow = true; }
+        if (level && live()) { settled = info(level, 'MEASURED', 'TRACK'); apply(settled, 1); measuredNow = true; }
       }
-      if (mode !== 'ALBUM' || !live()) return;
+      if (!live()) return null;
+      if (mode !== 'ALBUM') return settled;
       let album = await albumLevelOf(p, t.d);
-      if (album) { if (live()) apply(album, measuredNow ? 2 : 0); return; }
+      if (album) { if (!live()) return null; apply(album, measuredNow ? 2 : 0); return album; }
       const paths = await cache.album(p);
-      if (!paths) return;
+      if (!paths) return live() ? settled : null;
       for (const q of paths) {
+        if (!live()) return null; // moved on: what's measured so far is kept
         const d = await details(q);
-        await measureOnce(fileOf(d, q), await fileDuration(d));
+        await measureOnce(fileOf(d, q), await fileSize(d), live);
       }
       album = await albumLevelOf(p, t.d);
-      if (album && live()) apply(album, 2);
+      if (!live()) return null;
+      if (album) { apply(album, 2); return album; }
+      return settled;
     },
   };
 }

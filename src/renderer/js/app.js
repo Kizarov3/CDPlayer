@@ -1119,9 +1119,10 @@ function updateQualityBadge() {
 }
 
 /** SC −4.2 DB under the title while Sound Check is on: the gain the song plays at, and where it came from on hover. */
-function showSoundCheck(info) {
+// `settled`: Sound Check is done with the song — with no gain (silence, a file it can't or won't decode), there's no badge.
+function showSoundCheck(info, settled = false) {
   state.soundCheckInfo = info;
-  const badge = $('soundcheck-badge'), on = state.soundCheck !== 'OFF' && evensOut(state.loadedPath || '');
+  const badge = $('soundcheck-badge'), on = state.soundCheck !== 'OFF' && evensOut(state.loadedPath || '') && (!!info || !settled);
   badge.hidden = !on;
   if (!on) return;
   const db = info ? info.db : null;
@@ -1131,7 +1132,8 @@ function showSoundCheck(info) {
 }
 // What Sound Check still has to measure for the song loaded with `token`: its gain is changed as each answer comes.
 function followSoundCheck(path, mode, token) {
-  soundCheck.follow(path, mode, (info, ramp) => { if (token === state.loadToken) { engine.setTrim(info.linear, ramp); showSoundCheck(info); } });
+  soundCheck.follow(path, mode, (info, ramp) => { if (token === state.loadToken) { engine.setTrim(info.linear, ramp); showSoundCheck(info); } })
+    .then((settled) => { if (token === state.loadToken && !settled && !state.soundCheckInfo) showSoundCheck(null, true); }).catch(() => {});
 }
 /** Settings → SOUND CHECK: OFF, TRACK or ALBUM; applied to the song playing now, over half a second. */
 async function setSoundCheck(mode) {

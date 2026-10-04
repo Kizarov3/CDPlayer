@@ -112,7 +112,7 @@ export function setupShelf(app) {
     if (shelf.open && shelf.app.state.shelfSort === 'PRICE') redraw.request(); else markSpine(p.albumId);
   });
   app.cdp.onLibraryChanged(() => { if (shelf.open) refresh.request(); });
-  app.cdp.onShelfProgress(({ done, total }) => { if (shelf.loading) $('shelf-count').textContent = t('READING YOUR MUSIC · {done} / {total}', { done, total }); });
+  app.cdp.onShelfProgress(({ done, total }) => { if (shelf.loading && !shelf.quietLoad) $('shelf-count').textContent = t('READING YOUR MUSIC · {done} / {total}', { done, total }); });
 }
 
 async function pickFolder() {
@@ -123,6 +123,7 @@ async function pickFolder() {
 async function load({ quiet = false } = {}) {
   const generation = ++shelf.generation;
   shelf.loading = true;
+  shelf.quietLoad = quiet; // a quiet one shows no READING YOUR MUSIC, nor its count of files
   if (!quiet) {
     $('shelf-count').textContent = t('READING YOUR MUSIC…');
     $('shelf-body').replaceChildren();
@@ -131,6 +132,9 @@ async function load({ quiet = false } = {}) {
   try { result = await shelf.app.cdp.shelfAlbums(); } catch { result = { folder: null, albums: [], error: true }; }
   if (generation !== shelf.generation) return;
   shelf.loading = false;
+  shelf.quietLoad = false;
+  // A case or the booklet was taken out while the folder was read: the shelf is brought up to date once it's put back.
+  if (quiet && (shelf.caseOpen || isBookletOpen())) { refresh.request(); return; }
   // The music folder changed, but nothing the shelf shows did: leave it as it is.
   if (quiet && (result.name || null) === shelf.folderName && shelfSignature(result.albums) === shelfSignature(shelf.albums)) return;
   const scroll = quiet ? $('shelf-body').scrollTop : 0;
