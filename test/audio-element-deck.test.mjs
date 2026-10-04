@@ -89,3 +89,110 @@ test('a supplied element has no trim, and setTrim leaves it alone', async () => 
   assert.strictEqual(engine.deck.trim, null);
   engine.setTrim(0.5); // no throw
 });
+
+const { SEAM_LEAD } = await import('../src/renderer/js/audio.js');
+const curves = (deck) => { const got = []; deck.gain.gain.setValueCurveAtTime = (c) => got.push(Array.from(c)); return got; };
+const tick = (ms = 10) => new Promise((r) => setTimeout(r, ms));
+
+test('prepare leaves a paused standby at gain 0, at the segment start', async () => {
+  const engine = routedEngine();
+  await engine.load('cdp://app/media?p=a', { autoPlay: true });
+  assert.strictEqual(await engine.prepare('cdp://app/media?p=b', { segment: { start: 30, end: 90 }, trim: 0.5 }), true);
+  const s = engine.standby;
+  assert.deepStrictEqual([s.el.paused, s.el.currentTime, s.gain.gain.value, s.trim.gain.value, s.end], [true, 30, 0, 0.5, 90]);
+  assert.deepStrictEqual(engine.prepared, { url: 'cdp://app/media?p=b', start: 30 });
+});
+
+test('a new load, stop or cancelPrepared drops the standby', async () => {
+  const engine = routedEngine();
+  await engine.load('cdp://app/media?p=a', { autoPlay: true });
+  await engine.prepare('cdp://app/media?p=b');
+  const s = engine.standby;
+  await engine.load('cdp://app/media?p=c', { autoPlay: false });
+  assert.strictEqual(engine.prepared, null);
+  assert.ok(s.el.loads >= 1, 'disposed');
+  await engine.prepare('cdp://app/media?p=b'); engine.stop(); assert.strictEqual(engine.prepared, null);
+  await engine.load('cdp://app/media?p=a', { autoPlay: true });
+  await engine.prepare('cdp://app/media?p=b'); engine.cancelPrepared(); assert.strictEqual(engine.prepared, null);
+});
+
+test('the seam: the standby starts as the deck ends, the decks blend and swap, onAdvance once', async () => {
+  const engine = routedEngine();
+  await engine.load('cdp://app/media?p=a', { autoPlay: true });
+  await engine.prepare('cdp://app/media?p=b');
+  const outgoing = engine.deck, incoming = engine.standby;
+  const outCurves = curves(outgoing), inCurves = curves(incoming);
+  const advanced = [], ended = [];
+  engine.onAdvance = (d) => advanced.push(d);
+  engine.onEnded = (d) => ended.push(d);
+  outgoing.el.currentTime = outgoing.el.duration - 0.1; // within the watch window, not yet the lead
+  engine.watchSeam();
+  assert.strictEqual(incoming.el.paused, true);
+  outgoing.el.currentTime = outgoing.el.duration - SEAM_LEAD / 2;
+  await tick(20);
+  assert.strictEqual(incoming.el.paused, false);
+  assert.strictEqual(engine.deck, incoming);
+  assert.strictEqual(engine.prepared, null);
+  assert.deepStrictEqual(advanced, [incoming]);
+  assert.ok(outCurves[0][0] > 0.99 && outCurves[0].at(-1) < 0.01, 'out falls');
+  assert.ok(inCurves[0][0] < 0.01 && inCurves[0].at(-1) > 0.99, 'in rises');
+  engine.watchSeam(); await tick(20);
+  assert.strictEqual(advanced.length, 1);
+  outgoing.el.fire('ended');
+  assert.deepStrictEqual(ended, [], 'the old deck ending is ignored');
+  await tick(80);
+  assert.ok(outgoing.el.paused);
+});
+
+test('a paused deck doesn\'t seam', async () => {
+  const engine = routedEngine();
+  await engine.load('cdp://app/media?p=a', { autoPlay: true });
+  await engine.prepare('cdp://app/media?p=b');
+  engine.deck.el.currentTime = engine.deck.el.duration - 0.005;
+  engine.pause();
+  engine.watchSeam(); await tick(20);
+  assert.strictEqual(engine.standby.el.paused, true);
+  assert.notStrictEqual(engine.deck, engine.standby);
+});
+
+test('a seeked-away deck doesn\'t seam', async () => {
+  const engine = routedEngine();
+  await engine.load('cdp://app/media?p=a', { autoPlay: true });
+  await engine.prepare('cdp://app/media?p=b');
+  engine.deck.el.currentTime = engine.deck.el.duration - 0.1;
+  engine.watchSeam();
+  engine.deck.el.currentTime = 10; // seeked back while the fine timer waits
+  await tick(30);
+  assert.strictEqual(engine.standby.el.paused, true);
+  assert.ok(engine.prepared);
+});
+
+test('a cue stretch seams at its own end, not the file\'s', async () => {
+  const engine = routedEngine();
+  await engine.load('cdp://app/media?p=a', { autoPlay: true, segment: { start: 0, end: 60 } });
+  await engine.prepare('cdp://app/media?p=b');
+  engine.deck.el.currentTime = 60 - SEAM_LEAD / 2;
+  engine.watchSeam(); await tick(20);
+  assert.strictEqual(engine.deck.url, 'cdp://app/media?p=b');
+});
+
+test('a standby that fails to load resolves false', async () => {
+  const engine = routedEngine();
+  await engine.load('cdp://app/media?p=a', { autoPlay: true });
+  const Real = globalThis.Audio;
+  globalThis.Audio = class extends FakeElement { fire(t) { super.fire(t === 'loadedmetadata' ? 'error' : t); } };
+  try { assert.strictEqual(await engine.prepare('cdp://app/media?p=gone'), false); } finally { globalThis.Audio = Real; }
+  assert.strictEqual(engine.prepared, null);
+});
+
+test('a refused play keeps the old deck', async () => {
+  const engine = routedEngine();
+  await engine.load('cdp://app/media?p=a', { autoPlay: true });
+  await engine.prepare('cdp://app/media?p=b');
+  const old = engine.deck;
+  engine.standby.el.play = () => Promise.reject(new Error('NotAllowedError'));
+  engine.deck.el.currentTime = engine.deck.el.duration - 0.005;
+  engine.watchSeam(); await tick(20);
+  assert.strictEqual(engine.deck, old);
+  assert.strictEqual(engine.deck.gain.gain.value, 1);
+});

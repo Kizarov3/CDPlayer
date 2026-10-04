@@ -6,6 +6,11 @@
 //
 // That graph replaces the Java app's hand-written PCM pump: gain, mono, EQ and crossfade are all native nodes.
 //
+// Gapless (gapless.js): the next track waits on a standby deck and is started this long before the playing one
+// ends — an <audio> element starts on the audio pipeline's block grid, about 10 ms after play() (measured: 11 ms
+// early gives a seam of ~0) — with a 5 ms equal-power blend across the seam to hide the millisecond or two left.
+export const SEAM_LEAD = 0.011, SEAM_WATCH = 0.15, SEAM_BLEND = 0.005;
+//
 // A deck can also play just a stretch of its file — a cue sheet track inside an album-length rip. position,
 // duration and seek are then relative to that stretch, and reaching its end counts as the track ending.
 
@@ -18,6 +23,7 @@ export class AudioEngine {
     this.volume = 1; this.mono = false; this.eqGains = new Array(EQ_FREQUENCIES.length).fill(0);
     this.outputId = '';
     this.customRate = null;    // Settings → QUALITY: the song's rate, or null for the system's
+    this.standby = null; this.seamTimer = null; this.onAdvance = null; // gapless: the next track, waiting
     this.spatialOn = false; this.spatialAmount = 0.5; // Settings → SPATIAL AUDIO (spatial.js)
     this.contextListeners = [];
     this.build(null);
@@ -119,7 +125,7 @@ export class AudioEngine {
       gain.connect(this.input);
     }
     const deck = { el, source, trim: trimNode, gain, url, start: 0, end: null, endFired: false };
-    el.addEventListener('ended', () => { if (this.onEnded) this.onEnded(deck); });
+    el.addEventListener('ended', () => { if (this.onEnded && deck === this.deck) this.onEnded(deck); }); // a deck left behind (crossfade, gapless) ends unheard
     return deck;
   }
   disposeDeck(deck) {
@@ -139,6 +145,7 @@ export class AudioEngine {
    * seconds, end null for "to the end of the file") plays only that part of the file.
    */
   async load(url, { autoPlay = true, crossfadeSeconds = 0, segment = null, element = null, trim = 1 } = {}) {
+    this.cancelPrepared();
     this.cancelCrossfade();
     const outgoing = this.deck;
     // A Spotify track plays outside Web Audio, so there's nothing to fade — in or out.
@@ -209,6 +216,66 @@ export class AudioEngine {
   continuesInto(url, start) {
     return this.runsInto(url, start) && !this.deck.el.paused && this.deck.el.currentTime >= this.deck.end - 0.25;
   }
+  /** Loads `url` on a standby deck — paused, silent, at `segment.start` — to follow the playing one without a gap. */
+  async prepare(url, { segment = null, trim = 1 } = {}) {
+    this.cancelPrepared();
+    const deck = this.createDeck(url, null, trim);
+    deck.gain.gain.value = 0;
+    this.standby = deck;
+    const ok = await new Promise((resolve) => {
+      const done = (v) => () => { deck.el.removeEventListener('loadedmetadata', yes); deck.el.removeEventListener('error', no); resolve(v); };
+      const yes = done(true), no = done(false);
+      deck.el.addEventListener('loadedmetadata', yes);
+      deck.el.addEventListener('error', no);
+    });
+    if (this.standby !== deck) return false; // replaced or cancelled meanwhile (already disposed)
+    if (!ok) { this.cancelPrepared(); return false; }
+    if (segment) { Object.assign(deck, { start: segment.start, end: segment.end === null || segment.end === undefined ? null : segment.end }); deck.el.currentTime = segment.start; }
+    return true;
+  }
+  cancelPrepared() {
+    clearTimeout(this.seamTimer); this.seamTimer = null;
+    if (this.standby) { this.disposeDeck(this.standby); this.standby = null; }
+  }
+  get prepared() { return this.standby ? { url: this.standby.url, start: this.standby.start } : null; }
+  /** Seconds left of the playing deck's track: to its stretch's end (a cue track) or the file's. */
+  timeLeft() {
+    const d = this.deck;
+    if (!d) return Infinity;
+    const end = d.end !== null ? d.end : d.el.duration;
+    return Number.isFinite(end) ? end - d.el.currentTime : Infinity;
+  }
+  /** On the playback timer: near the end with a standby ready, a fine timer starts it on time (seam). */
+  watchSeam() {
+    if (!this.standby || this.seamTimer || !this.deck || this.deck.el.paused || this.fadingOut) return;
+    if (this.timeLeft() > SEAM_WATCH) return;
+    const outgoing = this.deck;
+    const check = () => {
+      this.seamTimer = null;
+      if (this.deck !== outgoing || !this.standby || outgoing.el.paused) return;
+      const left = this.timeLeft();
+      if (left > SEAM_WATCH) return; // seeked away: the playback timer will come back to it
+      if (left > SEAM_LEAD) { this.seamTimer = setTimeout(check, 2); return; }
+      this.seam(outgoing, this.standby);
+    };
+    check();
+  }
+  async seam(outgoing, incoming) {
+    this.standby = null;
+    try { await incoming.el.play(); } catch {
+      this.disposeDeck(incoming); // the old deck plays out; its 'ended' loads the next track the usual way
+      return;
+    }
+    const n = 32, out = new Float32Array(n), inn = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const a = (i / (n - 1)) * (Math.PI / 2); out[i] = Math.cos(a); inn[i] = Math.sin(a); }
+    const now = this.ctx.currentTime;
+    outgoing.gain.gain.cancelScheduledValues(now); incoming.gain.gain.cancelScheduledValues(now);
+    outgoing.gain.gain.setValueCurveAtTime(out, now, SEAM_BLEND);
+    incoming.gain.gain.setValueCurveAtTime(inn, now, SEAM_BLEND);
+    this.deck = incoming;
+    setTimeout(() => this.disposeDeck(outgoing), 60);
+    if (this.onAdvance) this.onAdvance(incoming);
+  }
   /**
    * The end of a stretch isn't the end of the file, so no 'ended' event comes: this is called on the playback
    * timer and reports it — once, timed to the moment rather than the next tick when it's that close.
@@ -256,7 +323,7 @@ export class AudioEngine {
     d.gain.gain.cancelScheduledValues(this.ctx.currentTime);
     d.gain.gain.value = 1;
   }
-  stop() { this.cancelCrossfade(); this.disposeDeck(this.deck); this.deck = null; }
+  stop() { this.cancelPrepared(); this.cancelCrossfade(); this.disposeDeck(this.deck); this.deck = null; }
   get playing() { return !!this.deck && !this.deck.el.paused && !this.deck.el.ended; }
   /** How long sound takes from here to the speakers (seconds): the output's latency, re-read as the device changes. */
   get outputLatency() { return (this.ctx && (this.ctx.outputLatency || this.ctx.baseLatency)) || 0; }
