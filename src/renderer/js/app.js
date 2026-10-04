@@ -19,6 +19,7 @@ import { t, translatePage } from './i18n.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
 import { wearFor } from './disc-wear.js';
 import { targetRate, badgeLabel, badgeText, badgeExact, levelName, LEVELS } from './quality.js';
+import { createSoundCheck, measureFile } from './sound-check.js';
 import { pickOutput, outputName } from './output.js';
 import { openShelf, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, choosePressing, shelfAlbumIds, discogsCurrencyChanged } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
@@ -59,7 +60,7 @@ const state = {
   ripping: false,   // RIP is saving the disc into the music folder
   rip: null,        // the rip for its panel: { album, artist, year, folder, tracks, stages, sizes, done, percent, finished, ok, message }
   themeIndex: 0, eq: new Array(10).fill(0), customPresets: [], history: [],
-  quality: 'HIGH', rateInfo: null,
+  quality: 'HIGH', rateInfo: null, soundCheck: 'OFF', soundCheckInfo: null,
   language: 'AUTO', // Settings → LANGUAGE (applies after a restart)
   loadedPath: null, details: null, detailsPath: null, lyrics: null, cover: null, loadToken: 0, crossfadeStarted: false,
   cdView: false, visualizerMode: false, fullscreen: false,
@@ -68,6 +69,13 @@ const state = {
   lastPath: null, version: '', platform: '',
 };
 const engine = new AudioEngine();
+// Settings → SOUND CHECK (sound-check.js): every song at the same loudness — not Spotify's (it does its own) nor a live CD's.
+const soundCheck = createSoundCheck({
+  details: (p) => cdp.details(p, { withCover: false }).catch(() => null),
+  cache: cdp.soundCheck,
+  measure: (file) => measureFile(cdp.mediaUrl(file)),
+});
+const evensOut = (p) => !isSpotifyUri(p) && !isAudioCdTrack(p);
 state.systemRate = engine.rate; // the device's rate as CDPlayer found it, before any setRate: what HIGH plays at
 const disc = new Disc($('disc'));
 const visualizer = new Visualizer($('visualizer'));
@@ -386,6 +394,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   state.crossfadeStarted = false;
   if (state.loadedPath !== path) flushFoundSoon();
   state.loadedPath = path;
+  showSoundCheck(null); // until it's known (and hidden for Spotify and CDs)
   showInPlayer(path);
   $('tags-button').hidden = false;
   if (isSpotifyUri(path)) { progress.setWaveform(null); await loadSpotify(path, token, { autoPlay, startAt }); return; }
@@ -404,12 +413,18 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
     if (token !== state.loadToken) return;
     if (rateChanged) fade = 0; // a new context: nothing left to fade out of
   }
+  const soundMode = evensOut(path) ? state.soundCheck : 'OFF';
+  const knownLevel = await soundCheck.known(path, soundMode).catch(() => null);
+  if (token !== state.loadToken) return;
+  showSoundCheck(knownLevel);
+  const trim = knownLevel ? knownLevel.linear : 1;
   const url = cdp.mediaUrl(cue ? cue.file : path);
   if (cue && !fade && startAt === 0 && engine.continuesInto(url, cue.start)) {
     engine.setSegment(cue); // the previous track runs straight into this one: keep playing, no reload, no gap
+    engine.setTrim(trim);
   } else {
     try {
-      const ok = await engine.load(url, { autoPlay: false, crossfadeSeconds: fade, segment: cue });
+      const ok = await engine.load(url, { autoPlay: false, crossfadeSeconds: fade, segment: cue, trim });
       if (!ok || token !== state.loadToken) return;
     } catch {
       if (token !== state.loadToken) return;
@@ -419,6 +434,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
     }
     if (startAt > 0) engine.seek(Math.min(startAt, engine.duration));
   }
+  followSoundCheck(path, soundMode, token);
   if (autoPlay) { if (!reload) recordHistory(path); await engine.play(); }
   if (token !== state.loadToken) return;
   setPlaying(autoPlay);
@@ -1102,6 +1118,34 @@ function updateQualityBadge() {
   badge.classList.toggle('dim', !badgeExact(full));
 }
 
+/** SC −4.2 DB under the title while Sound Check is on: the gain the song plays at, and where it came from on hover. */
+function showSoundCheck(info) {
+  state.soundCheckInfo = info;
+  const badge = $('soundcheck-badge'), on = state.soundCheck !== 'OFF' && evensOut(state.loadedPath || '');
+  badge.hidden = !on;
+  if (!on) return;
+  const db = info ? info.db : null;
+  badge.textContent = db === null ? t('SC …') : t('SC {db} DB', { db: `${db > 0.05 ? '+' : db < -0.05 ? '−' : ''}${Math.abs(db).toFixed(1)}` });
+  badge.title = !info ? t('SOUND CHECK · MEASURING THE SONG')
+    : [t('SOUND CHECK'), info.scope === 'ALBUM' ? t('ALBUM') : t('TRACK'), info.source === 'TAGS' ? t('FROM REPLAYGAIN TAGS') : t('MEASURED'), info.limited ? t("LIMITED BY THE SONG'S PEAKS") : null].filter(Boolean).join(' · ');
+}
+// What Sound Check still has to measure for the song loaded with `token`: its gain is changed as each answer comes.
+function followSoundCheck(path, mode, token) {
+  soundCheck.follow(path, mode, (info, ramp) => { if (token === state.loadToken) { engine.setTrim(info.linear, ramp); showSoundCheck(info); } });
+}
+/** Settings → SOUND CHECK: OFF, TRACK or ALBUM; applied to the song playing now, over half a second. */
+async function setSoundCheck(mode) {
+  state.soundCheck = ['OFF', 'TRACK', 'ALBUM'].includes(mode) ? mode : 'OFF';
+  saveSettingsSoon();
+  const p = state.loadedPath, token = state.loadToken;
+  const m = p && evensOut(p) ? state.soundCheck : 'OFF';
+  const info = p ? await soundCheck.known(p, m).catch(() => null) : null;
+  if (token !== state.loadToken) return;
+  engine.setTrim(info ? info.linear : 1, 0.5);
+  showSoundCheck(info);
+  if (p) followSoundCheck(p, m, token);
+}
+
 /** Settings → QUALITY. Applies from the next song; back to HIGH puts the outputs' rates back at once. */
 async function setQuality(level) {
   state.quality = LEVELS.includes(level) ? level : 'HIGH';
@@ -1477,7 +1521,7 @@ function appendAndPlay(p) {
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount };
+  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -1746,7 +1790,7 @@ export const app = {
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) { state.index = i; load(state.queue[i]); } },
   coverSource: () => state.coverFrom || null,
   switchTheme, previewTheme, restoreTheme, shownTheme: () => shownTheme, saveTheme, importTheme, pasteThemeCode, exportTheme, copyThemeCode, deleteTheme,
-  setQuality, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setTaskbarDisc, setOutput, listOutputs, currentOutputName,
+  setQuality, setSoundCheck, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setTaskbarDisc, setOutput, listOutputs, currentOutputName,
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
   pressingMenu: (anchor, items) => panels.pressingMenu(anchor, items),
@@ -1868,6 +1912,7 @@ async function start() {
   state.shelfSort = s.shelfSort || 'ARTIST';
   state.language = s.language || 'AUTO';
   state.quality = s.quality || 'HIGH';
+  state.soundCheck = s.soundCheck || 'OFF';
   setEq(s.eq);
   setUserThemes(saved.themes || []);
   const themeIndex = Math.max(0, THEMES.findIndex((theme) => theme.name === s.theme));

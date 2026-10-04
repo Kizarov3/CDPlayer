@@ -210,6 +210,11 @@ function buildSettings(app) {
     label: levelName(level, true), current: level === s.quality,
     pick: () => app.setQuality(level).then(() => refreshSettingsIfOpen(app)),
   }))), t('How the sound leaves CDPlayer'));
+  const SOUND_CHECK_NAMES = { OFF: t('OFF'), ALBUM: t('ALBUM'), TRACK: t('TRACK') };
+  const soundCheckButton = pill(SOUND_CHECK_NAMES[s.soundCheck] || t('OFF'), () => showMenu(soundCheckButton, ['OFF', 'ALBUM', 'TRACK'].map((mode) => ({
+    label: SOUND_CHECK_NAMES[mode], current: mode === s.soundCheck,
+    pick: () => app.setSoundCheck(mode).then(() => refreshSettingsIfOpen(app)),
+  }))), t('Every song at the same loudness'));
 
   const crossfadeValue = el('span', { class: 'row-value' }, s.crossfade ? t('{n}S', { n: s.crossfade }) : t('OFF'));
   const crossfade = new Slider({ min: 0, max: 15, value: s.crossfade, onInput: (v) => { crossfadeValue.textContent = v ? t('{n}S', { n: v }) : t('OFF'); app.setCrossfade(v); } });
@@ -279,6 +284,8 @@ function buildSettings(app) {
     unavailable(row(t('SPATIAL AUDIO'), spatial)),
     unavailable(sliderRow(t('SPACE'), spatialAmount, spatialValue)),
     hint(t('For headphones: the music comes from two speakers in front of you instead of from inside your head. Off with mono, and best off on speakers.')),
+    unavailable(row(t('SOUND CHECK'), soundCheckButton)),
+    hint(t('Plays every song at the same loudness, from its ReplayGain tags or measured once. ALBUM keeps an album’s quiet and loud songs as they were made.')),
     row(t('DISC NOISE'), discNoise),
     hint(t('A real player’s sounds: a faint hiss, the tray motor, the disc spinning up — and a skip when you shake the window.')), gap(18),
     section(t('LOOK')),
