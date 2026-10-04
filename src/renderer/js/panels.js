@@ -1132,6 +1132,10 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.14.0', changes: [
+    '<b>Sound Check</b>: Settings &rarr; SOUND CHECK &mdash; every song at the same loudness, from its ReplayGain tags or measured once; ALBUM keeps an album&rsquo;s own quiet and loud songs. SC under the title shows the gain',
+    '<b>The shelf keeps up with your music folder</b>: an album ripped, copied in or removed turns up on the open shelf, or goes, by itself &mdash; no need to close it and open it again',
+  ] },
   { version: '2.13.3', changes: [
     '<b>The card&rsquo;s video runs as long as the lines you picked</b>: it starts where the first one is sung and ends with the last &mdash; the line being sung, if you didn&rsquo;t pick any',
     '<b>The video&rsquo;s lyrics glide</b> from line to line, and keep up with the song',
