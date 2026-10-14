@@ -15,7 +15,7 @@ import { pressingLine, marketLine, money, isRare, shelfTotal, discogsPrice } fro
 import { hash } from './disc-wear.js';
 import { stickyNote, noteLook } from './shelf-notes.js';
 import { receiptFor } from './shelf-receipt.js';
-import { withMissing, boxLabel, sameName, boxesFor, renderGate, groupOf, pickEdition, fullTracklist } from './shelf-missing.js';
+import { withMissing, boxLabel, sameName, boxesFor, renderGate, groupFor, pickEdition, fullTracklist } from './shelf-missing.js';
 import { dustLevel, pickOne, Wiper } from './shelf-dust.js';
 import { t } from './i18n.js';
 
@@ -663,18 +663,15 @@ async function openCase(a, spine) {
   const trackList = el('div', { class: 'case-tracks scroll' }, tracks);
   // The album's whole tracklist from MusicBrainz, once its artist's discography is known: the songs you don't have
   // stand in their place, in grey.
-  const group = groupOf(a, shelf.discogs);
-  if (group) {
-    app.cdp.missingTracklist(group.id).then((editions) => {
-      const edition = pickEdition(editions, a.tracks.map((t) => t.title));
-      if (!edition || !trackList.isConnected) return;
-      const rows = fullTracklist(edition, a.tracks);
-      if (rows.every((r) => r.have)) return; // nothing missing: as it was
-      trackList.replaceChildren(...rows.map((r) => (r.have ? trackRow(r.have, a.tracks.indexOf(r.have), r.no) : el('div', { class: 'case-track missing', title: t('Not in your collection') },
-        el('span', { class: 'no' }, String(r.no).padStart(2, '0')), el('span', { class: 'name' }, r.title),
-        el('span', { class: 'time' }, r.length ? app.formatTime(r.length) : '')))));
-    }).catch(() => {});
-  }
+  groupFor(a, shelf.discogs, app.cdp.discographyOf).then((group) => group && app.cdp.missingTracklist(group.id)).then((editions) => {
+    const edition = editions && pickEdition(editions, a.tracks.map((t) => t.title));
+    if (!edition || !trackList.isConnected) return;
+    const rows = fullTracklist(edition, a.tracks);
+    if (rows.every((r) => r.have)) return; // nothing missing: as it was
+    trackList.replaceChildren(...rows.map((r) => (r.have ? trackRow(r.have, a.tracks.indexOf(r.have), r.no) : el('div', { class: 'case-track missing', title: t('Not in your collection') },
+      el('span', { class: 'no' }, String(r.no).padStart(2, '0')), el('span', { class: 'name' }, r.title),
+      el('span', { class: 'time' }, r.length ? app.formatTime(r.length) : '')))));
+  }).catch(() => {});
   const front = cover ? el('img', { class: 'case-cover', src: cover, alt: '' })
     : el('div', { class: 'case-cover cdr' }, el('div', { class: 'marker' }, a.title), a.artist ? el('div', { class: 'marker small' }, a.artist) : null);
   front.title = t('Open the booklet');

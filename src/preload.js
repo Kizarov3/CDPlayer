@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('cdp', {
   tearWrap: invoke('wrap:tear'),
   wantDiscography: invoke('discography:want'),
   missingTracklist: invoke('discography:tracklist'),
+  discographyOf: invoke('discography:of'),
   discogsLookup: invoke('discogs:lookup'),
   discogsAppraise: invoke('discogs:appraise'),
   discogsStop: invoke('discogs:stop'),

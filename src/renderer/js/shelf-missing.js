@@ -89,6 +89,19 @@ export function groupOf(album, discogs) {
   return (d && d.groups.find((g) => sameName(g.title) === sameName(album.title))) || null;
 }
 
+/**
+ * groupOf, on any sort: the artist's discography is asked for (`fetch({ artist, mbid })`, from MusicBrainz or its
+ * cache) when the shelf doesn't have it yet, and kept in `discogs`. → the release group, or null (also when offline).
+ */
+export async function groupFor(album, discogs, fetch) {
+  const key = album.artist && sameName(album.artist);
+  if (!key || sameName(album.artist) === sameName('Various Artists')) return null;
+  if (!discogs.has(key)) {
+    try { discogs.set(key, await fetch({ artist: album.artist, mbid: album.artistMbid || null })); } catch { return null; }
+  }
+  return groupOf(album, discogs);
+}
+
 /** Of an album's editions (tracklists), the one with the most of `owned` (song titles) on it; on a tie, the shortest. */
 export function pickEdition(editions, owned) {
   const have = new Set(owned.map(sameName));

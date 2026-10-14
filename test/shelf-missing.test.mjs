@@ -123,3 +123,17 @@ test('an album\'s release group, from its artist\'s discography', () => {
   assert.strictEqual(groupOf(album('Radiohead', 'Airbag EP'), discogs), null);
   assert.strictEqual(groupOf(album('Korn', 'Issues'), discogs), null);
 });
+
+test('a case opened on any sort asks for its artist\'s discography once, to find its album in it', async () => {
+  const { groupFor } = await import('../src/renderer/js/shelf-missing.js');
+  const discogs = new Map();
+  const asked = [];
+  const fetch = async (a) => { asked.push(a); return { state: 'found', groups: [{ id: 'rg-issues', title: 'Issues' }] }; };
+  const issues = { artist: 'Korn', artistMbid: 'mb-korn', title: 'Issues' };
+  assert.strictEqual((await groupFor(issues, discogs, fetch)).id, 'rg-issues');
+  assert.strictEqual((await groupFor({ artist: 'KORN', title: 'Follow the Leader' }, discogs, fetch)), null);
+  assert.deepStrictEqual(asked, [{ artist: 'Korn', mbid: 'mb-korn' }], 'known after the first time');
+  assert.strictEqual(await groupFor({ artist: 'Various Artists', title: 'Hits' }, discogs, fetch), null);
+  assert.strictEqual(await groupFor({ artist: 'Nobody', title: 'X' }, discogs, async () => { throw new Error('offline'); }), null, 'offline: as it was');
+  assert.strictEqual(asked.length, 1);
+});
