@@ -1771,9 +1771,9 @@ function setChangerMode(on) {
   putStore(coming || (on ? { changer: changer.clear() } : null));
   saveSettingsSoon();
   renderQueue(); pushMini(true);
-  if (state.index >= 0) load(state.queue[state.index], { autoPlay: false, startAt: ((coming && coming.positionMicros) || 0) / 1e6 });
-  else resetToIdle(on ? t('CHANGER EMPTY') : t('QUEUE EMPTY'));
-  setStatus(on ? t('CD CHANGER ON') : t('QUEUE ON'));
+  const said = on ? t('CD CHANGER ON') : t('QUEUE ON');
+  if (state.index >= 0) load(state.queue[state.index], { autoPlay: false, startAt: ((coming && coming.positionMicros) || 0) / 1e6 }).then(() => setStatus(said));
+  else { resetToIdle(on ? t('CHANGER EMPTY') : t('QUEUE EMPTY')); setStatus(said); }
   saveQueueSoon();
 }
 const shuffleButton = modeButton('SHUFFLE', t('Shuffle'), toggleShuffle);
