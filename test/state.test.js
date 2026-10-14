@@ -20,7 +20,7 @@ test('reads a settings.txt written by the Java version', () => {
   assert.deepStrictEqual(s, {
     volume: 70, crossfade: 5, mono: true, animations: false, theme: 'OCEAN', eq: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
     waveform: false, miniMode: false, bounds: { x: 10, y: 20, width: 1200, height: 900 }, ambient: false, discord: true,
-    discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF',
+    discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false,
   });
 });
 
@@ -82,10 +82,10 @@ test('queue restore drops missing files and keeps pointing at the same track', (
 test('changer.txt is written beside queue.txt and read back, with the saved list and what went missing', () => {
   const a = path.join(home, 'ch-a.mp3'), b = path.join(home, 'ch-b.mp3');
   fs.writeFileSync(a, ''); fs.writeFileSync(b, '');
-  store.writeQueue({ paths: [a, b], index: 1, positionMicros: 0, changer: 'v1\t-\nalbum\t0\t2\t0\t\tid\tT\tA\n-\n-\n-\n-' });
-  assert.strictEqual(store.readQueue().changerText, 'v1\t-\nalbum\t0\t2\t0\t\tid\tT\tA\n-\n-\n-\n-');
+  store.writeQueue({ paths: [a, b], index: 1, positionMicros: 0, mode: 'CHANGER', changer: 'v1\t-\nalbum\t0\t2\t0\t\tid\tT\tA\n-\n-\n-\n-' });
+  assert.strictEqual(store.readChangerQueue().changerText, 'v1\t-\nalbum\t0\t2\t0\t\tid\tT\tA\n-\n-\n-\n-');
   fs.rmSync(b);
-  const r = store.readQueue();
+  const r = store.readChangerQueue();
   assert.strictEqual(r.changerText, 'v1\t-\nalbum\t0\t2\t0\t\tid\tT\tA\n-\n-\n-\n-', 'kept: the renderer takes the missing file out of its disc');
   assert.deepStrictEqual([r.savedPaths, r.savedIndex, r.missing], [[a, b], 1, [b]]);
 });
@@ -273,4 +273,35 @@ test('the disc on the app\'s icon: on unless turned off, but off on Windows (whe
   store.writeSettings({ ...store.readSettings(), taskbarDisc: false });
   assert.strictEqual(store.readSettings().taskbarDisc, false);
   assert.strictEqual(store.readSettings().discShine, true); // the line before it is untouched
+});
+
+test('two stores: the queue in queue.txt, the changer in changer-queue.txt + changer.txt', () => {
+  const a = path.join(home, 'm-a.mp3'), b = path.join(home, 'm-b.mp3');
+  fs.writeFileSync(a, ''); fs.writeFileSync(b, '');
+  for (const f of ['queue.txt', 'changer.txt', 'changer-queue.txt']) fs.rmSync(path.join(home, f), { force: true });
+  store.writeQueue({ paths: [a], index: 0, positionMicros: 7 });
+  store.writeQueue({ paths: [b, a], index: 1, positionMicros: 9, mode: 'CHANGER', changer: 'v1\t-\n-\n-\n-\n-\n-' });
+  assert.deepStrictEqual(store.readQueue().paths, [a], 'the queue untouched by the changer');
+  const c = store.readChangerQueue();
+  assert.deepStrictEqual([c.paths, c.index, c.positionMicros, c.changerText], [[b, a], 1, 9, 'v1\t-\n-\n-\n-\n-\n-']);
+  assert.strictEqual(store.readQueue().changerText, null, 'the queue has no slots');
+});
+
+test('upgrading from the build where the changer was the queue: queue.txt + changer.txt become the changer too', () => {
+  const a = path.join(home, 'u-a.mp3');
+  fs.writeFileSync(a, '');
+  for (const f of ['queue.txt', 'changer.txt', 'changer-queue.txt']) fs.rmSync(path.join(home, f), { force: true });
+  fs.writeFileSync(path.join(home, 'queue.txt'), `0,0\n${a}\n`);
+  fs.writeFileSync(path.join(home, 'changer.txt'), 'v1\t-\ncdr\t0\t1\t0\t\tcdr:1\t\t\n-\n-\n-\n-');
+  const c = store.readChangerQueue();
+  assert.deepStrictEqual([c.paths, c.changerText.startsWith('v1')], [[a], true]);
+  assert.deepStrictEqual(store.readQueue().paths, [a], 'and the queue starts from the same list');
+});
+
+test('the CHANGER setting round-trips, off by default', () => {
+  assert.strictEqual(store.DEFAULT_SETTINGS.changer, false);
+  store.writeSettings({ ...store.DEFAULT_SETTINGS, changer: true });
+  assert.strictEqual(store.readSettings().changer, true);
+  store.writeSettings({ ...store.DEFAULT_SETTINGS });
+  assert.strictEqual(store.readSettings().changer, false);
 });

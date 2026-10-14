@@ -213,6 +213,7 @@ function drmReady() {
 handle('state:load', () => ({
   settings,
   queue: store.readQueue(),
+  changerQueue: store.readChangerQueue(),
   history: store.readHistory(),
   eqPresets: store.readEqPresets(),
   lastPath: store.readLastPath(),

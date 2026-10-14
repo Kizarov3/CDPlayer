@@ -30,7 +30,7 @@ const file = (name) => path.join(dataDir(), name);
 const FILES = {
   queue: 'queue.txt', onboarded: 'onboarded', lastVersion: 'lastversion.txt', lastPath: 'lastpath.txt',
   settings: 'settings.txt', eqPresets: 'eq-presets.txt', history: 'history.txt', spotify: 'spotify.txt',
-  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt', firstPlayed: 'firstplayed.txt', shelfColors: 'shelf-colors.json', changer: 'changer.txt',
+  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt', firstPlayed: 'firstplayed.txt', shelfColors: 'shelf-colors.json', changer: 'changer.txt', changerQueue: 'changer-queue.txt',
 };
 
 function readText(name) {
@@ -59,11 +59,11 @@ const safePath = (p) => typeof p === 'string' && !/[\r\n]/.test(p);
 
 // settings.txt — one value per line, in the Java app's order: volume, crossfade, mono, animations, theme, EQ
 // gains, waveform, mini mode, window bounds, ambient background, then Discord status, disc noise and saving found
-// art & lyrics into files, the lyrics offset in ms, how the shelf is sorted, disc wear, the audio output ("id<TAB>name") and the language (AUTO, en or a locale code), then the sound quality (HIGH, LOSSLESS or HIRES), spatial audio (1/0) and its amount (0–100), the disc's shine (1/0) and the disc on the app's icon (1/0; on unless turned off, but off on Windows unless turned on) and Sound Check (OFF, TRACK or ALBUM) (CDPlayer 2 only). Missing trailing
+// art & lyrics into files, the lyrics offset in ms, how the shelf is sorted, disc wear, the audio output ("id<TAB>name") and the language (AUTO, en or a locale code), then the sound quality (HIGH, LOSSLESS or HIRES), spatial audio (1/0) and its amount (0–100), the disc's shine (1/0) and the disc on the app's icon (1/0; on unless turned off, but off on Windows unless turned on) and Sound Check (OFF, TRACK or ALBUM), then the CD changer mode (ON/OFF) (CDPlayer 2 only). Missing trailing
 // lines keep their defaults.
 const DEFAULT_SETTINGS = {
   volume: 100, crossfade: 0, mono: false, animations: true, theme: 'RED', eq: new Array(10).fill(0),
-  waveform: true, miniMode: false, bounds: null, ambient: true, discord: true, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF',
+  waveform: true, miniMode: false, bounds: null, ambient: true, discord: true, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false,
 };
 const SHELF_SORTS = ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR', 'PRICE'];
 const QUALITIES = ['HIGH', 'LOSSLESS', 'HIRES'];
@@ -105,6 +105,7 @@ function readSettings() {
   s.discShine = l.length < 22 || l[21].trim() !== '0';
   if (l.length >= 23 && ['0', '1'].includes(l[22].trim())) s.taskbarDisc = l[22].trim() === '1';
   s.soundCheck = l.length >= 24 && SOUND_CHECKS.includes(l[23].trim()) ? l[23].trim() : 'OFF';
+  s.changer = l.length >= 25 && l[24].trim() === 'ON';
   return s;
 }
 function writeSettings(s) {
@@ -117,14 +118,14 @@ function writeSettings(s) {
     LANGUAGE.test(s.language || '') ? s.language : 'AUTO',
     QUALITIES.includes(s.quality) ? s.quality : 'HIGH', s.spatial ? 1 : 0,
     Math.max(0, Math.min(100, Math.round(Number.isFinite(s.spatialAmount) ? s.spatialAmount : 50))), s.discShine === false ? 0 : 1, s.taskbarDisc ? 1 : 0,
-    SOUND_CHECKS.includes(s.soundCheck) ? s.soundCheck : 'OFF'].join('\n') + '\n';
+    SOUND_CHECKS.includes(s.soundCheck) ? s.soundCheck : 'OFF', s.changer ? 'ON' : 'OFF'].join('\n') + '\n';
   return writeText(FILES.settings, content);
 }
 
 // queue.txt — "index,positionMicros" then one absolute path per line (a cue sheet track is "<.cue path>#<number>"). Missing files are dropped on restore,
 // remapping the saved index so it still points at the same track.
-function readQueue() {
-  const l = lines(readText(FILES.queue));
+function readQueueFile(name, changerText) {
+  const l = lines(readText(name));
   if (!l.length || !l[0].trim()) return null;
   const [idx, pos] = l[0].trim().split(',');
   const savedIndex = parseInt(idx, 10), savedPosition = parseInt(pos, 10) || 0;
@@ -141,11 +142,25 @@ function readQueue() {
   const index = mapped >= 0 ? mapped : Math.max(0, Math.min(Number.isFinite(savedIndex) ? savedIndex : 0, paths.length - 1));
   // changer.txt holds the changer's slots as runs of the queue as it was saved: the renderer reads it against
   // savedPaths and takes the missing files out of their discs (changer.js restore).
-  return { paths, index, positionMicros: savedPosition, changerText: readText(FILES.changer), savedPaths, savedIndex: savedAt, missing };
+  return { paths, index, positionMicros: savedPosition, changerText, savedPaths, savedIndex: savedAt, missing };
 }
-function writeQueue({ paths, index, positionMicros, changer }) {
+/** The queue (queue mode, 2.14's queue.txt). */
+const readQueue = () => readQueueFile(FILES.queue, null);
+/**
+ * The changer's store: its list (changer-queue.txt, queue.txt's format) and slots (changer.txt). From the build where
+ * the changer was the queue there's no changer-queue.txt yet: queue.txt held the changer's list then.
+ */
+function readChangerQueue() {
+  const own = isFile(file(FILES.changerQueue));
+  if (!own && !isFile(file(FILES.changer))) return null;
+  return readQueueFile(own ? FILES.changerQueue : FILES.queue, readText(FILES.changer));
+}
+/** The mode's store: the queue's queue.txt, or (mode CHANGER) changer-queue.txt and changer.txt (`changer`, its slots). */
+function writeQueue({ paths, index, positionMicros, changer, mode = 'QUEUE' }) {
   const body = paths.filter(safePath).join('\n');
-  const ok = writeText(FILES.queue, `${index},${Math.max(0, Math.round(positionMicros || 0))}\n${body}${body ? '\n' : ''}`);
+  const text = `${index},${Math.max(0, Math.round(positionMicros || 0))}\n${body}${body ? '\n' : ''}`;
+  if (mode !== 'CHANGER') return writeText(FILES.queue, text);
+  const ok = writeText(FILES.changerQueue, text);
   if (typeof changer === 'string') writeText(FILES.changer, changer);
   return ok;
 }
@@ -290,7 +305,7 @@ const writeLastVersion = (v) => writeText(FILES.lastVersion, v);
 
 module.exports = {
   dataDir, file, FILES, readText, writeText, isFile, isDir,
-  readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, writeQueue, readHistory, writeHistory, HISTORY_LIMIT,
+  readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, readChangerQueue, writeQueue, readHistory, writeHistory, HISTORY_LIMIT,
   readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readFirstPlayed, writeFirstPlayed, readDust, writeDust, readNotes, writeNotes, readHiddenMissing, writeHiddenMissing, readWrap, writeWrap, readShelfColors, writeShelfColors,
   readEqPresets, writeEqPresets, readLastPath, writeLastPath, isOnboarded, markOnboarded, readLastVersion, writeLastVersion,
 };
