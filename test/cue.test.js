@@ -115,7 +115,7 @@ test('cue tracks survive the saved queue, history and M3U playlists', async () =
   const ref = `${path.join(dir, 'Album.cue')}#2`;
   const plain = path.join(dir, 'Album.flac');
   store.writeQueue({ paths: [plain, ref], index: 1, positionMicros: 5e6 });
-  assert.deepStrictEqual(store.readQueue(), { paths: [plain, ref], index: 1, positionMicros: 5e6 });
+  assert.deepStrictEqual(store.readQueue(), { paths: [plain, ref], index: 1, positionMicros: 5e6, changerText: null });
   store.writeHistory([ref, `${path.join(dir, 'Gone.cue')}#1`]);
   assert.deepStrictEqual(store.readHistory(), [ref]);
   const list = path.join(dir, 'list.m3u');
