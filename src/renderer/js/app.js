@@ -2046,7 +2046,7 @@ function showUpdatePill() {
     button.title = t('Downloading CDPlayer {version}…', { version: u.version });
   } else if (u.phase === 'ready') {
     button.textContent = u.install === 'replace' ? t('RESTART TO UPDATE') : t('INSTALL {version}', { version: u.version });
-    button.title = u.install === 'replace' ? t('Install CDPlayer {version} and restart — the discs in the changer are kept', { version: u.version }) : t('Open the downloaded CDPlayer {version} to install it', { version: u.version });
+    button.title = u.install === 'replace' ? t('Install CDPlayer {version} and restart — your queue and changer are kept', { version: u.version }) : t('Open the downloaded CDPlayer {version} to install it', { version: u.version });
   } else {
     button.textContent = t('{version} AVAILABLE', { version: u.version });
     button.title = u.canDownload && !u.failed ? t('A newer CDPlayer is out — click to download it') : t('A newer CDPlayer is out — opens the download page');

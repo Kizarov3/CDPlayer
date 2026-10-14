@@ -46,7 +46,7 @@ const spineTitle = (a) => [a.artist, a.title, a.year, holds(a, shelf.inPlayer) ?
 const discOfAlbum = (a) => ({ id: a.id, kind: 'album', title: a.title, artist: a.artist });
 // The changer slot number on the spine of an album that's in the changer.
 function markSlot(spine) {
-  const slot = shelf.app && shelf.app.changerState ? slotOfAlbum(shelf.app.changerState(), spine.album) : -1;
+  const slot = shelf.app && shelf.app.changerMode && shelf.app.changerMode() ? slotOfAlbum(shelf.app.changerState(), spine.album) : -1;
   let badge = spine.querySelector('.spine-slot');
   if (slot < 0) { if (badge) badge.remove(); return; }
   if (!badge) { badge = el('span', { class: 'spine-slot' }); spine.append(badge); }
@@ -749,8 +749,9 @@ async function openCase(a, spine) {
         pill(t('BACK ON THE SHELF'), () => closeCase()),
         addNote,
         el('span', { class: 'grow' }),
-        pill(t('PLAY NEXT'), unwrapped(() => { app.loadDisc(discOfAlbum(a), a.tracks.map((t) => t.path), { next: true }); closeCase(); }), t('Into the changer, to play after the disc playing')),
-        pill(t('INTO THE CHANGER'), unwrapped(() => { app.loadDisc(discOfAlbum(a), a.tracks.map((t) => t.path)); closeCase(); }), t('Load the album into a free slot of the changer')),
+        pill(t('PLAY NEXT'), unwrapped(() => { app.loadDisc(discOfAlbum(a), a.tracks.map((t) => t.path), { next: true }); closeCase(); }), app.changerMode() ? t('Into the changer, to play after the disc playing') : t('Play the album next, after the song playing')),
+        app.changerMode() ? pill(t('INTO THE CHANGER'), unwrapped(() => { app.loadDisc(discOfAlbum(a), a.tracks.map((t) => t.path)); closeCase(); }), t('Load the album into a free slot of the changer'))
+          : pill(t('ADD TO QUEUE'), unwrapped(() => { app.loadDisc(discOfAlbum(a), a.tracks.map((t) => t.path)); closeCase(); }), t('Add every track to the end of the queue')),
         el('button', { class: 'pill on', onClick: unwrapped(() => play(a, 0)) }, t('PLAY')))));
   showCase(card, spine, from, shelf.colors.get(a.id) || hashColor(a.title + a.artist));
 }
