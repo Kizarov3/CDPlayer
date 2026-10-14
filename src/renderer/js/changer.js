@@ -246,8 +246,11 @@ export function parse(text, queue, index) {
 }
 
 const key = (s) => String(s || '').toLowerCase().trim();
-/** The disc that `paths` (with their `details`) make: their one album, or a CD-R titled `title`. `kind` overrides. */
-export function discFor({ kind = null, paths, details, title, now = Date.now() }) {
+/**
+ * The disc that `paths` (with their `details`) make: their one album, or a CD-R — titled `title` (a playlist's name), or
+ * untitled: it's written on when shown, in the interface's language, with the day it was made (cdrMadeAt). `kind` overrides.
+ */
+export function discFor({ kind = null, paths, details, title = null, now = Date.now() }) {
   const artistOf = (d) => (d && ((d.credits && d.credits.albumArtist) || d.artist)) || '';
   const first = details[0];
   // An album disc takes at least two songs of one album; a single song is a loose pick (a CD-R). The id is this disc's
@@ -256,6 +259,11 @@ export function discFor({ kind = null, paths, details, title, now = Date.now() }
     && details.every((d) => d && key(d.album) === key(first.album) && key(artistOf(d)) === key(artistOf(first)));
   if (one) return { id: `album:${key(artistOf(first))}\n${key(first.album)}:${now}`, kind: kind || 'album', title: first.album, artist: artistOf(first) || null };
   return { id: `${kind || 'cdr'}:${now}`, kind: kind || 'cdr', title, artist: null };
+}
+/** When a CD-R was made (its id says), or null — one brought over from an old queue doesn't know. */
+export function cdrMadeAt(disc) {
+  const m = /^cdr:(\d{10,})$/.exec(disc.id || '');
+  return m ? new Date(Number(m[1])) : null;
 }
 
 /** The tray's turn (degrees) that brings `slot` to the laser, on the right: a fifth of a turn a slot. */

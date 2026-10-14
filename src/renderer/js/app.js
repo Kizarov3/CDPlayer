@@ -219,7 +219,7 @@ function renderQueue() {
   const c = ch(), here = changer.slotOf(c, state.index);
   $('eject-disc-button').disabled = !here;
   $('disc-skip-button').disabled = !here || c.slots.filter(Boolean).length < 2;
-  const slots = c.slots.map((d, s) => (d ? { title: d.title, artist: d.artist, kind: d.kind, done: d.done, next: c.nextDisc === s, firstPath: c.queue[d.start] } : null));
+  const slots = c.slots.map((d, s) => (d ? { title: discLabel(d), artist: d.artist, kind: d.kind, done: d.done, next: c.nextDisc === s, firstPath: c.queue[d.start] } : null));
   if (!here) {
     $('queue-info').textContent = c.queue.length ? t('CHANGER · {n} DISCS', { n: slots.filter(Boolean).length }) : t('CHANGER EMPTY');
     $('queue-next').textContent = t('DROP AN ALBUM OR A FOLDER TO LOAD A DISC');
@@ -238,13 +238,19 @@ function renderQueue() {
     const det = detailsCache.get(p);
     return { index: d.start + k, no: k + 1, title: queueDisplay(p), time: formatDuration(det ? det.duration : 0), current: d.start + k === state.index };
   });
-  changerView.render({ slots, playingSlot: here.slot, tracks, heading: [t('DISC {n}', { n: here.slot + 1 }), d.title || (d.kind === 'cdr' ? t('CD-R') : null), d.artist].filter(Boolean).join(' · ') });
+  changerView.render({ slots, playingSlot: here.slot, tracks, heading: [t('DISC {n}', { n: here.slot + 1 }), discLabel(d), d.artist].filter(Boolean).join(' · ') });
 }
 
-const cdrTitle = () => t('MIX · {date}', { date: new Date().toLocaleDateString(locale, { day: 'numeric', month: 'short' }).toUpperCase() });
+// What's written on a disc: its title, or for an untitled CD-R "MIX · 14 OCT" — in the language of the day.
+function discLabel(d) {
+  if (d.title) return d.title;
+  if (d.kind !== 'cdr') return t('CD-R');
+  const made = changer.cdrMadeAt(d);
+  return made ? t('MIX · {date}', { date: made.toLocaleDateString(locale, { day: 'numeric', month: 'short' }).toUpperCase() }) : t('MIX');
+}
 async function discOf(paths, { kind = null, title = null } = {}) {
   const details = await Promise.all(paths.map((p) => detailsCache.get(p) || cdp.details(p, { withCover: false }).catch(() => null)));
-  return changer.discFor({ kind, paths, details, title: title || cdrTitle() });
+  return changer.discFor({ kind, paths, details, title });
 }
 // Into the changer: a free slot, a finished disc's, or the one the user picks. `startPlayback: false` leaves loading the
 // song to the caller (the tray). (`item`, not `disc`: `disc` is the big disc's renderer everywhere else in app.js.)
@@ -267,7 +273,7 @@ async function loadDisc(item, tracks, { play = false, next = false, startPlaybac
   if (r.slot < 0) return { cancelled: true };
   const wasPlaying = state.index >= 0 && !!engine.deck;
   apply(r.changer);
-  setStatus(r.replaced ? t('DISC {n} IN · {title} WENT BACK TO THE SHELF', { n: r.slot + 1, title: r.replaced.title || t('CD-R') }) : t('DISC {n} IN', { n: r.slot + 1 }));
+  setStatus(r.replaced ? t('DISC {n} IN · {title} WENT BACK TO THE SHELF', { n: r.slot + 1, title: discLabel(r.replaced) }) : t('DISC {n} IN', { n: r.slot + 1 }));
   renderQueue(); saveQueueSoon(); spotifyResync();
   if (startPlayback && (play || !wasPlaying)) load(state.queue[state.index], { autoPlay: true }); // an idle player plays it, as before the changer
   return { slot: r.slot };
@@ -1805,7 +1811,7 @@ export const app = {
   setStatus, queueDisplay, displayName, formatTime, load, addToQueue, playNext, appendAndPlay, seekTo,
   detailsFor: (p) => detailsCache.get(p),
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) goTo(i); },
-  changerState: ch, loadDisc, playSlot, ejectSlot, discSkip, coverForPath,
+  changerState: ch, discLabel, loadDisc, playSlot, ejectSlot, discSkip, coverForPath,
   changerSlotOf: (i) => (changer.slotOf(ch(), i) || { slot: -1 }).slot,
   onFullChanger: (c) => panels.pickDiscToTakeOut(app, c),
   coverSource: () => state.coverFrom || null,
@@ -1960,7 +1966,7 @@ async function start() {
         const d = byPath.get(p), artist = d && ((d.credits && d.credits.albumArtist) || d.artist);
         return d && d.album ? { key: `${artist || ''}\n${d.album}`.toLowerCase(), title: d.album, artist: artist || null, kind: isSpotifyUri(p) ? 'spotify' : 'album' } : null;
       };
-      const r = changer.fromQueue(saved.queue.paths, saved.queue.index, albumOf, { cdrTitle: t('MIX') });
+      const r = changer.fromQueue(saved.queue.paths, saved.queue.index, albumOf, { cdrTitle: null });
       c = r.changer;
       if (r.dropped) setStatus(t('5 DISCS IN THE CHANGER · {n} WENT BACK TO THE SHELF', { n: r.dropped }));
       setTimeout(saveQueueSoon, 0);

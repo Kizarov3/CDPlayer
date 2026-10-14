@@ -842,6 +842,7 @@ async function importLibrary(app) {
 const SPOTIFY_MESSAGES = {
   SIGN_IN: t('CONNECT SPOTIFY AGAIN'), OFFLINE: t("COULDN'T REACH SPOTIFY"),
   NOT_SHARED: t('SPOTIFY ONLY SHARES THE SONGS OF PLAYLISTS YOU OWN OR COLLABORATE ON'), EMPTY: t('NOTHING TO PLAY ON THAT ONE'),
+  NOT_REGISTERED: t('SPOTIFY DOESN’T LET THIS ACCOUNT INTO YOUR APP · ADD ITS EMAIL UNDER USER MANAGEMENT ON THE DASHBOARD'),
 };
 const sp = { account: null, editing: false, step: 0, trouble: null, drm: null, tab: 'ALBUMS', lists: { ALBUMS: null, PLAYLISTS: null }, next: { ALBUMS: 0, PLAYLISTS: 0 }, query: '', found: null, status: '', searchTimer: null };
 // (No answer at all says why, when the network did: "COULDN'T REACH SPOTIFY · ERR_CERT_AUTHORITY_INVALID".)
@@ -1291,7 +1292,7 @@ export function pickDiscToTakeOut(app, c) {
     const p = openPanel('changer-full', () => [
       title(t('THE CHANGER IS FULL')), el('div', { class: 'subtitle' }, t('Which disc goes back to the shelf?')),
       el('div', { class: 'changer-pick' }, c.slots.map((d, s) => {
-        const b = el('button', { class: 'changer-pick-disc', disabled: s === here, title: s === here ? t('Playing') : t('Take it out') }, el('div', { class: 'changer-pick-art' }), el('div', { class: 'name' }, `${s + 1}. ${d.title || t('CD-R')}`), d.artist ? el('div', { class: 'by' }, d.artist) : null);
+        const b = el('button', { class: 'changer-pick-disc', disabled: s === here, title: s === here ? t('Playing') : t('Take it out') }, el('div', { class: 'changer-pick-art' }), el('div', { class: 'name' }, `${s + 1}. ${app.discLabel(d)}`), d.artist ? el('div', { class: 'by' }, d.artist) : null);
         b.addEventListener('click', () => { chosen = s; closePanel('changer-full'); });
         app.coverForPath(c.queue[d.start]).then((src) => { if (src) b.firstChild.style.backgroundImage = `url("${src}")`; });
         return b;

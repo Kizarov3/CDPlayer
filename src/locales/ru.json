@@ -615,6 +615,7 @@
   "SPOTIFY APP CREDENTIALS NOT CONFIGURED": "КЛЮЧИ ПРИЛОЖЕНИЯ SPOTIFY НЕ НАСТРОЕНЫ",
   "SPOTIFY CONNECTED": "SPOTIFY ПОДКЛЮЧЁН",
   "SPOTIFY DISCONNECTED": "SPOTIFY ОТКЛЮЧЁН",
+  "SPOTIFY DOESN’T LET THIS ACCOUNT INTO YOUR APP · ADD ITS EMAIL UNDER USER MANAGEMENT ON THE DASHBOARD": "SPOTIFY НЕ ПУСКАЕТ ЭТОТ АККАУНТ В ТВОЁ ПРИЛОЖЕНИЕ · ДОБАВЬ ЕГО ПОЧТУ В USER MANAGEMENT НА DASHBOARD",
   "SPOTIFY IMPORT FAILED — {why}": "ИМПОРТ ИЗ SPOTIFY НЕ УДАЛСЯ — {why}",
   "SPOTIFY LOOKUP FAILED — CHECK THE LINK": "SPOTIFY НЕ НАШЁЛ — ПРОВЕРЬ ССЫЛКУ",
   "SPOTIFY ONLY SHARES THE SONGS OF PLAYLISTS YOU OWN OR COLLABORATE ON": "SPOTIFY ОТДАЁТ ПЕСНИ ТОЛЬКО ТВОИХ ИЛИ СОВМЕСТНЫХ ПЛЕЙЛИСТОВ",

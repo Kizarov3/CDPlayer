@@ -258,6 +258,8 @@ async function userApi(pathAndQuery, init = {}) {
 }
 const asError = (e) => {
   if (e.code && e.code !== 'OFFLINE') return { error: e.code };
+  // 403 on the signed-in account's own library: the app (in Development mode) doesn't let this account in.
+  if (e.status === 403) return { error: 'NOT_REGISTERED' };
   if (e.status) return { error: `HTTP ${e.status}` };
   return e.code === 'OFFLINE' ? (e.detail ? { error: 'OFFLINE', detail: e.detail } : { error: 'OFFLINE' }) : offline(e);
 };

@@ -263,3 +263,12 @@ test('restoring with a file gone: its disc shrinks, the slots and the song playi
   assert.strictEqual(back.nextDisc, 3);
   assert.strictEqual(restore('garbage', c.queue, 0, new Set()), null, 'unreadable: rebuilt from the queue instead');
 });
+
+import { cdrMadeAt } from '../src/renderer/js/changer.js';
+test('a CD-R keeps no written-on title of its own (it\'s written on in the language of the day), only when it was made', () => {
+  const d = discFor({ paths: ['x', 'y'], details: [{ album: 'A', artist: 'B' }, { album: 'C', artist: 'D' }], now: Date.UTC(2026, 9, 14) });
+  assert.deepStrictEqual([d.kind, d.title], ['cdr', null]);
+  assert.strictEqual(cdrMadeAt(d).toISOString(), '2026-10-14T00:00:00.000Z');
+  assert.strictEqual(discFor({ paths: ['x'], details: [null], title: 'Road trip', now: 5 }).title, 'Road trip', 'a playlist keeps its name');
+  assert.strictEqual(cdrMadeAt({ id: 'cdr:/music/a.flac' }), null, 'brought over from an old queue: no date');
+});

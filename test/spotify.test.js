@@ -187,6 +187,13 @@ test('not signed in, a refused token, and no network each come back as an error 
   assert.deepStrictEqual(await spotify.savedAlbums(0), { error: 'OFFLINE' });
 });
 
+test('a 403 on the library is Spotify not letting this account into the app (User Management), said so', async () => {
+  write(['id', 'secret']);
+  connected();
+  answer({ ...TOKEN, 'https://api.spotify.com/v1/me/albums': () => ({ status: 403, body: { error: { status: 403, message: 'Forbidden' } } }) });
+  assert.deepStrictEqual(await spotify.savedAlbums(0), { error: 'NOT_REGISTERED' });
+});
+
 test('starting playback: the whole list to the SDK device, at the position', async () => {
   connected();
   answer({ ...TOKEN, 'https://api.spotify.com/v1/me/player/play': { status: 204 } });
