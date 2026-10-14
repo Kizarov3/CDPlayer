@@ -59,6 +59,8 @@ When a new version is out, an **AVAILABLE** button appears in the player's top-l
 | --- | --- |
 | `Space` or `K` | Play / Pause |
 | `J` / `L` | Previous / next track |
+| `D` | Next disc in the changer |
+| `1`–`5` | Play the disc in that slot of the changer |
 | `←` / `→` | Skip back / forward 5 seconds |
 | `↑` / `↓` | Volume up / down |
 | `U` | Mute / unmute |

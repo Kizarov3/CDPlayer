@@ -33,6 +33,7 @@ export const GUIDE = [
 export const FAQ = [
   { q: t('My Mac (or Windows) won’t open it — is it safe?'), a: t('CDPlayer isn’t signed with a paid Apple or Microsoft certificate, so the first time your system asks. On a Mac: right-click CDPlayer in Applications → Open → Open. On Windows: More info → Run anyway. Only once.') },
   { q: t('Why is there no cover or lyrics for a song?'), a: t('CDPlayer uses what’s in the file, and otherwise looks it up online by the song’s artist and title. A file named “Track 01” with no tags can’t be found: fix its name with TAGS, which can fill in the details from MusicBrainz.') },
+  { q: t('Where did the queue go?'), a: t('It’s a five-disc changer now: albums, folders and playlists go in as discs. INTO THE CHANGER on the shelf loads one; D skips to the next disc, 1–5 play a slot, and SHUFFLE and REPEAT work on this disc or all of them.') },
   { q: t('Where is my data kept?'), a: t('In ~/.cdplayer on Mac and Linux, %LOCALAPPDATA%\\CDPlayer on Windows: your queue, history, settings, notes and play counts, as small text files. Your music itself is never changed unless you save tags or found art into it.') },
   { q: t('How do I choose the folder my music is in?'), a: t('Open the SHELF and click FOLDER… (the first time, it asks). The shelf shows the albums in that folder and everything under it. Songs outside it still play — drop them on the window.') },
   { q: t('Why doesn’t the equalizer work on Spotify?'), a: t('Spotify’s audio is protected, so it plays outside CDPlayer’s sound engine: the equalizer, crossfade, mono, visualizer and waveform can’t reach it. Your own files get all of them.') },
@@ -46,6 +47,8 @@ export const FAQ = [
 export const SHORTCUTS = [
   ['`Space` or `K`', t('Play / Pause')],
   ['`J` / `L`', t('Previous / next track')],
+  ['`D`', t('Next disc in the changer')],
+  ['`1`–`5`', t('Play the disc in that slot of the changer')],
   ['`←` / `→`', t('Skip back / forward 5 seconds')],
   ['`↑` / `↓`', t('Volume up / down')],
   ['`U`', t('Mute / unmute')],

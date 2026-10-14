@@ -17,6 +17,7 @@ import { stickyNote, noteLook } from './shelf-notes.js';
 import { receiptFor } from './shelf-receipt.js';
 import { withMissing, boxLabel, sameName, boxesFor, renderGate, groupFor, pickEdition, fullTracklist } from './shelf-missing.js';
 import { dustLevel, pickOne, Wiper } from './shelf-dust.js';
+import { slotOfAlbum } from './changer.js';
 import { t } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
@@ -41,6 +42,23 @@ const SORT_LABELS = { ARTIST: t('ARTIST'), NEW: t('NEW|sort'), PLAYED: t('MOST P
 const holds = (a, path) => !!path && a.tracks.some((t) => t.path === path);
 const spineTitle = (a) => [a.artist, a.title, a.year, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ') + (a.note ? `\n\n${a.note}` : '');
 /** The track now in the player (null: none), so its album's spine can show it. */
+// A shelf album as a changer disc: the shelf's own album id, so loading it again is ALREADY IN SLOT n.
+const discOfAlbum = (a) => ({ id: a.id, kind: 'album', title: a.title, artist: a.artist });
+// The changer slot number on the spine of an album that's in the changer.
+function markSlot(spine) {
+  const slot = shelf.app && shelf.app.changerState ? slotOfAlbum(shelf.app.changerState(), spine.album) : -1;
+  let badge = spine.querySelector('.spine-slot');
+  if (slot < 0) { if (badge) badge.remove(); return; }
+  if (!badge) { badge = el('span', { class: 'spine-slot' }); spine.append(badge); }
+  badge.textContent = String(slot + 1);
+  badge.title = t('In the changer, slot {n}', { n: slot + 1 });
+}
+/** The changer changed: the slot numbers on the spines again. */
+export function showChangerSlots() {
+  if (!shelf.open) return;
+  for (const spine of document.querySelectorAll('#shelf-body .spine')) if (spine.album) markSlot(spine);
+}
+
 export function showInPlayer(path) {
   shelf.inPlayer = path || null;
   for (const spine of document.querySelectorAll('#shelf-body .spine')) {
@@ -198,6 +216,7 @@ function render() {
       st.isNew ? el('span', { class: 'sticker-new' }, t('NEW')) : null,
       a.wrapped ? el('span', { class: 'spine-film' }) : null);
     spine.album = a;
+    markSlot(spine);
     showNoteTab(spine);
     spine.addEventListener('pointerdown', (e) => pressSpine(e, spine));
     spine.addEventListener('pointermove', (e) => rubSpine(e, spine));
@@ -370,7 +389,7 @@ function putDown(drag, target, next = false) {
   showDropTarget(null);
   const back = () => { ghost.remove(); spine.classList.remove('lifted'); $('shelf').classList.remove('carrying'); };
   if (target === 'disc') { back(); play(a, 0); return; }
-  if (target === 'queue') { back(); shelf.app[next ? 'playNext' : 'addToQueue'](a.tracks.map((t) => t.path), { sorted: true }); return; } // ⇧: to play next
+  if (target === 'queue') { back(); shelf.app.loadDisc(discOfAlbum(a), a.tracks.map((t) => t.path), { next }); return; } // ⇧: to play next
   // Let go anywhere else: it goes back in its place on the shelf.
   if (!anim.enabled) { back(); return; }
   ghost.animate([{ transform: ghost.style.transform }, { transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.3,.7,.3,1)' }).onfinish = back;
@@ -730,8 +749,8 @@ async function openCase(a, spine) {
         pill(t('BACK ON THE SHELF'), () => closeCase()),
         addNote,
         el('span', { class: 'grow' }),
-        pill(t('PLAY NEXT'), unwrapped(() => { app.playNext(a.tracks.map((t) => t.path), { sorted: true }); closeCase(); }), t('Play the album next, after the song playing')),
-        pill(t('ADD TO QUEUE'), unwrapped(() => { app.addToQueue(a.tracks.map((t) => t.path), { sorted: true }); closeCase(); }), t('Add every track to the end of the queue')),
+        pill(t('PLAY NEXT'), unwrapped(() => { app.loadDisc(discOfAlbum(a), a.tracks.map((t) => t.path), { next: true }); closeCase(); }), t('Into the changer, to play after the disc playing')),
+        pill(t('INTO THE CHANGER'), unwrapped(() => { app.loadDisc(discOfAlbum(a), a.tracks.map((t) => t.path)); closeCase(); }), t('Load the album into a free slot of the changer')),
         el('button', { class: 'pill on', onClick: unwrapped(() => play(a, 0)) }, t('PLAY')))));
   showCase(card, spine, from, shelf.colors.get(a.id) || hashColor(a.title + a.artist));
 }
@@ -787,7 +806,7 @@ function closeCase(instant = false) {
 function play(a, from) {
   const paths = a.tracks.map((t) => t.path);
   closeShelf();
-  shelf.app.insertDisc(paths, { start: from, status: t('{disc} ON THE TRAY', { disc: a.title.toUpperCase() }) });
+  shelf.app.insertDisc(paths, { start: from, status: t('{disc} ON THE TRAY', { disc: a.title.toUpperCase() }), disc: discOfAlbum(a) });
 }
 
 // ---- Discogs (main/discogs.js): the pressing on the case, the shelf appraised -------------------------------------

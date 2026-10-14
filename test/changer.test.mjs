@@ -203,3 +203,19 @@ import { trayAngle } from '../src/renderer/js/changer.js';
 test('the tray turns the playing slot to the laser, a fifth of a turn a slot', () => {
   assert.deepStrictEqual([0, 1, 4].map(trayAngle), [90, 18, -198]);
 });
+
+import { slotOfAlbum } from '../src/renderer/js/changer.js';
+test('a shelf album\'s slot: by its id, or by its songs (a disc migrated from an old queue has another id)', () => {
+  let c = load(empty(), { id: 'shelf-a', kind: 'album', title: 'A' }, ['a1', 'a2']).changer;
+  c = load(c, { id: 'album:x', kind: 'album', title: 'B' }, ['b1', 'b2']).changer;
+  assert.strictEqual(slotOfAlbum(c, { id: 'shelf-a', tracks: [{ path: 'zz' }] }), 0);
+  assert.strictEqual(slotOfAlbum(c, { id: 'shelf-b', tracks: [{ path: 'b2' }] }), 1);
+  assert.strictEqual(slotOfAlbum(c, { id: 'shelf-c', tracks: [{ path: 'c1' }] }), -1);
+});
+
+test('the same songs under another id are the same disc: not loaded twice', () => {
+  const c = load(empty(), { id: 'album:radiohead ok computer', kind: 'album', title: 'OK Computer' }, ['ok1', 'ok2']).changer;
+  const again = load(c, { id: 'radiohead\nok computer\n', kind: 'album', title: 'OK Computer' }, ['ok1', 'ok2']);
+  assert.deepStrictEqual([again.already, again.slot], [true, 0]);
+  assert.ok(!load(c, { id: 'other', kind: 'album', title: 'X' }, ['ok1']).already, 'some of its songs only: another disc');
+});

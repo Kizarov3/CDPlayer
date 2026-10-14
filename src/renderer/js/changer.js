@@ -69,7 +69,9 @@ function roomFor(c) {
  */
 export function load(c, disc, tracks, { play = false, next = false, slot = null } = {}) {
   if (!tracks.length) return { changer: c, slot: -1 };
-  const have = c.slots.findIndex((d) => d && d.id === disc.id);
+  // The same disc: its id, or exactly its songs (a disc loaded another way, or brought over from an old queue).
+  const same = (d, s) => d.id === disc.id || (d.end - d.start === tracks.length && tracksOf(c, s).every((p, k) => p === tracks[k]));
+  const have = c.slots.findIndex((d, s) => d && same(d, s));
   if (have >= 0) return { changer: c, slot: have, already: true };
   const here = slotOf(c, c.index);
   const at = slot != null ? slot : roomFor(c);
@@ -254,3 +256,9 @@ export function discFor({ kind = null, paths, details, title, now = Date.now() }
 
 /** The tray's turn (degrees) that brings `slot` to the laser, on the right: a fifth of a turn a slot. */
 export const trayAngle = (slot) => 90 - slot * 72;
+
+/** The slot a shelf album ({ id, tracks: [{ path }] }) is in: a disc with its id, or holding one of its songs. -1: none. */
+export function slotOfAlbum(c, album) {
+  const mine = new Set(album.tracks.map((x) => x.path));
+  return c.slots.findIndex((d) => d && (d.id === album.id || c.queue.slice(d.start, d.end).some((p) => mine.has(p))));
+}

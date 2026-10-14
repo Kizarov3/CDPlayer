@@ -22,7 +22,7 @@ import { wearFor } from './disc-wear.js';
 import { targetRate, badgeLabel, badgeText, badgeExact, levelName, LEVELS } from './quality.js';
 import { createSoundCheck, measureFile } from './sound-check.js';
 import { pickOutput, outputName } from './output.js';
-import { openShelf, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, choosePressing, shelfAlbumIds, discogsCurrencyChanged } from './shelf.js';
+import { openShelf, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
 import { SpotifySession, SpotifyTrackElement, isSpotifyUri, spotifyUpcoming, loadSpotifySdk } from './spotify-deck.js';
 
@@ -209,6 +209,7 @@ function discPosition() {
 function renderQueue() {
   if (!changerView) return; // not built yet
   updateDiscData();
+  showChangerSlots();
   if (undoClear && state.queue.length) { clearTimeout(undoClear.timer); undoClear = null; } // new discs since: keep them
   const clearButton = $('clear-queue-button');
   clearButton.textContent = undoClear ? t('UNDO CLEAR') : t('CLEAR');
