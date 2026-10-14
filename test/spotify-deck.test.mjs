@@ -36,10 +36,13 @@ test('Spotify URIs, and the order handed to Spotify: the rest of the disc unless
   assert.ok(isSpotifyUri(A));
   assert.ok(!isSpotifyUri('/music/a.flac') && !isSpotifyUri('spotify:album:x') && !isSpotifyUri(undefined));
   const q = [A, B, C];
-  assert.deepStrictEqual(spotifyUpcoming(q, 0, { shuffle: false, repeat: 'OFF' }), [B, C]);
-  assert.deepStrictEqual(spotifyUpcoming(q, 2, { shuffle: false, repeat: 'ALL' }), []);
-  assert.deepStrictEqual(spotifyUpcoming(q, 0, { shuffle: true, repeat: 'OFF' }), []);
-  assert.deepStrictEqual(spotifyUpcoming(q, 0, { shuffle: false, repeat: 'ONE' }), []);
+  assert.deepStrictEqual(spotifyUpcoming(q, 0, { shuffle: 'OFF', repeat: 'OFF' }), [B, C]);
+  assert.deepStrictEqual(spotifyUpcoming(q, 2, { shuffle: 'OFF', repeat: 'ALL' }), []);
+  assert.deepStrictEqual(spotifyUpcoming(q, 0, { shuffle: 'DISC', repeat: 'OFF' }), []);
+  assert.deepStrictEqual(spotifyUpcoming(q, 0, { shuffle: 'OFF', repeat: 'TRACK' }), []);
+  assert.deepStrictEqual(spotifyUpcoming(q, 0, { shuffle: 'OFF', repeat: 'DISC' }), []);
+  assert.deepStrictEqual(spotifyUpcoming([A, B, '/music/x.flac', C], 0, { shuffle: 'OFF', repeat: 'OFF' }), [B], 'stops at a file');
+  assert.deepStrictEqual(spotifyUpcoming(q, 0, { shuffle: 'OFF', repeat: 'OFF' }, 2), [B], 'stops at the disc\'s end');
 });
 
 test('the element reports its length at once, and playing sends the track and what follows, from where it was set', async () => {

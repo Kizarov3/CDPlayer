@@ -21,13 +21,16 @@ export function loadSpotifySdk(doc = document, win = window) {
 export const isSpotifyUri = (p) => typeof p === 'string' && /^spotify:track:[A-Za-z0-9]+$/.test(p);
 
 /**
- * What Spotify is handed after the current track: the rest of the disc, so an album plays on without a gap. Not when
- * shuffling (CDPlayer picks each next song itself, and there's no gap to keep between unrelated songs) or repeating
- * one track — then just the song, and CDPlayer says what comes next when it ends.
+ * What Spotify is handed after the current track: the rest of the disc (up to `end`, the disc's end in the changer, or
+ * the first track that isn't Spotify's), so an album plays on without a gap. Not when shuffling (CDPlayer picks each
+ * next song itself, and there's no gap to keep between unrelated songs) or repeating a track or a disc — then just
+ * the song, and CDPlayer says what comes next when it ends.
  */
-export function spotifyUpcoming(queue, index, { shuffle, repeat }) {
-  if (shuffle || repeat === 'ONE' || index < 0) return [];
-  return queue.slice(index + 1).filter(isSpotifyUri);
+export function spotifyUpcoming(queue, index, { shuffle, repeat }, end = queue.length) {
+  if (shuffle !== 'OFF' || repeat === 'TRACK' || repeat === 'DISC' || index < 0) return [];
+  const out = [];
+  for (let i = index + 1; i < Math.min(end, queue.length) && isSpotifyUri(queue[i]); i++) out.push(queue[i]);
+  return out;
 }
 
 const NEAR_END_MS = 2000;   // a track paused back at 0 this close to its end has finished
