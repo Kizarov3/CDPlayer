@@ -894,3 +894,8 @@ kbd {
 .changer-laser { position: absolute; left: 124px; top: 62px; width: 10px; height: 4px; border-radius: 2px; background: rgb(var(--accent)); box-shadow: 0 0 6px rgb(var(--accent)); }
 #disc-heading { font-size: 12px; font-weight: 700; letter-spacing: .04em; margin: 2px 0 4px; opacity: .85; }
 .changer-ring .changer-art { transform: rotate(calc(-1 * var(--ring, 0deg))); }
+.changer-pick { display: grid; grid-template-columns: repeat(5, 1fr); align-items: start; gap: 10px; margin-top: 12px; }
+.changer-pick-disc { background: none; border: 0; color: inherit; cursor: pointer; text-align: center; font: inherit; }
+.changer-pick-disc:disabled { opacity: .35; cursor: default; }
+.changer-pick-art { width: 84px; height: 84px; margin: 0 auto 6px; border-radius: 50%; background: #c9ccd2 center/cover; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+.changer-pick-disc .name { font-size: 11px; font-weight: 700; } .changer-pick-disc .by { font-size: 10px; opacity: .7; }

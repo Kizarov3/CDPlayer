@@ -16,7 +16,7 @@ import { formatLyricsForDisplay } from './lyrics.js';
 const layer = () => document.getElementById('overlays');
 const panels = new Map(); // name -> { overlay, card, build }
 // Escape closes the closest thing first, in this order.
-const ESC_ORDER = ['onboarding', 'guide', 'faq', 'shortcuts', 'changelog', 'tags', 'check', 'card', 'booklet', 'menu', 'theme', 'lyrics', 'eq', 'rip', 'history', 'spotify', 'search', 'settings'];
+const ESC_ORDER = ['changer-full', 'onboarding', 'guide', 'faq', 'shortcuts', 'changelog', 'tags', 'check', 'card', 'booklet', 'menu', 'theme', 'lyrics', 'eq', 'rip', 'history', 'spotify', 'search', 'settings'];
 
 function openPanel(name, build, { width } = {}) {
   let p = panels.get(name);
@@ -1279,4 +1279,24 @@ export function showChangelogIfNeeded(app, lastVersion, existingInstall) {
   if (!changes.length) { app.cdp.writeLastVersion(version); return; }
   const p = openPanel('changelog', () => tipsCard("WHAT'S NEW", `CDPlayer ${version}`, changes, () => closePanel('changelog')));
   p.onClose = () => app.cdp.writeLastVersion(version);
+}
+
+// ---- The changer, full: which disc goes back to the shelf ----------------------------------------------------------
+
+/** All five slots hold unfinished discs: which one goes back to the shelf? → its slot, or null (Esc / CLOSE). Not the playing one. */
+export function pickDiscToTakeOut(app, c) {
+  return new Promise((resolve) => {
+    let chosen = null;
+    const here = app.changerSlotOf(c.index);
+    const p = openPanel('changer-full', () => [
+      title(t('THE CHANGER IS FULL')), el('div', { class: 'subtitle' }, t('Which disc goes back to the shelf?')),
+      el('div', { class: 'changer-pick' }, c.slots.map((d, s) => {
+        const b = el('button', { class: 'changer-pick-disc', disabled: s === here, title: s === here ? t('Playing') : t('Take it out') }, el('div', { class: 'changer-pick-art' }), el('div', { class: 'name' }, `${s + 1}. ${d.title || t('CD-R')}`), d.artist ? el('div', { class: 'by' }, d.artist) : null);
+        b.addEventListener('click', () => { chosen = s; closePanel('changer-full'); });
+        app.coverForPath(c.queue[d.start]).then((src) => { if (src) b.firstChild.style.backgroundImage = `url("${src}")`; });
+        return b;
+      })),
+    ], { width: 560 });
+    p.onClose = () => resolve(chosen);
+  });
 }
