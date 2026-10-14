@@ -11,6 +11,7 @@ import { parseLrc, currentLineIndex, heardPosition, playbackTimeFor, looksOnline
 import { shortcutKey } from './keys.js';
 import { jogSeconds } from './jog.js';
 import * as changer from './changer.js';
+import { createChangerView } from './changer-view.js';
 import { dockIcon } from './dock-disc.js';
 import { drawCard, lyricChoices, cardSubtitle, quoteLines, MAX_QUOTE_LINES } from './share-card.js';
 import { recordVideo, videoSpan, VIDEO_SECONDS } from './share-video.js';
@@ -154,6 +155,9 @@ function pumpDetails() {
 
 // The changer (changer.js) owns state.queue and state.index together with the slots; these two read and write all three.
 const ch = () => ({ ...state.changer, queue: state.queue, index: state.index });
+let changerView = null; // the carousel (changer-view.js)
+// A disc's cover in the carousel: the album's (its first song's folder or tags), or the Spotify album's.
+const coverForPath = (p) => (isSpotifyUri(p) ? Promise.resolve((spotifyTracks.get(p) || {}).cover || null) : cdp.shelfCover(p).catch(() => null));
 function apply(c) {
   state.changer = { slots: c.slots, nextDisc: c.nextDisc };
   state.queue = c.queue; state.index = c.index;
@@ -203,37 +207,36 @@ function discPosition() {
 }
 
 function renderQueue() {
+  if (!changerView) return; // not built yet
   updateDiscData();
-  const list = $('queue-list');
-  if (undoClear && state.queue.length) { clearTimeout(undoClear.timer); undoClear = null; } // new songs since: keep them
+  if (undoClear && state.queue.length) { clearTimeout(undoClear.timer); undoClear = null; } // new discs since: keep them
   const clearButton = $('clear-queue-button');
   clearButton.textContent = undoClear ? t('UNDO CLEAR') : t('CLEAR');
-  clearButton.title = undoClear ? t('Bring the cleared queue back (⌘Z / Ctrl+Z)') : t('Clear the queue');
+  clearButton.title = undoClear ? t('Bring the discs back (⌘Z / Ctrl+Z)') : t('Take every disc out');
   clearButton.classList.toggle('on', !!undoClear);
   clearButton.disabled = !state.queue.length && !undoClear;
-  if (!state.queue.length || state.index < 0) {
-    $('queue-info').textContent = t('QUEUE EMPTY');
-    $('queue-next').textContent = t('DROP SONGS OR A FOLDER TO BUILD A QUEUE');
-    list.replaceChildren();
+  const c = ch(), here = changer.slotOf(c, state.index);
+  $('eject-disc-button').disabled = !here;
+  $('disc-skip-button').disabled = !here || c.slots.filter(Boolean).length < 2;
+  const slots = c.slots.map((d, s) => (d ? { title: d.title, artist: d.artist, kind: d.kind, done: d.done, next: c.nextDisc === s, firstPath: c.queue[d.start] } : null));
+  if (!here) {
+    $('queue-info').textContent = c.queue.length ? t('CHANGER · {n} DISCS', { n: slots.filter(Boolean).length }) : t('CHANGER EMPTY');
+    $('queue-next').textContent = t('DROP AN ALBUM OR A FOLDER TO LOAD A DISC');
+    changerView.render({ slots, playingSlot: -1, tracks: [], heading: '' });
     return;
   }
-  const here = changer.slotOf(ch(), state.index), d = state.changer.slots[here.slot];
+  const d = c.slots[here.slot];
   const modeText = [state.shuffle !== 'OFF' ? t('SHUFFLE: {m}', { m: t(state.shuffle) }) : null, state.repeat !== 'OFF' ? t('REPEAT: {m}', { m: t(state.repeat) }) : null].filter(Boolean).join(' · ');
   $('queue-info').textContent = [t('DISC {n} · {at} / {of}', { n: here.slot + 1, at: here.offset + 1, of: d.end - d.start }), modeText].filter(Boolean).join(' · ');
   const next = upcomingIndex();
   $('queue-next').textContent = state.repeat === 'TRACK' ? t('REPEATING THIS TRACK')
     : next >= 0 && next !== state.index ? t('UP NEXT · {song}', { song: queueDisplay(state.queue[next]) }) : t('END OF THE LAST DISC');
-  const scrollTop = list.scrollTop;
-  const rows = state.queue.map((p, i) => {
+  const tracks = changer.tracksOf(c, here.slot).map((p, k) => {
     ensureDetails(p);
     const det = detailsCache.get(p);
-    return el('div', { class: `queue-row${i === state.index ? ' active' : ''}`, title: t('Play {song}', { song: queueDisplay(p) }), onClick: () => goTo(i) },
-      el('span', { class: 'num' }, `${i + 1}.`),
-      el('span', { class: 'entry' }, queueDisplay(p)),
-      el('span', { class: 'east' }, el('span', { class: 'duration' }, formatDuration(det ? det.duration : 0))));
+    return { index: d.start + k, no: k + 1, title: queueDisplay(p), time: formatDuration(det ? det.duration : 0), current: d.start + k === state.index };
   });
-  list.replaceChildren(...rows);
-  list.scrollTop = scrollTop;
+  changerView.render({ slots, playingSlot: here.slot, tracks, heading: [t('DISC {n}', { n: here.slot + 1 }), d.title || (d.kind === 'cdr' ? t('CD-R') : null), d.artist].filter(Boolean).join(' · ') });
 }
 
 const cdrTitle = () => t('MIX · {date}', { date: new Date().toLocaleDateString(locale, { day: 'numeric', month: 'short' }).toUpperCase() });
@@ -642,6 +645,8 @@ async function toggle() {
 }
 // The changer stands on queue position `index` and plays it (the tray turns when it's on another disc).
 function goTo(index, opts) {
+  const from = changer.slotOf(ch(), state.index), to = changer.slotOf(ch(), index);
+  if (from && to && from.slot !== to.slot && anim.enabled) disc.spinning = false; // slows while the tray turns; load spins it up
   apply(changer.moveTo(ch(), index));
   load(state.queue[state.index], opts);
 }
@@ -1622,6 +1627,12 @@ function buildStaticUi() {
   disc.onJogEnd = endJog;
   disc.onArtClick = (from) => { if (!spotifyActive()) openBooklet(app, from); };
   disc.position = discPosition;
+  changerView = createChangerView($('queue-card'), {
+    tray: $('changer'), heading: $('disc-heading'), list: $('queue-list'),
+    onPlaySlot: playSlot, onPlayTrack: goTo, animations: () => anim.enabled, coverFor: coverForPath,
+  });
+  $('disc-skip-button').addEventListener('click', discSkip);
+  $('eject-disc-button').addEventListener('click', () => { const h = changer.slotOf(ch(), state.index); if (h) ejectSlot(h.slot); });
   disc.onTrackPick = (k) => { const i = discStart + k; if (i === state.index) return; goTo(i); };
   engine.onEnded = trackFinished;
   engine.onCrossfadeDone = () => { if (engine.playing) setStatus(t('NOW SPINNING')); };

@@ -251,3 +251,6 @@ export function discFor({ kind = null, paths, details, title, now = Date.now() }
   if (one) return { id: `album:${key(artistOf(first))}\n${key(first.album)}`, kind: kind || 'album', title: first.album, artist: artistOf(first) || null };
   return { id: `${kind || 'cdr'}:${now}`, kind: kind || 'cdr', title, artist: null };
 }
+
+/** The tray's turn (degrees) that brings `slot` to the laser, on the right: a fifth of a turn a slot. */
+export const trayAngle = (slot) => 90 - slot * 72;

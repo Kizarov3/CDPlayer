@@ -58,17 +58,25 @@
         <div id="queue-card">
           <div id="queue-head">
             <div id="queue-text">
-              <div id="queue-info" data-i18n>QUEUE EMPTY</div>
-              <div id="queue-next" data-i18n>DROP SONGS OR A FOLDER TO BUILD A QUEUE</div>
+              <div id="queue-info" data-i18n>CHANGER EMPTY</div>
+              <div id="queue-next" data-i18n>DROP AN ALBUM OR A FOLDER TO LOAD A DISC</div>
             </div>
             <div id="queue-actions">
               <button class="pill small" id="search-button" title="Search your music folder, or paste a Spotify track/playlist link" data-i18n-title data-i18n>SEARCH</button>
-              <button class="pill small" id="save-playlist-button" title="Save the current queue as a .m3u playlist file" data-i18n-title data-i18n>SAVE</button>
-              <button class="pill small" id="load-playlist-button" title="Add every track from a .m3u playlist file to the queue" data-i18n-title data-i18n>LOAD</button>
+              <button class="pill small" id="save-playlist-button" title="Save the playing disc as a .m3u playlist file" data-i18n-title data-i18n>SAVE</button>
+              <button class="pill small" id="load-playlist-button" title="Load a .m3u playlist file as a CD-R" data-i18n-title data-i18n>LOAD</button>
+              <button class="pill small" id="disc-skip-button" title="Next disc (D)" data-i18n-title data-i18n>DISC SKIP</button>
+              <button class="pill small" id="eject-disc-button" title="Take the playing disc out of the changer" data-i18n-title data-i18n>EJECT</button>
               <button class="pill small" id="clear-queue-button" data-i18n>CLEAR</button>
             </div>
           </div>
-          <div id="queue-list" class="scroll"></div>
+          <div id="changer-row">
+            <div id="changer"></div>
+            <div id="disc-side">
+              <div id="disc-heading"></div>
+              <div id="queue-list" class="scroll"></div>
+            </div>
+          </div>
         </div>
       </section>
     </div>

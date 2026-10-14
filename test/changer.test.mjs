@@ -198,3 +198,8 @@ test('the disc a set of tracks makes: one album is that album; anything else is 
     { id: 'cdr:5', kind: 'cdr', title: 'MIX · 14 OCT', artist: null });
   assert.strictEqual(discFor({ kind: 'spotify', paths: ['s'], details: [d('X', 'Y')], title: 'MIX', now: 5 }).kind, 'spotify');
 });
+
+import { trayAngle } from '../src/renderer/js/changer.js';
+test('the tray turns the playing slot to the laser, a fifth of a turn a slot', () => {
+  assert.deepStrictEqual([0, 1, 4].map(trayAngle), [90, 18, -198]);
+});
