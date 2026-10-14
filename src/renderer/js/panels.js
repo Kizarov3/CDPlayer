@@ -547,8 +547,11 @@ async function lookUpTags(app, view) {
   const name = typed('artist') && typed('title')
     ? { artist: typed('artist'), title: typed('title'), album: typed('album') || null, guessed: false }
     : { artist: d.artist, title: d.title, album: d.album, guessed: !!d.nameGuessed };
+  // The file's ISRC finds the recording itself — unless its artist or title has just been typed in differently.
+  const asInFile = (k) => typed(k) === String((view.current || {})[k] ?? '').trim();
+  const isrc = view.current && view.current.isrc && asInFile('artist') && asInFile('title') ? view.current.isrc : null;
   view.busy = true;
-  const found = await app.cdp.lookupTags({ ...name, duration: d.duration || app.engine.duration }).catch(() => ({ networkError: true }));
+  const found = await app.cdp.lookupTags({ ...name, isrc, duration: d.duration || app.engine.duration }).catch(() => ({ networkError: true }));
   if (!tagsCurrent(view)) return;
   view.busy = false;
   if (!found || found.networkError) {

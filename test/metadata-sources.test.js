@@ -253,3 +253,50 @@ test('tags: the "album version" is the song itself, and a tribute band named aft
   assert.strictEqual(pickRecording([tribute], tool), null);
   assert.ok(pickRecording([rec({ 'artist-credit': [{ name: 'Nova Drift', joinphrase: ' feat. ' }, { name: 'Somebody Else' }], releases: [rel('Neon Skies', '2019')] })], { artist: 'Nova Drift', title: 'Solar Flare', duration: 200 }), 'a featured guest is still the artist\'s song');
 });
+
+test('tags: within the album, a CD or download before a vinyl or cassette pressing — but not a later album on CD', () => {
+  const pressing = (date, format, group = 'rg-aenima') => rel('Ænima', date, { media: [{ position: 1, format, 'track-count': 15, track: [{ number: format === '12" Vinyl' ? 'A3' : '3' }], 'track-offset': 2 }] }, { id: group });
+  const recs = [rec({ releases: [pressing('1996-09-17', '12" Vinyl'), pressing('1996-09-20', 'Cassette'), pressing('1996-10-01', 'CD'), pressing('2019-08-02', 'Digital Media')] })];
+  const found = pickRecording(recs, { artist: 'Nova Drift', title: 'Solar Flare', duration: 200 });
+  assert.strictEqual(found.release.date, '1996-10-01');
+  assert.strictEqual(found.track.number, '3');
+  const vinylFirst = [rec({ releases: [pressing('1971-03-01', '12" Vinyl', 'rg-first'), { ...pressing('1990-01-01', 'CD', 'rg-later'), title: 'Later' }] })];
+  assert.strictEqual(pickRecording(vinylFirst, { artist: 'Nova Drift', title: 'Solar Flare', duration: 200 }).release.date, '1971-03-01', 'the earliest album still decides which album');
+});
+
+test('tags: a recording found by the file\'s ISRC is the song, whatever the file\'s artist tag says', () => {
+  const studio = rec({ title: 'H.', 'artist-credit': [{ name: 'Tool' }], length: 367133, releases: [rel('Ænima', '1996-10-01')] });
+  assert.strictEqual(pickRecording([studio], { artist: 'Tool Tribute Band', title: 'H.', duration: 367 }), null);
+  assert.strictEqual(pickRecording([studio], { artist: 'Tool Tribute Band', title: 'H.', duration: 367, byIsrc: true }).release.title, 'Ænima');
+  assert.strictEqual(pickRecording([studio], { artist: 'Tool Tribute Band', title: 'H.', duration: 250, byIsrc: true }), null, 'but not when it\'s another length');
+});
+
+test('tags lookup: by ISRC first, and the year the album first came out', async () => {
+  const { lookupTags } = require('../src/main/online');
+  const studio = rec({ id: 'rec-h', title: 'H.', 'artist-credit': [{ name: 'Tool' }], length: 367133,
+    releases: [rel('Ænima', '2006-05-15', { id: 'rel-reissue', media: [{ position: 1, format: 'CD', 'track-count': 15, track: [{ number: '3' }] }] }, { id: 'rg-aenima' })] });
+  answer([
+    [/recording\?query=isrc%3AUSZE19600083/, { recordings: [studio] }],
+    [/recording\?query=/, { recordings: [] }],
+    [/release\/rel-reissue\?/, { id: 'rel-reissue', title: 'Ænima', date: '2006-05-15', 'artist-credit': [{ name: 'Tool' }], media: [{}],
+      'label-info': [{ label: { name: 'Volcano' } }], 'release-group': { id: 'rg-aenima', 'first-release-date': '1996-09-17' } }],
+  ]);
+  const found = await lookupTags({ artist: 'Tool Tribute Band', title: 'H.', album: 'Ænima', duration: 367, isrc: 'USZE19600083' });
+  assert.strictEqual(found.artist, 'Tool');
+  assert.strictEqual(found.album, 'Ænima');
+  assert.strictEqual(found.year, 1996);
+  assert.strictEqual(found.track, 3);
+  assert.strictEqual(found.label, 'Volcano');
+});
+
+test('MusicBrainz busy (503, its "slow down"): asked again after a pause, not taken as "doesn\'t know"', async () => {
+  const { mbFetch } = require('../src/main/online');
+  let calls = 0;
+  global.fetch = async () => (++calls < 2
+    ? { ok: false, status: 503, json: async () => ({}) }
+    : { ok: true, status: 200, json: async () => ({ recordings: [] }) });
+  assert.deepStrictEqual(await mbFetch('recording?query=x&fmt=json'), { recordings: [] });
+  assert.strictEqual(calls, 2);
+  calls = -10;
+  await assert.rejects(mbFetch('recording?query=y&fmt=json'), /HTTP 503/, 'and given up on after a few tries');
+});

@@ -57,6 +57,7 @@ function readTags(filePath) {
     const out = {};
     for (const [k, { get }] of Object.entries(FIELDS)) { const v = get(f.tag); out[k] = v === undefined || v === '' ? null : v; }
     out.hasCover = (f.tag.pictures || []).length > 0;
+    out.isrc = f.tag.isrc || null; // read only: for the MusicBrainz lookup
     return out;
   } finally { f.dispose(); }
 }

@@ -77,11 +77,19 @@ function sameSong(hit, artist, title) {
 // stores don't carry. MusicBrainz asks for a User-Agent that says who is calling and at most one request a second.
 const MB_USER_AGENT = 'CDPlayer/2 ( https://github.com/Kizarov3/CDPlayer )';
 let mbNextSlot = 0;
-async function mbFetch(pathAndQuery) {
+// A 503 is MusicBrainz saying "slow down" (other requests from the same address count too), not "no": asked again,
+// after a longer pause each time, before giving up.
+async function mbFetch(pathAndQuery, tries = 3) {
   const wait = mbNextSlot - Date.now();
   mbNextSlot = Math.max(Date.now(), mbNextSlot) + 1100;
   if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
-  return fetchJson(`https://musicbrainz.org/ws/2/${pathAndQuery}`, { headers: { 'User-Agent': MB_USER_AGENT } });
+  try {
+    return await fetchJson(`https://musicbrainz.org/ws/2/${pathAndQuery}`, { headers: { 'User-Agent': MB_USER_AGENT } });
+  } catch (e) {
+    if (e.status !== 503 || tries <= 1) throw e;
+    mbNextSlot = Math.max(mbNextSlot, Date.now() + 2000 * (4 - tries));
+    return mbFetch(pathAndQuery, tries - 1);
+  }
 }
 const musicBrainz = (entity, query) => mbFetch(`${entity}?query=${encodeURIComponent(query)}&fmt=json&limit=25`);
 const musicBrainzGet = (what, inc) => mbFetch(`${what}?inc=${inc}&fmt=json`);
@@ -132,21 +140,28 @@ const VERSION_WORDS = /\b(live|demo|remix|mix|instrumental|acoustic|karaoke|a ca
 // "Album version" and the like name the song itself, not another take of it.
 const SAME_TAKE = /\b(album|original|studio|lp) version\b/gi;
 
+// A CD or a download is what a file is usually ripped from; a vinyl side's track numbers are A1, B2…
+const formatRank = (medium) => (/\b(CD|Digital Media)\b/i.test((medium && medium.format) || '') ? 0 : 1);
+
 /**
  * The recording and release a file most likely is, from a MusicBrainz recording search: the same song by the same
- * artist, as long as the file (when its length is known), and not a live or demo take unless the title says it is.
+ * artist, as long as the file (when its length is known), and not a live or demo take unless the title says it is —
+ * or, for a search by the file's ISRC (`byIsrc`), any recording as long as the file, whatever its tags say.
  * Its release is the album the file's tag names, when one matches; otherwise the earliest official studio release,
- * albums before EPs before singles, not a box set. → { recording, release, medium, track } or null.
+ * albums before EPs before singles, not a box set; and of that album's pressings, a CD or download before a vinyl or
+ * cassette one. → { recording, release, medium, track } or null.
  */
-function pickRecording(recordings, { artist, title, album, duration }) {
-  let best = null;
+function pickRecording(recordings, { artist, title, album, duration, byIsrc = false }) {
+  const candidates = [];
   for (const rec of recordings || []) {
-    if (rec.score < 85 || !sameSong({ title: rec.title, artist: creditText(rec['artist-credit']) }, artist, title)) continue;
-    // …and the other way round for the first artist credited, so "Tool Tribute Band" isn't taken for "Tool".
-    const first = ((rec['artist-credit'] || [])[0] || {}).name || '';
-    if (artist && wordOverlapRatio(first, artist) < 0.5) continue;
     if (duration > 0 && rec.length && Math.abs(rec.length / 1000 - duration) > 5) continue;
-    if (VERSION_WORDS.test((rec.disambiguation || '').replace(SAME_TAKE, '')) && !VERSION_WORDS.test(title)) continue;
+    if (!byIsrc) {
+      if (rec.score < 85 || !sameSong({ title: rec.title, artist: creditText(rec['artist-credit']) }, artist, title)) continue;
+      // …and the other way round for the first artist credited, so "Tool Tribute Band" isn't taken for "Tool".
+      const first = ((rec['artist-credit'] || [])[0] || {}).name || '';
+      if (artist && wordOverlapRatio(first, artist) < 0.5) continue;
+      if (VERSION_WORDS.test((rec.disambiguation || '').replace(SAME_TAKE, '')) && !VERSION_WORDS.test(title)) continue;
+    }
     for (const release of rec.releases || []) {
       const group = release['release-group'] || {};
       const albumMatch = !!album && wordOverlapRatio(bareTitle(album), release.title) >= 0.75 && wordOverlapRatio(release.title, album) >= 0.75;
@@ -156,10 +171,19 @@ function pickRecording(recordings, { artist, title, album, duration }) {
       // a box set after an album on one or two discs.
       const date = /^\d{4}$/.test(release.date || '') ? `${release.date}-99` : release.date || '9999';
       const rank = [albumMatch ? 0 : 1, MB_TYPE_RANK[group['primary-type']] ?? 3, (release.count || 1) > 2 ? 1 : 0, date, -(rec.score || 0)];
-      if (!best || rankBefore(rank, best.rank)) best = { rank, recording: rec, release, medium, track };
+      candidates.push({ rank, group: group.id, recording: rec, release, medium, track });
     }
   }
-  return best;
+  let best = null;
+  for (const c of candidates) if (!best || rankBefore(c.rank, best.rank)) best = c;
+  if (!best) return null;
+  // The album is decided; now its pressing.
+  const pressingRank = (c) => [c.rank[1], c.rank[2], formatRank(c.medium), c.rank[3], c.rank[4]];
+  let pressing = best;
+  for (const c of candidates) {
+    if (c.group === best.group && c.rank[0] === best.rank[0] && rankBefore(pressingRank(c), pressingRank(pressing))) pressing = c;
+  }
+  return pressing;
 }
 
 /**
@@ -167,18 +191,26 @@ function pickRecording(recordings, { artist, title, album, duration }) {
  * trackCount, disc, discCount, genre, label, musicBrainzTrackId, musicBrainzReleaseId, coverUrl } — or null when it
  * doesn't know the song. { networkError: true } when it couldn't be asked.
  */
-async function lookupTags({ artist, title, album, duration, guessed }) {
+async function lookupTags({ artist, title, album, duration, guessed, isrc }) {
   let networkError = false;
+  // The file's ISRC (put there by the label or the store it came from) names the recording itself: asked first, it
+  // finds the song even when the file's artist or title is wrong.
+  const searches = [];
+  if (/^[A-Z]{2}[A-Z0-9]{3}\d{7}$/i.test(String(isrc || '').replace(/-/g, ''))) {
+    searches.push({ v: { artist, title }, byIsrc: true, queries: [`isrc:${String(isrc).replace(/-/g, '').toUpperCase()}`] });
+  }
   for (const v of nameVariants({ artist, title, guessed }).filter((x) => x.artist)) {
     // A famous song has hundreds of recordings (mostly live), in no useful order: when the file's length is known, ask
     // only for official releases of a recording that long first — that's every candidate on one page.
     const base = `recording:${phrase(bareTitle(v.title))} AND artist:${phrase(v.artist)}`;
-    const queries = duration > 0 ? [`${base} AND status:official AND dur:[${Math.round(duration - 5) * 1000} TO ${Math.round(duration + 5) * 1000}]`, base] : [base];
+    searches.push({ v, queries: duration > 0 ? [`${base} AND status:official AND dur:[${Math.round(duration - 5) * 1000} TO ${Math.round(duration + 5) * 1000}]`, base] : [base] });
+  }
+  for (const { v, queries, byIsrc } of searches) {
     let found = null;
     for (const query of queries) {
       try {
         const json = await mbFetch(`recording?query=${encodeURIComponent(query)}&fmt=json&limit=100`);
-        found = pickRecording(json.recordings, { ...v, album: v.artist === artist ? album : null, duration });
+        found = pickRecording(json.recordings, { ...v, album: v.artist === artist ? album : null, duration, byIsrc });
       } catch { networkError = true; }
       if (found) break;
     }
@@ -189,7 +221,8 @@ async function lookupTags({ artist, title, album, duration, guessed }) {
     } catch { /* the search's own summary of the release will do */ }
     const genres = [...(release.genres || []), ...((release['release-group'] || {}).genres || [])].sort((a, b) => b.count - a.count);
     const label = (release['label-info'] || []).map((l) => l.label && l.label.name).find(Boolean);
-    const year = /\d{4}/.exec(release.date || found.release.date || '');
+    // The year the album first came out, not this pressing's (a 2006 reissue of a 1996 album is still 1996's).
+    const year = /\d{4}/.exec((release['release-group'] || {})['first-release-date'] || release.date || found.release.date || '');
     const genre = genres[0] ? genres[0].name.replace(/\b\w/g, (ch) => ch.toUpperCase()) : null;
     return {
       title: found.recording.title,
