@@ -104,12 +104,13 @@ cdp.onMiniState(async (s) => {
   // The changer's modes: SHUFFLE OFF / DISC / ALL, REPEAT OFF / TRACK / DISC / ALL.
   if ('shuffle' in s) {
     $('shuffle').classList.toggle('on', s.shuffle !== 'OFF');
-    $('shuffle').title = { OFF: t('Shuffle'), DISC: t('Shuffle: this disc'), ALL: t('Shuffle: all discs') }[s.shuffle] || t('Shuffle');
+    $('shuffle').title = s.changerMode ? { OFF: t('Shuffle'), DISC: t('Shuffle: this disc'), ALL: t('Shuffle: all discs') }[s.shuffle] || t('Shuffle') : t('Shuffle');
   }
   if ('repeat' in s) {
     $('repeat').classList.toggle('on', s.repeat !== 'OFF');
     $('badge').textContent = s.repeat === 'TRACK' ? '1' : s.repeat === 'DISC' ? '◉' : '';
-    $('repeat').title = { OFF: t('Repeat'), TRACK: t('Repeat: this track'), DISC: t('Repeat: this disc'), ALL: t('Repeat: all discs') }[s.repeat] || t('Repeat');
+    $('repeat').title = (s.changerMode ? { OFF: t('Repeat'), TRACK: t('Repeat: this track'), DISC: t('Repeat: this disc'), ALL: t('Repeat: all discs') }
+      : { OFF: t('Repeat'), TRACK: t('Repeat: this track'), ALL: t('Repeat: whole queue') })[s.repeat] || t('Repeat');
   }
   if ('duration' in s) view.duration = s.duration;
   if ('position' in s) { view.position = s.position; if (!view.dragging) renderProgress(s.position); }

@@ -11,6 +11,7 @@ import { parseLrc, currentLineIndex, heardPosition, playbackTimeFor, looksOnline
 import { shortcutKey } from './keys.js';
 import { jogSeconds } from './jog.js';
 import * as changer from './changer.js';
+import { insertNext, pinnedNext, afterRemove } from './play-next.js';
 import { createChangerView } from './changer-view.js';
 import { dockIcon } from './dock-disc.js';
 import { drawCard, lyricChoices, cardSubtitle, quoteLines, MAX_QUOTE_LINES } from './share-card.js';
@@ -52,6 +53,8 @@ export const BUILTIN_EQ_PRESETS = [
 const state = {
   queue: [], index: -1, shuffle: 'OFF', repeat: 'OFF', // SHUFFLE OFF / DISC / ALL, REPEAT OFF / TRACK / DISC / ALL
   changer: { slots: Array(changer.SLOTS).fill(null), nextDisc: null }, // the slots over queue and index (changer.js)
+  changerMode: false,  // Settings → CHANGER: the five-disc changer instead of the queue (each keeps its own music)
+  nextUp: null,        // the queue's { start, end }: the run put to PLAY NEXT (play-next.js)
   volume: 100, volumeBeforeMute: -1, crossfade: 0, mono: false, spatial: false, spatialAmount: 50, waveform: true, ambient: true, miniMode: false, discord: true, discNoise: false, discWear: true, discShine: true, taskbarDisc: true,
   trayBusy: false, // the tray is moving or the disc is being read: transport presses wait
   saveFound: false, // covers and lyrics found online are written into the song's file
@@ -153,7 +156,9 @@ function pumpDetails() {
 
 // ---- Queue ---------------------------------------------------------------------------------------------------
 
-// The changer (changer.js) owns state.queue and state.index together with the slots; these two read and write all three.
+// Two modes, each with its own music: the queue (2.14's: a list to reorder, PLAY NEXT's run) and the CD changer
+// (changer.js owns state.queue and state.index together with its slots). state.queue / state.index are the mode's in use;
+// the other one waits in `stores`. In the changer, ch() and apply() read and write all three.
 const ch = () => ({ ...state.changer, queue: state.queue, index: state.index });
 let changerView = null; // the carousel (changer-view.js)
 let picking = Promise.resolve(); // the full changer's question, one at a time
@@ -166,13 +171,28 @@ function apply(c) {
 }
 const modes = () => ({ shuffle: state.shuffle, repeat: state.repeat });
 // The playing disc's end in the queue (Spotify is told the tracks up to it), or the queue's end.
-const discEnd = () => { const h = changer.slotOf(ch(), state.index); return h ? state.changer.slots[h.slot].end : state.queue.length; };
+const discEnd = () => { const h = state.changerMode && changer.slotOf(ch(), state.index); return h ? state.changer.slots[h.slot].end : state.queue.length; };
+// The changer slot the song playing is on — never in queue mode.
+const playingSlot = () => (state.changerMode ? changer.slotOf(ch(), state.index) : null);
+// The queue's next song (2.14): PLAY NEXT's run first, then shuffled or in order, round again with REPEAT ALL.
+function queueNextIndex() {
+  if (!state.queue.length) return -1;
+  const pinned = pinnedNext(state.index, state.nextUp, state.queue.length);
+  if (pinned >= 0) return pinned;
+  if (state.shuffle !== 'OFF' && state.queue.length > 1) {
+    let next;
+    do { next = Math.floor(Math.random() * state.queue.length); } while (next === state.index);
+    return next;
+  }
+  if (state.index + 1 < state.queue.length) return state.index + 1;
+  return state.repeat === 'ALL' ? 0 : -1;
+}
 
-let upcomingCache = null; // { index, value }: the shuffle's pick, the same until the changer moves or changes
+let upcomingCache = null; // { index, size, value }: the shuffle's pick, the same until the music moves or changes
 function upcomingIndex() {
-  if (upcomingCache && upcomingCache.index === state.index) return upcomingCache.value;
-  const value = changer.nextIndex(ch(), modes());
-  upcomingCache = { index: state.index, value };
+  if (upcomingCache && upcomingCache.index === state.index && upcomingCache.size === state.queue.length) return upcomingCache.value;
+  const value = state.changerMode ? changer.nextIndex(ch(), modes()) : queueNextIndex();
+  upcomingCache = { index: state.index, size: state.queue.length, value };
   return value;
 }
 
@@ -184,14 +204,20 @@ function scheduleQueueRender() {
 }
 
 const drag = { index: -1, lastY: 0, accumulated: 0, moved: false };
-// The disc that's in, for its data side (disc-data.js): the playing changer disc's songs.
+// The disc that's in, for its data side (disc-data.js): the playing changer disc's songs — or, in the queue, the
+// songs of the playing one's album that stand together around it (just the playing song when its album isn't known).
 let discStart = 0;
 function updateDiscData() {
   const i = state.index, here = state.loadedPath && detailsCache.get(state.loadedPath);
   if (i < 0 || !here) { disc.setData(null); return; }
   const artistOf = (d) => (d.credits && d.credits.albumArtist) || d.artist || '';
-  const slot = changer.slotOf(ch(), i), run = slot ? state.changer.slots[slot.slot] : { start: i, end: i + 1 };
-  const a = run.start, b = run.end - 1;
+  let a = i, b = i;
+  const slot = playingSlot();
+  if (slot) { a = state.changer.slots[slot.slot].start; b = state.changer.slots[slot.slot].end - 1; } else {
+    const same = (p) => { const d = detailsCache.get(p); return !!(here.album && d && d.album === here.album && artistOf(d) === artistOf(here)); };
+    while (a > 0 && same(state.queue[a - 1])) a--;
+    while (b < state.queue.length - 1 && same(state.queue[b + 1])) b++;
+  }
   discStart = a;
   const paths = state.queue.slice(a, b + 1);
   disc.setData({
@@ -211,12 +237,14 @@ function renderQueue() {
   if (!changerView) return; // not built yet
   updateDiscData();
   showChangerSlots();
-  if (undoClear && state.queue.length) { clearTimeout(undoClear.timer); undoClear = null; } // new discs since: keep them
+  if (undoClear && state.queue.length) { clearTimeout(undoClear.timer); undoClear = null; } // new music since: keep it
   const clearButton = $('clear-queue-button');
   clearButton.textContent = undoClear ? t('UNDO CLEAR') : t('CLEAR');
-  clearButton.title = undoClear ? t('Bring the discs back (⌘Z / Ctrl+Z)') : t('Take every disc out');
+  clearButton.title = state.changerMode ? (undoClear ? t('Bring the discs back (⌘Z / Ctrl+Z)') : t('Take every disc out'))
+    : undoClear ? t('Bring the cleared queue back (⌘Z / Ctrl+Z)') : t('Clear the queue');
   clearButton.classList.toggle('on', !!undoClear);
   clearButton.disabled = !state.queue.length && !undoClear;
+  if (!state.changerMode) { renderQueueList(); return; }
   const c = ch(), here = changer.slotOf(c, state.index);
   $('eject-disc-button').disabled = !here;
   $('disc-skip-button').disabled = !here || c.slots.filter(Boolean).length < 2;
@@ -242,6 +270,74 @@ function renderQueue() {
   changerView.render({ slots, playingSlot: here.slot, tracks, heading: [t('DISC {n}', { n: here.slot + 1 }), discLabel(d), d.artist].filter(Boolean).join(' · ') });
 }
 
+// The queue, as 2.14 showed it: every song, the one playing marked, PLAY NEXT's run tagged; drag to reorder, × to remove.
+function renderQueueList() {
+  const list = $('queue-list');
+  if (!state.queue.length || state.index < 0) {
+    $('queue-info').textContent = t('QUEUE EMPTY');
+    $('queue-next').textContent = t('DROP SONGS OR A FOLDER TO BUILD A QUEUE');
+    list.replaceChildren();
+    return;
+  }
+  $('queue-info').textContent = state.shuffle !== 'OFF' ? t('QUEUE {at} / {of} · SHUFFLED', { at: state.index + 1, of: state.queue.length }) : t('QUEUE {at} / {of}', { at: state.index + 1, of: state.queue.length });
+  const next = upcomingIndex();
+  $('queue-next').textContent = state.repeat === 'TRACK' ? t('REPEATING THIS TRACK')
+    : next >= 0 && next !== state.index ? t('UP NEXT · {song}', { song: queueDisplay(state.queue[next]) }) : t('END OF QUEUE');
+  const scrollTop = list.scrollTop;
+  const rows = state.queue.map((p, i) => {
+    ensureDetails(p);
+    const d = detailsCache.get(p);
+    const remove = el('button', { class: 'glyph-x', title: t('Remove from queue'), onClick: (e) => { e.stopPropagation(); removeFromQueue(i); } }, '×');
+    const next = !!state.nextUp && i > state.index && i >= state.nextUp.start && i < state.nextUp.end;
+    const row = el('div', { class: `queue-row${i === state.index ? ' active' : ''}${i === drag.index ? ' dragging' : ''}`, title: t('Play {song}', { song: queueDisplay(p) }) },
+      el('span', { class: 'num' }, `${i + 1}.`),
+      el('span', { class: 'entry' }, queueDisplay(p)),
+      next ? el('span', { class: 'next-tag', title: t('Plays next') }, t('NEXT')) : null,
+      el('span', { class: 'east' }, el('span', { class: 'duration' }, formatDuration(d ? d.duration : 0)), remove));
+    row.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || e.target === remove) return;
+      drag.index = i; drag.lastY = e.clientY; drag.accumulated = 0; drag.moved = false;
+      list.setPointerCapture(e.pointerId);
+    });
+    return row;
+  });
+  list.replaceChildren(...rows);
+  list.scrollTop = scrollTop;
+}
+function setupQueueDrag() {
+  const list = $('queue-list');
+  list.addEventListener('pointermove', (e) => {
+    if (drag.index < 0) return;
+    drag.accumulated += e.clientY - drag.lastY;
+    drag.lastY = e.clientY;
+    const step = 28; // 26px row + 2px gap
+    let changed = false;
+    while (Math.abs(drag.accumulated) >= step && state.queue.length > 1) {
+      const dir = drag.accumulated > 0 ? 1 : -1, target = drag.index + dir;
+      if (target < 0 || target >= state.queue.length) break;
+      drag.moved = true; changed = true;
+      state.nextUp = null; // reordered by hand: the order is the queue's now
+      [state.queue[drag.index], state.queue[target]] = [state.queue[target], state.queue[drag.index]];
+      if (state.index === drag.index) state.index = target; else if (state.index === target) state.index = drag.index;
+      drag.index = target;
+      drag.accumulated -= dir * step;
+    }
+    if (changed) { upcomingCache = null; renderQueue(); saveQueueSoon(); }
+  });
+  // The list captures the pointer on press (so a drag keeps tracking outside the row), which also means the
+  // browser delivers the release — and the click — to the list, not the row. So "pressed and released without
+  // dragging" is handled here: that's a click on the row, and plays it.
+  const end = (e) => {
+    if (drag.index < 0) return;
+    const index = drag.index, moved = drag.moved;
+    drag.index = -1; drag.moved = false;
+    if (moved) { renderQueue(); spotifyResync(); } // Spotify hears the new order once, when the row is let go
+    else if (e.type === 'pointerup' && index < state.queue.length) { state.index = index; load(state.queue[index]); }
+  };
+  list.addEventListener('pointerup', end);
+  list.addEventListener('pointercancel', end);
+}
+
 // What's written on a disc: its title, or for an untitled CD-R "MIX · 14 OCT" — in the language of the day.
 function discLabel(d) {
   if (d.title) return d.title;
@@ -256,7 +352,42 @@ async function discOf(paths, { kind = null, title = null } = {}) {
 // Into the changer: a free slot, a finished disc's, or the one the user picks. `startPlayback: false` leaves loading the
 // song to the caller (the tray). (`item`, not `disc`: `disc` is the big disc's renderer everywhere else in app.js.)
 // → { slot } or { cancelled: true }.
+// The queue (2.14): songs to the end, or (`next`) straight after the one playing as PLAY NEXT's run; `play` plays the
+// first of them. Files put into a queue holding a Spotify disc replace it, like a new CD. A song to play that's in the
+// queue already is played there.
+function queueAdd(songs, { play = false, next = false, startPlayback = true } = {}) {
+  if (spotifyDiscIn() && !songs.some(isSpotifyUri)) { insertDisc(songs); return { slot: -1 }; }
+  if (play && startPlayback && songs.length === 1 && state.queue.includes(songs[0])) { goTo(state.queue.indexOf(songs[0])); return { slot: -1 }; }
+  let first;
+  if (next && state.queue.length && state.index >= 0 && !play) {
+    const r = insertNext(state.queue, state.index, state.nextUp, songs);
+    state.queue = r.queue; state.nextUp = r.nextUp; first = r.nextUp.end - songs.length;
+    setStatus(songs.length === 1 ? t('PLAYS NEXT') : t('{n} TO PLAY NEXT', { n: songs.length }));
+  } else {
+    first = state.queue.length;
+    state.queue.push(...songs);
+    setStatus(t('ADDED {n} TO QUEUE', { n: songs.length }));
+  }
+  upcomingCache = null;
+  if (play && startPlayback) state.index = first;
+  else if (state.index < 0) state.index = first;
+  else { renderQueue(); saveQueueSoon(); spotifyResync(); return { slot: -1 }; }
+  renderQueue(); saveQueueSoon();
+  if (startPlayback) load(state.queue[state.index]);
+  return { slot: -1 };
+}
+function removeFromQueue(i) {
+  if (i < 0 || i >= state.queue.length) return;
+  state.queue.splice(i, 1);
+  state.nextUp = afterRemove(state.nextUp, i);
+  if (!state.queue.length) resetToIdle(t('QUEUE EMPTY'));
+  else if (i === state.index) { state.index = Math.min(i, state.queue.length - 1); load(state.queue[state.index]); }
+  else if (i < state.index) state.index--;
+  spotifyResync();
+  renderQueue(); saveQueueSoon();
+}
 async function loadDisc(item, tracks, { play = false, next = false, startPlayback = true } = {}) {
+  if (!state.changerMode) return queueAdd(tracks, { play, next, startPlayback });
   // One song to play, already on a disc in the changer (from SEARCH or HISTORY): it's played there, not loaded again.
   if (play && startPlayback && tracks.length === 1 && state.queue.includes(tracks[0])) { goTo(state.queue.indexOf(tracks[0])); return { slot: changer.slotOf(ch(), state.index).slot }; }
   let r = changer.load(ch(), item, tracks, { play, next });
@@ -289,6 +420,7 @@ async function addToQueue(items, { sorted = false, play = false, next = false, t
   const songs = sorted ? items : await cdp.collectAudio(items);
   if (!songs.length) { setStatus(t('NO SUPPORTED AUDIO FOUND')); return; }
   if (disc.trayOpen && !state.trayBusy) { await putDiscOnTray(songs); return; }
+  if (!state.changerMode) { queueAdd(songs, { play, next }); return; }
   await loadDisc(await discOf(songs, { title }), songs, { play, next });
 }
 /** PLAY NEXT: into the changer, to play when the disc playing ends. */
@@ -296,21 +428,36 @@ const playNext = (items, opts = {}) => addToQueue(items, { ...opts, next: true }
 // CLEAR takes every disc out, and can be taken back for a few seconds: the button turns into UNDO CLEAR (and ⌘Z /
 // Ctrl+Z works), and the changer comes back with the same track at the same spot, playing if it was.
 let undoClear = null;
+// The music of the mode in use, to put back later (undo, or switching modes) — and putting it back.
+function takeStore() { return state.changerMode ? { changer: ch() } : { queue: state.queue.slice(), index: state.index, nextUp: state.nextUp }; }
+function putStore(s) {
+  if (s && s.changer) { apply(s.changer); return; }
+  state.queue = s && s.queue ? s.queue.slice() : []; state.index = s && s.queue ? s.index : -1; state.nextUp = (s && s.nextUp) || null;
+  upcomingCache = null;
+}
+// Files gone (an Audio CD out, Spotify disconnected) leave the music; the changer stays on the same song.
+function dropPaths(gone) {
+  if (state.changerMode) { apply(changer.removePaths(ch(), gone)); return; }
+  const current = state.queue[state.index];
+  state.nextUp = null; state.queue = state.queue.filter((p) => !gone.has(p));
+  state.index = current && !gone.has(current) ? state.queue.indexOf(current) : -1;
+  upcomingCache = null;
+}
 function clearQueue() {
   if (!state.queue.length) return;
   if (undoClear) clearTimeout(undoClear.timer);
-  undoClear = { changer: ch(), position: engine.position, playing: engine.playing, timer: setTimeout(() => { undoClear = null; renderQueue(); }, UNDO_CLEAR_SECONDS * 1000) };
-  apply(changer.clear());
-  resetToIdle(t('CHANGER EMPTIED'));
+  undoClear = { store: takeStore(), position: engine.position, playing: engine.playing, timer: setTimeout(() => { undoClear = null; renderQueue(); }, UNDO_CLEAR_SECONDS * 1000) };
+  putStore(state.changerMode ? { changer: changer.clear() } : { queue: [], index: -1, nextUp: null });
+  resetToIdle(state.changerMode ? t('CHANGER EMPTIED') : t('QUEUE CLEARED'));
   renderQueue(); saveQueueSoon();
 }
 function undoClearQueue() {
   if (!undoClear || state.queue.length) return;
   const u = undoClear;
   clearTimeout(u.timer); undoClear = null;
-  apply(u.changer);
+  putStore(u.store);
   renderQueue(); saveQueueSoon();
-  setStatus(t('CHANGER RESTORED'));
+  setStatus(state.changerMode ? t('CHANGER RESTORED') : t('QUEUE RESTORED'));
   if (state.index >= 0) load(state.queue[state.index], { autoPlay: u.playing, startAt: u.position });
 }
 /** EJECT: the disc in `slot` comes out; the playing one's going moves on to the next disc. */
@@ -668,6 +815,7 @@ async function toggle() {
 }
 // The changer stands on queue position `index` and plays it (the tray turns when it's on another disc).
 function goTo(index, opts) {
+  if (!state.changerMode) { state.index = index; upcomingCache = null; load(state.queue[index], opts); return; }
   const from = changer.slotOf(ch(), state.index), to = changer.slotOf(ch(), index);
   if (from && to && from.slot !== to.slot && anim.enabled) disc.spinning = false; // slows while the tray turns; load spins it up
   apply(changer.moveTo(ch(), index));
@@ -686,18 +834,20 @@ function previousTrack() {
 }
 /** DISC SKIP (D): the next disc in the changer. */
 function discSkip() {
+  if (!state.changerMode) return;
   const to = changer.discSkip(ch(), modes());
   if (to < 0) { setStatus(t('NO OTHER DISC IN THE CHANGER')); return; }
   goTo(to);
 }
 /** A slot's disc (1–5, or a click on it in the carousel), from its first song. */
 function playSlot(slot) {
+  if (!state.changerMode) return;
   const to = changer.playSlot(ch(), slot);
   if (to >= 0) goTo(to);
 }
 // The playing song has played to its end: the changer notes it (a disc is finished at its last song).
 function notePlayed() {
-  if (state.index < 0) return;
+  if (state.index < 0 || !state.changerMode) return;
   const pick = upcomingCache; // the current song was never a candidate: the pick shown as UP NEXT still stands
   apply({ ...changer.markFinished(ch(), state.index, modes()), index: state.index });
   upcomingCache = pick;
@@ -886,7 +1036,7 @@ function stopSpotify() {
   if (spotifySession) spotifySession.disconnect();
   if (spotifyDiscIn()) {
     const was = state.loadedPath;
-    apply(changer.removePaths(ch(), new Set(state.queue.filter(isSpotifyUri))));
+    dropPaths(new Set(state.queue.filter(isSpotifyUri)));
     if (state.index < 0 || isSpotifyUri(was)) resetToIdle(t('SPOTIFY DISCONNECTED'));
     renderQueue(); saveQueueSoon();
   }
@@ -958,7 +1108,7 @@ function onAudioCdGone({ mount, tracks }) {
   const gone = new Set(tracks);
   if (!state.queue.some((p) => gone.has(p))) return;
   const current = state.loadedPath;
-  apply(changer.removePaths(ch(), gone));
+  dropPaths(gone);
   if (gone.has(current) || state.index < 0) resetToIdle(t('DISC EJECTED'));
   renderQueue();
   saveQueueSoon();
@@ -1028,6 +1178,16 @@ async function insertDisc(paths, { status, start = 0, disc: given = null, kind =
 // Music dropped (or picked) while the tray is out: that's a new disc in the changer, the one in the player — loaded but
 // not playing. `given`: the disc it is (a shelf album); else it's worked out from the tracks.
 async function putDiscOnTray(paths, start = 0, status = t('DISC ON THE TRAY · PRESS E OR PLAY TO CLOSE'), { disc: given = null, kind = null, title = null } = {}) {
+  if (!state.changerMode) { // the queue (2.14): the new disc replaces it
+    state.nextUp = null; state.queue = paths.slice();
+    state.index = Math.max(0, Math.min(start, paths.length - 1));
+    upcomingCache = null;
+    disc.discPresent = true;
+    renderQueue(); saveQueueSoon();
+    trayResume = { playing: false };
+    load(state.queue[state.index], { autoPlay: false }).then(() => { if (disc.trayOpen && !state.trayBusy) setStatus(status); });
+    return;
+  }
   const r = await loadDisc(given || await discOf(paths, { kind, title }), paths, { play: true, startPlayback: false });
   if (r.cancelled) return;
   const run = state.changer.slots[r.slot];
@@ -1472,7 +1632,7 @@ function pushMini(full = false) {
     Object.assign(msg, {
       colors, animations: anim.enabled, shine: state.discShine, visMode: visualizerModeFor(shownTheme),
       shuffle: state.shuffle, repeat: state.repeat,
-      disc: (changer.slotOf(ch(), state.index) || { slot: -1 }).slot + 1,
+      disc: (playingSlot() || { slot: -1 }).slot + 1, changerMode: state.changerMode,
       track: {
         title: state.titleText || t('Pick a track to get started.'), artist: state.artistText || null, album: d && d.album ? d.album : null,
         lookingUp: disc.lookingUp, coverKey: miniCoverKey, loaded: !!state.loadedPath,
@@ -1520,9 +1680,11 @@ async function choose() {
 }
 // SAVE: the playing disc as a .m3u playlist.
 async function savePlaylist() {
-  const here = changer.slotOf(ch(), state.index);
-  if (!here) { setStatus(t('NO DISC PLAYING')); return; }
-  const r = await cdp.savePlaylistDialog(changer.tracksOf(ch(), here.slot).map((p) => ({ path: p, display: queueDisplay(p) })));
+  const here = playingSlot();
+  if (state.changerMode && !here) { setStatus(t('NO DISC PLAYING')); return; }
+  if (!state.changerMode && !state.queue.length) { setStatus(t('QUEUE IS EMPTY')); return; }
+  const songs = here ? changer.tracksOf(ch(), here.slot) : state.queue; // the playing disc, or the whole queue
+  const r = await cdp.savePlaylistDialog(songs.map((p) => ({ path: p, display: queueDisplay(p) })));
   if (r.ok) setStatus(t('SAVED PLAYLIST · {name}', { name: r.name }));
   else if (!r.canceled) setStatus(t("COULDN'T SAVE PLAYLIST"));
 }
@@ -1539,11 +1701,12 @@ const appendAndPlay = (p) => addToQueue([p], { sorted: true, play: true });
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck };
+  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, changer: state.changerMode };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
-  return { paths: state.queue, index: state.index, positionMicros: engine.deck ? Math.round(engine.position * 1e6) : 0, changer: changer.serialize(ch()) };
+  const at = { paths: state.queue, index: state.index, positionMicros: engine.deck ? Math.round(engine.position * 1e6) : 0 };
+  return state.changerMode ? { ...at, mode: 'CHANGER', changer: changer.serialize(ch()) } : { ...at, mode: 'QUEUE' };
 }
 function saveQueueSoon() { clearTimeout(queueTimer); queueTimer = setTimeout(() => cdp.saveQueue(queueSnapshot()), 500); }
 function saveEverythingNow() {
@@ -1568,25 +1731,50 @@ function escape() {
 // ---- Build the static UI ---------------------------------------------------------------------------------------
 
 const playButton = roundButton('PLAY', 68, { primary: true, title: t('Play/Pause'), onClick: () => toggle() });
-// The changer's modes: SHUFFLE off → this disc → all discs; REPEAT off → this track → this disc → all discs.
-const SHUFFLES = ['OFF', 'DISC', 'ALL'], REPEATS = ['OFF', 'TRACK', 'DISC', 'ALL'];
-function toggleShuffle() {
-  state.shuffle = SHUFFLES[(SHUFFLES.indexOf(state.shuffle) + 1) % SHUFFLES.length];
+// SHUFFLE and REPEAT, by the mode: the queue's off / on and off / track / all (2.14); the changer's off / this disc /
+// all discs and off / track / disc / all discs.
+const SHUFFLES = { QUEUE: ['OFF', 'ALL'], CHANGER: ['OFF', 'DISC', 'ALL'] }, REPEATS = { QUEUE: ['OFF', 'TRACK', 'ALL'], CHANGER: ['OFF', 'TRACK', 'DISC', 'ALL'] };
+const modeKey = () => (state.changerMode ? 'CHANGER' : 'QUEUE');
+function showModes() {
   shuffleButton.setOn(state.shuffle !== 'OFF');
   shuffleButton.setBadge(state.shuffle === 'DISC' ? '◉' : null); // one character fits the badge; the info line says it in words
-  shuffleButton.title = { OFF: t('Shuffle'), DISC: t('Shuffle: this disc'), ALL: t('Shuffle: all discs') }[state.shuffle];
-  upcomingCache = null; renderQueue();
-  pushMini(true);
-  spotifyResync();
-}
-function cycleRepeat() {
-  state.repeat = REPEATS[(REPEATS.indexOf(state.repeat) + 1) % REPEATS.length];
+  shuffleButton.title = state.changerMode ? { OFF: t('Shuffle'), DISC: t('Shuffle: this disc'), ALL: t('Shuffle: all discs') }[state.shuffle] : t('Shuffle');
   repeatButton.setOn(state.repeat !== 'OFF');
   repeatButton.setBadge(state.repeat === 'TRACK' ? '1' : state.repeat === 'DISC' ? '◉' : null);
-  repeatButton.title = { OFF: t('Repeat'), TRACK: t('Repeat: this track'), DISC: t('Repeat: this disc'), ALL: t('Repeat: all discs') }[state.repeat];
-  upcomingCache = null; renderQueue();
-  pushMini(true);
-  spotifyResync();
+  repeatButton.title = state.changerMode ? { OFF: t('Repeat'), TRACK: t('Repeat: this track'), DISC: t('Repeat: this disc'), ALL: t('Repeat: all discs') }[state.repeat]
+    : { OFF: t('Repeat'), TRACK: t('Repeat: this track'), ALL: t('Repeat: whole queue') }[state.repeat];
+}
+function modesChanged() { showModes(); upcomingCache = null; renderQueue(); pushMini(true); spotifyResync(); }
+function toggleShuffle() {
+  const list = SHUFFLES[modeKey()];
+  state.shuffle = list[(list.indexOf(state.shuffle) + 1) % list.length];
+  modesChanged();
+}
+function cycleRepeat() {
+  const list = REPEATS[modeKey()];
+  state.repeat = list[(list.indexOf(state.repeat) + 1) % list.length];
+  modesChanged();
+}
+// Settings → CHANGER: the music of the mode in use is put aside (and saved), the other one's comes up at its position.
+let stores = { QUEUE: null, CHANGER: null };
+function setChangerMode(on) {
+  if (on === state.changerMode) return;
+  clearTimeout(queueTimer); cdp.saveQueue(queueSnapshot());
+  stores[modeKey()] = { ...takeStore(), positionMicros: engine.deck ? Math.round(engine.position * 1e6) : 0 };
+  if (undoClear) { clearTimeout(undoClear.timer); undoClear = null; }
+  if (engine.playing) { engine.pause(); setPlaying(false); }
+  state.changerMode = on;
+  document.body.classList.toggle('changer-mode', on);
+  if (!on) { if (state.shuffle === 'DISC') state.shuffle = 'ALL'; if (state.repeat === 'DISC') state.repeat = 'ALL'; } // the queue has no discs
+  showModes();
+  const coming = stores[modeKey()];
+  putStore(coming || (on ? { changer: changer.clear() } : null));
+  saveSettingsSoon();
+  renderQueue(); pushMini(true);
+  if (state.index >= 0) load(state.queue[state.index], { autoPlay: false, startAt: ((coming && coming.positionMicros) || 0) / 1e6 });
+  else resetToIdle(on ? t('CHANGER EMPTY') : t('QUEUE EMPTY'));
+  setStatus(on ? t('CD CHANGER ON') : t('QUEUE ON'));
+  saveQueueSoon();
 }
 const shuffleButton = modeButton('SHUFFLE', t('Shuffle'), toggleShuffle);
 const repeatButton = modeButton('REPEAT', t('Repeat'), cycleRepeat);
@@ -1652,6 +1840,7 @@ function buildStaticUi() {
   disc.onJogEnd = endJog;
   disc.onArtClick = (from) => { if (!spotifyActive()) openBooklet(app, from); };
   disc.position = discPosition;
+  setupQueueDrag();
   changerView = createChangerView($('queue-card'), {
     tray: $('changer'), heading: $('disc-heading'), list: $('queue-list'),
     onPlaySlot: playSlot, onPlayTrack: goTo, animations: () => anim.enabled, coverFor: coverForPath,
@@ -1697,7 +1886,7 @@ function onKeyDown(e) {
   const actions = {
     ArrowLeft: () => seek(-SKIP_SECONDS), ArrowRight: () => seek(SKIP_SECONDS), ArrowUp: () => adjustVolume(5), ArrowDown: () => adjustVolume(-5),
     u: toggleMute, p: shareCard, b: () => disc.flip(), '?': () => panels.showShortcuts(), ' ': toggle, k: toggle, j: previousTrack, l: nextTrack, f: toggleFullscreen, c: toggleCdView, v: toggleVisualizerMode, y: toggleKaraoke, e: toggleTray, s: toggleShelf,
-    d: discSkip, 1: () => playSlot(0), 2: () => playSlot(1), 3: () => playSlot(2), 4: () => playSlot(3), 5: () => playSlot(4),
+    d: discSkip, 1: () => playSlot(0), 2: () => playSlot(1), 3: () => playSlot(2), 4: () => playSlot(3), 5: () => playSlot(4), // changer mode only
   };
   if (actions[key]) { e.preventDefault(); if (!e.repeat || key.startsWith('Arrow')) actions[key](); }
 }
@@ -1818,7 +2007,7 @@ export const app = {
   setStatus, queueDisplay, displayName, formatTime, load, addToQueue, playNext, appendAndPlay, seekTo,
   detailsFor: (p) => detailsCache.get(p),
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) goTo(i); },
-  changerState: ch, discLabel, loadDisc, playSlot, ejectSlot, discSkip, coverForPath,
+  changerState: ch, changerMode: () => state.changerMode, setChangerMode, discLabel, loadDisc, playSlot, ejectSlot, discSkip, coverForPath,
   changerSlotOf: (i) => (changer.slotOf(ch(), i) || { slot: -1 }).slot,
   onFullChanger: (c) => panels.pickDiscToTakeOut(app, c),
   coverSource: () => state.coverFrom || null,
@@ -1899,6 +2088,23 @@ async function onUpdateClick() {
   showUpdatePill();
 }
 
+// The changer as it was saved: changer.txt read against its list, files gone since taken out of their discs; rebuilt
+// from the list (albums as discs, singles as a CD-R) when unreadable.
+async function changerFromSaved(q) {
+  let c = q.savedPaths ? changer.restore(q.changerText, q.savedPaths, q.savedIndex, new Set(q.missing)) : null;
+  if (c && c.index < 0 && c.queue.length) c = changer.moveTo(c, 0); // the song it was on went: the first one left
+  if (c) return c;
+  const details = await Promise.all(q.paths.map((p) => cdp.details(p, { withCover: false }).catch(() => null)));
+  const byPath = new Map(q.paths.map((p, i) => [p, details[i]]));
+  const albumOf = (p) => {
+    const d = byPath.get(p), artist = d && ((d.credits && d.credits.albumArtist) || d.artist);
+    return d && d.album ? { key: `${artist || ''}\n${d.album}`.toLowerCase(), title: d.album, artist: artist || null, kind: isSpotifyUri(p) ? 'spotify' : 'album' } : null;
+  };
+  const r = changer.fromQueue(q.paths, q.index, albumOf, { cdrTitle: null });
+  if (r.dropped) setStatus(t('5 DISCS IN THE CHANGER · {n} WENT BACK TO THE SHELF', { n: r.dropped }));
+  return r.changer;
+}
+
 async function start() {
   translatePage(document);
   setStatus(t('READY TO PLAY'));
@@ -1924,6 +2130,9 @@ async function start() {
   state.history = saved.history;
   state.customPresets = saved.eqPresets;
   const s = saved.settings;
+  state.changerMode = !!s.changer;
+  document.body.classList.toggle('changer-mode', state.changerMode);
+  showModes();
   setAnimations(s.animations);
   setVolume(s.volume);
   state.crossfade = s.crossfade;
@@ -1960,28 +2169,14 @@ async function start() {
   cdp.listAudioCds().then((list) => { if (list.length) { state.audioCd = list[0]; showAudioCd(); } }).catch(() => {});
   if (s.miniMode) setMiniMode(true);
 
-  if (saved.queue) {
-    const q = saved.queue;
-    // The changer as saved, with any files gone since taken out of their discs; rebuilt from the queue if unreadable.
-    let c = q.savedPaths ? changer.restore(q.changerText, q.savedPaths, q.savedIndex, new Set(q.missing)) : null;
-    if (c && c.index < 0 && c.queue.length) c = changer.moveTo(c, 0); // the song it was on went: the first one left
-    if (!c) {
-      // A queue from before the changer (or one that lost files): its albums as discs, the singles as a CD-R.
-      const details = await Promise.all(saved.queue.paths.map((p) => cdp.details(p, { withCover: false }).catch(() => null)));
-      const byPath = new Map(saved.queue.paths.map((p, i) => [p, details[i]]));
-      const albumOf = (p) => {
-        const d = byPath.get(p), artist = d && ((d.credits && d.credits.albumArtist) || d.artist);
-        return d && d.album ? { key: `${artist || ''}\n${d.album}`.toLowerCase(), title: d.album, artist: artist || null, kind: isSpotifyUri(p) ? 'spotify' : 'album' } : null;
-      };
-      const r = changer.fromQueue(saved.queue.paths, saved.queue.index, albumOf, { cdrTitle: null });
-      c = r.changer;
-      if (r.dropped) setStatus(t('5 DISCS IN THE CHANGER · {n} WENT BACK TO THE SHELF', { n: r.dropped }));
-      setTimeout(saveQueueSoon, 0);
-    }
-    apply(c);
+  // Both modes' music: the one in use comes up ready at its position (not playing), the other waits in `stores`.
+  stores.QUEUE = saved.queue ? { queue: saved.queue.paths, index: saved.queue.index, nextUp: null, positionMicros: saved.queue.positionMicros } : null;
+  stores.CHANGER = saved.changerQueue ? { changer: await changerFromSaved(saved.changerQueue), positionMicros: saved.changerQueue.positionMicros } : null;
+  const mine = stores[state.changerMode ? 'CHANGER' : 'QUEUE'];
+  if (mine) {
+    putStore(mine);
     renderQueue();
-    // Restored ready-to-play at the saved position, but not auto-started.
-    if (state.index >= 0) load(state.queue[state.index], { autoPlay: false, startAt: saved.queue.positionMicros / 1e6 });
+    if (state.index >= 0) load(state.queue[state.index], { autoPlay: false, startAt: (mine.positionMicros || 0) / 1e6 });
   }
   const existingInstall = saved.onboarded;
   if (!saved.onboarded) await panels.showOnboarding(app);

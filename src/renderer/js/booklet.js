@@ -8,7 +8,7 @@ import { el, anim } from './widgets.js';
 import { deriveAutoTheme, rgb } from './theme.js';
 import { parseLrc, formatLyricsForDisplay, currentLineIndex } from './lyrics.js';
 import { paginate, leavesFor, ean13 } from './booklet-layout.js';
-import { albumCredits, albumSummary, albumSmallPrint, ownerMarks, storyChunks, releasedLine } from './booklet-content.js';
+import { albumCredits, albumSummary, albumSmallPrint, sameAlbum, ownerMarks, storyChunks, releasedLine } from './booklet-content.js';
 import { t, locale } from './i18n.js';
 
 const LIFT_MS = 420, TURN_MS = 650;
@@ -206,12 +206,16 @@ function applyColors(node, cover) {
 // start(), onClose() }.
 
 // This album's tracks from the queue (same album tag), or the whole queue when the song has no album.
-// The songs of the changer disc that's playing.
+// The songs of the changer disc that's playing — or, in the queue, the playing album's songs in it (all of it without one).
 function albumTracks(app) {
-  const { state } = app;
+  const { state } = app, d = state.details;
   const all = state.queue.map((p, i) => ({ p, i, d: app.detailsFor(p) }));
-  const disc = app.changerState().slots.find((x) => x && state.index >= x.start && state.index < x.end);
-  return disc ? all.slice(disc.start, disc.end) : all;
+  if (app.changerMode()) {
+    const disc = app.changerState().slots.find((x) => x && state.index >= x.start && state.index < x.end);
+    return disc ? all.slice(disc.start, disc.end) : all;
+  }
+  const same = d.album ? all.filter((x) => x.d && sameAlbum(x.d.album, d.album)) : [];
+  return same.length ? same : all;
 }
 
 /** The current track's booklet. */
