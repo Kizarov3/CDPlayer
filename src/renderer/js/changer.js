@@ -149,7 +149,7 @@ function slotAfter(c, slot, wrap) {
   return later != null ? later : wrap && occ.length ? occ[0] : -1;
 }
 const offsets = (d) => Array.from({ length: d.end - d.start }, (_, k) => k);
-const unplayed = (d) => offsets(d).filter((k) => !d.played.includes(k));
+const unplayed = (d) => { const played = new Set(d.played); return offsets(d).filter((k) => !played.has(k)); };
 const pick = (list, rnd) => list[Math.min(list.length - 1, Math.floor(rnd() * list.length))];
 
 /** The queue position to play after the one the changer stands on, by `modes` — or -1 at the end. */

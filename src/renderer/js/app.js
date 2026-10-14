@@ -156,6 +156,7 @@ function pumpDetails() {
 // The changer (changer.js) owns state.queue and state.index together with the slots; these two read and write all three.
 const ch = () => ({ ...state.changer, queue: state.queue, index: state.index });
 let changerView = null; // the carousel (changer-view.js)
+let picking = Promise.resolve(); // the full changer's question, one at a time
 // A disc's cover in the carousel: the album's (its first song's folder or tags), or the Spotify album's.
 const coverForPath = (p) => (isSpotifyUri(p) ? Promise.resolve((spotifyTracks.get(p) || {}).cover || null) : cdp.shelfCover(p).catch(() => null));
 function apply(c) {
@@ -260,14 +261,20 @@ async function loadDisc(item, tracks, { play = false, next = false, startPlaybac
   if (play && startPlayback && tracks.length === 1 && state.queue.includes(tracks[0])) { goTo(state.queue.indexOf(tracks[0])); return { slot: changer.slotOf(ch(), state.index).slot }; }
   let r = changer.load(ch(), item, tracks, { play, next });
   if (r.full) {
-    const slot = await app.onFullChanger(ch());
+    // One question at a time: a second disc waits for the first answer (and is asked about the changer as it is then).
+    const asked = picking.then(() => { const again = changer.load(ch(), item, tracks, { play, next }); return again.full ? app.onFullChanger(ch()) : -1; });
+    picking = asked.catch(() => null);
+    const slot = await asked;
     if (slot == null) return { cancelled: true };
-    r = changer.load(ch(), item, tracks, { play, next, slot });
+    r = changer.load(ch(), item, tracks, { play, next, slot: slot < 0 ? null : slot });
+    if (r.full) return { cancelled: true };
+    if (r.slot < 0 && !r.already) { setStatus(t('THAT DISC IS PLAYING NOW · PICK ANOTHER')); return { cancelled: true }; }
   }
   if (r.already) {
     setStatus(t('ALREADY IN SLOT {n}', { n: r.slot + 1 }));
     const at = changer.playSlot(ch(), r.slot) + Math.max(0, changer.tracksOf(ch(), r.slot).indexOf(tracks[0])); // the song asked for
     if (play && startPlayback) goTo(at); else if (play) apply(changer.moveTo(ch(), at));
+    else { changerView.turnTo(r.slot); setTimeout(renderQueue, 1600); } // the tray shows where it is, then turns back
     return { slot: r.slot };
   }
   if (r.slot < 0) return { cancelled: true };

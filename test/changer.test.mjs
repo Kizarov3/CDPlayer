@@ -272,3 +272,12 @@ test('a CD-R keeps no written-on title of its own (it\'s written on in the langu
   assert.strictEqual(discFor({ paths: ['x'], details: [null], title: 'Road trip', now: 5 }).title, 'Road trip', 'a playlist keeps its name');
   assert.strictEqual(cdrMadeAt({ id: 'cdr:/music/a.flac' }), null, 'brought over from an old queue: no date');
 });
+
+test('a CD-R of thousands of songs (an iTunes import) shuffles without slowing down as it plays', () => {
+  const paths = Array.from({ length: 20000 }, (_, i) => `s${i}`);
+  let c = load(empty(), { id: 'cdr:1', kind: 'cdr', title: null }, paths).changer;
+  const slots = c.slots.slice(); slots[0] = { ...slots[0], played: paths.slice(0, 15000).map((_, i) => i) }; c = { ...c, slots };
+  const t0 = performance.now();
+  for (let k = 0; k < 20; k++) nextIndex(c, { shuffle: 'DISC', repeat: 'OFF' });
+  assert.ok(performance.now() - t0 < 200, `${Math.round(performance.now() - t0)} ms for 20 picks`);
+});
