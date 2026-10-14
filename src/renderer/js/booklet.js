@@ -222,7 +222,7 @@ async function songContent(app) {
   return {
     cover: state.cover, marker: { title: d.title, artist: d.artist },
     tracks: {
-      title: d.album || t('IN THE QUEUE'), sub: d.artist,
+      title: d.album || t('IN THE CHANGER'), sub: d.artist,
       rows: tracks.map((t) => ({
         name: t.d ? t.d.title : app.displayName(t.p), time: t.d && t.d.duration ? app.formatTime(t.d.duration) : '',
         current: t.i === state.index, tip: `Play ${app.queueDisplay(t.p)}`, play: () => app.playQueueIndex(t.i),

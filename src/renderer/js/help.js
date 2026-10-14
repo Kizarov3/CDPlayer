@@ -4,9 +4,9 @@ import { t } from './i18n.js';
 
 export const GUIDE = [
   { title: t('PUT SOME MUSIC ON'), lines: [
-    t('Drag songs or whole folders onto the window — or LOAD A TRACK — and they go in the queue.'),
+    t('Drag songs or whole folders onto the window — or LOAD A TRACK — and they go into the changer as a disc.'),
     t('MP3, M4A, FLAC, WAV, AIFF, OGG and Opus all play. There is nothing else to install.'),
-    t('Your queue, and where you were in the song, are there the next time you open CDPlayer.'),
+    t('The discs in the changer, and where you were in the song, are there the next time you open CDPlayer.'),
   ] },
   { title: t('THE DISC IS REAL'), lines: [
     t('Grab the disc and turn it, like a DJ’s jog wheel, to move through the song.'),
@@ -34,7 +34,7 @@ export const FAQ = [
   { q: t('My Mac (or Windows) won’t open it — is it safe?'), a: t('CDPlayer isn’t signed with a paid Apple or Microsoft certificate, so the first time your system asks. On a Mac: right-click CDPlayer in Applications → Open → Open. On Windows: More info → Run anyway. Only once.') },
   { q: t('Why is there no cover or lyrics for a song?'), a: t('CDPlayer uses what’s in the file, and otherwise looks it up online by the song’s artist and title. A file named “Track 01” with no tags can’t be found: fix its name with TAGS, which can fill in the details from MusicBrainz.') },
   { q: t('Where did the queue go?'), a: t('It’s a five-disc changer now: albums, folders and playlists go in as discs. INTO THE CHANGER on the shelf loads one; D skips to the next disc, 1–5 play a slot, and SHUFFLE and REPEAT work on this disc or all of them.') },
-  { q: t('Where is my data kept?'), a: t('In ~/.cdplayer on Mac and Linux, %LOCALAPPDATA%\\CDPlayer on Windows: your queue, history, settings, notes and play counts, as small text files. Your music itself is never changed unless you save tags or found art into it.') },
+  { q: t('Where is my data kept?'), a: t('In ~/.cdplayer on Mac and Linux, %LOCALAPPDATA%\\CDPlayer on Windows: the discs in your changer, history, settings, notes and play counts, as small text files. Your music itself is never changed unless you save tags or found art into it.') },
   { q: t('How do I choose the folder my music is in?'), a: t('Open the SHELF and click FOLDER… (the first time, it asks). The shelf shows the albums in that folder and everything under it. Songs outside it still play — drop them on the window.') },
   { q: t('Why doesn’t the equalizer work on Spotify?'), a: t('Spotify’s audio is protected, so it plays outside CDPlayer’s sound engine: the equalizer, crossfade, mono, visualizer and waveform can’t reach it. Your own files get all of them.') },
   { q: t('What are the see-through “missing” albums on my shelf?'), a: t('Those are missing albums: sorted by artist, each artist’s studio albums you don’t have stand as see-through places, from MusicBrainz. Click one to see it, or NOT INTERESTED to hide it for good.') },

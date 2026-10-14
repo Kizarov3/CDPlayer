@@ -1464,7 +1464,7 @@ function pushMini(full = false) {
     if (cover !== lastMiniCover) { lastMiniCover = cover; miniCoverKey++; }
     Object.assign(msg, {
       colors, animations: anim.enabled, shine: state.discShine, visMode: visualizerModeFor(shownTheme),
-      shuffle: state.shuffle !== 'OFF', repeat: state.repeat === 'TRACK' ? 'ONE' : state.repeat === 'OFF' ? 'OFF' : 'ALL',
+      shuffle: state.shuffle, repeat: state.repeat,
       disc: (changer.slotOf(ch(), state.index) || { slot: -1 }).slot + 1,
       track: {
         title: state.titleText || t('Pick a track to get started.'), artist: state.artistText || null, album: d && d.album ? d.album : null,
@@ -1850,7 +1850,7 @@ function showUpdatePill() {
     button.title = t('Downloading CDPlayer {version}…', { version: u.version });
   } else if (u.phase === 'ready') {
     button.textContent = u.install === 'replace' ? t('RESTART TO UPDATE') : t('INSTALL {version}', { version: u.version });
-    button.title = u.install === 'replace' ? t('Install CDPlayer {version} and restart — your queue is kept', { version: u.version }) : t('Open the downloaded CDPlayer {version} to install it', { version: u.version });
+    button.title = u.install === 'replace' ? t('Install CDPlayer {version} and restart — the discs in the changer are kept', { version: u.version }) : t('Open the downloaded CDPlayer {version} to install it', { version: u.version });
   } else {
     button.textContent = t('{version} AVAILABLE', { version: u.version });
     button.title = u.canDownload && !u.failed ? t('A newer CDPlayer is out — click to download it') : t('A newer CDPlayer is out — opens the download page');

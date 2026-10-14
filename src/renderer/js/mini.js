@@ -101,11 +101,15 @@ cdp.onMiniState(async (s) => {
     }
   }
   if ('playing' in s) { disc.spinning = s.playing; vis.setActive(s.playing); setPlayGlyph(s.playing); }
-  if ('shuffle' in s) $('shuffle').classList.toggle('on', s.shuffle);
+  // The changer's modes: SHUFFLE OFF / DISC / ALL, REPEAT OFF / TRACK / DISC / ALL.
+  if ('shuffle' in s) {
+    $('shuffle').classList.toggle('on', s.shuffle !== 'OFF');
+    $('shuffle').title = { OFF: t('Shuffle'), DISC: t('Shuffle: this disc'), ALL: t('Shuffle: all discs') }[s.shuffle] || t('Shuffle');
+  }
   if ('repeat' in s) {
     $('repeat').classList.toggle('on', s.repeat !== 'OFF');
-    $('badge').textContent = s.repeat === 'ONE' ? '1' : '';
-    $('repeat').title = s.repeat === 'OFF' ? t('Repeat') : s.repeat === 'ONE' ? t('Repeat: one track') : t('Repeat: whole queue');
+    $('badge').textContent = s.repeat === 'TRACK' ? '1' : s.repeat === 'DISC' ? '◉' : '';
+    $('repeat').title = { OFF: t('Repeat'), TRACK: t('Repeat: this track'), DISC: t('Repeat: this disc'), ALL: t('Repeat: all discs') }[s.repeat] || t('Repeat');
   }
   if ('duration' in s) view.duration = s.duration;
   if ('position' in s) { view.position = s.position; if (!view.dragging) renderProgress(s.position); }

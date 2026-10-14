@@ -597,7 +597,7 @@ function buildTags(app) {
   const picks = new Map();
   const shown = (x) => (x == null || x === '' ? '—' : String(x));
   const rows = TAG_ROWS.map(([label, key, of]) => {
-    const now = of ? `${shown(v.current && v.current[key])}${v.current && v.current[of] ? ` of ${v.current[of]}` : ''}` : shown(v.current && v.current[key]);
+    const now = of ? `${shown(v.current && v.current[key])}${v.current && v.current[of] ? ` ${t('OF').toLowerCase()} ${v.current[of]}` : ''}` : shown(v.current && v.current[key]);
     const b = pick(key); picks.set(key, b);
     if (of) { const b2 = pick(of); b2.hidden = true; picks.set(of, b2); }
     const edit = of ? el('div', { class: 'tag-pair' }, input(key, true, of), el('span', {}, t('OF')), input(of, true, key)) : input(key);
@@ -642,8 +642,8 @@ function buildTags(app) {
 export function showHistory(app) { openPanel('history', () => buildHistory(app), { width: 480 }); }
 export function refreshHistoryIfOpen(app) { if (isOpen('history')) refreshPanel('history'); }
 function trackRow(app, path, label, onPlay) {
-  const next = pill(t('NEXT'), (e) => { e.stopPropagation(); app.playNext([path], { sorted: true }); }, t('Play it next, after the song playing'));
-  const add = pill(t('ADD'), (e) => { e.stopPropagation(); app.addToQueue([path], { sorted: true }); }, t('Add to queue'));
+  const next = pill(t('NEXT'), (e) => { e.stopPropagation(); app.playNext([path], { sorted: true }); }, t('Into the changer, to play after the disc playing'));
+  const add = pill(t('ADD'), (e) => { e.stopPropagation(); app.addToQueue([path], { sorted: true }); }, t('Into the changer'));
   return el('div', { class: 'list-row', title: t('Play {song}', { song: label }), onClick: onPlay }, el('span', { class: 'entry' }, label), next, add);
 }
 function buildHistory(app) {
@@ -745,7 +745,7 @@ function buildSearch(app) {
   search.results = el('div', { class: 'scroll' });
   search.results.style.height = '340px';
   const importButton = pill(t('IMPORT LIBRARY…'), () => importLibrary(app), t('Import an iTunes/Music "Library.xml", or a Spotify "Liked Songs" export (CSV or YourLibrary.json)'));
-  const instructions = el('div', { class: 'tip' }, t('Type to search your library, or paste a Spotify track/playlist link to queue matching songs you already have'));
+  const instructions = el('div', { class: 'tip' }, t('Type to search your library, or paste a Spotify track/playlist link to load the matching songs you already have as a disc'));
   Object.assign(instructions.style, { fontSize: '11px', fontWeight: 'bold', marginTop: '12px', lineHeight: '1.35' });
   const importRow = el('div', {}, importButton);
   importRow.style.margin = '10px 0';

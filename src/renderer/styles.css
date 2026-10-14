@@ -141,10 +141,10 @@ body.cd-view #cd-info { display: block !important; }
   flex: 1 1 auto; min-height: 0;
   display: flex; flex-direction: column;
 }
-#queue-head { margin-top: 12px; display: flex; align-items: center; gap: 12px; }
-#queue-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
-#queue-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
-#queue-info { font-size: 10px; color: rgb(var(--muted)); }
+#queue-head { margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+#queue-text { flex: 1 1 220px; min-width: 200px; display: flex; flex-direction: column; gap: 5px; }
+#queue-actions { flex: 0 1 auto; margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; }
+#queue-info { font-size: 10px; color: rgb(var(--muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #queue-next { font-size: 9px; color: rgb(var(--muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #queue-list { margin-top: 10px; flex: 1 1 auto; min-height: 60px; }
 .queue-row {
@@ -259,7 +259,7 @@ body.cd-view #cd-info { display: block !important; }
 @keyframes cardOut { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(.9); } }
 .card h1 { margin: 0; font-size: 16px; color: rgb(var(--accent)); font-weight: bold; }
 .card .subtitle { margin-top: 6px; font-size: 11px; color: rgb(var(--muted)); }
-.card .close-row { display: flex; justify-content: flex-end; margin-top: 16px; }
+.card .close-row { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 16px; }
 /* The Now Playing card: its preview beside the lyrics' lines to pick one from. */
 .card-pick { display: flex; gap: 22px; margin-top: 18px; align-items: flex-start; }
 .card-preview { flex: 0 0 auto; width: 520px; aspect-ratio: 1200 / 630; border-radius: 4px; background: rgba(0, 0, 0, .3); box-shadow: 0 8px 24px rgba(0, 0, 0, .45); }
@@ -269,9 +269,11 @@ body.cd-view #cd-info { display: block !important; }
 .card-line.on { color: rgb(var(--accent)); background: rgba(var(--accent), .12); }
 .card-line.none { color: rgb(var(--muted)); font-size: 10px; }
 .card-line.none.on { color: rgb(var(--accent)); }
-.card-actions { display: flex; gap: 8px; }
+.card-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .card-note { align-self: center; font-size: 10px; color: rgb(var(--accent)); }
-.card .close-row.split { justify-content: space-between; }
+.card .close-row.split { justify-content: flex-start; }
+.card .close-row.split > :last-child { margin-left: auto; } /* CLOSE stays on the right when the row wraps */
+.card .close-row.split > .row-pills { display: contents; } /* its buttons wrap with CLOSE as one row of buttons */
 .copy-link {
   border: none; background: none; padding: 0; font: inherit; color: rgb(var(--accent2)); cursor: pointer;
   text-decoration: underline dotted; text-underline-offset: 3px; user-select: text; -webkit-user-select: text;
@@ -292,7 +294,7 @@ body.cd-view #cd-info { display: block !important; }
 .settings-body .setting-row.slider-row .slider { flex: 1 1 auto; width: auto; }
 .settings-body .setting-row.slider-row .row-value { flex: 0 0 52px; margin-left: 0; text-align: right; }
 .settings-body .setting-hint { margin-top: 0; width: auto; }
-.row-pills { display: flex; align-items: center; gap: 6px; }
+.row-pills { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .theme-pill { display: inline-flex; align-items: center; gap: 8px; padding-left: 10px; color: rgb(var(--text)); }
 .theme-pill .swatch { background: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent2))); }
 .settings-foot { margin-top: 18px; display: flex; align-items: center; justify-content: space-between; }
@@ -899,4 +901,4 @@ kbd {
 .changer-pick-disc:disabled { opacity: .35; cursor: default; }
 .changer-pick-art { width: 84px; height: 84px; margin: 0 auto 6px; border-radius: 50%; background: #c9ccd2 center/cover; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
 .changer-pick-disc .name { font-size: 11px; font-weight: 700; } .changer-pick-disc .by { font-size: 10px; opacity: .7; }
-.spine-slot { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: rgb(var(--accent)); color: #fff; font: 700 9px/14px inherit; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,.5); z-index: 2; }
+.spine-slot { position: absolute; top: -9px; left: 50%; transform: translateX(-50%); min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: rgb(var(--accent)); color: #fff; font: 700 9px/14px inherit; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,.5); z-index: 2; }
