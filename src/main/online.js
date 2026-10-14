@@ -129,6 +129,8 @@ function rankBefore(a, b) {
   return false;
 }
 const VERSION_WORDS = /\b(live|demo|remix|mix|instrumental|acoustic|karaoke|a cappella|acapella|edit|version|session|rehearsal)\b/i;
+// "Album version" and the like name the song itself, not another take of it.
+const SAME_TAKE = /\b(album|original|studio|lp) version\b/gi;
 
 /**
  * The recording and release a file most likely is, from a MusicBrainz recording search: the same song by the same
@@ -140,8 +142,11 @@ function pickRecording(recordings, { artist, title, album, duration }) {
   let best = null;
   for (const rec of recordings || []) {
     if (rec.score < 85 || !sameSong({ title: rec.title, artist: creditText(rec['artist-credit']) }, artist, title)) continue;
+    // …and the other way round for the first artist credited, so "Tool Tribute Band" isn't taken for "Tool".
+    const first = ((rec['artist-credit'] || [])[0] || {}).name || '';
+    if (artist && wordOverlapRatio(first, artist) < 0.5) continue;
     if (duration > 0 && rec.length && Math.abs(rec.length / 1000 - duration) > 5) continue;
-    if (VERSION_WORDS.test(rec.disambiguation || '') && !VERSION_WORDS.test(title)) continue;
+    if (VERSION_WORDS.test((rec.disambiguation || '').replace(SAME_TAKE, '')) && !VERSION_WORDS.test(title)) continue;
     for (const release of rec.releases || []) {
       const group = release['release-group'] || {};
       const albumMatch = !!album && wordOverlapRatio(bareTitle(album), release.title) >= 0.75 && wordOverlapRatio(release.title, album) >= 0.75;

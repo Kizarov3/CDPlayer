@@ -243,3 +243,13 @@ test('tags: another artist\'s song, or a live take, is never picked', () => {
   assert.strictEqual(pickRecording([rec({ disambiguation: 'live', releases: [rel('Live', '2019')] })], { artist: 'Nova Drift', title: 'Solar Flare', duration: 200 }), null);
   assert.ok(pickRecording([rec({ title: 'Solar Flare (Live)', disambiguation: 'live', releases: [rel('Live', '2019')] })], { artist: 'Nova Drift', title: 'Solar Flare (Live)', duration: 200 }));
 });
+
+// Tool's "H." on MusicBrainz: the studio take is marked "album version", and a tribute band's cover is as long.
+test('tags: the "album version" is the song itself, and a tribute band named after the artist is someone else', () => {
+  const tool = { artist: 'TOOL', title: 'H.', duration: 367 };
+  const studio = rec({ title: 'H.', 'artist-credit': [{ name: 'Tool' }], length: 367133, disambiguation: 'album version', releases: [rel('Ænima', '1996-09-17')] });
+  const tribute = rec({ score: 85, title: 'H.', 'artist-credit': [{ name: 'Tool Tribute Band' }], length: 370000, releases: [rel('Electro-Acoustic Tribute to Tool', '2006-11-21')] });
+  assert.strictEqual(pickRecording([studio, tribute], tool).release.title, 'Ænima');
+  assert.strictEqual(pickRecording([tribute], tool), null);
+  assert.ok(pickRecording([rec({ 'artist-credit': [{ name: 'Nova Drift', joinphrase: ' feat. ' }, { name: 'Somebody Else' }], releases: [rel('Neon Skies', '2019')] })], { artist: 'Nova Drift', title: 'Solar Flare', duration: 200 }), 'a featured guest is still the artist\'s song');
+});
