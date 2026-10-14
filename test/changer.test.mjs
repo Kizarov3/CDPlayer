@@ -193,7 +193,7 @@ import { discFor } from '../src/renderer/js/changer.js';
 test('the disc a set of tracks makes: one album is that album; anything else is a CD-R', () => {
   const d = (album, artist) => ({ album, artist, credits: {} });
   assert.deepStrictEqual(discFor({ paths: ['1', '2'], details: [d('Ænima', 'Tool'), d('Ænima', 'Tool')], title: 'MIX · 14 OCT', now: 5 }),
-    { id: 'album:tool\nænima', kind: 'album', title: 'Ænima', artist: 'Tool' });
+    { id: 'album:tool\nænima:5', kind: 'album', title: 'Ænima', artist: 'Tool' });
   assert.deepStrictEqual(discFor({ paths: ['1', '2'], details: [d('Ænima', 'Tool'), d('Issues', 'Korn')], title: 'MIX · 14 OCT', now: 5 }),
     { id: 'cdr:5', kind: 'cdr', title: 'MIX · 14 OCT', artist: null });
   assert.strictEqual(discFor({ kind: 'spotify', paths: ['s'], details: [d('X', 'Y')], title: 'MIX', now: 5 }).kind, 'spotify');
@@ -218,4 +218,48 @@ test('the same songs under another id are the same disc: not loaded twice', () =
   const again = load(c, { id: 'radiohead\nok computer\n', kind: 'album', title: 'OK Computer' }, ['ok1', 'ok2']);
   assert.deepStrictEqual([again.already, again.slot], [true, 0]);
   assert.ok(!load(c, { id: 'other', kind: 'album', title: 'X' }, ['ok1']).already, 'some of its songs only: another disc');
+});
+
+// Final review, finding 1: a disc's identity is its exact songs (or a shelf album's own id), never an id derived from tags.
+test('one song of an album is a CD-R; the whole album still loads after it, and a second loose song is its own disc', () => {
+  const d = (n) => ({ album: 'Ænima', artist: 'Tool', credits: {} });
+  const one = discFor({ paths: ['ae/3'], details: [d()], title: 'MIX', now: 1 });
+  assert.strictEqual(one.kind, 'cdr', 'one track is a loose pick');
+  let c = load(empty(), one, ['ae/3']).changer;
+  const whole = discFor({ paths: ['ae/1', 'ae/2', 'ae/3'], details: [d(), d(), d()], title: 'MIX', now: 2 });
+  const r = load(c, whole, ['ae/1', 'ae/2', 'ae/3']);
+  assert.ok(!r.already, 'the album is not "already in" because one of its songs is');
+  c = r.changer;
+  const two = load(c, discFor({ paths: ['ae/2'], details: [d()], title: 'MIX', now: 3 }), ['ae/2']);
+  assert.ok(!two.already && two.slot === 2, 'a second loose song is added, not dropped');
+  const again = load(c, discFor({ paths: ['ae/1', 'ae/2', 'ae/3'], details: [d(), d(), d()], title: 'MIX', now: 9 }), ['ae/1', 'ae/2', 'ae/3']);
+  assert.ok(again.already, 'the same songs again: already in');
+});
+test('migrated discs have ids of their own, so an album and a CD-R of its songs are told apart', () => {
+  const albumOf = (p) => ({ key: 'tool\nænima', title: 'Ænima', artist: 'Tool' });
+  const { changer } = fromQueue(['ae/1', 'ae/2'], 0, albumOf, { cdrTitle: 'MIX' });
+  const pick = load(changer, discFor({ paths: ['ae/1', 'ae/2', 'ae/3'], details: [{ album: 'Ænima', artist: 'Tool' }, { album: 'Ænima', artist: 'Tool' }, { album: 'Ænima', artist: 'Tool' }], title: 'MIX', now: 4 }), ['ae/1', 'ae/2', 'ae/3']);
+  assert.ok(!pick.already);
+});
+
+test('SHUFFLE ALL, played through: playing again starts a new round, not one song and the end', () => {
+  const modes = { shuffle: 'ALL', repeat: 'OFF' };
+  let c = load(empty(), disc('a'), ['a1', 'a2']).changer;
+  c = load(c, disc('b'), ['b1']).changer;
+  for (const i of [0, 1, 2]) { c = moveTo(c, i); c = markFinished(c, i, modes); }
+  assert.strictEqual(nextIndex(c, modes, seq(0)), -1, 'the round is over');
+  c = moveTo(c, 0); // PLAY again (or a song picked)
+  assert.notStrictEqual(nextIndex(c, modes, seq(0)), -1, 'a new round');
+});
+
+import { restore } from '../src/renderer/js/changer.js';
+test('restoring with a file gone: its disc shrinks, the slots and the song playing stay', () => {
+  let c = fill(3); // d0 | d1 | d2
+  c = load(c, disc('n'), ['n1'], { next: true }).changer;
+  c = { ...moveTo(c, 3) }; // on d1/2
+  const back = restore(serialize(c), c.queue, c.index, new Set(['d1/1', 'd0/1', 'd0/2']));
+  assert.deepStrictEqual(back.slots.map((d) => d && d.id), [null, 'd1', 'd2', 'n', null]);
+  assert.strictEqual(back.queue[back.index], 'd1/2');
+  assert.strictEqual(back.nextDisc, 3);
+  assert.strictEqual(restore('garbage', c.queue, 0, new Set()), null, 'unreadable: rebuilt from the queue instead');
 });

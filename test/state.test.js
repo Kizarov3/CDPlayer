@@ -74,18 +74,20 @@ test('queue restore drops missing files and keeps pointing at the same track', (
   const a = path.join(home, 'a.mp3'), c = path.join(home, 'c.mp3');
   fs.writeFileSync(a, ''); fs.writeFileSync(c, '');
   fs.writeFileSync(path.join(home, 'queue.txt'), `2,1500000\n${a}\n${path.join(home, 'missing.mp3')}\n${c}\n`);
-  assert.deepStrictEqual(store.readQueue(), { paths: [a, c], index: 1, positionMicros: 1500000, changerText: null });
+  assert.deepStrictEqual(store.readQueue(), { paths: [a, c], index: 1, positionMicros: 1500000, changerText: null, savedPaths: [a, path.join(home, 'missing.mp3'), c], savedIndex: 2, missing: [path.join(home, 'missing.mp3')] });
   store.writeQueue({ paths: [c, a], index: 0, positionMicros: 42.4 });
-  assert.deepStrictEqual(store.readQueue(), { paths: [c, a], index: 0, positionMicros: 42, changerText: null });
+  assert.deepStrictEqual(store.readQueue(), { paths: [c, a], index: 0, positionMicros: 42, changerText: null, savedPaths: [c, a], savedIndex: 0, missing: [] });
 });
 
-test('changer.txt is written beside queue.txt and read back; a queue that lost files comes back without it', () => {
+test('changer.txt is written beside queue.txt and read back, with the saved list and what went missing', () => {
   const a = path.join(home, 'ch-a.mp3'), b = path.join(home, 'ch-b.mp3');
   fs.writeFileSync(a, ''); fs.writeFileSync(b, '');
   store.writeQueue({ paths: [a, b], index: 1, positionMicros: 0, changer: 'v1\t-\nalbum\t0\t2\t0\t\tid\tT\tA\n-\n-\n-\n-' });
   assert.strictEqual(store.readQueue().changerText, 'v1\t-\nalbum\t0\t2\t0\t\tid\tT\tA\n-\n-\n-\n-');
   fs.rmSync(b);
-  assert.strictEqual(store.readQueue().changerText, null);
+  const r = store.readQueue();
+  assert.strictEqual(r.changerText, 'v1\t-\nalbum\t0\t2\t0\t\tid\tT\tA\n-\n-\n-\n-', 'kept: the renderer takes the missing file out of its disc');
+  assert.deepStrictEqual([r.savedPaths, r.savedIndex, r.missing], [[a, b], 1, [b]]);
 });
 
 

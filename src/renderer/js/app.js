@@ -250,6 +250,8 @@ async function discOf(paths, { kind = null, title = null } = {}) {
 // song to the caller (the tray). (`item`, not `disc`: `disc` is the big disc's renderer everywhere else in app.js.)
 // → { slot } or { cancelled: true }.
 async function loadDisc(item, tracks, { play = false, next = false, startPlayback = true } = {}) {
+  // One song to play, already on a disc in the changer (from SEARCH or HISTORY): it's played there, not loaded again.
+  if (play && startPlayback && tracks.length === 1 && state.queue.includes(tracks[0])) { goTo(state.queue.indexOf(tracks[0])); return { slot: changer.slotOf(ch(), state.index).slot }; }
   let r = changer.load(ch(), item, tracks, { play, next });
   if (r.full) {
     const slot = await app.onFullChanger(ch());
@@ -258,7 +260,8 @@ async function loadDisc(item, tracks, { play = false, next = false, startPlaybac
   }
   if (r.already) {
     setStatus(t('ALREADY IN SLOT {n}', { n: r.slot + 1 }));
-    if (play && startPlayback) playSlot(r.slot); else if (play) apply(changer.moveTo(ch(), changer.playSlot(ch(), r.slot)));
+    const at = changer.playSlot(ch(), r.slot) + Math.max(0, changer.tracksOf(ch(), r.slot).indexOf(tracks[0])); // the song asked for
+    if (play && startPlayback) goTo(at); else if (play) apply(changer.moveTo(ch(), at));
     return { slot: r.slot };
   }
   if (r.slot < 0) return { cancelled: true };
@@ -266,7 +269,7 @@ async function loadDisc(item, tracks, { play = false, next = false, startPlaybac
   apply(r.changer);
   setStatus(r.replaced ? t('DISC {n} IN · {title} WENT BACK TO THE SHELF', { n: r.slot + 1, title: r.replaced.title || t('CD-R') }) : t('DISC {n} IN', { n: r.slot + 1 }));
   renderQueue(); saveQueueSoon(); spotifyResync();
-  if (startPlayback && (play || !wasPlaying)) load(state.queue[state.index], { autoPlay: play });
+  if (startPlayback && (play || !wasPlaying)) load(state.queue[state.index], { autoPlay: true }); // an idle player plays it, as before the changer
   return { slot: r.slot };
 }
 async function addToQueue(items, { sorted = false, play = false, next = false, title = null } = {}) {
@@ -640,7 +643,12 @@ function setPlaying(playing) {
 async function toggle() {
   if (state.trayBusy) return;
   if (disc.trayOpen) { closeTray(); return; } // PLAY with the tray out closes it and plays, like a real deck
-  if (!engine.deck) { if (state.queue.length && state.index >= 0) load(state.queue[state.index]); else choose(); return; }
+  if (!engine.deck) {
+    if (state.queue.length && state.index >= 0) load(state.queue[state.index]);
+    else if (state.queue.length) playSlot(state.changer.slots.findIndex(Boolean)); // the playing disc went: the first one left
+    else choose();
+    return;
+  }
   if (jog) { jog.wasPlaying = !jog.wasPlaying; setPlaying(jog.wasPlaying); return; } // plays on (or not) once the disc is let go
   if (engine.playing) { engine.pause(); setPlaying(false); }
   else { await engine.play(); setPlaying(engine.playing); } // a Spotify track can be refused
@@ -677,7 +685,9 @@ function playSlot(slot) {
 // The playing song has played to its end: the changer notes it (a disc is finished at its last song).
 function notePlayed() {
   if (state.index < 0) return;
+  const pick = upcomingCache; // the current song was never a candidate: the pick shown as UP NEXT still stands
   apply({ ...changer.markFinished(ch(), state.index, modes()), index: state.index });
+  upcomingCache = pick;
   saveQueueSoon();
 }
 // The queue entry `p` picks up exactly where the playing cue sheet track ends, in the same file (atBoundary: and
@@ -1938,7 +1948,10 @@ async function start() {
   if (s.miniMode) setMiniMode(true);
 
   if (saved.queue) {
-    let c = changer.parse(saved.queue.changerText, saved.queue.paths, saved.queue.index);
+    const q = saved.queue;
+    // The changer as saved, with any files gone since taken out of their discs; rebuilt from the queue if unreadable.
+    let c = q.savedPaths ? changer.restore(q.changerText, q.savedPaths, q.savedIndex, new Set(q.missing)) : null;
+    if (c && c.index < 0 && c.queue.length) c = changer.moveTo(c, 0); // the song it was on went: the first one left
     if (!c) {
       // A queue from before the changer (or one that lost files): its albums as discs, the singles as a CD-R.
       const details = await Promise.all(saved.queue.paths.map((p) => cdp.details(p, { withCover: false }).catch(() => null)));

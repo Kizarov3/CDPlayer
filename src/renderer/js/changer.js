@@ -124,7 +124,7 @@ export function fromQueue(paths, index, albumOf, { cdrTitle }) {
   const discs = [];
   for (const r of runs) {
     if (r.key && r.tracks.length >= 2) {
-      discs.push({ disc: { id: `album:${r.key}`, kind: r.album.kind || 'album', title: r.album.title, artist: r.album.artist }, tracks: r.tracks, from: r.from, to: r.to });
+      discs.push({ disc: { id: `album:${r.key}:${r.from}`, kind: r.album.kind || 'album', title: r.album.title, artist: r.album.artist }, tracks: r.tracks, from: r.from, to: r.to });
       continue;
     }
     const last = discs[discs.length - 1];
@@ -198,7 +198,9 @@ export const playSlot = (c, slot) => (c.slots[slot] ? c.slots[slot].start : -1);
 export function moveTo(c, index) {
   const here = slotOf(c, index);
   if (!here) return { ...c, index: -1 };
-  const slots = c.slots.slice();
+  let slots = c.slots.slice();
+  // Every song of every disc played (SHUFFLE ALL's round is over): playing on starts a new round.
+  if (slots.every((d) => !d || d.played.length >= d.end - d.start)) slots = slots.map((d) => d && { ...d, played: [] });
   if (slots[here.slot].done) slots[here.slot] = { ...slots[here.slot], done: false, finishedAt: null };
   return { ...c, slots, index, nextDisc: c.nextDisc === here.slot ? null : c.nextDisc };
 }
@@ -248,9 +250,11 @@ const key = (s) => String(s || '').toLowerCase().trim();
 export function discFor({ kind = null, paths, details, title, now = Date.now() }) {
   const artistOf = (d) => (d && ((d.credits && d.credits.albumArtist) || d.artist)) || '';
   const first = details[0];
-  const one = first && first.album && details.length === paths.length
+  // An album disc takes at least two songs of one album; a single song is a loose pick (a CD-R). The id is this disc's
+  // own (`now`): a disc is the same as another only by its very songs (or a shelf album's id), never by its tags.
+  const one = paths.length >= 2 && first && first.album && details.length === paths.length
     && details.every((d) => d && key(d.album) === key(first.album) && key(artistOf(d)) === key(artistOf(first)));
-  if (one) return { id: `album:${key(artistOf(first))}\n${key(first.album)}`, kind: kind || 'album', title: first.album, artist: artistOf(first) || null };
+  if (one) return { id: `album:${key(artistOf(first))}\n${key(first.album)}:${now}`, kind: kind || 'album', title: first.album, artist: artistOf(first) || null };
   return { id: `${kind || 'cdr'}:${now}`, kind: kind || 'cdr', title, artist: null };
 }
 
@@ -261,4 +265,14 @@ export const trayAngle = (slot) => 90 - slot * 72;
 export function slotOfAlbum(c, album) {
   const mine = new Set(album.tracks.map((x) => x.path));
   return c.slots.findIndex((d) => d && (d.id === album.id || c.queue.slice(d.start, d.end).some((p) => mine.has(p))));
+}
+
+/**
+ * The changer at launch: changer.txt read against the queue as it was saved (`savedPaths`, `savedIndex`), then the
+ * files gone since (`missing`) taken out of their discs — the slots, done marks and PLAY NEXT stay. null when the
+ * text can't be read (then it's rebuilt from the queue with fromQueue).
+ */
+export function restore(text, savedPaths, savedIndex, missing) {
+  const c = parse(text, savedPaths, savedIndex);
+  return c && (missing.size ? removePaths(c, missing) : c);
 }

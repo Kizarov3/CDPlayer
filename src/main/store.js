@@ -128,17 +128,20 @@ function readQueue() {
   if (!l.length || !l[0].trim()) return null;
   const [idx, pos] = l[0].trim().split(',');
   const savedIndex = parseInt(idx, 10), savedPosition = parseInt(pos, 10) || 0;
-  const paths = [];
-  let mapped = -1, dropped = false;
+  const paths = [], savedPaths = [], missing = [];
+  let mapped = -1, savedAt = -1;
   for (let i = 1; i < l.length; i++) {
     const p = l[i].trim();
     if (!p) continue;
-    if (entryExists(p)) { if (i - 1 === savedIndex) mapped = paths.length; paths.push(p); } else dropped = true;
+    if (i - 1 === savedIndex) savedAt = savedPaths.length;
+    savedPaths.push(p);
+    if (entryExists(p)) { if (i - 1 === savedIndex) mapped = paths.length; paths.push(p); } else missing.push(p);
   }
   if (!paths.length) return null;
   const index = mapped >= 0 ? mapped : Math.max(0, Math.min(Number.isFinite(savedIndex) ? savedIndex : 0, paths.length - 1));
-  // changer.txt (the changer's slots, as runs of this queue): no longer fits once a file was dropped — rebuilt then.
-  return { paths, index, positionMicros: savedPosition, changerText: dropped ? null : readText(FILES.changer) };
+  // changer.txt holds the changer's slots as runs of the queue as it was saved: the renderer reads it against
+  // savedPaths and takes the missing files out of their discs (changer.js restore).
+  return { paths, index, positionMicros: savedPosition, changerText: readText(FILES.changer), savedPaths, savedIndex: savedAt, missing };
 }
 function writeQueue({ paths, index, positionMicros, changer }) {
   const body = paths.filter(safePath).join('\n');
