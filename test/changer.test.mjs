@@ -187,3 +187,14 @@ test('the changer round-trips through changer.txt; text that doesn\'t fit the qu
   assert.strictEqual(parse('garbage', ['a'], 0), null);
   assert.strictEqual(parse(null, ['a'], 0), null);
 });
+
+import { discFor } from '../src/renderer/js/changer.js';
+
+test('the disc a set of tracks makes: one album is that album; anything else is a CD-R', () => {
+  const d = (album, artist) => ({ album, artist, credits: {} });
+  assert.deepStrictEqual(discFor({ paths: ['1', '2'], details: [d('Ænima', 'Tool'), d('Ænima', 'Tool')], title: 'MIX · 14 OCT', now: 5 }),
+    { id: 'album:tool\nænima', kind: 'album', title: 'Ænima', artist: 'Tool' });
+  assert.deepStrictEqual(discFor({ paths: ['1', '2'], details: [d('Ænima', 'Tool'), d('Issues', 'Korn')], title: 'MIX · 14 OCT', now: 5 }),
+    { id: 'cdr:5', kind: 'cdr', title: 'MIX · 14 OCT', artist: null });
+  assert.strictEqual(discFor({ kind: 'spotify', paths: ['s'], details: [d('X', 'Y')], title: 'MIX', now: 5 }).kind, 'spotify');
+});

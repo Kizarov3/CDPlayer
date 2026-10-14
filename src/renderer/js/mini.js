@@ -89,7 +89,7 @@ cdp.onMiniState(async (s) => {
   if (s.track) {
     const track = s.track;
     $('title').textContent = track.title || t('Pick a track to get started.');
-    $('subtitle').textContent = [track.artist, track.album].filter(Boolean).join(' — ');
+    $('subtitle').textContent = [s.disc > 0 ? t('DISC {n}', { n: s.disc }) : null, [track.artist, track.album].filter(Boolean).join(' — ')].filter(Boolean).join(' · ');
     document.title = track.artist ? `${track.artist} – ${track.title}` : (track.title || 'CDPlayer');
     disc.lookingUp = !!track.lookingUp;
     disc.setLabel(track.loaded ? track.title : null, track.artist);

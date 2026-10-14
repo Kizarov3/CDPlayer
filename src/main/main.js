@@ -576,7 +576,7 @@ handle('dialog:loadPlaylist', async () => {
   if (r.canceled || !r.filePaths.length) return { canceled: true };
   const source = r.filePaths[0];
   store.writeLastPath(path.dirname(source));
-  try { return { tracks: library.parseM3u(fs.readFileSync(source, 'utf8'), source) }; } catch { return { error: true }; }
+  try { return { tracks: library.parseM3u(fs.readFileSync(source, 'utf8'), source), name: path.basename(source).replace(/\.m3u8?$/i, '') }; } catch { return { error: true }; }
 });
 handle('dialog:importLibrary', async () => {
   const r = await dialog.showOpenDialog(win, {

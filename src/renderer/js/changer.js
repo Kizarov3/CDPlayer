@@ -240,3 +240,14 @@ export function parse(text, queue, index) {
   try { check(c); } catch { return null; }
   return c;
 }
+
+const key = (s) => String(s || '').toLowerCase().trim();
+/** The disc that `paths` (with their `details`) make: their one album, or a CD-R titled `title`. `kind` overrides. */
+export function discFor({ kind = null, paths, details, title, now = Date.now() }) {
+  const artistOf = (d) => (d && ((d.credits && d.credits.albumArtist) || d.artist)) || '';
+  const first = details[0];
+  const one = first && first.album && details.length === paths.length
+    && details.every((d) => d && key(d.album) === key(first.album) && key(artistOf(d)) === key(artistOf(first)));
+  if (one) return { id: `album:${key(artistOf(first))}\n${key(first.album)}`, kind: kind || 'album', title: first.album, artist: artistOf(first) || null };
+  return { id: `${kind || 'cdr'}:${now}`, kind: kind || 'cdr', title, artist: null };
+}
