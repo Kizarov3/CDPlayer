@@ -100,3 +100,75 @@ test('no queue, no index', () => {
   assert.deepStrictEqual([changer.queue, changer.index], [[], -1]);
   assert.deepStrictEqual(tracksOf(fill(1), 0), ['d0/1', 'd0/2']);
 });
+
+import { nextIndex, previousIndex, discSkip, playSlot, moveTo, markFinished } from '../src/renderer/js/changer.js';
+
+const OFF = { shuffle: 'OFF', repeat: 'OFF' };
+const three = () => fill(3); // d0/1 d0/2 | d1/1 d1/2 | d2/1 d2/2, standing on 0
+const at = (c, i) => ({ ...c, index: i });
+const seq = (...values) => { let k = 0; return () => values[k++ % values.length]; };
+
+test('in order: through the disc, on to the next slot, and after the last slot — the end', () => {
+  const c = three();
+  assert.deepStrictEqual([0, 1, 2, 3, 4, 5].map((i) => nextIndex(at(c, i), OFF)), [1, 2, 3, 4, 5, -1]);
+  assert.strictEqual(nextIndex(at(c, 5), { shuffle: 'OFF', repeat: 'ALL' }), 0);
+  assert.strictEqual(nextIndex(at(c, 3), { shuffle: 'OFF', repeat: 'DISC' }), 2);
+  assert.strictEqual(nextIndex(at(c, 3), { shuffle: 'OFF', repeat: 'TRACK' }), 3);
+});
+
+test('an empty slot between discs is passed over; PLAY NEXT\'s disc comes after the playing one', () => {
+  let c = eject(three(), 1); // d0 | — | d2
+  assert.strictEqual(c.queue[nextIndex(at(c, 1), OFF)], 'd2/1');
+  c = load(three(), disc('n'), ['n1'], { next: true }).changer; // slot 3, next
+  assert.strictEqual(c.queue[nextIndex(at(c, 1), OFF)], 'n1');
+  c = moveTo(c, c.queue.indexOf('n1'));
+  assert.strictEqual(c.nextDisc, null, 'reached: no longer marked');
+});
+
+test('SHUFFLE DISC: the disc\'s unplayed songs at random, then the next disc', () => {
+  let c = load(empty(), disc('a'), ['a1', 'a2', 'a3']).changer;
+  c = load(c, disc('b'), ['b1', 'b2']).changer;
+  const modes = { shuffle: 'DISC', repeat: 'OFF' };
+  assert.strictEqual(nextIndex(c, modes, seq(0.99)), 2, 'a3: of a2, a3 (not a1, playing)');
+  c = markFinished(c, 0, modes); c = moveTo(c, 2);
+  c = markFinished(c, 2, modes); c = moveTo(c, 1);
+  assert.ok(['b1', 'b2'].includes(c.queue[nextIndex(c, modes, seq(0))]), 'a1 a3 played, on a2: the next disc');
+  c = markFinished(c, 1, modes);
+  assert.strictEqual(c.slots[0].done, true);
+});
+
+test('SHUFFLE ALL: any unplayed song of any disc; once all are played, the end (or again, repeating)', () => {
+  let c = load(empty(), disc('a'), ['a1']).changer;
+  c = load(c, disc('b'), ['b1']).changer;
+  const modes = { shuffle: 'ALL', repeat: 'OFF' };
+  assert.strictEqual(nextIndex(c, modes, seq(0)), 1);
+  c = markFinished(c, 0, modes); c = moveTo(c, 1); c = markFinished(c, 1, modes);
+  assert.strictEqual(nextIndex(c, modes, seq(0)), -1);
+  assert.strictEqual(nextIndex(c, { shuffle: 'ALL', repeat: 'ALL' }, seq(0)), 0);
+});
+
+test('a disc is finished at its last song in order (or all of them, shuffled), and unfinished when played again', () => {
+  let c = three();
+  c = markFinished(c, 0, OFF, 5);
+  assert.strictEqual(c.slots[0].done, false);
+  c = markFinished(c, 1, OFF, 7);
+  assert.deepStrictEqual([c.slots[0].done, c.slots[0].finishedAt], [true, 7]);
+  c = moveTo(c, 0);
+  assert.strictEqual(c.slots[0].done, false);
+});
+
+test('previous: the song before, across discs; DISC SKIP and the slot buttons', () => {
+  const c = three();
+  assert.deepStrictEqual([previousIndex(at(c, 2)), previousIndex(at(c, 0))], [1, -1]);
+  assert.strictEqual(discSkip(at(c, 1), OFF), 2);
+  assert.strictEqual(discSkip(at(c, 4), OFF), 0, 'wraps round');
+  assert.strictEqual(discSkip(at(c, 1), { shuffle: 'DISC', repeat: 'OFF' }, seq(0.99)), 3);
+  assert.strictEqual(discSkip(load(empty(), disc('a'), ['a1']).changer, OFF), -1, 'one disc: nowhere to go');
+  assert.deepStrictEqual([playSlot(c, 2), playSlot(c, 4)], [4, -1]);
+});
+
+test('ejecting the playing disc moves on to the next disc', () => {
+  const moved = eject(at(three(), 3), 1); // on d1/2, slot 1 out
+  assert.strictEqual(moved.queue[moved.index], 'd2/1');
+  assert.ok(check(moved));
+});

@@ -137,5 +137,78 @@ export function fromQueue(paths, index, albumOf, { cdrTitle }) {
   return { changer: build(entries, stand, null), dropped: discs.length - kept.length };
 }
 
-// (Task 2 adds the order: nextIndex, previousIndex, discSkip, playSlot, moveTo, markFinished.)
-export function discSkip() { return -1; }
+// ---- The order: which song comes next, by the changer's modes ----------------------------------------------------
+
+const occupied = (c) => c.slots.map((d, s) => (d ? s : -1)).filter((s) => s >= 0);
+// The next occupied slot after `slot` (round to the first with `wrap`), or -1.
+function slotAfter(c, slot, wrap) {
+  const occ = occupied(c);
+  const later = occ.find((s) => s > slot);
+  return later != null ? later : wrap && occ.length ? occ[0] : -1;
+}
+const offsets = (d) => Array.from({ length: d.end - d.start }, (_, k) => k);
+const unplayed = (d) => offsets(d).filter((k) => !d.played.includes(k));
+const pick = (list, rnd) => list[Math.min(list.length - 1, Math.floor(rnd() * list.length))];
+
+/** The queue position to play after the one the changer stands on, by `modes` — or -1 at the end. */
+export function nextIndex(c, { shuffle = 'OFF', repeat = 'OFF' } = {}, rnd = Math.random) {
+  const here = slotOf(c, c.index);
+  if (!here) return -1;
+  if (repeat === 'TRACK') return c.index;
+  const d = c.slots[here.slot], len = d.end - d.start;
+  if (shuffle === 'ALL') {
+    const left = c.slots.flatMap((x) => (x ? unplayed(x).map((k) => x.start + k) : [])).filter((i) => i !== c.index);
+    if (left.length) return pick(left, rnd);
+    if (repeat === 'OFF') return -1;
+    const any = c.queue.map((_, i) => i).filter((i) => i !== c.index);
+    return any.length ? pick(any, rnd) : c.index;
+  }
+  if (shuffle === 'DISC') {
+    const left = unplayed(d).filter((k) => k !== here.offset);
+    if (left.length) return d.start + pick(left, rnd);
+    if (repeat === 'DISC') { const others = offsets(d).filter((k) => k !== here.offset); return d.start + (others.length ? pick(others, rnd) : here.offset); }
+  } else if (here.offset + 1 < len) return c.index + 1;
+  else if (repeat === 'DISC') return d.start;
+  const to = c.nextDisc != null && c.nextDisc !== here.slot ? c.nextDisc : slotAfter(c, here.slot, repeat === 'ALL');
+  if (to < 0) return -1;
+  const n = c.slots[to];
+  if (shuffle === 'DISC') { const l = unplayed(n); return n.start + pick(l.length ? l : offsets(n), rnd); }
+  return n.start;
+}
+
+/** The song before: the previous one on the disc, or the last of the disc before. -1 at the very start. */
+export const previousIndex = (c) => (c.index > 0 ? c.index - 1 : -1);
+
+/** DISC SKIP: the next occupied slot (round to the first), its first song — a random one when shuffling. -1: no other disc. */
+export function discSkip(c, { shuffle = 'OFF' } = {}, rnd = Math.random) {
+  const here = slotOf(c, c.index);
+  if (!here) return -1;
+  const to = slotAfter(c, here.slot, true);
+  if (to < 0 || to === here.slot) return -1;
+  const n = c.slots[to];
+  return shuffle === 'OFF' ? n.start : n.start + pick(offsets(n), rnd);
+}
+
+/** A slot's button (or a click on its disc): its first song, or -1 for an empty slot. */
+export const playSlot = (c, slot) => (c.slots[slot] ? c.slots[slot].start : -1);
+
+/** The changer stands on `index`: PLAY NEXT's disc, reached, is no longer marked; a finished disc played again isn't. */
+export function moveTo(c, index) {
+  const here = slotOf(c, index);
+  if (!here) return { ...c, index: -1 };
+  const slots = c.slots.slice();
+  if (slots[here.slot].done) slots[here.slot] = { ...slots[here.slot], done: false, finishedAt: null };
+  return { ...c, slots, index, nextDisc: c.nextDisc === here.slot ? null : c.nextDisc };
+}
+
+/** The song at `index` played to its end: noted; its disc is finished at its last song (shuffled: once all have played). */
+export function markFinished(c, index, { shuffle = 'OFF' } = {}, now = Date.now()) {
+  const here = slotOf(c, index);
+  if (!here) return c;
+  const slots = c.slots.slice(), d = slots[here.slot], len = d.end - d.start;
+  const played = d.played.includes(here.offset) ? d.played : [...d.played, here.offset];
+  const over = shuffle === 'OFF' ? here.offset === len - 1 : played.length >= len;
+  // SHUFFLE DISC starts the disc's next round afresh; SHUFFLE ALL keeps count until every disc has played.
+  slots[here.slot] = over ? { ...d, done: true, finishedAt: now, played: shuffle === 'ALL' ? played : [] } : { ...d, played };
+  return { ...c, slots };
+}
