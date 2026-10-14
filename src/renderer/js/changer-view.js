@@ -33,7 +33,7 @@ export function createChangerView(root, { tray, heading, list, onPlaySlot, onPla
     view.slots.forEach((d, s) => {
       const x = discs[s];
       x.node.className = `changer-disc${d ? '' : ' empty'}${d && d.done ? ' done' : ''}${d && d.next ? ' next' : ''}${s === view.playingSlot ? ' playing' : ''}${d && d.kind === 'cdr' ? ' cdr' : ''}`;
-      x.node.title = d ? [t('DISC {n}', { n: s + 1 }), d.title, d.artist].filter(Boolean).join(' · ') : t('Slot {n} · empty', { n: s + 1 });
+      x.node.title = d ? [t('DISC {n}', { n: s + 1 }), d.title, d.artist].filter(Boolean).join(' · ') + (d.note ? `\n${d.note}` : '') : t('Slot {n} · empty', { n: s + 1 });
       x.node.disabled = !d;
       const path = d ? d.firstPath : null;
       if (path !== x.path) {

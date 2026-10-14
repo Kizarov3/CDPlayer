@@ -151,9 +151,13 @@ const readQueue = () => readQueueFile(FILES.queue, null);
  * the changer was the queue there's no changer-queue.txt yet: queue.txt held the changer's list then.
  */
 function readChangerQueue() {
-  const own = isFile(file(FILES.changerQueue));
-  if (!own && !isFile(file(FILES.changer))) return null;
-  return readQueueFile(own ? FILES.changerQueue : FILES.queue, readText(FILES.changer));
+  if (!isFile(file(FILES.changerQueue))) {
+    if (!isFile(file(FILES.changer))) return null;
+    // Once: the changer takes queue.txt's list as its own file now, before the queue saves its own over it.
+    const text = readText(FILES.queue);
+    if (text) writeText(FILES.changerQueue, text);
+  }
+  return readQueueFile(FILES.changerQueue, readText(FILES.changer));
 }
 /** The mode's store: the queue's queue.txt, or (mode CHANGER) changer-queue.txt and changer.txt (`changer`, its slots). */
 function writeQueue({ paths, index, positionMicros, changer, mode = 'QUEUE' }) {

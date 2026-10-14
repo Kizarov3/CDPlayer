@@ -305,3 +305,14 @@ test('the CHANGER setting round-trips, off by default', () => {
   store.writeSettings({ ...store.DEFAULT_SETTINGS });
   assert.strictEqual(store.readSettings().changer, false);
 });
+
+test('the upgrade happens once: the changer keeps its list after the queue saves its own', () => {
+  const a = path.join(home, 'o-a.mp3'), b = path.join(home, 'o-b.mp3');
+  fs.writeFileSync(a, ''); fs.writeFileSync(b, '');
+  for (const f of ['queue.txt', 'changer.txt', 'changer-queue.txt']) fs.rmSync(path.join(home, f), { force: true });
+  fs.writeFileSync(path.join(home, 'queue.txt'), `0,0\n${a}\n`);
+  fs.writeFileSync(path.join(home, 'changer.txt'), 'v1\t-\ncdr\t0\t1\t0\t\tcdr:1\t\t\n-\n-\n-\n-');
+  assert.deepStrictEqual(store.readChangerQueue().paths, [a]);
+  store.writeQueue({ paths: [b, a], index: 0, positionMicros: 0 }); // the queue plays on and saves
+  assert.deepStrictEqual(store.readChangerQueue().paths, [a], 'the changer still has its own list');
+});

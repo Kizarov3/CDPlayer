@@ -261,7 +261,7 @@ function buildSettings(app) {
   const discord = toggle(s.discord, () => { app.setDiscord(!s.discord); setToggle(discord, s.discord); });
   const discNoise = toggle(s.discNoise, () => { app.setDiscNoise(!s.discNoise); setToggle(discNoise, s.discNoise); });
   const discWear = toggle(s.discWear, () => { app.setDiscWear(!s.discWear); setToggle(discWear, s.discWear); });
-  const changerMode = toggle(app.changerMode(), () => { app.setChangerMode(!app.changerMode()); setToggle(changerMode, app.changerMode()); });
+  const changerMode = toggle(app.changerMode(), async () => { await app.setChangerMode(!app.changerMode()); setToggle(changerMode, app.changerMode()); });
   const discShine = toggle(s.discShine, () => { app.setDiscShine(!s.discShine); setToggle(discShine, s.discShine); });
   const taskbarDisc = toggle(s.taskbarDisc, () => { app.setTaskbarDisc(!s.taskbarDisc); setToggle(taskbarDisc, s.taskbarDisc); });
   const platform = document.body.dataset.platform;
