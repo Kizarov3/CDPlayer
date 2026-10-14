@@ -212,3 +212,31 @@ export function markFinished(c, index, { shuffle = 'OFF' } = {}, now = Date.now(
   slots[here.slot] = over ? { ...d, done: true, finishedAt: now, played: shuffle === 'ALL' ? played : [] } : { ...d, played };
   return { ...c, slots };
 }
+// ---- changer.txt: "v1<TAB>nextDisc|-", then a line per slot: "-" or kind, start, end, done, finishedAt, id, title, artist ----
+
+const clean = (s) => (s == null ? '' : String(s).replace(/[\t\n\r]+/g, ' '));
+export function serialize(c) {
+  const lines = [`v1\t${c.nextDisc ?? '-'}`];
+  for (const d of c.slots) {
+    lines.push(d ? [d.kind, d.start, d.end, d.done ? 1 : 0, d.finishedAt ?? '', clean(d.id), clean(d.title), clean(d.artist)].join('\t') : '-');
+  }
+  return lines.join('\n');
+}
+/** changer.txt's text for this queue → the changer, or null when it's missing, unreadable or doesn't fit the queue. */
+export function parse(text, queue, index) {
+  if (typeof text !== 'string') return null;
+  const lines = text.split('\n');
+  const head = /^v1\t(\d|-)$/.exec(lines[0] || '');
+  if (!head || lines.length < SLOTS + 1) return null;
+  const slots = [];
+  for (let s = 0; s < SLOTS; s++) {
+    const line = lines[s + 1];
+    if (line === '-') { slots.push(null); continue; }
+    const [kind, start, end, done, finishedAt, id, title, artist] = line.split('\t');
+    if (!['album', 'cdr', 'spotify', 'audiocd'].includes(kind) || !id) return null;
+    slots.push({ id, kind, title: title || null, artist: artist || null, start: Number(start), end: Number(end), done: done === '1', finishedAt: finishedAt ? Number(finishedAt) : null, played: [] });
+  }
+  const c = { slots, queue: queue.slice(), index: index >= 0 && index < queue.length ? index : -1, nextDisc: head[1] === '-' ? null : Number(head[1]) };
+  try { check(c); } catch { return null; }
+  return c;
+}

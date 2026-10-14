@@ -30,7 +30,7 @@ const file = (name) => path.join(dataDir(), name);
 const FILES = {
   queue: 'queue.txt', onboarded: 'onboarded', lastVersion: 'lastversion.txt', lastPath: 'lastpath.txt',
   settings: 'settings.txt', eqPresets: 'eq-presets.txt', history: 'history.txt', spotify: 'spotify.txt',
-  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt', firstPlayed: 'firstplayed.txt', shelfColors: 'shelf-colors.json',
+  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt', firstPlayed: 'firstplayed.txt', shelfColors: 'shelf-colors.json', changer: 'changer.txt',
 };
 
 function readText(name) {
@@ -129,19 +129,22 @@ function readQueue() {
   const [idx, pos] = l[0].trim().split(',');
   const savedIndex = parseInt(idx, 10), savedPosition = parseInt(pos, 10) || 0;
   const paths = [];
-  let mapped = -1;
+  let mapped = -1, dropped = false;
   for (let i = 1; i < l.length; i++) {
     const p = l[i].trim();
     if (!p) continue;
-    if (entryExists(p)) { if (i - 1 === savedIndex) mapped = paths.length; paths.push(p); }
+    if (entryExists(p)) { if (i - 1 === savedIndex) mapped = paths.length; paths.push(p); } else dropped = true;
   }
   if (!paths.length) return null;
   const index = mapped >= 0 ? mapped : Math.max(0, Math.min(Number.isFinite(savedIndex) ? savedIndex : 0, paths.length - 1));
-  return { paths, index, positionMicros: savedPosition };
+  // changer.txt (the changer's slots, as runs of this queue): no longer fits once a file was dropped — rebuilt then.
+  return { paths, index, positionMicros: savedPosition, changerText: dropped ? null : readText(FILES.changer) };
 }
-function writeQueue({ paths, index, positionMicros }) {
+function writeQueue({ paths, index, positionMicros, changer }) {
   const body = paths.filter(safePath).join('\n');
-  return writeText(FILES.queue, `${index},${Math.max(0, Math.round(positionMicros || 0))}\n${body}${body ? '\n' : ''}`);
+  const ok = writeText(FILES.queue, `${index},${Math.max(0, Math.round(positionMicros || 0))}\n${body}${body ? '\n' : ''}`);
+  if (typeof changer === 'string') writeText(FILES.changer, changer);
+  return ok;
 }
 
 // plays.txt — "count<TAB>path" per line: how many times each track was played (for the booklet). CDPlayer 2 only.

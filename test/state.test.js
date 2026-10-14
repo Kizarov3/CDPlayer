@@ -74,10 +74,20 @@ test('queue restore drops missing files and keeps pointing at the same track', (
   const a = path.join(home, 'a.mp3'), c = path.join(home, 'c.mp3');
   fs.writeFileSync(a, ''); fs.writeFileSync(c, '');
   fs.writeFileSync(path.join(home, 'queue.txt'), `2,1500000\n${a}\n${path.join(home, 'missing.mp3')}\n${c}\n`);
-  assert.deepStrictEqual(store.readQueue(), { paths: [a, c], index: 1, positionMicros: 1500000 });
+  assert.deepStrictEqual(store.readQueue(), { paths: [a, c], index: 1, positionMicros: 1500000, changerText: null });
   store.writeQueue({ paths: [c, a], index: 0, positionMicros: 42.4 });
-  assert.deepStrictEqual(store.readQueue(), { paths: [c, a], index: 0, positionMicros: 42 });
+  assert.deepStrictEqual(store.readQueue(), { paths: [c, a], index: 0, positionMicros: 42, changerText: null });
 });
+
+test('changer.txt is written beside queue.txt and read back; a queue that lost files comes back without it', () => {
+  const a = path.join(home, 'ch-a.mp3'), b = path.join(home, 'ch-b.mp3');
+  fs.writeFileSync(a, ''); fs.writeFileSync(b, '');
+  store.writeQueue({ paths: [a, b], index: 1, positionMicros: 0, changer: 'v1\t-\nalbum\t0\t2\t0\t\tid\tT\tA\n-\n-\n-\n-' });
+  assert.strictEqual(store.readQueue().changerText, 'v1\t-\nalbum\t0\t2\t0\t\tid\tT\tA\n-\n-\n-\n-');
+  fs.rmSync(b);
+  assert.strictEqual(store.readQueue().changerText, null);
+});
+
 
 test('EQ presets and history round-trip', () => {
   store.writeEqPresets([{ name: 'Mine | tweaked', gains: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }]);

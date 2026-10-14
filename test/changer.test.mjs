@@ -172,3 +172,18 @@ test('ejecting the playing disc moves on to the next disc', () => {
   assert.strictEqual(moved.queue[moved.index], 'd2/1');
   assert.ok(check(moved));
 });
+
+import { serialize, parse } from '../src/renderer/js/changer.js';
+
+test('the changer round-trips through changer.txt; text that doesn\'t fit the queue is refused', () => {
+  let c = load(fill(3), disc('n', { title: 'Tab\there', artist: null }), ['n1'], { next: true }).changer;
+  c = markFinished(c, 1, OFF, 99);
+  const back = parse(serialize(c), c.queue, c.index);
+  assert.deepStrictEqual(back.slots.map((d) => d && [d.id, d.kind, d.title, d.artist, d.start, d.end, d.done, d.finishedAt]),
+    c.slots.map((d) => d && [d.id, d.kind, d.title.replace(/\t/g, ' '), d.artist, d.start, d.end, d.done, d.finishedAt]));
+  assert.strictEqual(back.nextDisc, 3);
+  assert.strictEqual(parse(serialize(c), c.queue.slice(1), 0), null, 'the queue lost a song');
+  assert.strictEqual(parse('v1\t-\nalbum\t0\t9\t0\t\tx\tX\t\n-\n-\n-\n-', ['a'], 0), null, 'a run past the queue');
+  assert.strictEqual(parse('garbage', ['a'], 0), null);
+  assert.strictEqual(parse(null, ['a'], 0), null);
+});
