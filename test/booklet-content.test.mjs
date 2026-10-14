@@ -87,3 +87,25 @@ test('album credits fill in from Discogs what the tags lack, and add country and
   assert.deepStrictEqual(albumCredits(details), [['LABEL', 'Parlophone']]);
   assert.deepStrictEqual(albumCredits([song({ barcode: '999' })]), [['BARCODE', '999']]);
 });
+
+test('the album\'s story: a long paragraph in pieces at its sentences, so a page never cuts one off', async () => {
+  const { storyChunks } = await import('../src/renderer/js/booklet-content.js');
+  const long = Array.from({ length: 12 }, (_, i) => `Sentence number ${i + 1} is here and it says a little.`).join(' ');
+  const chunks = storyChunks(['Short one.', long], 200);
+  assert.deepStrictEqual(chunks[0], { text: 'Short one.', end: true });
+  const rest = chunks.slice(1);
+  assert.ok(rest.length > 1 && rest.every((c) => c.text.length <= 200));
+  assert.strictEqual(rest.map((c) => c.text).join(' '), long);
+  assert.deepStrictEqual(rest.map((c) => c.end), [...rest.slice(1).map(() => false), true]);
+  assert.deepStrictEqual(storyChunks(['x'.repeat(300)], 200), [{ text: 'x'.repeat(300), end: true }], 'one long sentence stays whole');
+});
+
+test('when the album came out, and how long ago', async () => {
+  const { releasedLine } = await import('../src/renderer/js/booklet-content.js');
+  const now = new Date('2026-10-14T12:00:00Z');
+  assert.strictEqual(releasedLine('1996-09-17', { locale: 'en', now }), 'Released 17 September 1996 · 30 years ago');
+  assert.strictEqual(releasedLine('1996', { locale: 'en', now }), 'Released 1996 · 30 years ago');
+  assert.strictEqual(releasedLine('2025-11-01', { locale: 'en', now }), 'Released 1 November 2025');
+  assert.strictEqual(releasedLine('2025-10-01', { locale: 'en', now }), 'Released 1 October 2025 · 1 year ago');
+  assert.strictEqual(releasedLine(null, { locale: 'en', now }), null);
+});

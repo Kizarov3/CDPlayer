@@ -21,6 +21,7 @@
   "A newer CDPlayer is out — opens the download page": "Вышел новый CDPlayer — откроется страница загрузки",
   "A picture behind the player": "Картинка за плеером",
   "A real player’s sounds: a faint hiss, the tray motor, the disc spinning up — and a skip when you shake the window.": "Звуки настоящего плеера: лёгкое шипение, мотор лотка, раскрутка диска — и заедание, если потрясти окно.",
+  "ABOUT THE ALBUM": "ОБ АЛЬБОМЕ",
   "ACCENT": "АКЦЕНТ",
   "ACCENT 2": "АКЦЕНТ 2",
   "ADD": "ДОБАВИТЬ",
@@ -243,6 +244,7 @@
     "many": "Вперёд на {n} секунд",
     "other": "Вперёд на {n} секунды"
   },
+  "From Wikipedia: “{title}” · CC BY-SA": "Из Википедии: «{title}» · CC BY-SA",
   "GALAXY|scene": "ЗВЁЗДЫ",
   "GAPS": "ПРОПУСКИ",
   "GENRE": "ЖАНР",
@@ -522,6 +524,14 @@
   "RIPPING {done}/{total} · {percent}%": "РИП {done}/{total} · {percent}%",
   "Reading a playlist's songs needs you signed in to Spotify — a single track link doesn't.": "Чтобы прочитать песни плейлиста, нужно войти в Spotify — для ссылки на один трек не нужно.",
   "Redirect URI: ": "Redirect URI: ",
+  "Released {date}": "Вышел {date}",
+  "Released {date} · 1 year ago": "Вышел {date} · год назад",
+  "Released {date} · {n} years ago": {
+    "one": "Вышел {date} · {n} год назад",
+    "few": "Вышел {date} · {n} года назад",
+    "many": "Вышел {date} · {n} лет назад",
+    "other": "Вышел {date} · {n} года назад"
+  },
   "Remove from queue": "Убрать из очереди",
   "Repeat": "Повтор",
   "Repeat: one track": "Повтор: один трек",

@@ -94,3 +94,36 @@ export function ownerMarks({ plays, first, last, now = Date.now() }) {
   if (known(last).length) notes.push(t('last: {when}', { when: ago(Math.max(...known(last)), now) }));
   return { tallies, favorite, notes };
 }
+
+/**
+ * The album's story (paragraphs) in pieces of at most `max` characters, cut at sentences (0: every sentence its own
+ * piece), so a page can end between them. `end`: the last piece of a paragraph.
+ */
+export function storyChunks(paragraphs, max = 420) {
+  const out = [];
+  for (const p of paragraphs) {
+    const sentences = p.split(/(?<=[.!?…»”"])\s+(?=[\p{Lu}\p{N}«“"(])/u);
+    let piece = '';
+    for (const s of sentences) {
+      if (piece && piece.length + 1 + s.length > max) { out.push({ text: piece, end: false }); piece = s; } else piece = piece ? `${piece} ${s}` : s;
+    }
+    if (piece) out.push({ text: piece, end: true });
+  }
+  return out;
+}
+
+/** "Released 17 September 1996 · 30 years ago" from a MusicBrainz date (YYYY, YYYY-MM or YYYY-MM-DD); null without one. */
+export function releasedLine(released, { locale = 'en', now = new Date() } = {}) {
+  const m = /^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?/.exec(released || '');
+  if (!m) return null;
+  const [y, mo, d] = [Number(m[1]), m[2] ? Number(m[2]) : null, m[3] ? Number(m[3]) : null];
+  const at = new Date(Date.UTC(y, (mo || 1) - 1, d || 1));
+  const opts = d ? { day: 'numeric', month: 'long', year: 'numeric' } : mo ? { month: 'long', year: 'numeric' } : { year: 'numeric' };
+  let date;
+  try { date = new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : locale, { ...opts, timeZone: 'UTC' }).format(at); } catch { date = released; }
+  // Whole years since: by the date when it's known, else by the year.
+  let years = now.getUTCFullYear() - y;
+  if (mo && (now.getUTCMonth() + 1 < mo || (now.getUTCMonth() + 1 === mo && d && now.getUTCDate() < d))) years--;
+  if (years < 1) return t('Released {date}', { date });
+  return years === 1 ? t('Released {date} · 1 year ago', { date }) : t('Released {date} · {n} years ago', { date, n: years });
+}

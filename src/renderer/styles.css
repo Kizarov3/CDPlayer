@@ -792,6 +792,10 @@ body.cd-view #cd-info { display: block !important; }
 }
 .booklet .lyric { font-size: 1.05em; font-weight: normal; line-height: 1.5; color: var(--b-ink); transition: color 200ms; }
 .booklet .lyric.gap { height: .7em; }
+.booklet .page-body:has(> .story) { font-size: .95em; font-weight: normal; line-height: 1.5; color: var(--b-ink); text-align: justify; hyphens: auto; }
+.booklet .story-gap { height: .7em; }
+.booklet .story-source { margin-top: .4em; font-size: .75em; opacity: .65; cursor: pointer; }
+.booklet .story-source:hover { opacity: 1; text-decoration: underline; }
 .booklet .lyric.now { color: var(--b-accent2); font-weight: bold; }
 .booklet dl.credits { display: grid; grid-template-columns: auto 1fr; gap: .5em 1.1em; margin: 0; font-size: .92em; }
 .booklet dl.credits dt { color: var(--b-muted); font-size: .82em; padding-top: .1em; }

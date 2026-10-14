@@ -38,6 +38,8 @@ contextBridge.exposeInMainWorld('cdp', {
   wantDiscography: invoke('discography:want'),
   missingTracklist: invoke('discography:tracklist'),
   discographyOf: invoke('discography:of'),
+  albumStory: invoke('story:album'),
+  openStory: invoke('story:open'),
   discogsLookup: invoke('discogs:lookup'),
   discogsAppraise: invoke('discogs:appraise'),
   discogsStop: invoke('discogs:stop'),

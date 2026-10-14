@@ -8,8 +8,8 @@ import { el, anim } from './widgets.js';
 import { deriveAutoTheme, rgb } from './theme.js';
 import { parseLrc, formatLyricsForDisplay, currentLineIndex } from './lyrics.js';
 import { paginate, leavesFor, ean13 } from './booklet-layout.js';
-import { albumCredits, albumSummary, albumSmallPrint, sameAlbum, ownerMarks } from './booklet-content.js';
-import { t } from './i18n.js';
+import { albumCredits, albumSummary, albumSmallPrint, sameAlbum, ownerMarks, storyChunks, releasedLine } from './booklet-content.js';
+import { t, locale } from './i18n.js';
 
 const LIFT_MS = 420, TURN_MS = 650;
 const layer = () => document.getElementById('overlays');
@@ -46,7 +46,7 @@ export async function openBooklet(app, from, content = null) {
   // Clicks: the right page turns forward, the left page back, anything outside the booklet closes it.
   root.addEventListener('mousedown', (e) => { if (e.target === root) closeBooklet(); });
   spread.addEventListener('click', (e) => {
-    if (e.target.closest('[data-play]')) return;
+    if (e.target.closest('[data-play], [data-link]')) return;
     const r = spread.getBoundingClientRect();
     if (e.clientX >= r.left + r.width / 2) turn(1); else turn(-1);
   });
@@ -251,7 +251,19 @@ async function songContent(app) {
     },
     liveLyrics: () => app.state.lyrics,
     onClose: () => { app.disc.artOpen = false; }, // the art shrinks back into the corner of the case
+    story: null, openStory: (url) => app.cdp.openStory(url),
+    start() { tellStory(app, this, { releaseId: c.albumMbid, artist: c.albumArtist || d.artist, album: d.album, title: d.title }); },
   };
+}
+
+// The album's story from Wikipedia (main/album-story.js), slotted in after the tracklist once it's found.
+function tellStory(app, content, query) {
+  if (!query.artist || !(query.album || query.title)) return;
+  app.cdp.albumStory(query).then((story) => {
+    if (!story) return;
+    content.story = story;
+    refreshBooklet(content);
+  }).catch(() => {});
 }
 
 /**
@@ -295,7 +307,9 @@ export async function albumBooklet(app, album, cover, { play, onClose = () => {}
     }).filter(Boolean);
   };
   setLyrics();
+  content.openStory = (url) => app.cdp.openStory(url);
   content.start = () => {
+    tellStory(app, content, { releaseId: (details.find((d) => d && d.credits && d.credits.albumMbid) || { credits: {} }).credits.albumMbid, artist: album.artist, album: album.title });
     const missing = album.tracks.map((t, i) => i).filter((i) => !found[i] && details[i]);
     let next = 0;
     const worker = async () => {
@@ -346,6 +360,17 @@ function insidePages(content, spread, size) {
     row.addEventListener('click', (e) => { e.stopPropagation(); t.play(); });
     return row;
   })));
+
+  // About the album: Wikipedia's introduction, the date it came out, and where it's from.
+  const { story } = content;
+  if (story) {
+    // Sentence by sentence, flowing on as one text (a page turns between sentences); a gap between paragraphs.
+    const pieces = storyChunks(story.paragraphs, 0);
+    const rows = pieces.flatMap((c, i) => [() => el('span', { class: 'story' }, `${c.text} `), ...(c.end && i < pieces.length - 1 ? [() => el('div', { class: 'story-gap' })] : [])]);
+    rows.push(() => el('div', { class: 'story-source', 'data-link': '', title: story.url, onClick: () => content.openStory && content.openStory(story.url) },
+      t('From Wikipedia: “{title}” · CC BY-SA', { title: story.title })));
+    pages.push(...layout('story', (n) => heading(n ? t('{title} (cont.)', { title: t('ABOUT THE ALBUM') }) : t('ABOUT THE ALBUM'), n ? null : releasedLine(story.released, { locale })), rows));
+  }
 
   // Lyrics: each song's on its own pages.
   for (const song of content.lyrics) {
