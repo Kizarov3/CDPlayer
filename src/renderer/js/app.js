@@ -227,7 +227,8 @@ function renderQueue() {
     return;
   }
   const d = c.slots[here.slot];
-  const modeText = [state.shuffle !== 'OFF' ? t('SHUFFLE: {m}', { m: t(state.shuffle) }) : null, state.repeat !== 'OFF' ? t('REPEAT: {m}', { m: t(state.repeat) }) : null].filter(Boolean).join(' · ');
+  const modeName = { TRACK: t('TRACK'), DISC: t('DISC'), ALL: t('ALL') };
+  const modeText = [state.shuffle !== 'OFF' ? t('SHUFFLE: {m}', { m: modeName[state.shuffle] }) : null, state.repeat !== 'OFF' ? t('REPEAT: {m}', { m: modeName[state.repeat] }) : null].filter(Boolean).join(' · ');
   $('queue-info').textContent = [t('DISC {n} · {at} / {of}', { n: here.slot + 1, at: here.offset + 1, of: d.end - d.start }), modeText].filter(Boolean).join(' · ');
   const next = upcomingIndex();
   $('queue-next').textContent = state.repeat === 'TRACK' ? t('REPEATING THIS TRACK')
@@ -1549,7 +1550,7 @@ const SHUFFLES = ['OFF', 'DISC', 'ALL'], REPEATS = ['OFF', 'TRACK', 'DISC', 'ALL
 function toggleShuffle() {
   state.shuffle = SHUFFLES[(SHUFFLES.indexOf(state.shuffle) + 1) % SHUFFLES.length];
   shuffleButton.setOn(state.shuffle !== 'OFF');
-  shuffleButton.setBadge(state.shuffle === 'OFF' ? null : state.shuffle === 'DISC' ? t('DISC') : t('ALL'));
+  shuffleButton.setBadge(state.shuffle === 'DISC' ? '◉' : null); // one character fits the badge; the info line says it in words
   shuffleButton.title = { OFF: t('Shuffle'), DISC: t('Shuffle: this disc'), ALL: t('Shuffle: all discs') }[state.shuffle];
   upcomingCache = null; renderQueue();
   pushMini(true);
@@ -1558,7 +1559,7 @@ function toggleShuffle() {
 function cycleRepeat() {
   state.repeat = REPEATS[(REPEATS.indexOf(state.repeat) + 1) % REPEATS.length];
   repeatButton.setOn(state.repeat !== 'OFF');
-  repeatButton.setBadge(state.repeat === 'TRACK' ? '1' : state.repeat === 'DISC' ? t('DISC') : state.repeat === 'ALL' ? t('ALL') : null);
+  repeatButton.setBadge(state.repeat === 'TRACK' ? '1' : state.repeat === 'DISC' ? '◉' : null);
   repeatButton.title = { OFF: t('Repeat'), TRACK: t('Repeat: this track'), DISC: t('Repeat: this disc'), ALL: t('Repeat: all discs') }[state.repeat];
   upcomingCache = null; renderQueue();
   pushMini(true);
