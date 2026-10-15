@@ -290,6 +290,9 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 .setting-hint { margin-top: 10px; width: 336px; font-size: 10px; font-weight: normal; color: rgb(var(--muted)); line-height: 1.35; }
 .gap-22 { height: 22px; flex: 0 0 auto; }
 /* Settings: SOUND / LOOK / PLAYBACK sections, each headed by a small label and a hairline. */
+.settings-jumps { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.settings-jump { padding: 2px 0; border: 0; background: none; font: inherit; font-size: 9px; letter-spacing: .08em; color: rgb(var(--muted)); cursor: pointer; }
+.settings-jump:hover { color: rgb(var(--accent2)); }
 .settings-section { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; font-size: 9px; color: rgb(var(--accent2)); }
 .settings-section::after { content: ""; flex: 1 1 auto; height: 1px; background: rgba(255, 255, 255, .086); }
 .settings-body .setting-row { min-height: 36px; }

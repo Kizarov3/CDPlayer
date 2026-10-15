@@ -1416,9 +1416,13 @@ function showSoundCheck(info, settled = false) {
   badge.hidden = !on;
   if (!on) return;
   const db = info ? info.db : null;
-  badge.textContent = db === null ? t('SC …') : t('SC {db} DB', { db: `${db > 0.05 ? '+' : db < -0.05 ? '−' : ''}${Math.abs(db).toFixed(1)}` });
+  const amount = db === null ? null : `${db > 0.05 ? '+' : db < -0.05 ? '−' : ''}${Math.abs(db).toFixed(1)}`;
+  badge.textContent = db === null ? t('LEVEL …') : t('LEVEL {db} DB', { db: amount });
+  // The tooltip says it in words first (louder, quieter), then how it was worked out.
+  const plain = db === null ? '' : db > 0.05 ? t('Sound Check plays this song {n} dB louder, to match the others', { n: Math.abs(db).toFixed(1) })
+    : db < -0.05 ? t('Sound Check plays this song {n} dB quieter, to match the others', { n: Math.abs(db).toFixed(1) }) : t('Sound Check: this song is already at the level of the others');
   badge.title = !info ? t('SOUND CHECK · MEASURING THE SONG')
-    : [t('SOUND CHECK'), info.scope === 'ALBUM' ? t('ALBUM') : t('TRACK'), info.source === 'TAGS' ? t('FROM REPLAYGAIN TAGS') : t('MEASURED'), info.limited ? t("LIMITED BY THE SONG'S PEAKS") : null].filter(Boolean).join(' · ');
+    : `${plain}\n${[t('SOUND CHECK'), info.scope === 'ALBUM' ? t('ALBUM') : t('TRACK'), info.source === 'TAGS' ? t('FROM REPLAYGAIN TAGS') : t('MEASURED'), info.limited ? t("LIMITED BY THE SONG'S PEAKS") : null].filter(Boolean).join(' · ')}`;
 }
 // What Sound Check still has to measure for the song loaded with `token`: its gain is changed as each answer comes.
 function followSoundCheck(path, mode, token) {

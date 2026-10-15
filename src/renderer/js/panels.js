@@ -332,7 +332,10 @@ function buildSettings(app) {
       pill(t('FAQ'), () => showFaq(), t('Answers to what people ask the first time')),
       pill(t('KEYBOARD SHORTCUTS'), () => showShortcuts(), t('Every key, also with ?'))));
   const version = el('div', { class: 'settings-version' }, `CDPlayer ${app.state.version}`);
-  return [title(t('SETTINGS')), gap(18), body, el('div', { class: 'settings-foot' }, github, version, pill(t('CLOSE'), () => closePanel('settings')))];
+  // The sections, to jump to: the list is long, and HELP is at the bottom of it.
+  const jumps = el('div', { class: 'settings-jumps' }, [...body.querySelectorAll('.settings-section')].map((sec) =>
+    el('button', { class: 'settings-jump', onClick: () => { body.scrollTo({ top: body.scrollTop + sec.getBoundingClientRect().top - body.getBoundingClientRect().top, behavior: anim.enabled ? 'smooth' : 'auto' }); } }, sec.textContent)));
+  return [title(t('SETTINGS')), gap(10), jumps, gap(8), body, el('div', { class: 'settings-foot' }, github, version, pill(t('CLOSE'), () => closePanel('settings')))];
 }
 
 // ---- Drop-down menus (theme picker, EQ presets) ------------------------------------------------------------------
