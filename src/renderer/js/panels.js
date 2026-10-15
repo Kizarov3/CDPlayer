@@ -156,7 +156,10 @@ export function showCard(app, { choices, maxLines, render, copy, save, video }) 
 // ---- Settings ----------------------------------------------------------------------------------------------------
 
 let themeButton = null, presetButton = null;
-export function updateThemeButton(app, name) { if (themeButton) themeButton.lastChild.textContent = name; }
+// The built-in themes' names in the interface's language (a theme of one's own keeps the name it was given).
+const THEME_NAMES = { RED: t('RED|theme'), BLUE: t('BLUE|theme'), SUNSET: t('SUNSET|theme'), FOREST: t('FOREST|theme'), GALAXY: t('GALAXY|theme'), OCEAN: t('OCEAN|theme'), MATRIX: t('MATRIX|theme'), AUTUMN: t('AUTUMN|theme'), SNOW: t('SNOW|theme'), AUTO: t('AUTO') };
+const themeLabel = (theme) => (theme.user ? theme.name : THEME_NAMES[theme.name] || theme.name);
+export function updateThemeButton(app, name) { if (themeButton) themeButton.lastChild.textContent = themeLabel(THEMES.find((x) => x.name === name) || { name }); }
 
 let discogsSettings = null;
 async function loadDiscogsSettings(app) { discogsSettings = await app.cdp.discogsSettings().catch(() => null); }
@@ -183,7 +186,7 @@ function buildSettings(app) {
   const s = app.state;
   // The swatch follows the live colors (CSS variables), so it stays right for AUTO and during a theme transition.
   themeButton = el('button', { class: 'pill theme-pill', title: t('Pick a theme'), onClick: () => showThemeMenu(app) },
-    el('span', { class: 'swatch' }), el('span', {}, THEMES[s.themeIndex].name));
+    el('span', { class: 'swatch' }), el('span', {}, themeLabel(THEMES[s.themeIndex])));
   presetButton = pill(presetName(app), () => showPresetMenu(app), t('Switch to another equalizer preset'));
   const eqButton = pill(t('EQ'), () => showEq(app), t('Adjust the 10 bands, or save your own preset'));
   // Where the sound goes: the button names it; the menu lists what's plugged in now.
@@ -368,7 +371,7 @@ const themeSwatch = (theme) => (theme.image ? `center / cover url("${theme.image
 function showThemeMenu(app) {
   const item = (theme) => {
     const i = THEMES.indexOf(theme);
-    return { label: theme.name, swatch: themeSwatch(theme), current: i === app.state.themeIndex, pick: () => app.switchTheme(i), more: theme.user ? (box) => showThemeActions(app, theme, box) : null };
+    return { label: themeLabel(theme), swatch: themeSwatch(theme), current: i === app.state.themeIndex, pick: () => app.switchTheme(i), more: theme.user ? (box) => showThemeActions(app, theme, box) : null };
   };
   showMenu(themeButton, [
     ...THEMES.filter((theme) => !theme.user).map(item),
@@ -425,7 +428,7 @@ function buildEq(app) {
     const value = el('span', { class: 'db' }, formatDb(s.eq[i]));
     const slider = new Slider({
       min: -12, max: 12, value: Math.round(s.eq[i]),
-      onInput: (v) => { const gains = s.eq.slice(); gains[i] = v; value.textContent = formatDb(v); app.setEq(gains); },
+      onInput: (v) => { const gains = s.eq.slice(); gains[i] = v; value.textContent = formatDb(v); app.setEq(gains); markPreset(); },
     });
     const wrap = el('div', { class: 'slider' });
     requestAnimationFrame(() => slider.mount(wrap));
@@ -434,11 +437,16 @@ function buildEq(app) {
   const applyPreset = (gains) => {
     app.setEq(gains);
     sliders.forEach((sl, i) => { sl.slider.setValue(Math.round(gains[i])); sl.value.textContent = formatDb(gains[i]); });
+    markPreset();
   };
+  // The preset the sliders stand at is lit (none, once one's moved off it).
+  const presetPills = [];
+  const presetPill = (p) => { const b = pill(p.name, () => applyPreset(p.gains)); presetPills.push([b, p.gains]); return b; };
+  function markPreset() { for (const [b, gains] of presetPills) b.classList.toggle('on', gains.every((g, i) => Math.round(g) === Math.round(s.eq[i]))); }
   const presetButtons = [
-    ...app.BUILTIN_EQ_PRESETS.map((p) => pill(p.name, () => applyPreset(p.gains))),
+    ...app.BUILTIN_EQ_PRESETS.map((p) => presetPill(p)),
     ...s.customPresets.map((p) => el('span', { class: 'preset-item' },
-      pill(p.name, () => applyPreset(p.gains)),
+      presetPill(p),
       el('button', { class: 'glyph-x', title: t('Delete preset “{name}”', { name: p.name }), onClick: () => {
         s.customPresets = s.customPresets.filter((c) => c.name !== p.name);
         app.saveEq(); refreshPanel('eq');
@@ -461,6 +469,7 @@ function buildEq(app) {
   const trigger = pill(t('SAVE AS PRESET'), () => { trigger.hidden = true; inputRow.hidden = false; nameField.focus(); });
   const saveArea = el('div', {}, trigger, inputRow);
   const presets = el('div', { class: 'presets scroll' }, presetButtons);
+  markPreset();
   return [title(t('EQUALIZER')), app.spotifyActive() ? hint(t('Not available for Spotify — the equalizer shapes your own files.')) : [], gap(18), sliders.map((x) => x.row), gap(10),
     el('div', { class: 'setting-row' }, t('PRESETS')), presets, gap(14), saveArea, closeRow(() => closePanel('eq'))];
 }
@@ -564,11 +573,13 @@ async function lookUpTags(app, view) {
     return;
   }
   view.found = found;
-  // Every field MusicBrainz knows and the file has differently is filled in and ticked; the rest stay as they are.
+  // What MusicBrainz knows and the file hasn't got is filled in and ticked. Where the file says something else, that's
+  // offered — filled in, not ticked — so nothing the file has is replaced unless asked (a tick, typing, or TICK ALL).
+  view.offered = new Set();
   for (const [, ...keys] of TAG_ROWS) for (const k of keys) {
-    if (found[k] == null || found[k] === '') continue;
+    if (found[k] == null || found[k] === '' || String(found[k]) === String(view.current[k] ?? '')) continue;
     view.values[k] = found[k];
-    if (String(found[k]) !== String(view.current[k] ?? '')) view.picked.add(k);
+    if (String(view.current[k] ?? '').trim() === '') view.picked.add(k); else view.offered.add(k);
   }
   view.status = t('FOUND ON MUSICBRAINZ · {album}', { album: [found.album, found.year].filter(Boolean).join(' · ').toUpperCase() });
   refreshPanel('tags');
@@ -585,14 +596,16 @@ function buildTags(app) {
   const v = tagsView;
   const pick = (key) => {
     const b = el('button', { class: `tag-pick${v.picked.has(key) ? ' on' : ''}`, title: t('Write this into the file'), disabled: !v.canWrite }, '✓');
-    b.addEventListener('click', () => { v.picked.has(key) ? v.picked.delete(key) : v.picked.add(key); b.classList.toggle('on', v.picked.has(key)); save.disabled = !v.picked.size || v.busy; });
+    b.addEventListener('click', () => { v.picked.has(key) ? v.picked.delete(key) : v.picked.add(key); b.classList.toggle('on', v.picked.has(key)); save.disabled = !v.picked.size || v.busy; refreshPanel('tags'); });
     return b;
   };
   // Typing in a field ticks it (a track or disc number and its "of" share one tick).
   const input = (key, narrow, pair) => {
-    const i = el('input', { class: `text-input tag-input${narrow ? ' narrow' : ''}`, value: v.values[key] ?? '', spellcheck: 'false', disabled: !v.canWrite });
+    const offered = v.offered && v.offered.has(key) && !v.picked.has(key);
+    const i = el('input', { class: `text-input tag-input${narrow ? ' narrow' : ''}${offered ? ' offered' : ''}`, value: v.values[key] ?? '', spellcheck: 'false', disabled: !v.canWrite,
+      title: offered ? t('What MusicBrainz says — tick it to write it over what’s in the file') : '' });
     i.addEventListener('input', () => {
-      v.values[key] = i.value;
+      v.values[key] = i.value; i.classList.remove('offered');
       for (const k of [key, pair].filter(Boolean)) { v.picked.add(k); if (picks.get(k)) picks.get(k).classList.add('on'); }
       save.disabled = false;
     });
@@ -630,14 +643,17 @@ function buildTags(app) {
     if (r.ok) { closePanel('tags'); app.setStatus(t('TAGS SAVED INTO THE FILE')); return; }
     v.busy = false; v.status = t('COULDN’T SAVE · {why}', { why: r.error || t('UNKNOWN ERROR') }); refreshPanel('tags');
   });
+  // Every offer at once: MusicBrainz's whole answer over the file's.
+  const waiting = [...(v.offered || [])].filter((k) => !v.picked.has(k));
+  const all = waiting.length && v.canWrite ? pill(t('TICK ALL {n}', { n: waiting.length }), () => { for (const k of waiting) v.picked.add(k); refreshPanel('tags'); }, t('Write everything MusicBrainz says, over what’s in the file')) : null;
   const again = pill(t('LOOK UP AGAIN'), () => { if (!v.busy && v.canWrite) { v.status = t('LOOKING THE SONG UP ON MUSICBRAINZ…'); refreshPanel('tags'); lookUpTags(app, v); } }, t('Ask MusicBrainz again'));
   again.disabled = v.busy || !v.canWrite;
   return [
-    title(t('TAGS')), el('div', { class: 'subtitle' }, v.name),
+    title(t('TAGS')), el('div', { class: 'subtitle' }, app.queueDisplay(v.path) || v.name),
     el('div', { class: `tag-status${v.busy ? ' busy' : ''}` }, v.status),
-    el('div', { class: 'tag-head' }, el('span', {}, ''), el('span', {}, t('IN THE FILE')), el('span', {}, t('SAVE AS')), el('span', {}, '')),
+    el('div', { class: 'tag-head' }, el('span', {}, ''), el('span', {}, t('IN THE FILE')), el('span', {}, t('SAVE AS')), el('span', { class: 'tag-write', title: t('Ticked: written into the file') }, t('WRITE'))),
     el('div', { class: 'scroll tag-rows' }, rows),
-    el('div', { class: 'close-row split' }, again, el('div', { class: 'row-pills' }, pill(t('CLOSE'), () => closePanel('tags')), save)),
+    el('div', { class: 'close-row split' }, el('div', { class: 'row-pills' }, again, all), el('div', { class: 'row-pills' }, pill(t('CLOSE'), () => closePanel('tags')), save)),
   ];
 }
 
@@ -700,11 +716,13 @@ function buildRip(app) {
 
 // ---- Search ------------------------------------------------------------------------------------------------------
 
-const search = { index: [], labels: {}, folder: null, scanning: false, generation: 0, lastSpotifyUrl: null, field: null, results: null, status: null };
+const search = { index: [], labels: {}, tags: {}, folder: null, scanning: false, generation: 0, lastSpotifyUrl: null, field: null, results: null, status: null };
 const SEARCH_LIMIT = 100;
 const basename = (p) => p.split(/[\\/]/).pop();
-// What a search matches and shows: the filename, or for a cue sheet track "<album> · 03 <title>".
-const searchName = (p) => search.labels[p] || basename(p);
+// What a search shows: "Artist · Title" from the tags the shelf read, else the filename, or for a cue sheet track
+// "<album> · 03 <title>". It matches all of those and the album too, every word of the query in any order.
+const searchName = (p) => (search.tags[p] && search.tags[p].shown) || search.labels[p] || basename(p);
+const searchText = (p) => `${search.tags[p] ? search.tags[p].words : ''} ${search.labels[p] || ''} ${basename(p)}`.toLowerCase();
 function significantWords(text) { return new Set(String(text).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3)); }
 function wordOverlap(query, result) {
   const q = significantWords(query);
@@ -725,10 +743,10 @@ function findLocalMatch(title, artist) {
 
 async function startLibraryScan(app) {
   const generation = ++search.generation;
-  search.index = []; search.labels = {}; search.scanning = true;
+  search.index = []; search.labels = {}; search.tags = {}; search.scanning = true;
   const result = await app.cdp.scanLibrary().catch(() => ({ folder: null, files: [] }));
   if (generation !== search.generation) return; // superseded by a newer scan
-  search.index = result.files; search.labels = result.labels || {}; search.folder = result.name || null; search.scanning = false;
+  search.index = result.files; search.labels = result.labels || {}; search.tags = result.tags || {}; search.folder = result.name || null; search.scanning = false;
   refreshSearchResults(app);
 }
 
@@ -742,7 +760,7 @@ export function showSearch(app) {
 function buildSearch(app) {
   search.status = el('div', { class: 'setting-row' });
   search.status.style.minHeight = '16px';
-  search.field = el('input', { class: 'text-input', type: 'text', placeholder: t('Search by filename, or paste a Spotify link') });
+  search.field = el('input', { class: 'text-input', type: 'text', placeholder: t('Artist, album or song — or paste a Spotify link') });
   search.field.style.width = '100%';
   search.field.addEventListener('input', () => onSearchInput(app));
   search.field.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') closePanel('search'); });
@@ -766,9 +784,9 @@ function refreshSearchResults(app) {
     search.results.replaceChildren();
     return;
   }
-  const matches = [];
+  const matches = [], words = query.split(/\s+/).filter(Boolean);
   for (const p of search.index) {
-    if (!query || searchName(p).toLowerCase().includes(query)) { matches.push(p); if (matches.length >= SEARCH_LIMIT) break; }
+    if (!words.length || (() => { const text = searchText(p); return words.every((w) => text.includes(w)); })()) { matches.push(p); if (matches.length >= SEARCH_LIMIT) break; }
   }
   setSearchStatus(search.scanning ? t('SCANNING YOUR MUSIC FOLDER…')
     : matches.length >= SEARCH_LIMIT ? t('{n}+ MATCHES IN {folder}', { n: matches.length, folder: search.folder }) : t('{n} MATCHES IN {folder}', { n: matches.length, folder: search.folder }));

@@ -420,7 +420,7 @@ function goToPlayer() {
 // ---- Missing albums (shelf-missing.js) -------------------------------------------------------------------------
 
 function boxCard(box) {
-  const card = el('button', { class: `missing-box${box.state === 'found' && !box.missing.length ? ' complete' : ''}${box.open ? ' open' : ''}`,
+  const card = el('button', { class: `missing-box${box.state !== 'found' ? ' waiting' : ''}${box.state === 'found' && !box.missing.length ? ' complete' : ''}${box.open ? ' open' : ''}`,
     title: box.state !== 'found' ? t('Looking up {artist} on MusicBrainz…', { artist: box.artist }) : box.missing.length ? (box.open ? t('{artist}: releases you don’t have — click to close', { artist: box.artist }) : t('{artist}: releases you don’t have — click to show them', { artist: box.artist })) : t('You have everything {artist} has released', { artist: box.artist }),
     onClick: () => {
       if (box.state !== 'found' || !box.missing.length) return;
@@ -715,6 +715,9 @@ async function openCase(a, spine) {
     if (a.wrapped && film) { tearing = tearFilm(film, a, true).then(then); return; }
     then();
   };
+  // Into the queue or the changer; the case goes back once it's in — not when a full changer's question was turned
+  // down (Esc there closes the question, and the case stays out).
+  const putIn = async (opts) => { const r = await app.loadDisc(discOfAlbum(a), a.tracks.map((t) => t.path), opts); if (!(r && r.cancelled)) closeCase(); };
   const addNote = pill(t('+ NOTE'), () => { addNote.hidden = true; caseFront.append(stickyNote({ id: a.id, text: '', onSave: saveNote })); }, t('Stick a note on the case'));
   addNote.hidden = !!a.note;
   const rare = el('div', { class: 'sticker-rare', hidden: !isRare(a.pressing) }, t('★ RARE'));
@@ -749,9 +752,9 @@ async function openCase(a, spine) {
         pill(t('BACK ON THE SHELF'), () => closeCase()),
         addNote,
         el('span', { class: 'grow' }),
-        pill(t('PLAY NEXT'), unwrapped(() => { app.loadDisc(discOfAlbum(a), a.tracks.map((t) => t.path), { next: true }); closeCase(); }), app.changerMode() ? t('Into the changer, to play after the disc playing') : t('Play the album next, after the song playing')),
-        app.changerMode() ? pill(t('INTO THE CHANGER'), unwrapped(() => { app.loadDisc(discOfAlbum(a), a.tracks.map((t) => t.path)); closeCase(); }), t('Load the album into a free slot of the changer'))
-          : pill(t('ADD TO QUEUE'), unwrapped(() => { app.loadDisc(discOfAlbum(a), a.tracks.map((t) => t.path)); closeCase(); }), t('Add every track to the end of the queue')),
+        pill(t('PLAY NEXT'), unwrapped(() => putIn({ next: true })), app.changerMode() ? t('Into the changer, to play after the disc playing') : t('Play the album next, after the song playing')),
+        app.changerMode() ? pill(t('INTO THE CHANGER'), unwrapped(() => putIn()), t('Load the album into the changer: a free slot, or one you pick'))
+          : pill(t('ADD TO QUEUE'), unwrapped(() => putIn()), t('Add every track to the end of the queue')),
         el('button', { class: 'pill on', onClick: unwrapped(() => play(a, 0)) }, t('PLAY')))));
   showCase(card, spine, from, shelf.colors.get(a.id) || hashColor(a.title + a.artist));
 }

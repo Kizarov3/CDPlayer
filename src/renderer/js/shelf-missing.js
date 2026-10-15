@@ -127,4 +127,4 @@ export function fullTracklist(edition, owned) {
   return [...rows, ...left.map((o) => ({ no: null, title: o.title, length: o.duration || 0, have: o }))];
 }
 
-export const boxLabel = (box) => (box.state !== 'found' ? '…' : box.missing.length ? t('+{n} MISSING', { n: box.missing.length }) : t('COMPLETE ★'));
+export const boxLabel = (box) => (box.state !== 'found' ? '' : box.missing.length ? t('+{n} MISSING', { n: box.missing.length }) : t('COMPLETE ★'));

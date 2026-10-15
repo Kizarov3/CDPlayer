@@ -11,7 +11,7 @@ test('an album\'s credits: what most of its songs say, one row each, empty ones 
     song({ released: '1997', genre: 'Nu Metal', catalog: 'INTD-90124' }),
   ]);
   assert.deepStrictEqual(rows, [
-    ['PRODUCED BY', 'Ross Robinson'], ['RELEASED', '1997-07-01'], ['GENRE', 'Nu Metal'], ['LABEL', 'Flip'], ['CATALOG NO.', 'INTD-90124'],
+    ['PRODUCED BY', 'Ross Robinson'], ['RELEASED', '1 July 1997'], ['GENRE', 'Nu Metal'], ['LABEL', 'Flip'], ['CATALOG NO.', 'INTD-90124'],
   ]);
   assert.deepStrictEqual(albumCredits([song({}), song(undefined)]), []);
 });

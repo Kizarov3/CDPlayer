@@ -40,6 +40,20 @@ test('full: a finished disc makes room (the one finished longest ago); none fini
   assert.ok(check(r.changer));
 });
 
+test('DISC SKIP goes to the disc put in to play next, before the next slot', () => {
+  let c = fill(3); // standing on slot 0
+  c = load(c, disc('n'), ['n1', 'n2'], { next: true }).changer; // slot 3
+  assert.strictEqual(c.queue[discSkip(c)], 'n1');
+});
+
+test('full: a finished CD-R is never put away by itself — it has no shelf to go back to', () => {
+  const c = fill(SLOTS);
+  c.slots[2] = { ...c.slots[2], kind: 'cdr', done: true, finishedAt: 5 };
+  assert.ok(load(c, disc('z'), ['z1']).full, 'asked, not taken out');
+  c.slots[4] = { ...c.slots[4], done: true, finishedAt: 50 };
+  assert.strictEqual(load(c, disc('z'), ['z1']).slot, 4, 'a finished album goes back instead');
+});
+
 test('the picker\'s slot: any slot but the playing one', () => {
   const c = fill(SLOTS); // standing on d0/1, slot 0
   assert.strictEqual(load(c, disc('z'), ['z1'], { slot: 0 }).slot, -1);

@@ -43,7 +43,7 @@ test('the box stands after the artist\'s last album; open, their places before i
 });
 
 test('what a box says', () => {
-  assert.strictEqual(boxLabel({ state: 'loading', missing: [] }), '…');
+  assert.strictEqual(boxLabel({ state: 'loading', missing: [] }), '');
   assert.strictEqual(boxLabel({ state: 'found', missing: [g('a', 'A'), g('b', 'B')] }), '+2 MISSING');
   assert.strictEqual(boxLabel({ state: 'found', missing: [] }), 'COMPLETE ★');
 });
@@ -72,7 +72,7 @@ test('a filter narrows which places stand, never what the box counts', () => {
   assert.deepStrictEqual(boxesFor({ albums, shown: albums, discogs, hidden: new Set(), open: new Set([sameName('Radiohead')]), query: 'bends' }).get(sameName('Radiohead')).places.map((x) => x.id), ['b']);
   assert.ok(!boxes.has(sameName('Korn')), 'unknown to MusicBrainz, and not shown: no box');
   const waiting = boxesFor({ albums, shown: albums, discogs: new Map(), hidden: new Set(), open: new Set(), query: '' });
-  assert.strictEqual(boxLabel(waiting.get(sameName('Korn'))), '…');
+  assert.strictEqual(boxLabel(waiting.get(sameName('Korn'))), '');
 });
 
 test('the shelf is redrawn once for a burst of answers, and not while a case is out or a spine carried', () => {

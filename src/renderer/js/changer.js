@@ -49,13 +49,14 @@ export function check(c) {
 }
 
 // Where a new disc goes: the lowest free slot, else the finished disc that finished longest ago (not the playing one).
+// A CD-R isn't one of those: it has no place on the shelf to go back to, so it's only taken out when the user says so.
 function roomFor(c) {
   const free = c.slots.findIndex((d) => !d);
   if (free >= 0) return free;
   const here = slotOf(c, c.index);
   let best = -1;
   c.slots.forEach((d, s) => {
-    if (d.done && (!here || here.slot !== s) && (best < 0 || d.finishedAt < c.slots[best].finishedAt)) best = s;
+    if (d.done && d.kind !== 'cdr' && (!here || here.slot !== s) && (best < 0 || d.finishedAt < c.slots[best].finishedAt)) best = s;
   });
   return best;
 }
@@ -181,11 +182,14 @@ export function nextIndex(c, { shuffle = 'OFF', repeat = 'OFF' } = {}, rnd = Mat
 /** The song before: the previous one on the disc, or the last of the disc before. -1 at the very start. */
 export const previousIndex = (c) => (c.index > 0 ? c.index - 1 : -1);
 
-/** DISC SKIP: the next occupied slot (round to the first), its first song — a random one when shuffling. -1: no other disc. */
+/**
+ * DISC SKIP: the disc put in to play next (PLAY NEXT), else the next occupied slot (round to the first), its first
+ * song — a random one when shuffling. -1: no other disc.
+ */
 export function discSkip(c, { shuffle = 'OFF' } = {}, rnd = Math.random) {
   const here = slotOf(c, c.index);
   if (!here) return -1;
-  const to = slotAfter(c, here.slot, true);
+  const to = c.nextDisc != null && c.nextDisc !== here.slot ? c.nextDisc : slotAfter(c, here.slot, true);
   if (to < 0 || to === here.slot) return -1;
   const n = c.slots[to];
   return shuffle === 'OFF' ? n.start : n.start + pick(offsets(n), rnd);

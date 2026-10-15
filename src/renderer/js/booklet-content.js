@@ -1,6 +1,6 @@
 // What an album's booklet says about it, from its songs' details (as metadata.getDetails gives them): the credits
 // most of its songs agree on, a summary of the album, and the small print for the back cover. No page drawing here.
-import { t } from './i18n.js';
+import { t, locale } from './i18n.js';
 
 const time = (seconds) => { const s = Math.max(0, Math.floor(seconds || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const creditsOf = (details) => (details && details.credits) || {};
@@ -22,7 +22,7 @@ export function albumCredits(details, pressing = null) {
   // pressing: what Discogs says of this album's release (main/discogs.js) — it fills in what the tags leave out.
   const p = pressing || {};
   return [
-    [t('PRODUCED BY'), mostSaid(details, (c) => c.producer)], [t('RELEASED'), mostSaid(details, (c) => c.released)],
+    [t('PRODUCED BY'), mostSaid(details, (c) => c.producer)], [t('RELEASED'), formatReleased(mostSaid(details, (c) => c.released), locale)],
     [t('GENRE'), mostSaid(details, (c) => c.genre)], [t('LABEL'), mostSaid(details, (c) => c.label) || p.label],
     [t('CATALOG NO.'), mostSaid(details, (c) => c.catalog) || p.catno], [t('BARCODE'), mostSaid(details, (c) => c.barcode) || p.barcode],
     [t('COUNTRY'), p.country], [t('PRESSING'), p.formats],
@@ -113,6 +113,14 @@ export function storyChunks(paragraphs, max = 420) {
 }
 
 /** "Released 17 September 1996 · 30 years ago" from a MusicBrainz date (YYYY, YYYY-MM or YYYY-MM-DD); null without one. */
+/** A release date as people write it ("2 October 2000", "2 октября 2000 г."); a year alone stays as it is. */
+export function formatReleased(released, locale = 'en') {
+  const m = /^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?$/.exec(String(released || '').trim());
+  if (!m || !m[2]) return released || null;
+  const opts = m[3] ? { day: 'numeric', month: 'long', year: 'numeric' } : { month: 'long', year: 'numeric' };
+  try { return new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : locale, { ...opts, timeZone: 'UTC' }).format(new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3] || 1)))); } catch { return released; }
+}
+
 export function releasedLine(released, { locale = 'en', now = new Date() } = {}) {
   const m = /^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?/.exec(released || '');
   if (!m) return null;

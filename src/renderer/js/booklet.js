@@ -8,7 +8,7 @@ import { el, anim } from './widgets.js';
 import { deriveAutoTheme, rgb } from './theme.js';
 import { parseLrc, formatLyricsForDisplay, currentLineIndex } from './lyrics.js';
 import { paginate, leavesFor, ean13 } from './booklet-layout.js';
-import { albumCredits, albumSummary, albumSmallPrint, sameAlbum, ownerMarks, storyChunks, releasedLine } from './booklet-content.js';
+import { albumCredits, albumSummary, albumSmallPrint, sameAlbum, ownerMarks, storyChunks, releasedLine, formatReleased } from './booklet-content.js';
 import { t, locale } from './i18n.js';
 
 const LIFT_MS = 420, TURN_MS = 650;
@@ -39,7 +39,15 @@ export async function openBooklet(app, from, content = null) {
   root.append(spread);
   layer().append(root);
 
-  book = { root, spread, leaves: [], turned: 0, from, app, content };
+  // Under it: back and forward, which spread this is, and closing — the clicks and keys, said and to hand.
+  const where = el('span', { class: 'booklet-where' });
+  const bar = el('div', { class: 'booklet-bar' },
+    el('button', { class: 'pill', title: t('Back a page (←)'), onClick: () => turn(-1) }, '‹'), where,
+    el('button', { class: 'pill', title: t('Next page (→)'), onClick: () => turn(1) }, '›'),
+    el('button', { class: 'pill', title: t('Put the booklet back (Esc)'), onClick: () => closeBooklet() }, t('CLOSE')));
+  bar.style.top = `${Math.round((window.innerHeight + size) / 2) + 12}px`;
+  root.append(bar);
+  book = { root, spread, leaves: [], turned: 0, from, app, content, where };
   buildLeaves();
   stack();
 
@@ -96,6 +104,7 @@ function turn(direction) {
 function stack() {
   if (!book) return;
   book.leaves.forEach((leaf, i) => { leaf.style.zIndex = String(i < book.turned ? i + 1 : book.leaves.length * 2 - i); });
+  book.where.textContent = t('{n} OF {total}', { n: book.turned + 1, total: book.leaves.length + 1 });
 }
 
 /** Closes the booklet back into the case (and the art back into the corner). */
@@ -228,9 +237,9 @@ async function songContent(app) {
     cover: state.cover, marker: { title: d.title, artist: d.artist },
     tracks: {
       title: d.album || (app.changerMode() ? t('IN THE CHANGER') : t('IN THE QUEUE')), sub: d.artist,
-      rows: tracks.map((t) => ({
-        name: t.d ? t.d.title : app.displayName(t.p), time: t.d && t.d.duration ? app.formatTime(t.d.duration) : '',
-        current: t.i === state.index, tip: `Play ${app.queueDisplay(t.p)}`, play: () => app.playQueueIndex(t.i),
+      rows: tracks.map((tr) => ({
+        name: tr.d ? tr.d.title : app.displayName(tr.p), time: tr.d && tr.d.duration ? app.formatTime(tr.d.duration) : '',
+        current: tr.i === state.index, tip: t('Play {song}', { song: app.queueDisplay(tr.p) }), play: () => app.playQueueIndex(tr.i),
       })),
     },
     lyrics: state.lyrics ? [{ key: 'lyrics', title: t('LYRICS'), sub: d.title, raw: state.lyrics, live: true }] : [],
@@ -239,7 +248,7 @@ async function songContent(app) {
       rows: [
         [t('WRITTEN BY'), [c.composer, c.lyricist && c.lyricist !== c.composer ? c.lyricist : null].filter(Boolean).join(' · ')],
         [t('PRODUCED BY'), c.producer], [t('CONDUCTED BY'), c.conductor], [t('ALBUM ARTIST'), c.albumArtist !== d.artist ? c.albumArtist : null],
-        [t('RELEASED'), c.released], [t('GENRE'), c.genre], [t('LABEL'), c.label], [t('CATALOG NO.'), c.catalog],
+        [t('RELEASED'), formatReleased(c.released, locale)], [t('GENRE'), c.genre], [t('LABEL'), c.label], [t('CATALOG NO.'), c.catalog],
         [t('TRACK'), c.track ? `${c.track.no}${c.track.of ? ` ${t('OF').toLowerCase()} ${c.track.of}` : ''}` : null],
         [t('DISC'), c.disc ? `${c.disc.no}${c.disc.of ? ` ${t('OF').toLowerCase()} ${c.disc.of}` : ''}` : null], ['BPM', c.bpm],
       ].filter(([, v]) => v),
@@ -289,8 +298,8 @@ export async function albumBooklet(app, album, cover, { play, onClose = () => {}
     cover, marker: { title: album.title, artist: album.artist },
     tracks: {
       title: album.title, sub: [album.artist, album.year].filter(Boolean).join(' · '),
-      rows: album.tracks.map((t, i) => ({
-        name: t.title, time: t.duration ? app.formatTime(t.duration) : '', current: i === playing(), tip: `Play ${t.title}`, play: () => play(i),
+      rows: album.tracks.map((tr, i) => ({
+        name: tr.title, time: tr.duration ? app.formatTime(tr.duration) : '', current: i === playing(), tip: t('Play {song}', { song: tr.title }), play: () => play(i),
         tally: marks.tallies[i], favorite: i === marks.favorite,
       })),
     },

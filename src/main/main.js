@@ -422,7 +422,17 @@ handle('library:collect', async (items) => (await library.collectAudio(items)).s
 handle('library:scan', async () => {
   const folder = store.readLastPath();
   if (!folder || !store.isDir(folder)) return { folder: null, files: [] };
-  return { folder, name: path.basename(folder), ...(await library.scanLibrary(folder)) };
+  const result = await library.scanLibrary(folder);
+  // What the shelf last read of each file's tags, so a search finds a song by its artist, album or title, not only
+  // by its filename, and shows it as "Artist · Title".
+  // (Never read yet: the shelf reads them now — once; later searches find them saved.)
+  if (!shelf.readCache(folder)) await shelf.scanAlbums().catch(() => null);
+  const read = shelf.readCache(folder) || {}, tags = {};
+  for (const p of result.files) {
+    const i = read[p] && read[p].info;
+    if (i && i.title) tags[p] = { words: [i.artist, i.albumArtist, i.album, i.title, i.year].filter(Boolean).join(' '), shown: i.artist ? `${i.artist} · ${i.title}` : i.title };
+  }
+  return { folder, name: path.basename(folder), ...result, tags };
 });
 
 // Tags: what's in the file, what MusicBrainz says, and writing changes (and found covers and lyrics) into it.

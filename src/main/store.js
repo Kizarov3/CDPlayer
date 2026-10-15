@@ -59,15 +59,24 @@ const safePath = (p) => typeof p === 'string' && !/[\r\n]/.test(p);
 
 // settings.txt — one value per line, in the Java app's order: volume, crossfade, mono, animations, theme, EQ
 // gains, waveform, mini mode, window bounds, ambient background, then Discord status, disc noise and saving found
-// art & lyrics into files, the lyrics offset in ms, how the shelf is sorted, disc wear, the audio output ("id<TAB>name") and the language (AUTO, en or a locale code), then the sound quality (HIGH, LOSSLESS or HIRES), spatial audio (1/0) and its amount (0–100), the disc's shine (1/0) and the disc on the app's icon (1/0; on unless turned off, but off on Windows unless turned on) and Sound Check (OFF, TRACK or ALBUM), then the CD changer mode (ON/OFF) (CDPlayer 2 only). Missing trailing
+// art & lyrics into files, the lyrics offset in ms, how the shelf is sorted, disc wear, the audio output ("id<TAB>name") and the language (AUTO, en or a locale code), then the sound quality (HIGH, LOSSLESS or HIRES), spatial audio (1/0) and its amount (0–100), the disc's shine (1/0) and the disc on the app's icon (1/0; on unless turned off, but off on Windows unless turned on) and Sound Check (OFF, TRACK or ALBUM), then the CD changer mode (ON/OFF), then SHUFFLE and REPEAT for the queue and for the changer ("OFF ALL DISC TRACK") (CDPlayer 2 only). Missing trailing
 // lines keep their defaults.
 const DEFAULT_SETTINGS = {
   volume: 100, crossfade: 0, mono: false, animations: true, theme: 'RED', eq: new Array(10).fill(0),
-  waveform: true, miniMode: false, bounds: null, ambient: true, discord: false, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false,
+  waveform: true, miniMode: false, bounds: null, ambient: true, discord: false, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false, playModes: defaultPlayModes(),
 };
 const SHELF_SORTS = ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR', 'PRICE'];
 const QUALITIES = ['HIGH', 'LOSSLESS', 'HIRES'];
 const SOUND_CHECKS = ['OFF', 'TRACK', 'ALBUM'];
+// SHUFFLE and REPEAT: each mode keeps its own.
+const SHUFFLES = { QUEUE: ['OFF', 'ALL'], CHANGER: ['OFF', 'DISC', 'ALL'] }, REPEATS = { QUEUE: ['OFF', 'TRACK', 'ALL'], CHANGER: ['OFF', 'TRACK', 'DISC', 'ALL'] };
+function defaultPlayModes() { return { QUEUE: { shuffle: 'OFF', repeat: 'OFF' }, CHANGER: { shuffle: 'OFF', repeat: 'OFF' } }; }
+function readPlayModes(line) {
+  const [qs, qr, cs, cr] = String(line || '').trim().split(/\s+/);
+  const one = (v, list) => (list.includes(v) ? v : 'OFF');
+  return { QUEUE: { shuffle: one(qs, SHUFFLES.QUEUE), repeat: one(qr, REPEATS.QUEUE) }, CHANGER: { shuffle: one(cs, SHUFFLES.CHANGER), repeat: one(cr, REPEATS.CHANGER) } };
+}
+const writePlayModes = (m) => { const r = readPlayModes(m ? [m.QUEUE && m.QUEUE.shuffle, m.QUEUE && m.QUEUE.repeat, m.CHANGER && m.CHANGER.shuffle, m.CHANGER && m.CHANGER.repeat].join(' ') : ''); return [r.QUEUE.shuffle, r.QUEUE.repeat, r.CHANGER.shuffle, r.CHANGER.repeat].join(' '); };
 const LANGUAGE = /^(AUTO|[a-z]{2,3}(-[A-Za-z0-9]{2,8})*)$/;
 function readSettings() {
   const l = lines(readText(FILES.settings));
@@ -106,6 +115,7 @@ function readSettings() {
   if (l.length >= 23 && ['0', '1'].includes(l[22].trim())) s.taskbarDisc = l[22].trim() === '1';
   s.soundCheck = l.length >= 24 && SOUND_CHECKS.includes(l[23].trim()) ? l[23].trim() : 'OFF';
   s.changer = l.length >= 25 && l[24].trim() === 'ON';
+  s.playModes = readPlayModes(l[25]);
   return s;
 }
 function writeSettings(s) {
@@ -118,7 +128,7 @@ function writeSettings(s) {
     LANGUAGE.test(s.language || '') ? s.language : 'AUTO',
     QUALITIES.includes(s.quality) ? s.quality : 'HIGH', s.spatial ? 1 : 0,
     Math.max(0, Math.min(100, Math.round(Number.isFinite(s.spatialAmount) ? s.spatialAmount : 50))), s.discShine === false ? 0 : 1, s.taskbarDisc ? 1 : 0,
-    SOUND_CHECKS.includes(s.soundCheck) ? s.soundCheck : 'OFF', s.changer ? 'ON' : 'OFF'].join('\n') + '\n';
+    SOUND_CHECKS.includes(s.soundCheck) ? s.soundCheck : 'OFF', s.changer ? 'ON' : 'OFF', writePlayModes(s.playModes)].join('\n') + '\n';
   return writeText(FILES.settings, content);
 }
 

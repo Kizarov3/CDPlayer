@@ -169,6 +169,9 @@ body.cd-view #cd-info { display: block !important; }
 #hint { padding-top: 18px; text-align: center; font-size: 10px; color: rgb(var(--hint)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #cd-info { text-align: center; padding-bottom: 6px; }
 #cd-title { font-size: 30px; color: rgb(var(--text)); line-height: 1.2; margin: 0 auto; }
+/* How to leave CD View: there while the mouse moves, gone with the cursor when it's left alone. */
+#cd-exit { margin-top: 10px; font-size: 10px; letter-spacing: .12em; color: rgb(var(--muted)); transition: opacity 400ms; }
+body.cursor-hidden #cd-exit { opacity: 0; }
 #cd-artist { margin: 4px auto 0; font-size: 18px; font-weight: normal; color: rgb(var(--accent2)); }
 
 /* ---- Buttons ---- */
@@ -343,6 +346,8 @@ body.cd-view #cd-info { display: block !important; }
 .tag-label { font-size: 10px; color: rgb(var(--muted)); }
 .tag-now { font-size: 11px; font-weight: normal; color: rgb(var(--text)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .8; }
 .tag-input { width: 100%; box-sizing: border-box; }
+.tag-input.offered { font-style: italic; opacity: .6; } /* MusicBrainz's word, not to be written unless ticked */
+.tag-head .tag-write { justify-self: end; white-space: nowrap; }
 .tag-pair { display: flex; align-items: center; gap: 8px; font-size: 9px; color: rgb(var(--muted)); }
 .tag-input.narrow { width: 64px; }
 .tag-thumb { width: 56px; height: 56px; object-fit: cover; vertical-align: middle; margin-right: 10px; box-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
@@ -607,6 +612,7 @@ body.cd-view #cd-info { display: block !important; }
   font-size: 9px; font-weight: bold; letter-spacing: .08em; white-space: nowrap; overflow: hidden;
 }
 .missing-box:hover, .missing-box.open { background: rgba(214, 200, 172, .18); }
+.missing-box.waiting { cursor: default; opacity: .35; border-style: dotted; background: none; } /* still being looked up: barely there, no label */
 .missing-box.complete { cursor: default; border-color: rgba(230, 190, 90, .6); color: rgb(230, 190, 90); }
 .spine.ghost {
   background: rgba(255, 255, 255, .04); box-shadow: none; opacity: .38; color: rgb(var(--ink, 230, 230, 230));
@@ -715,7 +721,7 @@ body.cd-view #cd-info { display: block !important; }
 .case-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; align-items: center; } /* a row, or two when it can't fit */
 
 /* ---- Canvases layered over everything ---- */
-#particles { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 30; pointer-events: none; }
+#particles { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 5; pointer-events: none; } /* over the player, under the shelf and panels */
 
 .drop-target #main::after {
   content: ""; position: absolute; inset: 12px; border: 2px dashed rgba(var(--accent), .6); border-radius: 12px; pointer-events: none;
@@ -728,6 +734,9 @@ body.cd-view #cd-info { display: block !important; }
 }
 .booklet-layer.entering, .booklet-layer.leaving { background: rgba(0, 0, 0, 0); }
 .booklet { position: absolute; transform-style: preserve-3d; cursor: pointer; }
+.booklet-bar { position: absolute; left: 0; right: 0; display: flex; justify-content: center; align-items: center; gap: 10px; transition: opacity 200ms; }
+.booklet-layer.entering .booklet-bar, .booklet-layer.leaving .booklet-bar { opacity: 0; }
+.booklet-where { min-width: 64px; text-align: center; font-size: 11px; letter-spacing: .1em; color: rgba(255, 255, 255, .75); }
 .booklet-layer.leaving .booklet { transition: transform 420ms cubic-bezier(.5, 0, .75, 0) !important; }
 .booklet .leaf {
   position: absolute; left: var(--page); top: 0; width: var(--page); height: var(--page);
