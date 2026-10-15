@@ -63,7 +63,7 @@ const safePath = (p) => typeof p === 'string' && !/[\r\n]/.test(p);
 // lines keep their defaults.
 const DEFAULT_SETTINGS = {
   volume: 100, crossfade: 0, mono: false, animations: true, theme: 'RED', eq: new Array(10).fill(0),
-  waveform: true, miniMode: false, bounds: null, ambient: true, discord: true, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false,
+  waveform: true, miniMode: false, bounds: null, ambient: true, discord: false, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false,
 };
 const SHELF_SORTS = ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR', 'PRICE'];
 const QUALITIES = ['HIGH', 'LOSSLESS', 'HIRES'];
@@ -90,7 +90,7 @@ function readSettings() {
     if (b.length === 4 && b.every(Number.isFinite)) s.bounds = { x: b[0], y: b[1], width: b[2], height: b[3] };
   }
   s.ambient = l.length < 10 || l[9].trim() === '1';
-  s.discord = l.length < 11 || l[10].trim() === '1';
+  s.discord = l.length >= 11 && l[10].trim() === '1'; // off unless turned on: it shows others what you listen to
   s.discNoise = l.length >= 12 && l[11].trim() === '1';
   s.saveFound = l.length >= 13 && l[12].trim() === '1';
   if (l.length >= 14 && l[13].trim()) s.lyricsOffset = Math.max(-500, Math.min(500, Math.round(int(l[13], 0) / 50) * 50));

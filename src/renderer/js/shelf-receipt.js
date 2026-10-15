@@ -41,7 +41,7 @@ export function receiptFor(album, stickers, pressing = null) {
     const yen = pick(YEN);
     price = japanese ? `¥${Math.floor(yen / 1000)},${pad(yen % 1000, 3)}` : `$${9 + Math.floor(rnd() * 10)}.99`;
   }
-  const paid = rnd() < 0.45 ? t('CASH') : t('CARD {number}', { number: `****${pad(Math.floor(rnd() * 10000), 4)}` });
+  const paid = rnd() < 0.45 ? t('CASH') : t('CARD'); // no card number: a made-up one looked like a real charge
   const number = `${pad(Math.floor(rnd() * 10000), 4)}-${pad(Math.floor(rnd() * 1e6), 6)}`;
   const barcode = Array.from({ length: 12 }, () => Math.floor(rnd() * 10)).join('');
   const fromDiscogs = discogsPrice(pressing), discogs = !!fromDiscogs;

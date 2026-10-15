@@ -26,7 +26,7 @@ function rectOf(step) {
 /** Runs the guide; `first`: the first launch, with a welcome before it. → a promise, settled when it's closed. */
 export function startTour({ first = false } = {}) {
   if (open) return open.promise;
-  const welcome = { targets: [], title: t('WELCOME TO CDPLAYER'), text: t('A quick look round: where everything is and how it works. It takes a minute — or SKIP and find your own way.') };
+  const welcome = { targets: [], title: t('WELCOME TO CDPLAYER'), text: t('A quick look round: where everything is and how it works. It takes a minute — or SKIP it and explore.') };
   const steps = [...(first ? [welcome] : []), ...TOUR.filter((s) => rectOf(s))];
   const counted = steps.filter((s) => s !== welcome).length;
   const spot = el('div', { class: 'tour-spot' });

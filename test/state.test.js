@@ -19,7 +19,7 @@ test('reads a settings.txt written by the Java version', () => {
   const s = store.readSettings();
   assert.deepStrictEqual(s, {
     volume: 70, crossfade: 5, mono: true, animations: false, theme: 'OCEAN', eq: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
-    waveform: false, miniMode: false, bounds: { x: 10, y: 20, width: 1200, height: 900 }, ambient: false, discord: true,
+    waveform: false, miniMode: false, bounds: { x: 10, y: 20, width: 1200, height: 900 }, ambient: false, discord: false,
     discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false,
   });
 });
@@ -49,7 +49,7 @@ test('old, shorter settings files keep defaults for the newer lines', () => {
   assert.strictEqual(s.animations, true);
   assert.strictEqual(s.waveform, true);
   assert.strictEqual(s.ambient, true);
-  assert.strictEqual(s.discord, true);
+  assert.strictEqual(s.discord, false, 'what you listen to is shown on Discord only when you turn it on');
   assert.strictEqual(s.theme, 'RED');
 });
 
@@ -57,8 +57,9 @@ test('Discord status is the 11th settings line', () => {
   store.writeSettings({ ...store.DEFAULT_SETTINGS, discord: false });
   assert.strictEqual(fs.readFileSync(path.join(home, 'settings.txt'), 'utf8').split('\n')[10], '0');
   assert.strictEqual(store.readSettings().discord, false);
-  store.writeSettings({ ...store.DEFAULT_SETTINGS });
+  store.writeSettings({ ...store.DEFAULT_SETTINGS, discord: true });
   assert.strictEqual(store.readSettings().discord, true);
+  assert.strictEqual(store.DEFAULT_SETTINGS.discord, false);
 });
 
 test('settings round-trip in the Java line format', () => {

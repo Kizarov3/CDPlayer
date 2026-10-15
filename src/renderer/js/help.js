@@ -5,12 +5,12 @@ import { t } from './i18n.js';
 // The guide (tour-view.js): a spotlight on each part of the window in turn, with a word on what it does. `targets` are
 // lit up together (the visible ones); `fallback` is lit when none of them is on the window yet (no song loaded).
 export const TOUR = [
-  { targets: ['#disc'], title: t('THE DISC'), text: t('Your music plays on this disc. Grab it and turn it to move through the song; click the small cover in its corner for the album art, and again for the booklet.') },
+  { targets: ['#disc'], title: t('THE DISC'), text: t('Your music plays on this disc. Grab it and turn it to move through the song. Once a song is in, click the small cover in the case’s corner for the album art, and again for its booklet.') },
   { targets: ['#load-button', '#tray-button'], title: t('PUT SOME MUSIC ON'), text: t('Drag songs or whole folders onto the window, or press LOAD A TRACK. ⏏ opens the tray: drop music on it, like a new CD.') },
   { targets: ['#transport'], title: t('PLAY'), text: t('Play and pause, previous and next, five seconds back and on, SHUFFLE and REPEAT. Space plays and pauses; J and L skip.') },
   { targets: ['#queue-card'], title: t('THE QUEUE'), text: t('Your queue: drag a song to move it, × takes it out. With the CD changer on (in SETTINGS), five discs turn here instead.') },
   { targets: ['#shelf-button'], title: t('THE SHELF'), text: t('Every album in your music folder, spine out — it asks for the folder the first time. Click a spine to take the case out and play it.') },
-  { targets: ['#lyrics-button', '#karaoke-button', '#tags-button'], fallback: '#now-row', title: t('LYRICS, KARAOKE, TAGS'), text: t('Once a song plays: its words, lit up as they’re sung — KARAOKE fills the window with them. TAGS fixes a song’s name, album and cover from MusicBrainz.') },
+  { targets: ['#lyrics-button', '#karaoke-button', '#tags-button'], fallback: '#now-row', title: t('LYRICS, KARAOKE, TAGS'), text: t('Here, once a song plays: LYRICS shows its words, lit up as they’re sung, KARAOKE fills the window with them, and TAGS fixes its name and album from MusicBrainz.') },
   { targets: ['#spotify-button'], title: t('SPOTIFY'), text: t('Your Spotify albums and playlists play as discs too, with Premium. It’s optional, and walks you through it.') },
   { targets: ['#settings-button'], title: t('SETTINGS'), text: t('Themes, the equalizer, crossfade, the CD changer, the language — and this guide again, under HELP.') },
   { targets: ['#hint b'], fallback: '#hint', title: t('KEYS'), text: t('Almost everything has a key. Press ? any time to see them all.') },

@@ -268,7 +268,7 @@ function renderQueue() {
   const slots = c.slots.map((d, s) => (d ? { title: discLabel(d), note: discNote(d), artist: d.artist, kind: d.kind, done: d.done, next: c.nextDisc === s, firstPath: c.queue[d.start] } : null));
   if (!here) {
     $('queue-info').textContent = c.queue.length ? t('CHANGER · {n} DISCS', { n: slots.filter(Boolean).length }) : t('CHANGER EMPTY');
-    $('queue-next').textContent = t('DROP AN ALBUM OR A FOLDER TO LOAD A DISC');
+    $('queue-next').textContent = t('OPEN THE SHELF (S) AND PUT AN ALBUM IN — OR DROP A FOLDER HERE');
     changerView.render({ slots, playingSlot: -1, tracks: [], heading: '' });
     return;
   }
@@ -292,7 +292,7 @@ function renderQueueList() {
   const list = $('queue-list');
   if (!state.queue.length || state.index < 0) {
     $('queue-info').textContent = t('QUEUE EMPTY');
-    $('queue-next').textContent = t('DROP SONGS OR A FOLDER TO BUILD A QUEUE');
+    $('queue-next').textContent = t('OPEN THE SHELF (S) AND PICK AN ALBUM — OR DROP SONGS HERE');
     list.replaceChildren();
     return;
   }
@@ -849,7 +849,7 @@ async function toggle() {
   if (!engine.deck) {
     if (state.queue.length && state.index >= 0) load(state.queue[state.index]);
     else if (state.queue.length) { if (state.changerMode) playSlot(state.changer.slots.findIndex(Boolean)); else goTo(0); } // the song playing went: the first one left
-    else choose();
+    else { openShelf(app); setStatus(t('PICK AN ALBUM TO PLAY')); } // nothing to play yet: the music is on the shelf
     return;
   }
   if (jog) { jog.wasPlaying = !jog.wasPlaying; setPlaying(jog.wasPlaying); return; } // plays on (or not) once the disc is let go

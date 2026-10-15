@@ -1056,7 +1056,7 @@ async function runCheck(app) {
   check.result = result;
   if (result) result.notOnDiscogs = await app.cdp.discogsNotFound(app.shelfAlbumIds()).catch(() => []);
   const n = result ? ['untagged', 'noCover', 'duplicates', 'gaps', 'unreadable', 'notOnDiscogs'].reduce((s, k) => s + result[k].length, 0) : 0;
-  check.status = !result ? t('CHOOSE YOUR MUSIC FOLDER ON THE SHELF FIRST') : n ? t('{n} THINGS TO LOOK AT', { n }) : t('NOTHING TO FIX ★');
+  check.status = !result ? t('CHOOSE YOUR MUSIC FOLDER ON THE SHELF FIRST') : n === 1 ? t('1 THING TO LOOK AT') : n ? t('{n} THINGS TO LOOK AT', { n }) : t('NOTHING TO FIX ★');
   refreshPanel('check');
 }
 function buildCheck(app) {

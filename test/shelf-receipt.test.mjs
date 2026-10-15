@@ -40,7 +40,7 @@ test('a shop, a way of paying, a receipt number and a barcode; the shops vary', 
     const r = receiptFor(a, stickersFor(a));
     shops.add(r.shop);
     assert.ok(r.address);
-    assert.match(r.paid, /^(CASH|CARD \*{4}\d{4})$/);
+    assert.match(r.paid, /^(CASH|CARD)$/, "no made-up card number: it looked like a real charge");
     assert.match(r.number, /^\d{4}-\d{6}$/);
     assert.match(r.barcode, /^\d{12}$/);
   }
