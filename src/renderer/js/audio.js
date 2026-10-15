@@ -144,6 +144,9 @@ export class AudioEngine {
     // A Spotify track plays outside Web Audio, so there's nothing to fade — in or out.
     const doCrossfade = crossfadeSeconds > 0 && !element && outgoing && outgoing.source && !outgoing.el.paused;
     if (!doCrossfade) { this.disposeDeck(outgoing); this.deck = null; }
+    // While the next track's length is awaited, the one to fade out is already fadingOut: a newer load or stop() in that
+    // moment (cancelCrossfade) stops it, rather than it playing on with nothing left that knows of it.
+    else this.fadingOut = outgoing;
     const deck = this.createDeck(url, element, trim);
     this.deck = deck;
     await new Promise((resolve, reject) => {
@@ -154,7 +157,7 @@ export class AudioEngine {
       deck.el.addEventListener('error', fail);
     }).catch((e) => {
       if (this.deck === deck) { this.disposeDeck(deck); this.deck = null; }
-      if (doCrossfade) this.disposeDeck(outgoing);
+      if (doCrossfade && this.fadingOut === outgoing) { this.disposeDeck(outgoing); this.fadingOut = null; }
       throw e;
     });
     if (this.deck !== deck) return false; // superseded by a newer load while waiting
