@@ -653,14 +653,14 @@ function trackRow(app, path, label, onPlay) {
 function buildHistory(app) {
   const h = app.state.history;
   const body = h.length
-    ? el('div', { class: 'scroll' }, h.map((p) => trackRow(app, p, app.queueDisplay(p), async () => {
+    ? el('div', { class: 'scroll' }, h.map((p) => { app.ensureDetails(p); return p; }).map((p) => trackRow(app, p, app.queueDisplay(p), async () => {
       if (!(await app.cdp.exists(p))) { app.setStatus(t('FILE NO LONGER FOUND')); await app.loadHistoryFromDisk(); refreshPanel('history'); return; }
       app.appendAndPlay(p); closePanel('history');
     })))
     : el('div', { class: 'empty-note' }, t('NOTHING PLAYED YET'));
   if (h.length) { body.style.height = '380px'; body.style.marginTop = '16px'; }
   else body.style.marginTop = '16px';
-  return [title(t('RECENTLY PLAYED')), body, closeRow(() => closePanel('history'))];
+  return [title(t('HISTORY')), body, closeRow(() => closePanel('history'))];
 }
 
 // ---- The rip ----------------------------------------------------------------------------------------------------

@@ -42,12 +42,12 @@ export function badgeLabel(format, level) {
 }
 
 /** True when the song reaches the output exactly as it is in the file. */
-export function badgeExact({ fileRate, aimed, deviceRate, bluetooth }) {
-  return !bluetooth && deviceRate === aimed && aimed === fileRate;
+export function badgeExact({ fileRate, aimed, deviceRate, bluetooth, eq, mono, spatial, noise }) {
+  return !bluetooth && deviceRate === aimed && aimed === fileRate && !eq && !mono && !spatial && !noise;
 }
 
 /** The badge's tooltip: what reaches the output, and why when it isn't the file's own rate. */
-export function badgeText({ fileRate, aimed, deviceRate, switched, bluetooth, eq, mono }) {
+export function badgeText({ fileRate, aimed, deviceRate, switched, bluetooth, eq, mono, spatial, noise }) {
   let line;
   if (bluetooth) line = t('BLUETOOTH: QUALITY IS LIMITED BY THE WIRELESS CODEC');
   else if (deviceRate === aimed) {
@@ -58,5 +58,7 @@ export function badgeText({ fileRate, aimed, deviceRate, switched, bluetooth, eq
       : t('OUTPUT: {rate} — NOT RESAMPLED', { rate: khz(aimed) });
   } else if (switched) line = t("OUTPUT: {rate} — RESAMPLED (THE DEVICE CAN'T PLAY {file})", { rate: khz(deviceRate), file: khz(aimed) });
   else line = t('OUTPUT: {rate} — RESAMPLED (SET THE RATE IN YOUR SOUND SETTINGS)', { rate: khz(deviceRate) });
-  return eq || mono ? `${line}\n${t('THE EQUALIZER OR MONO CHANGES THE SOUND')}` : line;
+  // Everything on the way that alters the signal, named (spatial audio waits while mono is on).
+  const changes = [eq && t('THE EQUALIZER'), mono && t('MONO'), spatial && !mono && t('SPATIAL AUDIO'), noise && t('DISC NOISE')].filter(Boolean);
+  return changes.length ? `${line}\n${t('CHANGED ON THE WAY BY: {what}', { what: changes.join(', ') })}` : line;
 }

@@ -95,7 +95,19 @@ const spotifyTracks = new Map(); // spotify:track:… -> { uri, title, artist, a
 
 // ---- Status / labels ---------------------------------------------------------------------------------------
 
-function setStatus(text) { $('status').textContent = STATUS_DOT + text; }
+// The status line: a word on what just happened, then — after a few seconds — back to what the player is doing.
+let statusTimer = null;
+function stateStatus() {
+  if (disc.trayOpen) return state.queue.length ? t('OPEN · DROP IN A NEW DISC, OR PRESS E TO CLOSE') : t('OPEN · DROP MUSIC ON THE TRAY');
+  if (engine.playing) return t('NOW SPINNING');
+  if (spotifyActive() && spotifyTrouble) return spotifyTrouble;
+  return state.loadedPath ? t('PAUSED') : t('READY TO PLAY');
+}
+function setStatus(text) {
+  $('status').textContent = STATUS_DOT + text;
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => { if (!state.trayBusy && !disc.reading) $('status').textContent = STATUS_DOT + stateStatus(); }, 6000);
+}
 // A cue sheet track is queued as "<path to .cue>#<track number>" (see src/main/cue.js).
 const cueRef = (p) => /^(.*\.cue)#(\d+)$/i.exec(p);
 function displayName(p) {
@@ -150,7 +162,7 @@ function pumpDetails() {
   while (detailWorkers < 4 && detailQueue.length) {
     const p = detailQueue.shift();
     detailWorkers++;
-    cdp.details(p, { withCover: false }).then((d) => { detailsCache.set(p, d); scheduleQueueRender(); })
+    cdp.details(p, { withCover: false }).then((d) => { detailsCache.set(p, d); scheduleQueueRender(); panels.refreshHistoryIfOpen(app); })
       .catch(() => detailsCache.set(p, { title: displayName(p), artist: null, duration: 0 }))
       .finally(() => { detailWorkers--; pumpDetails(); });
   }
@@ -502,6 +514,7 @@ function resetToIdle(message) {
   setPlaying(false);
   lyricsChanged();
   $('tags-button').hidden = true;
+  updateQualityBadge(); showSoundCheck(null, true); // no song: no format, no gain
   flushFoundSoon();
   setStatus(message);
   if ('mediaSession' in navigator) navigator.mediaSession.metadata = null;
@@ -593,7 +606,8 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
     if (startAt > 0) engine.seek(Math.min(startAt, engine.duration));
   }
   followSoundCheck(path, soundMode, token);
-  if (autoPlay) { if (!reload) recordHistory(path); if (!seamless) await engine.play(); }
+  if (reload) recordedFor = token; // the same song again: already in HISTORY
+  if (autoPlay && !seamless) await engine.play();
   if (token !== state.loadToken) return;
   setPlaying(autoPlay);
   if (fade) setStatus(t('CROSSFADING'));
@@ -814,7 +828,11 @@ function refreshDockSoon() {
   }, 400);
 }
 
+// A song goes into HISTORY when it starts playing — however it got there (a click, the tray closing, Space after a
+// restart) — once per time it's loaded.
+let recordedFor = -1;
 function setPlaying(playing) {
+  if (playing && state.loadedPath && recordedFor !== state.loadToken) { recordedFor = state.loadToken; recordHistory(state.loadedPath); }
   disc.spinning = playing;
   noise.setPlaying(playing);
   playButton.setGlyph(playing ? 'PAUSE' : 'PLAY'); pulse(playButton, true);
@@ -1295,7 +1313,7 @@ function findDiscordCover(d) {
     .catch(() => {});
 }
 function setDiscord(on) { state.discord = on; pushDiscord(); saveSettingsSoon(); }
-function setDiscNoise(on) { state.discNoise = on; noise.setEnabled(on); noise.setPlaying(engine.playing); saveSettingsSoon(); }
+function setDiscNoise(on) { state.discNoise = on; noise.setEnabled(on); noise.setPlaying(engine.playing); updateQualityBadge(); saveSettingsSoon(); }
 // ---- Where the sound goes (Settings → OUTPUT; output.js) ----------------------------------------------------------
 
 /** The outputs there are now: [{ deviceId, label }], not the system's 'default' and 'communications' aliases. */
@@ -1343,7 +1361,7 @@ function updateQualityBadge() {
   if (!label) return;
   const fileRate = d.format.sampleRate;
   const info = state.rateInfo || { fileRate, aimed: targetRate(state.quality, fileRate), deviceRate: state.systemRate, switched: false, bluetooth: false };
-  const full = { ...info, eq: state.eq.some((g) => g !== 0), mono: state.mono };
+  const full = { ...info, eq: state.eq.some((g) => g !== 0), mono: state.mono, spatial: state.spatial, noise: state.discNoise };
   badge.textContent = label;
   badge.title = badgeText(full);
   badge.classList.toggle('dim', !badgeExact(full));
@@ -1537,7 +1555,7 @@ function toggleMute() {
 }
 function setMono(on) { state.mono = on; engine.setMono(on); updateQualityBadge(); saveSettingsSoon(); }
 /** Settings → SPATIAL AUDIO (spatial.js): on or off, and how much room, 0–100. */
-function setSpatial(on) { state.spatial = on; engine.setSpatial(on, state.spatialAmount / 100); saveSettingsSoon(); }
+function setSpatial(on) { state.spatial = on; engine.setSpatial(on, state.spatialAmount / 100); updateQualityBadge(); saveSettingsSoon(); }
 function setSpatialAmount(v) { state.spatialAmount = v; engine.setSpatial(state.spatial, v / 100); saveSettingsSoon(); }
 function setWaveform(on) { state.waveform = on; progress.setWaveformEnabled(on); saveSettingsSoon(); }
 function setAmbient(on) { state.ambient = on; onCoverChanged(); saveSettingsSoon(); }
@@ -2079,7 +2097,7 @@ function frame(now) {
 
 export const app = {
   state, engine, disc, THEMES, BUILTIN_EQ_PRESETS, cdp, libraryCheck: () => panels.showLibraryCheck(app),
-  setStatus, queueDisplay, displayName, formatTime, load, addToQueue, playNext, appendAndPlay, seekTo,
+  setStatus, queueDisplay, displayName, formatTime, ensureDetails, load, addToQueue, playNext, appendAndPlay, seekTo,
   detailsFor: (p) => detailsCache.get(p),
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) goTo(i); },
   changerState: ch, changerMode: () => state.changerMode, setChangerMode, discLabel, loadDisc, playSlot, ejectSlot, discSkip, coverForPath,

@@ -51,6 +51,8 @@ test('what reaches the output, said plainly', () => {
   assert.ok(!badgeExact({ ...base, aimed: 48000, deviceRate: 48000 }));
   assert.strictEqual(badgeText({ ...base, bluetooth: true }), 'BLUETOOTH: QUALITY IS LIMITED BY THE WIRELESS CODEC');
   assert.ok(!badgeExact({ ...base, bluetooth: true }));
-  assert.strictEqual(badgeText({ ...base, eq: true }), 'OUTPUT: 96 KHZ — NOT RESAMPLED\nTHE EQUALIZER OR MONO CHANGES THE SOUND');
+  assert.strictEqual(badgeText({ ...base, eq: true }), 'OUTPUT: 96 KHZ — NOT RESAMPLED\nCHANGED ON THE WAY BY: THE EQUALIZER');
+  assert.strictEqual(badgeText({ ...base, spatial: true, noise: true }), 'OUTPUT: 96 KHZ — NOT RESAMPLED\nCHANGED ON THE WAY BY: SPATIAL AUDIO, DISC NOISE', 'everything that alters the signal is named');
+  assert.strictEqual(badgeText({ ...base, mono: true, spatial: true }), 'OUTPUT: 96 KHZ — NOT RESAMPLED\nCHANGED ON THE WAY BY: MONO', 'spatial audio waits while mono is on');
   assert.strictEqual(badgeText({ ...base, deviceRate: 96000, switched: false }), 'OUTPUT: 96 KHZ — NOT RESAMPLED');
 });
