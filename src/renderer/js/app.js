@@ -13,6 +13,7 @@ import { jogSeconds } from './jog.js';
 import * as changer from './changer.js';
 import { insertNext, pinnedNext, afterRemove } from './play-next.js';
 import { createChangerView } from './changer-view.js';
+import { pointAtDrawn } from './tour-view.js';
 import { dockIcon } from './dock-disc.js';
 import { drawCard, lyricChoices, cardSubtitle, quoteLines, MAX_QUOTE_LINES } from './share-card.js';
 import { recordVideo, videoSpan, VIDEO_SECONDS } from './share-video.js';
@@ -1909,6 +1910,7 @@ function buildStaticUi() {
   $('eject-disc-button').addEventListener('click', () => { const h = changer.slotOf(ch(), state.index); if (h) ejectSlot(h.slot); });
   disc.onTrackPick = (k) => { const i = discStart + k; if (i === state.index) return; goTo(i); };
   engine.onEnded = trackFinished;
+  pointAtDrawn('#disc', () => disc.shownRect); // the guide points at the case, not the whole column
   engine.onAdvance = () => { // gapless: the prepared track has just taken over
     const mark = preparedNext;
     preparedNext = null;

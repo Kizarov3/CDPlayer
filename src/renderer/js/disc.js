@@ -575,6 +575,8 @@ export class Disc {
       this.artRect = { x: cx - cs / 2 + 14, y: cy - cs / 2 + 14, w: size, h: size };
     }
     if (!mini) { const cs = side + 60; bounds = { x: cx - cs / 2, y: cy - cs / 2, w: cs, h: cs }; }
+    // Where the case (or, mini, the disc) is on the screen — for the guide to point at.
+    this.shownRect = { left: r.left + bounds.x, top: r.top + bounds.y, right: r.left + bounds.x + bounds.w, bottom: r.top + bounds.y + bounds.h, width: bounds.w, height: bounds.h };
     // Nothing that shows has changed since the last frame (a paused disc, the light at rest): leave the canvas be —
     // redrawing it 60 times a second anyway kept the GPU busy for nothing.
     const l = this.light;

@@ -6,7 +6,8 @@ import { buildThemeEditor } from './theme-editor.js';
 import { t } from './i18n.js';
 import { EQ_FREQUENCIES } from './audio.js';
 import { el, pill, toggle, setToggle, Slider, anim } from './widgets.js';
-import { GUIDE, FAQ, SHORTCUTS } from './help.js';
+import { FAQ, SHORTCUTS } from './help.js';
+import { startTour } from './tour-view.js';
 import { outputName } from './output.js';
 import { levelName, LEVELS } from './quality.js';
 import { catSvg } from './glyphs.js';
@@ -324,7 +325,7 @@ function buildSettings(app) {
     hint(t('Pressings and prices come from Discogs’ API. CDPlayer isn’t affiliated with, sponsored or endorsed by Discogs; “Discogs” is a trademark of Zink Media, LLC.')), gap(18),
     section(t('HELP')),
     el('div', { class: 'help-pills' },
-      pill(t('SHOW THE GUIDE'), () => showGuide(app), t('The five cards shown the first time CDPlayer opened')),
+      pill(t('SHOW THE GUIDE'), () => { closePanel('settings'); startTour(); }, t('A look round the window: where everything is and how it works')),
       pill(t('FAQ'), () => showFaq(), t('Answers to what people ask the first time')),
       pill(t('KEYBOARD SHORTCUTS'), () => showShortcuts(), t('Every key, also with ?'))));
   const version = el('div', { class: 'settings-version' }, `CDPlayer ${app.state.version}`);
@@ -1027,11 +1028,10 @@ function tipsCard(heading, subtitle, bullets, onDone) {
 }
 
 // The first time CDPlayer opens: the guide (help.js), five cards to step through — and remembered once it's closed.
-export function showOnboarding(app) {
-  return new Promise((resolve) => {
-    const p = showGuide(app, { first: true });
-    p.onClose = () => { app.cdp.markOnboarded(); resolve(); };
-  });
+/** The first launch: the guide round the window, then never again (it's in SETTINGS → SHOW THE GUIDE). */
+export async function showOnboarding(app) {
+  await startTour({ first: true });
+  app.cdp.markOnboarded();
 }
 
 // ---- LIBRARY CHECK (the shelf's CHECK): what's wrong in the music folder, and a way to fix each ------------------
@@ -1104,26 +1104,6 @@ function buildCheck(app) {
 }
 
 // ---- Help: the guide, the FAQ and the keyboard shortcuts (help.js; also Settings → HELP) --------------------------
-
-export function showGuide(app, { first = false } = {}) {
-  let step = 0;
-  const done = () => closePanel('guide');
-  const build = () => {
-    const s = GUIDE[step], last = step === GUIDE.length - 1;
-    const dots = el('div', { class: 'guide-dots' }, GUIDE.map((g, i) => el('button', { class: `guide-dot${i === step ? ' on' : ''}`, title: g.title, onClick: () => { step = i; refreshPanel('guide'); } })));
-    return [
-      title(first && !step ? t('WELCOME TO CDPLAYER') : s.title), el('div', { class: 'subtitle' }, first && !step ? s.title : t('{step} OF {total}', { step: step + 1, total: GUIDE.length })), gap(18),
-      s.lines.map((line) => el('div', { class: 'tip-row' }, el('span', { class: 'dot' }, '●'), el('span', { class: 'tip' }, line))),
-      gap(8), dots,
-      el('div', { class: 'close-row guide-actions' },
-        pill(last ? t('CLOSE') : t('SKIP'), done),
-        el('span', { class: 'grow' }),
-        step ? pill(t('BACK'), () => { step--; refreshPanel('guide'); }) : null,
-        el('button', { class: 'pill on', onClick: () => { if (last) done(); else { step++; refreshPanel('guide'); } } }, last ? (first ? t('START LISTENING') : t('DONE')) : t('NEXT|step'))),
-    ];
-  };
-  return openPanel('guide', build, { width: 480 });
-}
 
 export function showFaq() {
   const open = new Set();

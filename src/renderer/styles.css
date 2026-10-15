@@ -830,9 +830,6 @@ body.cd-view #cd-info { display: block !important; }
 
 /* Help (panels.js showGuide / showFaq / showShortcuts): the guide's step dots, the FAQ's questions opening into
    answers, and the shortcuts with their keys drawn as keys. */
-.guide-dots { display: flex; justify-content: center; gap: 8px; margin: 8px 0 4px; }
-.guide-dot { width: 8px; height: 8px; padding: 0; border: none; border-radius: 50%; cursor: pointer; background: rgba(var(--text), .22); }
-.guide-dot.on { background: rgb(var(--accent)); }
 .guide-actions { display: flex; gap: 8px; align-items: center; }
 .guide-actions .grow { flex: 1; }
 .faq-list { max-height: min(420px, 60vh); padding-right: 6px; }
@@ -905,3 +902,24 @@ kbd {
 /* The queue card in queue mode: the plain list; the changer's carousel, disc heading, DISC SKIP and EJECT only in changer mode. */
 body:not(.changer-mode) #changer, body:not(.changer-mode) #disc-heading,
 body:not(.changer-mode) #disc-skip-button, body:not(.changer-mode) #eject-disc-button { display: none; }
+/* The guide (tour-view.js): the window dimmed round one lit-up part, and a bubble pointing at it. */
+.tour-layer { position: fixed; inset: 0; z-index: 9000; }
+.tour-layer.dim { background: rgba(0, 0, 0, .62); }
+.tour-spot { position: fixed; border-radius: 12px; pointer-events: none;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, .62), 0 0 0 2px rgb(var(--accent)), 0 0 24px rgba(var(--accent), .45);
+  transition: left .35s cubic-bezier(.3,.7,.3,1), top .35s cubic-bezier(.3,.7,.3,1), width .35s cubic-bezier(.3,.7,.3,1), height .35s cubic-bezier(.3,.7,.3,1); }
+.tour-bubble { position: fixed; width: 340px; max-width: calc(100vw - 24px); box-sizing: border-box; padding: 16px 18px 14px;
+  background: rgb(var(--card)); color: rgb(var(--text)); border: 1px solid rgba(255, 255, 255, .157); border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .6); transition: left .35s cubic-bezier(.3,.7,.3,1), top .35s cubic-bezier(.3,.7,.3,1); }
+body.no-anim .tour-spot, body.no-anim .tour-bubble { transition: none; }
+.tour-bubble::before { content: ''; position: absolute; width: 12px; height: 12px; background: inherit; border: inherit; border-width: 1px 0 0 1px; }
+.tour-bubble[data-side="below"]::before { top: -7px; left: calc(var(--arrow) - 6px); transform: rotate(45deg); }
+.tour-bubble[data-side="above"]::before { bottom: -7px; left: calc(var(--arrow) - 6px); transform: rotate(225deg); }
+.tour-bubble[data-side="right"]::before { left: -7px; top: calc(var(--arrow) - 6px); transform: rotate(-45deg); }
+.tour-bubble[data-side="left"]::before { right: -7px; top: calc(var(--arrow) - 6px); transform: rotate(135deg); }
+.tour-bubble[data-side="none"]::before { display: none; }
+.tour-count { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: rgb(var(--muted)); margin-bottom: 4px; }
+.tour-title { font-size: 15px; font-weight: 800; letter-spacing: .03em; color: rgb(var(--accent)); margin-bottom: 6px; }
+.tour-text { font-size: 13px; font-weight: normal; line-height: 1.45; margin-bottom: 12px; }
+.tour-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tour-actions .grow { flex: 1; }

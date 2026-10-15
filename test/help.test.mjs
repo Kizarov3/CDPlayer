@@ -1,13 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
-import { GUIDE, FAQ, SHORTCUTS } from '../src/renderer/js/help.js';
+import { TOUR, FAQ, SHORTCUTS } from '../src/renderer/js/help.js';
 
-test('the first-run guide: five short steps', () => {
-  assert.strictEqual(GUIDE.length, 5);
-  for (const step of GUIDE) {
+test('the guide points at what\'s really on the window, a short title and a sentence or two each', () => {
+  const html = fs.readFileSync('src/renderer/index.html', 'utf8');
+  assert.ok(TOUR.length >= 7 && TOUR.length <= 10);
+  for (const step of TOUR) {
     assert.ok(step.title && step.title === step.title.toUpperCase(), step.title);
-    assert.ok(step.lines.length >= 2 && step.lines.length <= 4, step.title);
+    assert.ok(step.text.length > 20 && step.text.length < 260, step.title);
+    for (const sel of step.targets) assert.ok(html.includes(`id="${sel.slice(1).split(' ')[0]}"`), `${step.title}: ${sel}`);
   }
 });
 
