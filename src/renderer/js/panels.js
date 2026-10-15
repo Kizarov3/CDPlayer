@@ -1136,7 +1136,7 @@ export function showFaq() {
 export function showShortcuts() {
   const keys = (text) => text.split('`').map((part, i) => (i % 2 ? el('kbd', {}, part) : part ? el('span', {}, part.trim() === 'or' ? ` ${t('or')} ` : part) : null));
   openPanel('shortcuts', () => [title(t('KEYBOARD SHORTCUTS')), gap(12),
-    el('div', { class: 'scroll shortcut-list' }, SHORTCUTS.map(([k, what]) => el('div', { class: 'shortcut' }, el('span', { class: 'keys' }, keys(k)), el('span', { class: 'what' }, what)))),
+    el('div', { class: 'scroll shortcut-list' }, SHORTCUTS.filter(([, , only]) => !only || document.body.classList.contains('changer-mode')).map(([k, what]) => el('div', { class: 'shortcut' }, el('span', { class: 'keys' }, keys(k)), el('span', { class: 'what' }, what)))),
     closeRow(() => closePanel('shortcuts'))], { width: 520 });
 }
 

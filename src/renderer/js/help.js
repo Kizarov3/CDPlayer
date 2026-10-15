@@ -34,8 +34,8 @@ export const FAQ = [
 export const SHORTCUTS = [
   ['`Space` or `K`', t('Play / Pause')],
   ['`J` / `L`', t('Previous / next track')],
-  ['`D`', t('Next disc in the changer')],
-  ['`1`–`5`', t('Play the disc in that slot of the changer')],
+  ['`D`', t('Next disc in the changer'), 'changer'], // (changer keys: listed only in changer mode)
+  ['`1`–`5`', t('Play the disc in that slot of the changer'), 'changer'],
   ['`←` / `→`', t('Skip back / forward 5 seconds')],
   ['`↑` / `↓`', t('Volume up / down')],
   ['`U`', t('Mute / unmute')],
