@@ -240,13 +240,13 @@ async function songContent(app) {
         [t('WRITTEN BY'), [c.composer, c.lyricist && c.lyricist !== c.composer ? c.lyricist : null].filter(Boolean).join(' · ')],
         [t('PRODUCED BY'), c.producer], [t('CONDUCTED BY'), c.conductor], [t('ALBUM ARTIST'), c.albumArtist !== d.artist ? c.albumArtist : null],
         [t('RELEASED'), c.released], [t('GENRE'), c.genre], [t('LABEL'), c.label], [t('CATALOG NO.'), c.catalog],
-        ['TRACK', c.track ? `${c.track.no}${c.track.of ? ` of ${c.track.of}` : ''}` : null],
-        ['DISC', c.disc ? `${c.disc.no}${c.disc.of ? ` of ${c.disc.of}` : ''}` : null], ['BPM', c.bpm],
+        [t('TRACK'), c.track ? `${c.track.no}${c.track.of ? ` ${t('OF').toLowerCase()} ${c.track.of}` : ''}` : null],
+        [t('DISC'), c.disc ? `${c.disc.no}${c.disc.of ? ` ${t('OF').toLowerCase()} ${c.disc.of}` : ''}` : null], ['BPM', c.bpm],
       ].filter(([, v]) => v),
       summary: [
-        ['FORMAT', d.quality || d.ext], ['LENGTH', app.formatTime(d.duration || app.engine.duration)],
+        [t('FORMAT'), d.quality || d.ext], [t('LENGTH'), app.formatTime(d.duration || app.engine.duration)],
         [t('COVER'), app.coverSource()], [t('LYRICS'), state.lyrics ? state.lyricsSource || (d.lyrics ? t('In the file') : t('Online')) : null],
-        ['PLAYED', plays ? `${plays} ${plays === 1 ? 'time' : 'times'}` : null],
+        [t('PLAYED'), plays ? (plays === 1 ? t('1 time') : t('{n} times', { n: plays })) : null],
       ].filter(([, v]) => v),
     },
     back: {
@@ -374,7 +374,9 @@ function insidePages(content, spread, size) {
     const rows = pieces.flatMap((c, i) => [() => el('span', { class: 'story' }, `${c.text} `), ...(c.end && i < pieces.length - 1 ? [() => el('div', { class: 'story-gap' })] : [])]);
     rows.push(() => el('div', { class: 'story-source', 'data-link': '', title: story.url, onClick: () => content.openStory && content.openStory(story.url) },
       t('From Wikipedia: “{title}” · CC BY-SA', { title: story.title })));
-    pages.push(...layout('story', (n) => heading(n ? t('{title} (cont.)', { title: t('ABOUT THE ALBUM') }) : t('ABOUT THE ALBUM'), n ? null : releasedLine(story.released, { locale })), rows));
+    // A single's (or an EP's) article is mostly about its song: the page says what the release is.
+    const about = story.kind === 'Single' ? t('ABOUT THE SINGLE') : story.kind === 'EP' ? t('ABOUT THE EP') : t('ABOUT THE ALBUM');
+    pages.push(...layout('story', (n) => heading(n ? t('{title} (cont.)', { title: about }) : about, n ? null : releasedLine(story.released, { locale })), rows));
   }
 
   // Lyrics: each song's on its own pages.
@@ -391,7 +393,7 @@ function insidePages(content, spread, size) {
   // Credits, and this disc or album.
   const { credits } = content;
   const dl = (list) => el('dl', { class: 'credits' }, list.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, String(v))]));
-  const page = el('div', { class: 'page' }, heading('CREDITS', credits.sub), el('div', { class: 'page-body' },
+  const page = el('div', { class: 'page' }, heading(t('CREDITS'), credits.sub), el('div', { class: 'page-body' },
     credits.rows.length ? dl(credits.rows) : el('div', { class: 'none' }, credits.none),
     el('div', { class: 'page-title small' }, credits.summaryTitle), dl(credits.summary)));
   page.dataset.key = 'credits:0';
