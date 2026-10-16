@@ -81,3 +81,19 @@ test('clearing a field removes it', async () => {
   assert.strictEqual(t.title, 'Kept');
   assert.strictEqual(t.genre, null);
 });
+
+test('FLAC: a new label or track count takes out the old one written under another name (PUBLISHER, TOTALTRACKS)', async () => {
+  const lib = require('node-taglib-sharp');
+  const p = copy('smoke.flac');
+  let f = lib.File.createFromPath(p);
+  const x = f.getTag(lib.TagTypes.Xiph, true);
+  x.setFieldAsStrings('PUBLISHER', 'Old Label'); x.setFieldAsStrings('TOTALTRACKS', '12');
+  f.save(); f.dispose();
+  assert.ok((await writeTags(p, { label: 'New Label', trackCount: 9 })).ok);
+  f = lib.File.createFromPath(p);
+  const y = f.getTag(lib.TagTypes.Xiph, false);
+  try {
+    assert.deepStrictEqual([y.getField('PUBLISHER'), y.getField('TOTALTRACKS')], [[], []]);
+    assert.deepStrictEqual([y.getField('ORGANIZATION'), y.getField('TRACKTOTAL')], [['New Label'], ['9']]);
+  } finally { f.dispose(); }
+});

@@ -77,6 +77,17 @@ function coverPicture(cover) {
  * Writes `changes` ({ field: value }, value null to clear; `cover`: a data URL or image bytes to become the front
  * cover) into the file. → { ok: true } or { ok: false, error }.
  */
+// FLAC and Ogg tags can say one thing under several names (other taggers write PUBLISHER or LABEL, TOTALTRACKS…):
+// taglib writes its own (ORGANIZATION, TRACKTOTAL, DISCTOTAL), so the others are taken out with it — else another
+// player could still show the old value.
+const XIPH_ALIASES = { label: ['PUBLISHER', 'LABEL'], trackCount: ['TOTALTRACKS'], discCount: ['TOTALDISCS'] };
+function clearAliases(f, changes) {
+  const lib = taglib();
+  const xiph = f.getTag && f.getTag(lib.TagTypes.Xiph, false);
+  if (!xiph) return;
+  for (const [field, names] of Object.entries(XIPH_ALIASES)) if (field in changes) for (const n of names) xiph.removeField(n);
+}
+
 async function writeTags(filePath, changes) {
   if (!canWrite(filePath)) return { ok: false, error: t('CAN’T WRITE TAGS TO THIS FILE') };
   const dir = path.dirname(filePath), ext = path.extname(filePath);
@@ -89,6 +100,7 @@ async function writeTags(filePath, changes) {
         if (k === 'cover') { if (v) f.tag.pictures = [coverPicture(v), ...(f.tag.pictures || []).filter((p) => p.type !== taglib().PictureType.FrontCover)]; continue; }
         if (FIELDS[k]) FIELDS[k].set(f.tag, v === '' ? null : v);
       }
+      clearAliases(f, changes);
       f.save();
     } finally { f.dispose(); }
     await verify(filePath, tmp, changes);
