@@ -125,6 +125,26 @@ function addedAt(prev, st, cacheFound, now) {
   return now;
 }
 
+/**
+ * The disc and track numbers of `files` (path → { disc, track }), for playing a dropped folder in album order: from
+ * the shelf's cache, the rest read from their tags — unless there are too many to read quickly (then name order).
+ */
+async function trackNumbers(files, { readUpTo = 400 } = {}) {
+  const folder = store.readLastPath(), cached = (folder && readCache(folder)) || {};
+  const out = new Map(), missing = [];
+  for (const p of files) { const e = cached[p]; if (e && e.info) out.set(p, { disc: e.info.disc, track: e.info.track }); else missing.push(p); }
+  if (missing.length > readUpTo) return out;
+  let next = 0;
+  async function worker() {
+    while (next < missing.length) {
+      const p = missing[next++];
+      try { const info = await trackInfo(p); out.set(p, { disc: info.disc, track: info.track }); } catch { /* unreadable: by name */ }
+    }
+  }
+  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  return out;
+}
+
 let running = null;
 /** Every album in the music folder. onProgress(done, total) while tags are being read. → { folder, name, albums } */
 function scanAlbums(onProgress) {
@@ -290,4 +310,4 @@ async function albumCoverFull(firstTrack) {
 /** A file's tags changed: its album's cover thumbnail is made again next time. */
 function forget(filePath) { thumbs.delete(filePath); fromWeb.delete(filePath); onShelf = null; } // its tags changed: it may be on another album now
 
-module.exports = { COVER_FILE, scanAlbums, albumOf, albumTracks, touchedAt, isWrapped, readCache, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };
+module.exports = { COVER_FILE, scanAlbums, trackNumbers, albumOf, albumTracks, touchedAt, isWrapped, readCache, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };

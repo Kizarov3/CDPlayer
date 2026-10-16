@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { LEVELS, capRate, targetRate, badgeLabel, badgeText, badgeExact, levelName, khz } from '../src/renderer/js/quality.js';
+import { LEVELS, capRate, targetRate, albumRate, badgeLabel, badgeText, badgeExact, levelName, khz } from '../src/renderer/js/quality.js';
 
 test('three levels, as in Apple Music', () => {
   assert.deepStrictEqual(LEVELS, ['HIGH', 'LOSSLESS', 'HIRES']);
@@ -55,4 +55,18 @@ test('what reaches the output, said plainly', () => {
   assert.strictEqual(badgeText({ ...base, spatial: true, noise: true }), 'OUTPUT: 96 KHZ — NOT RESAMPLED\nCHANGED ON THE WAY BY: SPATIAL AUDIO, DISC NOISE', 'everything that alters the signal is named');
   assert.strictEqual(badgeText({ ...base, mono: true, spatial: true }), 'OUTPUT: 96 KHZ — NOT RESAMPLED\nCHANGED ON THE WAY BY: MONO', 'spatial audio waits while mono is on');
   assert.strictEqual(badgeText({ ...base, deviceRate: 96000, switched: false }), 'OUTPUT: 96 KHZ — NOT RESAMPLED');
+});
+
+test("within an album, the album's highest rate: its songs follow each other with no device switch", () => {
+  assert.strictEqual(albumRate('HIRES', [44100, 96000, 44100]), 96000);
+  assert.strictEqual(albumRate('HIRES', [44100]), 44100);
+  assert.strictEqual(albumRate('LOSSLESS', [44100, 96000]), 48000); // capped as each song is
+  assert.strictEqual(albumRate('HIRES', [44100, undefined]), 44100); // a song's rate not known yet: left out
+  assert.strictEqual(albumRate('HIRES', [undefined]), null);
+  assert.strictEqual(albumRate('HIGH', [44100, 96000]), null);
+});
+
+test('the badge says when a song is raised to its album\'s rate', () => {
+  assert.match(badgeText({ fileRate: 44100, aimed: 96000, deviceRate: 96000, switched: true }), /RAISED FROM 44.1 KHZ, AS THE REST OF THE ALBUM/);
+  assert.strictEqual(badgeExact({ fileRate: 44100, aimed: 96000, deviceRate: 96000 }), false);
 });

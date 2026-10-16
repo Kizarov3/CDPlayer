@@ -33,6 +33,16 @@ export function targetRate(level, fileRate) {
   return capRate(fileRate, CAP[level]);
 }
 
+/**
+ * The rate a song plays at under `level` within its album: the album's highest, so a 44.1 kHz song among 96 kHz ones
+ * is resampled up to 96 rather than the music stopping between them for the device to switch (gapless). `rates`: the
+ * album's songs' rates that are known, the song's own among them. Null as targetRate.
+ */
+export function albumRate(level, rates) {
+  const aimed = rates.map((r) => targetRate(level, r)).filter(Boolean);
+  return aimed.length ? Math.max(...aimed) : null;
+}
+
 /** '◈ LOSSLESS' / '◈ HI-RES LOSSLESS' for a lossless file under LOSSLESS or HI-RES, by the rate it's played at. */
 export function badgeLabel(format, level) {
   if (!format || !format.lossless || !CAP[level]) return null;
@@ -53,6 +63,8 @@ export function badgeText({ fileRate, aimed, deviceRate, switched, bluetooth, eq
   else if (deviceRate === aimed) {
     line = fileRate > CAP.HIRES
       ? t('OUTPUT: {rate} — LOWERED FROM {file} (THE HIGHEST CDPLAYER PLAYS)', { rate: khz(aimed), file: khz(fileRate) })
+      : aimed > fileRate
+      ? t('OUTPUT: {rate} — RAISED FROM {file}, AS THE REST OF THE ALBUM (NO GAP BETWEEN ITS SONGS)', { rate: khz(aimed), file: khz(fileRate) })
       : aimed < fileRate
       ? t('OUTPUT: {rate} — LOWERED FROM {file} (HI-RES LOSSLESS PLAYS IT IN FULL)', { rate: khz(aimed), file: khz(fileRate) })
       : t('OUTPUT: {rate} — NOT RESAMPLED', { rate: khz(aimed) });

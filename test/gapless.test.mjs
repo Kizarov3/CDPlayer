@@ -39,3 +39,10 @@ test('LOSSLESS / HIRES: only when the next song plays at the rate the engine is 
   assert.strictEqual(rateFits({ quality: 'HIRES', fileRate: null, rateInfo: null, engineRate: 48000 }), true); // no rate known: nothing would change
   assert.strictEqual(seamlessNext({ ...base, quality: 'HIRES', nextDetails: { cue: null, format: { sampleRate: 96000 } }, rateInfo: info, engineRate: 44100 }), null);
 });
+
+test("a song played at its album's rate follows a song of another rate seamlessly", () => {
+  const at96 = { aimed: 96000, switched: true, deviceRate: 96000 };
+  assert.strictEqual(rateFits({ quality: 'HIRES', fileRate: 44100, aimedRate: 96000, rateInfo: at96, engineRate: 96000 }), true);
+  assert.strictEqual(rateFits({ quality: 'HIRES', fileRate: 44100, rateInfo: at96, engineRate: 96000 }), false); // on its own: 44.1
+  assert.deepStrictEqual(seamlessNext({ ...base, quality: 'HIRES', aimedRate: 96000, rateInfo: at96, engineRate: 96000 }), { url: 'cdp://app/media?p=/m/02.flac', segment: null });
+});

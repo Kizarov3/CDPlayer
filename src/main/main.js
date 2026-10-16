@@ -418,7 +418,10 @@ handle('spotify:showLog', () => {
 });
 handle('spotify:openDashboard', () => shell.openExternal('https://developer.spotify.com/dashboard'));
 
-handle('library:collect', async (items) => (await library.collectAudio(items)).sort(library.byName));
+handle('library:collect', async (items) => { // as the albums play: by folder, disc and track number
+  const files = await library.collectAudio(items);
+  return library.inAlbumOrder(files, await shelf.trackNumbers(files));
+});
 handle('library:scan', async () => {
   const folder = store.readLastPath();
   if (!folder || !store.isDir(folder)) return { folder: null, files: [] };

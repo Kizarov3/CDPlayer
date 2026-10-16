@@ -21,7 +21,7 @@ import * as panels from './panels.js';
 import { t, locale, translatePage } from './i18n.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
 import { wearFor } from './disc-wear.js';
-import { targetRate, badgeLabel, badgeText, badgeExact, levelName, LEVELS } from './quality.js';
+import { targetRate, albumRate, badgeLabel, badgeText, badgeExact, levelName, LEVELS } from './quality.js';
 import { createSoundCheck, measureFile } from './sound-check.js';
 import { seamlessNext, PREPARE_SECONDS } from './gapless.js';
 import { pickOutput, outputName } from './output.js';
@@ -571,13 +571,27 @@ function resetToIdle(message) {
 
 // Settings → QUALITY: before a song loads, the engine (and, through the main process, the output device) is set to
 // the rate it should play at. → true when the engine was rebuilt, so the song can't crossfade in.
-async function applyQuality(format, token) {
+// LOSSLESS / HI-RES: the rate a song plays at within its album — the highest of that album's songs in the queue (by
+// album and album artist, as the changer makes discs), so an album of 44.1 and 96 kHz songs plays through at 96
+// instead of stopping between them for the device to switch.
+function albumAimFor(path, details) {
+  const own = details && details.format && details.format.sampleRate;
+  const key = (d) => (d && d.album ? `${(d.credits && d.credits.albumArtist) || d.artist || ''}\n${d.album}`.toLowerCase() : null);
+  const album = key(details), rates = [own];
+  if (album && own) for (const p of state.queue) {
+    const d = p === path ? null : detailsCache.get(p);
+    if (d && key(d) === album && d.format) rates.push(d.format.sampleRate);
+  }
+  return albumRate(state.quality, rates);
+}
+
+async function applyQuality(details, token, path) {
   if (state.quality === 'HIGH') {
     state.rateInfo = null;
     return engine.customRate ? engine.setRate(null) : false;
   }
-  const fileRate = format && format.sampleRate;
-  const aimed = targetRate(state.quality, fileRate);
+  const fileRate = details && details.format && details.format.sampleRate;
+  const aimed = albumAimFor(path, details);
   if (!aimed) return false;
   const known = state.rateInfo;
   if (known && known.aimed === aimed && engine.rate === (known.switched ? known.deviceRate : aimed)) {
@@ -624,9 +638,13 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
     return;
   }
   if (!seamless && (state.quality !== 'HIGH' || engine.customRate)) {
-    const rateChanged = await applyQuality(((await detailsPromise) || {}).format, token);
+    const rateChanged = await applyQuality(await detailsPromise, token, path);
     if (token !== state.loadToken) return;
     if (rateChanged) fade = 0; // a new context: nothing left to fade out of
+  } else if (seamless && state.rateInfo) { // the rate stays as it is; the badge says this song's own
+    const format = ((await detailsPromise) || {}).format;
+    if (token !== state.loadToken) return;
+    if (format && format.sampleRate) state.rateInfo = { ...state.rateInfo, fileRate: format.sampleRate };
   }
   const soundMode = evensOut(path) ? state.soundCheck : 'OFF';
   const knownLevel = await soundCheck.known(path, soundMode).catch(() => null);
@@ -997,7 +1015,7 @@ async function prepareNext() {
   const nextDetails = detailsCache.get(path) || await cdp.details(path, { withCover: false }).catch(() => null);
   if (preparedNext !== mark || token !== state.loadToken) return;
   const plan = seamlessNext({
-    crossfade: state.crossfade, repeat: state.repeat, spotify: spotifyActive(), nextPath: path, nextDetails,
+    crossfade: state.crossfade, repeat: state.repeat, spotify: spotifyActive(), nextPath: path, nextDetails, aimedRate: albumAimFor(path, nextDetails),
     isCdTrack: isAudioCdTrack(path), sameFileCue: continuesCurrent(path, { atBoundary: false }),
     quality: state.quality, customRate: engine.customRate, rateInfo: state.rateInfo, engineRate: engine.rate,
     mediaUrl: (p) => cdp.mediaUrl(p),

@@ -161,3 +161,10 @@ test('website tags and video-site noise come off track names; "Artist - Title" f
   assert.deepStrictEqual(searchVariants('Korn Got The Life (Remastered 2011) (mp3.pm)'), ['Korn Got The Life (Remastered 2011)', 'Korn Got The Life']);
   assert.deepStrictEqual(searchVariants('Eminem Stan feat. Dido'), ['Eminem Stan feat. Dido', 'Eminem Stan']);
 });
+
+test('a dropped folder plays in album order: by folder, disc and track number, then name', () => {
+  const files = ['/m/B/Zed.flac', '/m/A/Crawling.flac', '/m/A/Papercut.flac', '/m/A/In the End.flac', '/m/A/bonus.flac', '/m/A/Two.flac'];
+  const numbers = new Map([['/m/A/Crawling.flac', { disc: 1, track: 5 }], ['/m/A/Papercut.flac', { disc: 1, track: 1 }], ['/m/A/In the End.flac', { disc: 1, track: 8 }], ['/m/A/Two.flac', { disc: 2, track: 1 }]]);
+  assert.deepStrictEqual(library.inAlbumOrder(files, numbers), ['/m/A/Papercut.flac', '/m/A/Crawling.flac', '/m/A/In the End.flac', '/m/A/bonus.flac', '/m/A/Two.flac', '/m/B/Zed.flac']);
+  assert.deepStrictEqual(library.inAlbumOrder(['/m/A/02 b.mp3', '/m/A/10 a.mp3', '/m/A/1 c.mp3']), ['/m/A/1 c.mp3', '/m/A/02 b.mp3', '/m/A/10 a.mp3']); // no tags: by name, numbers as numbers
+});

@@ -11,6 +11,21 @@ const isSupportedAudio = (p) => AUDIO_EXTENSIONS.has(path.extname(p).slice(1).to
 const byName = (a, b) => path.basename(a).localeCompare(path.basename(b), undefined, { sensitivity: 'base', numeric: true });
 
 /**
+ * Files as an album plays them: folder by folder, each in disc, then track order by `numbers` (path → { disc, track }
+ * from the tags) — so a folder of "Artist - Title.flac" isn't played in alphabetical order — then by name, for songs
+ * with no number.
+ */
+function inAlbumOrder(files, numbers = new Map()) {
+  const dirOf = (p) => path.dirname(p.replace(/#\d+$/, ''));
+  const num = (p, key) => { const n = numbers.get(p); return n && n[key] > 0 ? n[key] : null; };
+  return files.slice().sort((a, b) =>
+    dirOf(a).localeCompare(dirOf(b), undefined, { sensitivity: 'base', numeric: true })
+    || (num(a, 'disc') || 1) - (num(b, 'disc') || 1)
+    || (num(a, 'track') ?? Infinity) - (num(b, 'track') ?? Infinity)
+    || byName(a, b));
+}
+
+/**
  * Recursively collects supported audio under each dropped/chosen item (files or folders). A cue sheet becomes one
  * entry per track ("album.cue#3") in place of the album-length file it splits up. `labels`, if given, is filled with
  * a searchable name for each cue track, since its path alone doesn't say which song it is.
@@ -152,5 +167,5 @@ function parseSpotifyJson(text) {
 
 module.exports = {
   AUDIO_EXTENSIONS, isSupportedAudio, collectAudio, scanLibrary, formatM3u, parseM3u,
-  parseItunesLibrary, parseCsvLine, parseSpotifyCsv, parseSpotifyJson, byName,
+  parseItunesLibrary, parseCsvLine, parseSpotifyCsv, parseSpotifyJson, byName, inAlbumOrder,
 };

@@ -521,6 +521,7 @@
   "OUTPUT: {rate} — LOWERED FROM {file} (HI-RES LOSSLESS PLAYS IT IN FULL)": "ВЫХОД: {rate} — ПОНИЖЕНО ИЗ {file} (HI-RES LOSSLESS ВОСПРОИЗВОДИТ В ПОЛНОМ ОБЪЕМЕ)",
   "OUTPUT: {rate} — LOWERED FROM {file} (THE HIGHEST CDPLAYER PLAYS)": "ВЫХОД: {rate} — ПОНИЖЕНО С {file} (МАКСИМУМ ДЛЯ CDPLAYER)",
   "OUTPUT: {rate} — NOT RESAMPLED": "ВЫХОД: {rate} — НЕ ПЕРЕСЭМПЛИРОВАН",
+  "OUTPUT: {rate} — RAISED FROM {file}, AS THE REST OF THE ALBUM (NO GAP BETWEEN ITS SONGS)": "ВЫХОД: {rate} — ПОВЫШЕНО ИЗ {file}, КАК У ОСТАЛЬНОГО АЛЬБОМА (БЕЗ ПАУЗ МЕЖДУ ПЕСНЯМИ)",
   "OUTPUT: {rate} — RESAMPLED (SET THE RATE IN YOUR SOUND SETTINGS)": "ВЫХОД: {rate} — ПЕРЕСЭМПЛИРОВАН (УСТАНОВИТЕ ЧАСТОТУ В ПАРАМЕТРАХ ЗВУКА)",
   "OUTPUT: {rate} — RESAMPLED (THE DEVICE CAN'T PLAY {file})": "ВЫХОД: {rate} — ПЕРЕСЭМПЛИРОВАН (УСТРОЙСТВО НЕ МОЖЕТ ВОСПРОИЗВОДИТЬ {file})",
   "Oct": "окт",
