@@ -3,7 +3,7 @@
 // with a centered card that grows and fades in, and shrinks and fades out.
 import { THEMES, draftFrom } from './theme.js';
 import { buildThemeEditor } from './theme-editor.js';
-import { t } from './i18n.js';
+import { t, locale } from './i18n.js';
 import { EQ_FREQUENCIES } from './audio.js';
 import { el, pill, toggle, setToggle, Slider, anim } from './widgets.js';
 import { FAQ, SHORTCUTS, FEATURES } from './help.js';
@@ -1181,6 +1181,19 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.15.0', changes: [
+    '<b>The CD changer</b>: Settings &rarr; PLAYBACK &rarr; CD CHANGER &mdash; five discs in a carousel instead of the queue; D skips a disc, 1&ndash;5 play a slot, songs added one at a time go on a home-made CD-R. The queue and the changer each keep their own music',
+    '<b>Gapless playback</b>: an album whose songs run into each other plays on with no gap between its tracks',
+    '<b>ABOUT THE ALBUM</b> in the booklet: the album&rsquo;s story from Wikipedia, in your language',
+    '<b>A guide round the window</b> the first time, and <b>WHAT&rsquo;S SPECIAL</b> under Settings &rarr; HELP: dust, wear, the albums you&rsquo;re missing, what yours are worth, with SHOW ME',
+    '<b>SEARCH by artist, album or song</b> (press /), smoother motion everywhere, and many fixes from people trying it for the first time',
+  ], changesIn: { ru: [
+    '<b>Чейнджер</b>: Настройки &rarr; ВОСПРОИЗВЕДЕНИЕ &rarr; ЧЕЙНДЖЕР &mdash; пять дисков в карусели вместо очереди; D &mdash; следующий диск, 1&ndash;5 &mdash; диск из гнезда, песни по одной ложатся на самодельный CD-R. У очереди и чейнджера своя музыка',
+    '<b>Без пауз между треками</b>: альбом, где песни перетекают одна в другую, играет непрерывно',
+    '<b>ОБ АЛЬБОМЕ</b> в буклете: история альбома из Википедии на твоём языке',
+    '<b>Гид по окну</b> при первом запуске и <b>ФИШКИ ПЛЕЕРА</b> в Настройки &rarr; ПОМОЩЬ: пыль, износ, недостающие альбомы, цены &mdash; с кнопкой ПОКАЗАТЬ',
+    '<b>ПОИСК по исполнителю, альбому и песне</b> (клавиша /), плавные анимации и много исправлений по отзывам новичков',
+  ] } },
   { version: '2.14.0', changes: [
     '<b>Sound Check</b>: Settings &rarr; SOUND CHECK &mdash; every song at the same loudness, from its ReplayGain tags or measured once; ALBUM keeps an album&rsquo;s own quiet and loud songs. SC under the title shows the gain',
     '<b>The shelf keeps up with your music folder</b>: an album ripped, copied in or removed turns up on the open shelf, or goes, by itself &mdash; no need to close it and open it again',
@@ -1316,9 +1329,10 @@ export function showChangelogIfNeeded(app, lastVersion, existingInstall) {
   // Just this release's new features — not everything since whichever version this user last ran, which could be a
   // wall of notes for someone coming from the Java app or skipping releases.
   const entry = CHANGELOG.find((c) => c.version === version);
-  const changes = entry ? entry.changes : [];
+  // (An entry can have its words in the interface's language too: changesIn.ru, …)
+  const changes = entry ? (entry.changesIn && entry.changesIn[locale]) || entry.changes : [];
   if (!changes.length) { app.cdp.writeLastVersion(version); return; }
-  const p = openPanel('changelog', () => tipsCard("WHAT'S NEW", `CDPlayer ${version}`, changes, () => closePanel('changelog')));
+  const p = openPanel('changelog', () => tipsCard(t("WHAT'S NEW"), `CDPlayer ${version}`, changes, () => closePanel('changelog')));
   p.onClose = () => app.cdp.writeLastVersion(version);
 }
 
