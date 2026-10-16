@@ -954,7 +954,7 @@ kbd {
 body:not(.changer-mode) #changer, body:not(.changer-mode) #disc-heading,
 body:not(.changer-mode) #disc-skip-button, body:not(.changer-mode) #eject-disc-button { display: none; }
 /* The guide (tour-view.js): the window dimmed round one lit-up part, and a bubble pointing at it. */
-.tour-layer { position: fixed; inset: 0; z-index: 9000; }
+.tour-layer { position: fixed; inset: 0; z-index: 9000; pointer-events: auto; } /* (#overlays lets clicks through; the guide takes them: its buttons, and nothing behind while it's up) */
 .tour-layer.dim { background: rgba(0, 0, 0, .62); }
 .tour-spot { position: fixed; border-radius: 12px; pointer-events: none;
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, .62), 0 0 0 2px rgb(var(--accent)), 0 0 24px rgba(var(--accent), .45);
