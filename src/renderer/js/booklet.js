@@ -47,7 +47,7 @@ export async function openBooklet(app, from, content = null) {
     el('button', { class: 'pill', title: t('Put the booklet back (Esc)'), onClick: () => closeBooklet() }, t('CLOSE')));
   bar.style.top = `${Math.round((window.innerHeight + size) / 2) + 12}px`;
   root.append(bar);
-  book = { root, spread, leaves: [], turned: 0, from, app, content, where };
+  book = { root, spread, leaves: [], turned: 0, from, app, content, where, openedAt: performance.now() };
   buildLeaves();
   stack();
 
@@ -282,6 +282,8 @@ function tellStory(app, content, query, tries = 3) {
     }
     if (!story) return;
     content.story = story;
+    // Come while the booklet's being read (not just as it opens): at the end, so the page being read stays put.
+    content.storyLate = isBookletOpen() && book.content === content && performance.now() - book.openedAt > 1500;
     refreshBooklet(content);
   }).catch(() => {});
 }
@@ -386,9 +388,11 @@ function insidePages(content, spread, size) {
     return row;
   })));
 
-  // About the album: Wikipedia's introduction, the date it came out, and where it's from.
+  // About the album: Wikipedia's introduction, the date it came out, and where it's from. After the tracklist — or,
+  // when it came while the booklet was open, at the end (before the back), so it doesn't push on the page being read.
   const { story } = content;
-  if (story) {
+  const addStory = () => {
+    if (!story) return;
     // Sentence by sentence, flowing on as one text (a page turns between sentences); a gap between paragraphs.
     const pieces = storyChunks(story.paragraphs, 0);
     const rows = pieces.flatMap((c, i) => [() => el('span', { class: 'story' }, `${c.text} `), ...(c.end && i < pieces.length - 1 ? [() => el('div', { class: 'story-gap' })] : [])]);
@@ -397,7 +401,8 @@ function insidePages(content, spread, size) {
     // A single's (or an EP's) article is mostly about its song: the page says what the release is.
     const about = story.kind === 'Single' ? t('ABOUT THE SINGLE') : story.kind === 'EP' ? t('ABOUT THE EP') : t('ABOUT THE ALBUM');
     pages.push(...layout('story', (n) => heading(n ? t('{title} (cont.)', { title: about }) : about, n ? null : releasedLine(story.released, { locale })), rows));
-  }
+  };
+  if (!content.storyLate) addStory();
 
   // Lyrics: each song's on its own pages.
   for (const song of content.lyrics) {
@@ -418,6 +423,7 @@ function insidePages(content, spread, size) {
     el('div', { class: 'page-title small' }, credits.summaryTitle), dl(credits.summary)));
   page.dataset.key = 'credits:0';
   pages.push(page);
+  if (content.storyLate) addStory();
 
   sizer.remove();
   return pages;

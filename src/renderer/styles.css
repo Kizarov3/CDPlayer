@@ -641,6 +641,9 @@ body.cursor-hidden #cd-exit { opacity: 0; }
   font-size: 9px; font-weight: bold; letter-spacing: .08em; white-space: nowrap; overflow: hidden;
 }
 .missing-box:hover, .missing-box.open { background: rgba(214, 200, 172, .18); }
+/* WHAT'S SPECIAL's SHOW ME: what it points at on the shelf lifts and glows a moment. */
+.spine.show-me, .missing-box.show-me { animation: showMe 1s var(--ease-in-out) 3; box-shadow: 0 0 0 2px rgb(var(--accent)), 0 0 22px rgba(var(--accent), .7); }
+@keyframes showMe { 50% { transform: translateY(-14px); } }
 .missing-box.waiting { cursor: default; opacity: .35; border-style: dotted; background: none; } /* still being looked up: barely there, no label */
 .missing-box.complete { cursor: default; border-color: rgba(230, 190, 90, .6); color: rgb(230, 190, 90); }
 .spine.ghost {

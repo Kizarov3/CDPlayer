@@ -25,7 +25,7 @@ import { targetRate, badgeLabel, badgeText, badgeExact, levelName, LEVELS } from
 import { createSoundCheck, measureFile } from './sound-check.js';
 import { seamlessNext, PREPARE_SECONDS } from './gapless.js';
 import { pickOutput, outputName } from './output.js';
-import { openShelf, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged } from './shelf.js';
+import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
 import { SpotifySession, SpotifyTrackElement, isSpotifyUri, spotifyUpcoming, loadSpotifySdk } from './spotify-deck.js';
 
@@ -2216,7 +2216,13 @@ export const app = {
   detailsFor: (p) => detailsCache.get(p),
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) goTo(i); },
   // WHAT'S SPECIAL's SHOW ME: the shelf, the disc's other side, CD View or karaoke, opened for a look.
-  showMe: (what) => ({ shelf: () => { if (!isShelfOpen()) toggleShelf(); }, flip: () => disc.flip(), cdview: () => { if (!state.cdView) toggleCdView(); }, karaoke: () => toggleKaraoke() }[what] || (() => {}))(),
+  showMe: (what) => {
+    if (['dust', 'wrap', 'missing', 'discogs', 'shelf'].includes(what)) { if (state.miniMode) return; if (state.cdView) toggleCdView(); return what === 'shelf' ? (isShelfOpen() ? null : toggleShelf()) : shelfShowMe(app, what); }
+    if (isShelfOpen()) closeShelf();
+    if (what === 'flip') disc.flip(true);
+    else if (what === 'cdview') { disc.flip(false); if (!state.cdView) toggleCdView(); } // the disc itself, face up
+    else if (what === 'karaoke') { if (!isKaraokeOpen()) toggleKaraoke(); }
+  },
   changerState: ch, changerMode: () => state.changerMode, setChangerMode, discLabel, loadDisc, playSlot, ejectSlot, discSkip, coverForPath,
   changerSlotOf: (i) => (changer.slotOf(ch(), i) || { slot: -1 }).slot,
   onFullChanger: (c) => panels.pickDiscToTakeOut(app, c),

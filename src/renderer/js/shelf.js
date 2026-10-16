@@ -80,6 +80,46 @@ export async function openShelf(app) {
   await load();
 }
 
+/**
+ * WHAT'S SPECIAL's SHOW ME, on the shelf: it opens, and the thing is pointed at — the dustiest spine ('dust'), a
+ * shrink-wrapped one ('wrap'), an artist's box of albums you don't have, opened ('missing'), or a case pulled out with
+ * its Discogs pressing ('discogs'). When there's none to show, the shelf's line says why.
+ */
+export async function shelfShowMe(app, what) {
+  if (!shelf.open) await openShelf(app);
+  for (let i = 0; i < 40 && (shelf.loading || !document.querySelector('#shelf-body .spine')); i++) await new Promise((r) => setTimeout(r, 100));
+  const spines = [...document.querySelectorAll('#shelf-body .spine')].filter((sp) => sp.album);
+  const point = (node) => {
+    node.scrollIntoView({ block: 'center', inline: 'center', behavior: anim.enabled ? 'smooth' : 'auto' });
+    node.classList.remove('show-me'); void node.offsetWidth; node.classList.add('show-me');
+    setTimeout(() => node.classList.remove('show-me'), 3200);
+  };
+  if (what === 'dust') {
+    const dusty = spines.filter((sp) => sp.dust > 0).sort((a, b) => b.dust - a.dust)[0];
+    if (dusty) point(dusty); else say(t('NO DUST YET · EVERY ALBUM HAS BEEN PLAYED THIS MONTH'));
+  } else if (what === 'wrap') {
+    const wrapped = spines.find((sp) => sp.classList.contains('new'));
+    if (wrapped) point(wrapped); else say(t('NOTHING NEW IN YOUR MUSIC FOLDER LATELY'));
+  } else if (what === 'missing') {
+    if (shelf.app.state.shelfSort !== 'ARTIST') { shelf.app.setShelfSort('ARTIST'); render(); await new Promise((r) => setTimeout(r, 300)); }
+    // The first artist whose missing albums are known; the box opens, and the places come out beside it.
+    for (let i = 0; i < 30; i++) {
+      const box = [...document.querySelectorAll('#shelf-body .missing-box')].find((b) => b.box && b.box.state === 'found' && b.box.missing.length);
+      if (box) {
+        if (!box.box.open) { shelf.openBoxes.add(box.box.key); render(); }
+        const again = [...document.querySelectorAll('#shelf-body .missing-box')].find((b) => b.box && b.box.key === box.box.key);
+        if (again) point(again);
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    say(t('LOOKING UP YOUR ARTISTS ON MUSICBRAINZ · TRY AGAIN IN A MOMENT'));
+  } else if (what === 'discogs') {
+    const priced = spines.find((sp) => sp.album.pressing && sp.album.pressing.price && typeof sp.album.pressing.price.lowest === 'number') || spines[0];
+    if (priced) { point(priced); setTimeout(() => { if (shelf.open && !shelf.caseOpen) openCase(priced.album, priced); }, anim.enabled ? 700 : 0); }
+  }
+}
+
 export function closeShelf() {
   if (!shelf.open) return;
   closeBooklet(); // an album's booklet, open over its case
@@ -914,7 +954,10 @@ function updateAppraiseCount() {
 function totalNote() {
   const currency = (shelf.settings && shelf.settings.currency) || 'USD';
   const { value, count } = shelfTotal(shelf.albums.map((a) => a.pressing), currency);
-  return count ? t('THE SHELF ≈ {value}', { value: money(value, currency) }) : null;
+  if (!count) return null;
+  // Only some priced yet: says how many, so a few albums' worth isn't taken for the whole shelf's.
+  return count < shelf.albums.length ? t('{n} OF {total} PRICED ≈ {value}', { n: count, total: shelf.albums.length, value: money(value, currency) })
+    : t('THE SHELF ≈ {value}', { value: money(value, currency) });
 }
 
 /** The ids of the albums on the shelf (null before it's been read): Library Check lists only these as not on Discogs. */

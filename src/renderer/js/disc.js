@@ -108,7 +108,7 @@ export class Disc {
       const track = !over && !flip && this.showingData() ? this.trackUnder(e) : -1;
       canvas.style.cursor = this.held ? 'grabbing' : over || flip || track >= 0 ? 'pointer' : this.grabbable(e) ? 'grab' : '';
       canvas.title = flip ? t('Turn the disc over (B)') : track >= 0 ? `${track + 1}. ${this.data.titles[track] || ''}`
-        : over ? (this.artOpen ? (this.onArtClick ? t('Open the booklet') : t('Back to the disc')) : t('Show the full album art')) : '';
+        : over ? (this.artOpen ? (this.onArtClick ? t('Open the booklet') : t('Back to the disc')) : t('Show the full album art — and again for the booklet')) : '';
     });
   }
   setMode(mode) { this.mode = mode; }
