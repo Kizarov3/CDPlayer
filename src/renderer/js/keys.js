@@ -7,5 +7,6 @@ export function shortcutKey(e) {
   if (letter) return letter[1].toLowerCase();
   if (e.code === 'Space') return ' ';
   if (e.code === 'Slash' && e.shiftKey) return '?'; // wherever the layout puts the question mark
+  if (e.code === 'Slash' && !e.shiftKey) return '/'; // the search, on any layout's key there
   return e.key;
 }

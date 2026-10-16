@@ -295,3 +295,19 @@ test('a CD-R of thousands of songs (an iTunes import) shuffles without slowing d
   for (let k = 0; k < 20; k++) nextIndex(c, { shuffle: 'DISC', repeat: 'OFF' });
   assert.ok(performance.now() - t0 < 200, `${Math.round(performance.now() - t0)} ms for 20 picks`);
 });
+
+test('loose songs go on the CD-R being put together: the newest unfinished one, at its end, the changer standing where it was', async () => {
+  const { openCdr, appendTo } = await import('../src/renderer/js/changer.js');
+  let c = fill(2); // standing on d0/1
+  assert.strictEqual(openCdr(c), -1);
+  c = load(c, { id: 'cdr:1700000000001', kind: 'cdr', title: null, artist: null }, ['s1']).changer; // slot 2
+  c = load(c, { id: 'cdr:1700000000000', kind: 'cdr', title: null, artist: null }, ['s0']).changer; // slot 3, older
+  assert.strictEqual(openCdr(c), 2);
+  const before = c.queue[c.index];
+  c = appendTo(c, 2, ['s2', 's1', 's3']);
+  assert.deepStrictEqual(tracksOf(c, 2), ['s1', 's2', 's3']);
+  assert.strictEqual(c.queue[c.index], before);
+  assert.ok(check(c));
+  c.slots[2] = { ...c.slots[2], done: true };
+  assert.strictEqual(openCdr(c), 3, 'a finished one is closed: the next one along');
+});

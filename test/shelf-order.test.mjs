@@ -80,6 +80,7 @@ test('the sections to jump to: the divider cards in order, short names shortened
   assert.deepStrictEqual(jumpTargets(played).map((t) => t.short), ['NOT']);
   const colours = arrange([album('X', 'One', { color: [240, 140, 20] }), album('Y', 'Two', { color: [230, 210, 40] })], 'COLOR');
   assert.deepStrictEqual(jumpTargets(colours).map((t) => t.short), ['ORANGE', 'YELLOW']);
+  assert.deepStrictEqual(jumpTargets([{ divider: 'UNDER $10' }, { divider: 'ДО 10 $' }, { divider: '$20–$50' }, { divider: '$50+' }]).map((t) => t.short), ['<$10', '<10', '$20', '$50+']);
 });
 
 test('same albums → same signature, in any order; a new, gone or retitled song → another', () => {

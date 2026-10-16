@@ -5,6 +5,7 @@
 // in a long break the line settles while three dots breathe until the next. Click a line to jump there.
 import { el, anim } from './widgets.js';
 import { parseLrc, lineState, lineWords, wordProgress, songPace } from './lyrics.js';
+import { t } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 let view = null; // { lines, nodes, words: [[span]], current, lyrics }
@@ -31,11 +32,18 @@ export function closeKaraoke() {
   else root.hidden = true;
 }
 
-// New song (or new lyrics for it): the lines are laid out again. Without timed lyrics, karaoke closes.
+// New song (or new lyrics for it): the lines are laid out again. A song without timed lyrics (or whose lyrics are
+// still being looked for) says so, and karaoke stays — the next song, or the lyrics when they come, fill it again.
 export function refreshKaraoke() {
   if (!view) return;
-  if (!canKaraoke(view.app.state.lyrics)) { closeKaraoke(); return; }
-  if (view.lyrics !== view.app.state.lyrics) rebuild();
+  if (view.lyrics === view.app.state.lyrics && view.nodes) return;
+  if (canKaraoke(view.app.state.lyrics)) { rebuild(); return; }
+  view.lyrics = view.app.state.lyrics;
+  view.lines = []; view.nodes = []; view.words = []; view.bgWords = []; view.current = -2;
+  const d = view.app.state.details;
+  $('karaoke-title').textContent = d ? [d.title, d.artist].filter(Boolean).join(' · ') : '';
+  $('karaoke-lines').style.transform = '';
+  $('karaoke-lines').replaceChildren(el('div', { class: 'k-line current k-none' }, view.lyrics ? t('THESE LYRICS AREN’T TIMED') : t('NO LYRICS FOR THIS SONG')));
 }
 
 const HELD = 1; // seconds: a word sung longer than this glows
@@ -87,7 +95,7 @@ const fill = (spans, progress) => progress.forEach((p, i) => {
 
 /** Every frame while open: the current line centered, its words (and backing vocals) filled up to `position`. */
 export function updateKaraoke(position, force = false) {
-  if (!view) return;
+  if (!view || !view.nodes || !view.nodes.length) return;
   const { lines, nodes, words, bgWords } = view;
   const { index, singing } = lineState(lines, position);
   if (index !== view.current || force) {

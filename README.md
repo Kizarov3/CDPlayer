@@ -73,10 +73,12 @@ When a new version is out, an **AVAILABLE** button appears in the player's top-l
 | `Y` | Toggle Karaoke Mode |
 | `E` | Open / close the disc tray |
 | `S` | The CD shelf |
+| `/` | Search your music (Enter plays the first match) |
 | `B` | Turn the disc over to its data side: a ring for each track, the laser where it's playing |
 | `P` | Now Playing card: pick lines of the lyrics, then copy or save it |
 | `?` | These keyboard shortcuts |
 | `Esc` | Close whatever's open, or leave fullscreen / CD view / Visualizer Mode / Mini Mode |
+| `⌘Z` / `Ctrl+Z` | Bring back what CLEAR or EJECT just took out |
 
 ## FAQ
 

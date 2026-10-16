@@ -110,7 +110,8 @@ export function setupShelf(app) {
   $('shelf-sort').addEventListener('click', () => {
     const { state } = shelf.app;
     shelf.app.setShelfSort(SORTS[(SORTS.indexOf(state.shelfSort) + 1) % SORTS.length]);
-    if (state.shelfSort === 'PRICE' && !shelf.appraised && !(shelf.appraising && !shelf.appraising.finished)) appraise();
+    // (Prices to sort by: the shelf is appraised for them — unless the user stopped an appraisal; then by what's known.)
+    if (state.shelfSort === 'PRICE' && !shelf.appraised && !shelf.appraisalStopped && !(shelf.appraising && !shelf.appraising.finished)) appraise();
     render();
     $('shelf-body').scrollTop = 0;
   });
@@ -119,7 +120,7 @@ export function setupShelf(app) {
     if (shelf.open && shelf.app.state.shelfSort === 'ARTIST') redraw.request();
   });
   $('shelf-appraise').addEventListener('click', () => {
-    if (shelf.appraising && !shelf.appraising.finished) { shelf.appraising.stopping = true; app.cdp.discogsStop(); updateAppraiseCount(); } else appraise();
+    if (shelf.appraising && !shelf.appraising.finished) { shelf.appraising.stopping = true; shelf.appraisalStopped = true; app.cdp.discogsStop(); updateAppraiseCount(); } else { shelf.appraisalStopped = false; appraise(); }
   });
   // Each album as the appraisal reaches it: its spine (and the shelf, sorted by price) brought up to date.
   app.cdp.onDiscogsProgress((p) => {
@@ -186,7 +187,7 @@ function render() {
     return;
   }
   const query = $('shelf-filter').value, filtering = !!query.trim();
-  const shown = shelf.albums.filter((a) => matchesFilter(a, query));
+  const shown = shelf.albums.filter((a) => matchesFilter(a, query, (stickersFor(a).obi || {}).catalog)); // the number on its obi too
   const n = shelf.albums.length;
   shelf.countBase = [shelf.folderName.toUpperCase(), n === 1 ? t('1 ALBUM') : t('{n} ALBUMS', { n }), filtering ? t('{n} SHOWN', { n: shown.length }) : null].filter(Boolean).join(' · ');
   renderCount();
@@ -868,7 +869,13 @@ function pressingBlock(a, rare, onEntry) {
 export async function choosePressing(a, anchor, masterId, onChosen = () => {}) {
   const box = anchor.getBoundingClientRect();
   const list = masterId ? await shelf.app.cdp.discogsVersions(masterId) : await shelf.app.cdp.discogsSearch(albumQuery(a));
-  if (!Array.isArray(list) || !list.length) { say(list && list.error ? t('DISCOGS UNAVAILABLE') : t('NOTHING FOUND')); return; }
+  if (!Array.isArray(list) || !list.length) {
+    const why = list && list.error ? t('DISCOGS UNAVAILABLE') : t('NOTHING FOUND ON DISCOGS');
+    say(why);
+    // …and on the button pressed, where the eyes are.
+    if (anchor.isConnected && !anchor.dataset.label) { anchor.dataset.label = anchor.textContent; anchor.textContent = why; setTimeout(() => { anchor.textContent = anchor.dataset.label; delete anchor.dataset.label; }, 3000); }
+    return;
+  }
   shelf.app.pressingMenu(box, list.map((v) => ({
     label: [masterId ? null : v.title, v.label, v.catno, v.country, v.year, v.format].filter(Boolean).join(' · '),
     pick: async () => {

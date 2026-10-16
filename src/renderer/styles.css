@@ -425,6 +425,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 .k-line.k-v2 { text-align: right; }
 .k-bg { font-size: .56em; margin-top: 4px; opacity: .75; }
 .k-whole { white-space: nowrap; }
+.k-line.k-none { font-size: 22px; cursor: default; margin-top: 30vh; }
 /* The fill: each word painted in the accent up to --p (0…1) of its width, with a soft edge, the rest in unsung grey.
    A word lifts a little while it's sung, and one held long glows. */
 .k-line.current .k-word {
@@ -472,7 +473,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 #shelf-title { font-size: 16px; color: rgb(var(--accent)); white-space: nowrap; }
 #shelf-count { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 10px; color: rgb(var(--muted)); white-space: nowrap; }
 /* A narrow window: the count and the search field give way, so the buttons (CLOSE last) always fit. */
-#shelf-filter { flex: 0 1 220px; width: 220px; min-width: 100px; }
+#shelf-filter { flex: 0 12 220px; width: 220px; min-width: 100px; } /* gives way first: the count (the shelf's worth) last */
 #shelf-head .pill { flex: none; }
 #shelf-body { flex: 1 1 auto; min-height: 0; padding: 18px 6px 40px; }
 /* Rows of cases 196px tall; every 224px a wooden board runs under them (the rows' own background, so it lines up

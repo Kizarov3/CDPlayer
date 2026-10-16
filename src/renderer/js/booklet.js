@@ -317,7 +317,7 @@ export async function albumBooklet(app, album, cover, { play, onClose = () => {}
     lyrics: [],
     credits: { sub: album.title, none: t('No credits in these files’ tags.'), rows: albumCredits(details, pressing), summaryTitle: t('THIS ALBUM'), summary: albumSummary({ details, plays, discs: album.discs }) },
     back: {
-      title: album.title, artist: album.artist, names: album.tracks.map((t) => t.title), count: album.tracks.length,
+      title: album.title, artist: album.artist, names: wholeList ? wholeList.map((r) => r.title) : album.tracks.map((t) => t.title), count: wholeList ? wholeList.length : album.tracks.length,
       total: album.tracks.reduce((s, t) => s + (t.duration || 0), 0), ...small, notes: marks.notes,
     },
     // The playing song's lines are highlighted as they're sung — with the lyrics the player has for it.

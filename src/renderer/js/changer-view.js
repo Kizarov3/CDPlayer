@@ -49,6 +49,12 @@ export function createChangerView(root, { tray, heading, list, onPlaySlot, onPla
     list.replaceChildren(...view.tracks.map((tr) => el('div', { class: `queue-row${tr.current ? ' active' : ''}`, title: t('Play {song}', { song: tr.title }), onClick: () => onPlayTrack(tr.index) },
       el('span', { class: 'num' }, `${tr.no}.`), el('span', { class: 'entry' }, tr.title), el('span', { class: 'east' }, el('span', { class: 'duration' }, tr.time)))));
     list.scrollTop = scrollTop;
+    // The song playing moved on (or another disc came up): the list goes to it.
+    const now = view.tracks.find((tr) => tr.current);
+    const key = now ? `${view.playingSlot}:${now.index}` : null;
+    if (key && key !== shownKey) { const row = list.querySelector('.queue-row.active'); if (row) row.scrollIntoView({ block: 'center' }); }
+    shownKey = key;
   }
+  let shownKey = null;
   return { render, turnTo };
 }

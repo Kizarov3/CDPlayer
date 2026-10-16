@@ -112,7 +112,7 @@ function setStatus(text) {
 const cueRef = (p) => /^(.*\.cue)#(\d+)$/i.exec(p);
 function displayName(p) {
   const ref = cueRef(p);
-  const name = (ref ? ref[1] : p).split(/[\\/]/).pop().replace(/\.[^.]+$/, '').replace(/[_-]/g, ' ');
+  const name = (ref ? ref[1] : p).split(/[\\/]/).pop().replace(/\.[^.]+$/, '').replace(/\s+[-–—]\s+/g, ' · ').replace(/_/g, ' '); // "Artist - Title" as the tags would show it
   return ref ? `${name} · Track ${ref[2]}` : name;
 }
 function extension(p) { const m = /\.([^.\\/#]+)(#\d+)?$/.exec(p); return m ? m[1].toUpperCase() : ''; }
@@ -278,7 +278,7 @@ function renderQueue() {
   $('queue-info').textContent = [t('DISC {n} · {at} / {of}', { n: here.slot + 1, at: here.offset + 1, of: d.end - d.start }), modeText].filter(Boolean).join(' · ');
   const next = upcomingIndex();
   $('queue-next').textContent = state.repeat === 'TRACK' ? t('REPEATING THIS TRACK')
-    : next >= 0 && next !== state.index ? t('UP NEXT · {song}', { song: queueDisplay(state.queue[next]) }) : t('END OF THE LAST DISC');
+    : next >= 0 && next !== state.index ? t('UP NEXT · {song}', { song: (ensureDetails(state.queue[next]), queueDisplay(state.queue[next])) }) : t('END OF THE LAST DISC');
   const tracks = changer.tracksOf(c, here.slot).map((p, k) => {
     ensureDetails(p);
     const det = detailsCache.get(p);
@@ -300,7 +300,7 @@ function renderQueueList() {
     + (state.repeat === 'ALL' ? ` · ${t('ROUND AGAIN AT THE END')}` : '');
   const next = upcomingIndex();
   $('queue-next').textContent = state.repeat === 'TRACK' ? t('REPEATING THIS TRACK')
-    : next >= 0 && next !== state.index ? t('UP NEXT · {song}', { song: queueDisplay(state.queue[next]) }) : t('END OF QUEUE');
+    : next >= 0 && next !== state.index ? t('UP NEXT · {song}', { song: (ensureDetails(state.queue[next]), queueDisplay(state.queue[next])) }) : t('END OF QUEUE');
   const scrollTop = list.scrollTop;
   const rows = state.queue.map((p, i) => {
     ensureDetails(p);
@@ -453,7 +453,16 @@ async function addToQueue(items, { sorted = false, play = false, next = false, t
   if (!songs.length) { setStatus(t('NO SUPPORTED AUDIO FOUND')); return; }
   if (disc.trayOpen && !state.trayBusy) { await putDiscOnTray(songs); return; }
   if (!state.changerMode) { queueAdd(songs, { play, next }); return; }
-  await loadDisc(await discOf(songs, { title }), songs, { play, next });
+  const item = await discOf(songs, { title });
+  // Loose songs (SEARCH, HISTORY) go on the CD-R being put together, while there is one: a compilation, not a disc each.
+  const cdr = item.kind === 'cdr' && !title && !play ? changer.openCdr(ch()) : -1;
+  if (cdr >= 0) {
+    apply(changer.appendTo(ch(), cdr, songs));
+    setStatus(t('ON THE CD-R IN SLOT {n}', { n: cdr + 1 }));
+    renderQueue(); saveQueueSoon(); spotifyResync();
+    return;
+  }
+  await loadDisc(item, songs, { play, next });
 }
 /** PLAY NEXT: into the changer, to play when the disc playing ends. */
 const playNext = (items, opts = {}) => addToQueue(items, { ...opts, next: true });
@@ -484,6 +493,7 @@ function clearQueue() {
   undoClear = { store: takeStore(), position: engine.position, playing: engine.playing, timer: setTimeout(() => { undoClear = null; renderQueue(); }, UNDO_CLEAR_SECONDS * 1000) };
   putStore(state.changerMode ? { changer: changer.clear() } : { queue: [], index: -1, nextUp: null });
   resetToIdle(state.changerMode ? t('CHANGER EMPTIED') : t('QUEUE CLEARED'));
+  setStatus(t('{what} · {key} BRINGS IT BACK', { what: state.changerMode ? t('CHANGER EMPTIED') : t('QUEUE CLEARED'), key: state.platform === 'darwin' ? '⌘Z' : 'CTRL+Z' }));
   renderQueue(); saveQueueSoon();
 }
 function undoClearQueue() {
@@ -496,25 +506,29 @@ function undoClearQueue() {
   if (state.index >= 0) load(state.queue[state.index], { autoPlay: u.playing, startAt: u.position });
 }
 /** EJECT: the disc in `slot` comes out; the playing one's going moves on to the next disc. ⌘Z puts it back, as it was. */
-let undoEject = null; // { store, position, playing, wasOn, after: the changer's slots just after, timer }
+// Each EJECT can be taken back in turn, latest first (two quick ejects, two ⌘Z), for a few seconds after the last.
+const undoEjects = []; // [{ store, position, playing, wasOn, after: the changer's slots just after }]
+let undoEject = null, undoEjectTimer = null; // undoEject: the latest of them, or null
 function ejectSlot(slot) {
+  if (!Number.isInteger(slot) || !state.changer || !ch().slots[slot]) return; // an empty slot (a second click): nothing to take out
   const playing = changer.slotOf(ch(), state.index);
   const wasOn = playing && playing.slot === slot;
   const before = { store: takeStore(), position: engine.position, playing: engine.playing, wasOn };
   apply(changer.eject(ch(), slot, modes()));
-  clearTimeout(undoEject && undoEject.timer);
-  undoEject = { ...before, after: changer.serialize(ch()), timer: setTimeout(() => { undoEject = null; }, UNDO_CLEAR_SECONDS * 1000) };
+  undoEjects.push({ ...before, after: changer.serialize(ch()) });
+  undoEject = undoEjects[undoEjects.length - 1];
+  clearTimeout(undoEjectTimer);
+  undoEjectTimer = setTimeout(() => { undoEjects.length = 0; undoEject = null; }, UNDO_CLEAR_SECONDS * 1000);
   const said = () => setStatus(t('DISC {n} OUT · {key} PUTS IT BACK', { n: slot + 1, key: state.platform === 'darwin' ? '⌘Z' : 'CTRL+Z' }));
   if (!state.queue.length || state.index < 0) { resetToIdle(t('CHANGER EMPTY')); said(); } else if (wasOn) load(state.queue[state.index]).then(said); else said(); // after the next disc's own news
   renderQueue(); saveQueueSoon(); spotifyResync();
 }
 function undoEjectSlot() {
-  const u = undoEject;
-  undoEject = null;
+  const u = undoEjects.pop();
+  undoEject = undoEjects[undoEjects.length - 1] || null;
   // Only while nothing else changed in the changer since: else it would take back more than the one disc.
   if (!u || !state.changerMode) return false;
-  if (changer.serialize(ch()) !== u.after) { setStatus(t('CAN’T PUT IT BACK · THE CHANGER CHANGED SINCE')); return false; }
-  clearTimeout(u.timer);
+  if (changer.serialize(ch()) !== u.after) { undoEjects.length = 0; undoEject = null; setStatus(t('CAN’T PUT IT BACK · THE CHANGER CHANGED SINCE')); return false; }
   const playingNow = state.loadedPath;
   putStore(u.store);
   // Another disc's song went on playing meanwhile (maybe the next one by now): the changer stays on it.
@@ -776,6 +790,7 @@ function toggleKaraoke() {
   if (state.miniMode) return;
   if (state.visualizerMode) toggleVisualizerMode();
   if (!openKaraoke(app)) setStatus(state.lyrics ? t('THESE LYRICS AREN’T TIMED') : t('NO LYRICS FOR THIS SONG'));
+  else panels.closeLyricsPanel();
 }
 
 async function setCover(dataUrl) { applyCover(await decodeCover(dataUrl)); }
@@ -2037,10 +2052,13 @@ function onKeyDown(e) {
   if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return;
   const key = shortcutKey(e);
   if (key === 'm') { e.preventDefault(); setMiniMode(!state.miniMode); return; }
+  if (key === 'p' && panels.closeCardPanel()) { e.preventDefault(); return; } // P again: the card goes
   if (anyOverlayOpen()) return;
+  // The shelf open: the arrows are the shelf's (scrolling it), not the volume and the song's position.
+  if (isShelfOpen() && key.startsWith('Arrow')) return;
   const actions = {
     ArrowLeft: () => seek(-SKIP_SECONDS), ArrowRight: () => seek(SKIP_SECONDS), ArrowUp: () => adjustVolume(5), ArrowDown: () => adjustVolume(-5),
-    u: toggleMute, p: shareCard, b: () => disc.flip(), '?': () => panels.showShortcuts(), ' ': toggle, k: toggle, j: previousTrack, l: userNext, f: toggleFullscreen, c: toggleCdView, v: toggleVisualizerMode, y: toggleKaraoke, e: toggleTray, s: toggleShelf,
+    '/': () => panels.showSearch(app), u: toggleMute, p: shareCard, b: () => disc.flip(), '?': () => panels.showShortcuts(), ' ': toggle, k: toggle, j: previousTrack, l: userNext, f: toggleFullscreen, c: toggleCdView, v: toggleVisualizerMode, y: toggleKaraoke, e: toggleTray, s: toggleShelf,
     d: discSkip, 1: () => playSlot(0), 2: () => playSlot(1), 3: () => playSlot(2), 4: () => playSlot(3), 5: () => playSlot(4), // changer mode only
   };
   if (actions[key]) { e.preventDefault(); if (!e.repeat || key.startsWith('Arrow')) actions[key](); }

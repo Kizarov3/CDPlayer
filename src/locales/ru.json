@@ -110,6 +110,7 @@
     "other": "Назад на {n} секунды"
   },
   "Bass Boost": "Больше баса",
+  "Bring back what CLEAR or EJECT just took out": "Вернуть то, что только что убрали ОЧИСТИТЬ или ИЗВЛЕЧЬ",
   "Bring the cleared queue back (⌘Z / Ctrl+Z)": "Вернуть очищенную очередь (⌘Z / Ctrl+Z)",
   "Bring the discs back (⌘Z / Ctrl+Z)": "Вернуть диски (⌘Z / Ctrl+Z)",
   "C OR ESC — BACK TO THE PLAYER": "C ИЛИ ESC — ОБРАТНО К ПЛЕЕРУ",
@@ -436,6 +437,7 @@
   "NOT PLAYED YET": "ЕЩЁ НЕ ИГРАЛИ",
   "NOTHING BEING RIPPED": "НИЧЕГО НЕ РИПАЕТСЯ",
   "NOTHING FOUND": "НИЧЕГО НЕ НАЙДЕНО",
+  "NOTHING FOUND ON DISCOGS": "НА DISCOGS НИЧЕГО НЕ НАЙДЕНО",
   "NOTHING PLAYED YET": "ПОКА НИЧЕГО НЕ ИГРАЛО",
   "NOTHING PLAYING TO SHARE": "НЕЧЕМ ПОДЕЛИТЬСЯ — НИЧЕГО НЕ ИГРАЕТ",
   "NOTHING TO FIX ★": "ИСПРАВЛЯТЬ НЕЧЕГО ★",
@@ -471,6 +473,7 @@
   "OF": "ИЗ",
   "OFF": "ВЫКЛ",
   "ON": "ВКЛ",
+  "ON THE CD-R IN SLOT {n}": "ДОПИСАНО НА CD-R В ГНЕЗДЕ {n}",
   "OPEN SPOTIFY DASHBOARD": "ОТКРЫТЬ SPOTIFY DASHBOARD",
   "OPEN THE SHELF (S) AND PICK AN ALBUM — OR DROP SONGS HERE": "ОТКРОЙ ПОЛКУ (S) И ВЫБЕРИ АЛЬБОМ — ИЛИ ПЕРЕТАЩИ ПЕСНИ СЮДА",
   "OPEN THE SHELF (S) AND PUT AN ALBUM IN — OR DROP A FOLDER HERE": "ОТКРОЙ ПОЛКУ (S) И ЗАГРУЗИ АЛЬБОМ — ИЛИ ПЕРЕТАЩИ ПАПКУ СЮДА",
@@ -692,6 +695,7 @@
   "Save the playing disc as a .m3u playlist file": "Сохранить играющий диск как плейлист .m3u",
   "Save this CD into your music folder as FLAC": "Сохранить этот CD в папку с музыкой во FLAC",
   "Search Spotify for an album or playlist": "Найти в Spotify альбом или плейлист",
+  "Search your music (Enter plays the first match)": "Поиск по музыке (Enter включает первое найденное)",
   "Search your music folder, or paste a Spotify track/playlist link": "Поиск по папке с музыкой или ссылка на трек/плейлист Spotify",
   "See and fix this song's tags — from MusicBrainz, or by hand": "Посмотреть и исправить теги песни — с MusicBrainz или вручную",
   "Sep": "сен",
@@ -962,7 +966,9 @@
   "{title} (cont.)": "{title} (продолж.)",
   "{use} — the disc turning as the picked lines are sung, with the song": "{use} — диск крутится, пока звучат выбранные строки, вместе с песней",
   "{version} AVAILABLE": "ДОСТУПНА {version}",
+  "{what} · {key} BRINGS IT BACK": "{what} · {key} — ВЕРНУТЬ",
   "— WITHOUT LYRICS —": "— БЕЗ ТЕКСТА —",
   "⌖ IN THE PLAYER": "⌖ В ПЛЕЕРЕ",
-  "★ RARE": "★ РЕДКОСТЬ"
+  "★ RARE": "★ РЕДКОСТЬ",
+  "✓ DONE": "✓ ГОТОВО"
 }

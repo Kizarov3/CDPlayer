@@ -57,6 +57,9 @@ function refreshPanel(name) {
 }
 export const isOpen = (name) => panels.has(name);
 export const anyOpen = () => panels.size > 0 || !!menuLayer || isBookletOpen();
+/** The LYRICS panel goes when karaoke takes the window (it would stand over it otherwise). */
+export function closeCardPanel() { if (!isOpen('card')) return false; closePanel('card'); return true; }
+export function closeLyricsPanel() { if (isOpen('lyrics')) closePanel('lyrics'); }
 export function closeTopmost() {
   for (const name of ESC_ORDER) {
     if (name === 'menu') { if (menuLayer) { closeMenu(); return true; } continue; }
@@ -300,8 +303,6 @@ function buildSettings(app) {
     section(t('LOOK')),
     row(t('THEME'), themeButton),
     row(t('LANGUAGE'), languageButton), languageNote,
-    row(t('CD CHANGER'), changerMode),
-    hint(t('Five discs in a carousel instead of the queue: albums go in as discs, with DISC SKIP (D) and 1–5. The queue and the changer each keep their own music.')),
     row(t('WAVEFORM'), waveform),
     row(t('AMBIENT BACKGROUND'), ambient),
     app.shownTheme().image ? hint(t('The theme’s own image is the background while it’s on.')) : null,
@@ -315,6 +316,8 @@ function buildSettings(app) {
       : t('The taskbar icon shows the disc that’s in. Off, it’s CDPlayer’s own icon.')),
     row(t('ANIMATIONS'), animations), gap(18),
     section(t('PLAYBACK')),
+    row(t('CD CHANGER'), changerMode),
+    hint(t('Five discs in a carousel instead of the queue: albums go in as discs, with DISC SKIP (D) and 1–5. The queue and the changer each keep their own music.')),
     sliderRow(t('SLEEP TIMER'), sleep, sleepValue),
     sliderRow(t('LYRICS OFFSET'), lyricsOffset, offsetValue),
     hint(t('Karaoke and the lyrics already follow what you hear, Bluetooth included. Move them if a song’s lyrics are timed a little off.')),
@@ -675,8 +678,10 @@ export function showHistory(app) { openPanel('history', () => buildHistory(app),
 export function refreshHistoryIfOpen(app) { if (isOpen('history')) refreshPanel('history'); }
 function trackRow(app, path, label, onPlay) {
   const now = pill(t('PLAY'), (e) => { e.stopPropagation(); onPlay(); }, t('Play it now'));
-  const next = pill(t('NEXT'), (e) => { e.stopPropagation(); app.playNext([path], { sorted: true }); }, app.changerMode() ? t('Into the changer, to play after the disc playing') : t('Play it next, after the song playing'));
-  const add = pill(t('ADD'), (e) => { e.stopPropagation(); app.addToQueue([path], { sorted: true }); }, app.changerMode() ? t('Into the changer') : t('Add to queue'));
+  // Done, said on the button itself: the status line is under this panel.
+  const done = (b, label) => { b.textContent = t('✓ DONE'); b.disabled = true; setTimeout(() => { b.textContent = label; b.disabled = false; }, 1500); };
+  const next = pill(t('NEXT'), (e) => { e.stopPropagation(); app.playNext([path], { sorted: true }); done(e.currentTarget, t('NEXT')); }, app.changerMode() ? t('Into the changer, to play after the disc playing') : t('Play it next, after the song playing'));
+  const add = pill(t('ADD'), (e) => { e.stopPropagation(); app.addToQueue([path], { sorted: true }); done(e.currentTarget, t('ADD')); }, app.changerMode() ? t('Into the changer') : t('Add to queue'));
   for (const b of [now, next, add]) b.classList.add('small'); // the song's name gets the room
   return el('div', { class: 'list-row', title: t('Play {song}', { song: label }), onClick: onPlay }, el('span', { class: 'entry' }, label), now, next, add);
 }
@@ -777,7 +782,12 @@ function buildSearch(app) {
   search.field = el('input', { class: 'text-input', type: 'text', placeholder: t('Artist, album or song — or paste a Spotify link') });
   search.field.style.width = '100%';
   search.field.addEventListener('input', () => onSearchInput(app));
-  search.field.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') closePanel('search'); });
+  search.field.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Escape') closePanel('search');
+    // Enter: the first match plays (its PLAY button), the way a search box is used from the keyboard.
+    if (e.key === 'Enter' && search.results) { const first = search.results.querySelector('.list-row:not(.plain)'); if (first) { e.preventDefault(); first.click(); } }
+  });
   search.results = el('div', { class: 'scroll' });
   search.results.style.height = '340px';
   const importButton = pill(t('IMPORT LIBRARY…'), () => importLibrary(app), t('Import an iTunes/Music "Library.xml", or a Spotify "Liked Songs" export (CSV or YourLibrary.json)'));

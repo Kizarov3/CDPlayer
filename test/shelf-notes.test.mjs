@@ -34,4 +34,6 @@ test('the shelf\'s filter finds a catalogue number and ignores accents', () => {
   assert.ok(matchesFilter(a, 'vicp-34664'));
   assert.ok(matchesFilter(a, 'srcs 6941'));
   assert.ok(!matchesFilter(a, 'bvcp'));
+  assert.ok(matchesFilter({ artist: 'Tool', title: 'Ænima' }, 'aenima'));
+  assert.ok(matchesFilter(a, 'bvcp', 'BVCP-19177'), 'what the spine shows');
 });

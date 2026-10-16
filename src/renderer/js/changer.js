@@ -86,6 +86,26 @@ export function load(c, disc, tracks, { play = false, next = false, slot = null 
   return { changer: build(entries, stand, nextDisc), slot: at, replaced };
 }
 
+/**
+ * The CD-R that loose songs go on: the one made last that isn't finished yet (a compilation being put together),
+ * or -1 for none — then they make a new one.
+ */
+export function openCdr(c) {
+  let best = -1;
+  c.slots.forEach((d, s) => { if (d && d.kind === 'cdr' && !d.done && (best < 0 || String(d.id) > String(c.slots[best].id))) best = s; });
+  return best;
+}
+/** `tracks` written on at the end of the disc in `slot` (ones it has already left out); where it stands stays. */
+export function appendTo(c, slot, tracks) {
+  const have = new Set(tracksOf(c, slot));
+  const add = tracks.filter((p) => !have.has(p));
+  if (!c.slots[slot] || !add.length) return c;
+  const here = slotOf(c, c.index);
+  const entries = entriesOf(c);
+  entries[slot] = { ...entries[slot], done: false, finishedAt: null, tracks: [...entries[slot].tracks, ...add] };
+  return build(entries, here, c.nextDisc);
+}
+
 /** Takes the disc in `slot` out. The playing disc's going moves on as DISC SKIP would (or stands nowhere). */
 export function eject(c, slot, modes = {}, rnd = Math.random) {
   if (!c.slots[slot]) return c;

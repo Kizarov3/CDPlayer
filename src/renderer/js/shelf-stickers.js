@@ -24,7 +24,8 @@ export function stickersFor(album, now = Date.now()) {
   if (h % 3 === 0) {
     const yen = pick(YEN, 4);
     return {
-      obi: { catalog: `${pick(LABELS, 8)}-${String(10000 + ((h >>> 12) % 90000))}` },
+      // The real catalogue number when it's known (the tags', or the Discogs pressing's), else one made up for it.
+      obi: { catalog: album.catalog || (album.pressing && album.pressing.info && album.pressing.info.catno) || `${pick(LABELS, 8)}-${String(10000 + ((h >>> 12) % 90000))}` },
       price: `¥${Math.floor(yen / 1000)},${String(yen % 1000).padStart(3, '0')}`,
       isNew,
     };

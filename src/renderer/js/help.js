@@ -46,8 +46,10 @@ export const SHORTCUTS = [
   ['`Y`', t('Toggle Karaoke Mode')],
   ['`E`', t('Open / close the disc tray')],
   ['`S`', t('The CD shelf')],
+  ['`/`', t('Search your music (Enter plays the first match)')],
   ['`B`', t('Turn the disc over to its data side: a ring for each track, the laser where it\'s playing')],
   ['`P`', t('Now Playing card: pick lines of the lyrics, then copy or save it')],
   ['`?`', t('These keyboard shortcuts')],
   ['`Esc`', t('Close whatever\'s open, or leave fullscreen / CD view / Visualizer Mode / Mini Mode')],
+  ['`⌘Z` / `Ctrl+Z`', t('Bring back what CLEAR or EJECT just took out')],
 ];

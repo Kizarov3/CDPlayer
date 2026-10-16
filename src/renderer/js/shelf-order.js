@@ -8,13 +8,14 @@ export const SORTS = ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR', 'PRICE'];
 
 /**
  * Whether an album shows for what's typed in the shelf's filter: every word somewhere in its artist, title, year, note,
- * label or catalogue number (its own, or its pressing's) — accents or not ("motley crue" finds Mötley Crüe).
+ * label or catalogue number (its own, or its pressing's, or `shown`: what's printed on its spine) — accents or not
+ * ("motley crue" finds Mötley Crüe).
  */
-const fold = (s) => String(s || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
-export function matchesFilter(album, query) {
+const fold = (s) => String(s || '').toLowerCase().replace(/æ/g, 'ae').replace(/œ/g, 'oe').replace(/ø/g, 'o').replace(/ß/g, 'ss').normalize('NFD').replace(/\p{M}/gu, '');
+export function matchesFilter(album, query, shown = '') {
   const words = fold(query).split(/\s+/).filter(Boolean);
   const info = (album.pressing && album.pressing.info) || {};
-  const text = fold([album.artist, album.title, album.year, album.note, album.label, album.catalog, info.catno, info.label].filter(Boolean).join(' '));
+  const text = fold([album.artist, album.title, album.year, album.note, album.label, album.catalog, info.catno, info.label, shown].filter(Boolean).join(' '));
   return words.every((w) => text.includes(w));
 }
 /** What the shelf shows, as one string: each album's id, title, artist, year and its songs' paths and titles — so a
@@ -126,7 +127,9 @@ export function jumpTargets(items) {
   return items.filter((x) => x.divider).map(({ divider: label }) => {
     const month = /^([A-Z]{3}) \d{2}(\d{2})$/.exec(label);
     const word = label.split(' ')[0];
-    const short = /^\d{4}s$/.test(label) ? label.slice(2) : month ? `${month[1]}'${month[2]}` : word.length > 6 ? word.slice(0, 3) : word;
+    // A price band: its sum ("UNDER $10", "ДО 10 $" → "<$10", "<10"; "$20–$50" → "$20"; "$50+" stays).
+    const sum = /\d/.test(label) && /[$€£¥₽]/.test(label) ? /[$€£¥₽]?\d[\d.,]*\+?/.exec(label)[0] : null;
+    const short = /^\d{4}s$/.test(label) ? label.slice(2) : month ? `${month[1]}'${month[2]}` : sum ? (/^[^\d$€£¥₽]/.test(label) ? `<${sum}` : sum) : word.length > 6 ? word.slice(0, 3) : word;
     return { label, short };
   });
 }
