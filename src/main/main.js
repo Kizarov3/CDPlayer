@@ -425,8 +425,8 @@ handle('library:scan', async () => {
   const result = await library.scanLibrary(folder);
   // What the shelf last read of each file's tags, so a search finds a song by its artist, album or title, not only
   // by its filename, and shows it as "Artist · Title".
-  // (Never read yet: the shelf reads them now — once; later searches find them saved.)
-  if (!shelf.readCache(folder)) await shelf.scanAlbums().catch(() => null);
+  // (Never read yet: the shelf starts reading them now, in the background — this search has filenames, the next tags.)
+  if (!shelf.readCache(folder)) shelf.scanAlbums().catch(() => null);
   const read = shelf.readCache(folder) || {}, tags = {};
   for (const p of result.files) {
     const i = read[p] && read[p].info;

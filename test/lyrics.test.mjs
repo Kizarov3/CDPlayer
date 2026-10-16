@@ -151,3 +151,9 @@ test('a line of only dashes or stars is a break, not words', () => {
   assert.deepStrictEqual(lines.map((l) => l.text), ['', 'Hello there', '']);
   assert.strictEqual(formatLyricsForDisplay('[00:01.00]--\n[00:02.00]Hello there'), 'Hello there');
 });
+
+test('lyrics found online lose the song\'s name at the top and credit lines anywhere', async () => {
+  const { withoutHeader } = await import('../src/renderer/js/lyrics.js');
+  const raw = '[ti:Black]\n[00:00.10]Black Pearl Jam (珍珠酱)\n[00:01.00]Lyrics by：Eddie Vedder\n[00:20.00]Sheets of empty canvas\n[00:25.00]作曲：Stone Gossard\n[00:30.00]Black';
+  assert.deepStrictEqual(parseLrc(withoutHeader(raw, { title: 'Black', artist: 'Pearl Jam' })).map((l) => l.text), ['Sheets of empty canvas', 'Black']);
+});

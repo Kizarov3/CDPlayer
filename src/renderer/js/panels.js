@@ -368,7 +368,7 @@ function showMenu(anchor, items) {
   }));
   const layerNode = el('div', { class: 'theme-menu-layer', onMousedown: (e) => { if (e.target === layerNode) closeMenu(); } }, menu);
   layer().append(layerNode);
-  const m = menu.getBoundingClientRect();
+  const m = { width: menu.offsetWidth, height: menu.offsetHeight }; // (its laid-out size: the opening animation scales it)
   menu.style.left = `${Math.max(4, Math.min(box.left, window.innerWidth - m.width - 4))}px`;
   menu.style.top = `${Math.max(4, Math.min(box.bottom + 6, window.innerHeight - m.height - 4))}px`;
   menuLayer = layerNode;

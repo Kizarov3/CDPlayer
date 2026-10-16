@@ -7,7 +7,7 @@ import { Visualizer } from './visualizer.js';
 import { Particles } from './particles.js';
 import { anim, EASE, el, pill, roundButton, modeButton, Slider, fitText, pulse } from './widgets.js';
 import { openBooklet, closeBooklet } from './booklet.js';
-import { parseLrc, currentLineIndex, heardPosition, playbackTimeFor, looksOnlineFor, takesOnline } from './lyrics.js';
+import { withoutHeader, parseLrc, currentLineIndex, heardPosition, playbackTimeFor, looksOnlineFor, takesOnline } from './lyrics.js';
 import { shortcutKey } from './keys.js';
 import { jogSeconds } from './jog.js';
 import * as changer from './changer.js';
@@ -357,7 +357,7 @@ function setupQueueDrag() {
     const index = drag.index, moved = drag.moved;
     drag.index = -1; drag.moved = false;
     if (moved) { renderQueue(); spotifyResync(); } // Spotify hears the new order once, when the row is let go
-    else if (e.type === 'pointerup' && index < state.queue.length) { state.index = index; load(state.queue[index]); }
+    else if (e.type === 'pointerup' && index < state.queue.length) goTo(index); // (so PREVIOUS, shuffled, comes back to it)
   };
   list.addEventListener('pointerup', end);
   list.addEventListener('pointercancel', end);
@@ -458,7 +458,7 @@ async function addToQueue(items, { sorted = false, play = false, next = false, t
   if (!state.changerMode) { queueAdd(songs, { play, next }); return; }
   const item = await discOf(songs, { title });
   // Loose songs (SEARCH, HISTORY) go on the CD-R being put together, while there is one: a compilation, not a disc each.
-  const cdr = item.kind === 'cdr' && !title && !play ? changer.openCdr(ch()) : -1;
+  const cdr = item.kind === 'cdr' && !title && !play && !next ? changer.openCdr(ch()) : -1;
   if (cdr >= 0) {
     apply(changer.appendTo(ch(), cdr, songs));
     setStatus(t('ON THE CD-R IN SLOT {n}', { n: cdr + 1 }));
@@ -510,7 +510,10 @@ function undoClearQueue() {
 }
 /** EJECT: the disc in `slot` comes out; the playing one's going moves on to the next disc. ⌘Z puts it back, as it was. */
 // Each EJECT can be taken back in turn, latest first (two quick ejects, two ⌘Z), for a few seconds after the last.
-const undoEjects = []; // [{ store, position, playing, wasOn, after: the changer's slots just after }]
+const undoEjects = [];
+// Which discs are in which slots (not what's been played on them, which changes as the music goes on): what an undo
+// checks hasn't changed since.
+const discsIn = () => state.changer.slots.map((d) => (d ? `${d.id}:${d.end - d.start}` : '-')).join('|'); // [{ store, position, playing, wasOn, after: the changer's slots just after }]
 let undoEject = null, undoEjectTimer = null; // undoEject: the latest of them, or null
 function ejectSlot(slot) {
   if (!Number.isInteger(slot) || !state.changer || !ch().slots[slot]) return; // an empty slot (a second click): nothing to take out
@@ -518,7 +521,7 @@ function ejectSlot(slot) {
   const wasOn = playing && playing.slot === slot;
   const before = { store: takeStore(), position: engine.position, playing: engine.playing, wasOn };
   apply(changer.eject(ch(), slot, modes()));
-  undoEjects.push({ ...before, after: changer.serialize(ch()) });
+  undoEjects.push({ ...before, after: discsIn() });
   undoEject = undoEjects[undoEjects.length - 1];
   clearTimeout(undoEjectTimer);
   undoEjectTimer = setTimeout(() => { undoEjects.length = 0; undoEject = null; }, UNDO_CLEAR_SECONDS * 1000);
@@ -531,7 +534,7 @@ function undoEjectSlot() {
   undoEject = undoEjects[undoEjects.length - 1] || null;
   // Only while nothing else changed in the changer since: else it would take back more than the one disc.
   if (!u || !state.changerMode) return false;
-  if (changer.serialize(ch()) !== u.after) { undoEjects.length = 0; undoEject = null; setStatus(t('CAN’T PUT IT BACK · THE CHANGER CHANGED SINCE')); return false; }
+  if (discsIn() !== u.after) { undoEjects.length = 0; undoEject = null; setStatus(t('CAN’T PUT IT BACK · THE CHANGER CHANGED SINCE')); return false; }
   const playingNow = state.loadedPath;
   putStore(u.store);
   // Another disc's song went on playing meanwhile (maybe the next one by now): the changer stays on it.
@@ -597,6 +600,8 @@ async function applyQuality(format, token) {
 // what's shown and kept is brought up to date.
 async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0, reload = false, seamless = false } = {}) {
   const token = ++state.loadToken;
+  // The tray's out: the new song waits on it, and plays when it closes (nothing plays from an open tray).
+  if (disc.trayOpen && autoPlay && !seamless) { autoPlay = false; if (trayResume) trayResume.playing = true; }
   preparedNext = null;
   dropJog();
   disc.discPresent = true;
@@ -734,7 +739,7 @@ async function lookUpLyrics(details, token) {
   if (!found || token !== state.loadToken || !takesOnline(details.lyrics, found.lyrics)) return;
   // (lrclib's entries are user-submitted and some have artist and title swapped, so unlike a cover, the name lyrics
   // were found under never corrects the displayed name.)
-  state.lyrics = found.lyrics; state.lyricsSource = found.source || null;
+  state.lyrics = withoutHeader(found.lyrics, { title: details.title, artist: details.artist }); state.lyricsSource = found.source || null;
   lyricsChanged();
   if (state.saveFound && !details.lyrics) saveFoundLater(state.loadedPath, { lyrics: found.lyrics }); // never over the file's own
 }
@@ -894,7 +899,7 @@ function setPlaying(playing) {
     const token = state.loadToken, path = state.loadedPath;
     recordedFor = token;
     clearTimeout(heardTimer);
-    heardTimer = setTimeout(() => { if (state.loadToken === token && state.loadedPath === path) recordHistory(path); }, HEARD_SECONDS * 1000);
+    heardTimer = setTimeout(() => { if (state.loadToken === token && state.loadedPath === path && engine.playing) recordHistory(path); else if (state.loadToken === token) recordedFor = -1; }, HEARD_SECONDS * 1000); // (paused before then: counted when it plays on)
   }
   disc.spinning = playing;
   noise.setPlaying(playing);
@@ -1500,7 +1505,9 @@ function setupMediaSession() {
   const ms = navigator.mediaSession;
   const set = (action, fn) => { try { ms.setActionHandler(action, fn); } catch { /* unsupported action */ } };
   set('play', () => { if (!engine.playing) toggle(); });
-  set('pause', () => { if (engine.playing) toggle(); });
+  // A pause from outside — headphones taken off, a media key, another app taking over — says so: else it looks like
+  // the music stopped by itself.
+  set('pause', async () => { if (!engine.playing) return; await toggle(); setStatus(t('PAUSED · BY HEADPHONES, A MEDIA KEY OR ANOTHER APP')); });
   set('nexttrack', () => userNext());
   set('previoustrack', () => previousTrack());
   set('seekto', (e) => seekTo(e.seekTime));
@@ -2078,6 +2085,7 @@ function onKeyDown(e) {
   if ((undoClear || undoEject) && (e.metaKey || e.ctrlKey) && e.code === 'KeyZ' && !e.shiftKey && !e.altKey && !isTyping(e)) {
     e.preventDefault(); if (undoClear) undoClearQueue(); else undoEjectSlot(); return;
   }
+  if (state.changerMode && (e.metaKey || e.ctrlKey) && e.code === 'KeyZ' && !e.shiftKey && !isTyping(e)) { e.preventDefault(); setStatus(t('NOTHING TO BRING BACK')); return; }
   if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return;
   const key = shortcutKey(e);
   if (key === 'm') { e.preventDefault(); setMiniMode(!state.miniMode); return; }

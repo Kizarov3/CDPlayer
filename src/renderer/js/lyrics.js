@@ -40,6 +40,27 @@ const shifted = (w, by) => (w.end === undefined ? { time: w.time + by, text: w.t
  * "v1"…), and a "[bg: …]" line after it gives it backing vocals (`bg`, timed like words). A line stamped more than
  * once (a repeated chorus) has all of these shifted to each time.
  */
+/**
+ * Lyrics found online, without the lines some sources put before the words: the song's own name ("Black Pearl Jam
+ * (珍珠酱)", "Black - Pearl Jam") and credits ("Lyrics by：…", "作曲：…") — those at the top, and credits anywhere.
+ */
+const bareName = (s) => String(s || '').toLowerCase().replace(/[(（][^)）]*[)）]/g, '').replace(/[^\p{L}\p{N}]+/gu, '');
+const CREDIT_LINE = /^\s*(lyrics|lyricist|words|music|composed|composer|written|writer|arranged|arranger|produced|producer|mixed|mastered|作词|作曲|编曲|制作|词|曲)[^:：]{0,24}[:：]/i;
+export function withoutHeader(raw, { title, artist } = {}) {
+  const names = new Set([bareName(`${title}${artist}`), bareName(`${artist}${title}`), bareName(title)].filter(Boolean));
+  let top = true;
+  return String(raw || '').split(/\r\n|\r|\n/).filter((line) => {
+    const text = line.replace(/\[[^\]]*\]|<[^>]*>/g, '').trim();
+    if (!text) return true;
+    if (CREDIT_LINE.test(text)) return false;
+    if (top && /^\[\d/.test(line.trim()) || top && !/^\[[a-z]+:/i.test(line.trim())) {
+      if (names.has(bareName(text))) return false;
+      top = false;
+    }
+    return true;
+  }).join('\n');
+}
+
 // A line of only dashes or stars ("--", "***"): some sources' way of marking a break.
 const FILLER = /^[-–—_~*•·.\s]+$/;
 export function parseLrc(raw) {

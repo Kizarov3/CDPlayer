@@ -127,7 +127,7 @@ test('in order: through the disc, on to the next slot, and after the last slot â
   assert.deepStrictEqual([0, 1, 2, 3, 4, 5].map((i) => nextIndex(at(c, i), OFF)), [1, 2, 3, 4, 5, -1]);
   assert.strictEqual(nextIndex(at(c, 5), { shuffle: 'OFF', repeat: 'ALL' }), 0);
   assert.strictEqual(nextIndex(at(c, 3), { shuffle: 'OFF', repeat: 'DISC' }), 2);
-  assert.strictEqual(nextIndex(at(c, 3), { shuffle: 'OFF', repeat: 'TRACK' }), 3);
+  assert.strictEqual(nextIndex(at(c, 3), { shuffle: 'OFF', repeat: 'TRACK' }), 4, 'NEXT goes on: the song repeats at its end, not on NEXT');
 });
 
 test('an empty slot between discs is passed over; PLAY NEXT\'s disc comes after the playing one', () => {
@@ -310,4 +310,12 @@ test('loose songs go on the CD-R being put together: the newest unfinished one, 
   assert.ok(check(c));
   c.slots[2] = { ...c.slots[2], done: true };
   assert.strictEqual(openCdr(c), 3, 'a finished one is closed: the next one along');
+});
+
+test('PLAY NEXT with nothing playing: the disc plays, and isn\'t left marked to come next again', () => {
+  let c = load(empty(), disc('a'), ['a1'], { next: true }).changer;
+  assert.strictEqual(c.queue[c.index], 'a1');
+  assert.strictEqual(c.nextDisc, null);
+  c = load(c, disc('b'), ['b1', 'b2']).changer;
+  assert.ok(check(c));
 });

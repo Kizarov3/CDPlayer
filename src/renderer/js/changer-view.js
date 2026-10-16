@@ -52,6 +52,7 @@ export function createChangerView(root, { tray, heading, list, onPlaySlot, onPla
     // The song playing moved on (or another disc came up): the list goes to it.
     const now = view.tracks.find((tr) => tr.current);
     const key = now ? `${view.playingSlot}:${now.index}` : null;
+    if (!list.offsetParent) { shownKey = null; return; } // not on screen (queue mode): scrolled to it when it's back
     if (key && key !== shownKey) { const row = list.querySelector('.queue-row.active'); if (row) row.scrollIntoView({ block: 'center' }); }
     shownKey = key;
   }

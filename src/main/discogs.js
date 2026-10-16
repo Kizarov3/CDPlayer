@@ -134,7 +134,7 @@ function createDiscogs({ fetchJson, mbFetch, read = (f) => store.readText(f), wr
     }
     const barcode = digits(album.barcode);
     if (barcode.length >= 8 && barcode.length <= 14) {
-      const hit = pickRelease((await request(`database/search?barcode=${barcode}&type=release&per_page=10`)).results, album);
+      const hit = pickRelease((await request(`database/search?barcode=${barcode}&type=release&format=CD&per_page=10`)).results, album);
       if (hit) return hit.id;
     }
     if (!album.title) return null;

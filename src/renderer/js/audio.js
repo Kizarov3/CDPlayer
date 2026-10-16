@@ -23,7 +23,7 @@ export class AudioEngine {
     this.volume = 1; this.mono = false; this.eqGains = new Array(EQ_FREQUENCIES.length).fill(0);
     this.outputId = '';
     this.customRate = null;    // Settings → QUALITY: the song's rate, or null for the system's
-    this.standby = null; this.seamTimer = null; this.onAdvance = null; // gapless: the next track, waiting
+    this.standby = null; this.seamTimer = null; this.onAdvance = null; this.seaming = null; // gapless: the next track, waiting (seaming: the deck handing over)
     this.spatialOn = false; this.spatialAmount = 0.5; // Settings → SPATIAL AUDIO (spatial.js)
     this.contextListeners = [];
     this.build(null);
@@ -125,7 +125,7 @@ export class AudioEngine {
       gain.connect(this.input);
     }
     const deck = { el, source, trim: trimNode, gain, url, start: 0, end: null, endFired: false };
-    el.addEventListener('ended', () => { if (this.onEnded && deck === this.deck) this.onEnded(deck); }); // a deck left behind (crossfade, gapless) ends unheard
+    el.addEventListener('ended', () => { if (this.onEnded && deck === this.deck && deck !== this.seaming) this.onEnded(deck); }); // a deck left behind (crossfade, gapless) ends unheard
     return deck;
   }
   disposeDeck(deck) {
@@ -265,8 +265,17 @@ export class AudioEngine {
   }
   async seam(outgoing, incoming) {
     this.standby = null;
-    try { await incoming.el.play(); } catch {
-      this.disposeDeck(incoming); // the old deck plays out; its 'ended' loads the next track the usual way
+    // While the next one starts (some 10 ms), the old one's end isn't reported: it would load the next track a second
+    // time over the one starting. If it couldn't start, that end is reported now, late — the usual way on.
+    this.seaming = outgoing;
+    const endedMeanwhile = () => outgoing.el.ended || (outgoing.end !== null && outgoing.el.currentTime >= outgoing.end);
+    let started = true;
+    try { await incoming.el.play(); } catch { started = false; }
+    this.seaming = null;
+    if (!started || this.deck !== outgoing) {
+      // Couldn't start — or another song was put on meanwhile (NEXT, a click): this one goes.
+      this.disposeDeck(incoming);
+      if (!started && this.deck === outgoing && endedMeanwhile() && this.onEnded) this.onEnded(outgoing);
       return;
     }
     const n = 32, out = new Float32Array(n), inn = new Float32Array(n);
@@ -289,7 +298,7 @@ export class AudioEngine {
     const left = deck.end - deck.el.currentTime;
     if (left > 0.06) return;
     deck.endFired = true;
-    const fire = () => { if (this.deck === deck && this.onEnded) this.onEnded(deck); };
+    const fire = () => { if (this.deck === deck && deck !== this.seaming && this.onEnded) this.onEnded(deck); };
     if (left > 0) setTimeout(fire, left * 1000); else fire();
   }
 

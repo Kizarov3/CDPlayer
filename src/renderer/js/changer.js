@@ -82,7 +82,8 @@ export function load(c, disc, tracks, { play = false, next = false, slot = null 
   const entries = entriesOf(c);
   entries[at] = { id: disc.id, kind: disc.kind, title: disc.title ?? null, artist: disc.artist ?? null, done: false, finishedAt: null, played: [], tracks: tracks.slice() };
   const stand = play || !here ? { slot: at, offset: 0 } : here;
-  const nextDisc = next ? at : c.nextDisc === at ? null : c.nextDisc;
+  // PLAY NEXT marks the disc to come after the one playing — not one that's playing itself (nothing was, so it went on).
+  const nextDisc = next && stand.slot !== at ? at : c.nextDisc === at ? null : c.nextDisc;
   return { changer: build(entries, stand, nextDisc), slot: at, replaced };
 }
 
@@ -177,7 +178,7 @@ const pick = (list, rnd) => list[Math.min(list.length - 1, Math.floor(rnd() * li
 export function nextIndex(c, { shuffle = 'OFF', repeat = 'OFF' } = {}, rnd = Math.random) {
   const here = slotOf(c, c.index);
   if (!here) return -1;
-  if (repeat === 'TRACK') return c.index;
+  // (REPEAT TRACK plays the song again at its end — app.js does that; NEXT pressed still goes on, as in the queue.)
   const d = c.slots[here.slot], len = d.end - d.start;
   if (shuffle === 'ALL') {
     const left = c.slots.flatMap((x) => (x ? unplayed(x).map((k) => x.start + k) : [])).filter((i) => i !== c.index);
