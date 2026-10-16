@@ -1181,6 +1181,15 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.15.1', changes: [
+    '<b>The guide&rsquo;s buttons work with the mouse</b>: NEXT, BACK, SKIP and SHOW THEM took no clicks &mdash; only the keys moved the guide on',
+    '<b>No gap inside an album of mixed sample rates</b>: under HI-RES LOSSLESS, an album with 44.1 and 96 kHz songs plays through at 96 instead of stopping between them',
+    '<b>A folder dropped in plays in album order</b>, by its songs&rsquo; track numbers &mdash; not alphabetically when the file names have no numbers',
+  ], changesIn: { ru: [
+    '<b>Кнопки гида нажимаются мышью</b>: ДАЛЕЕ, НАЗАД, ПРОПУСТИТЬ и ПОКАЗАТЬ ФИШКИ не реагировали на клики &mdash; гид листался только клавишами',
+    '<b>Без пауз внутри альбома с разной частотой</b>: в HI-RES LOSSLESS альбом с песнями в 44,1 и 96 кГц играет целиком на 96, не останавливаясь между ними',
+    '<b>Перетащенная папка играет в порядке альбома</b>, по номерам треков &mdash; а не по алфавиту, когда в именах файлов нет номеров',
+  ] } },
   { version: '2.15.0', changes: [
     '<b>The CD changer</b>: Settings &rarr; PLAYBACK &rarr; CD CHANGER &mdash; five discs in a carousel instead of the queue; D skips a disc, 1&ndash;5 play a slot, songs added one at a time go on a home-made CD-R. The queue and the changer each keep their own music',
     '<b>Gapless playback</b>: an album whose songs run into each other plays on with no gap between its tracks',
