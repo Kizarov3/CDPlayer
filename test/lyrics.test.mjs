@@ -145,3 +145,9 @@ test('a lyric line clicked plays from where it is heard: the inverse of the hear
   assert.strictEqual(playbackTimeFor(20, 0, 300), 20.3);
   for (const [t, lat, off] of [[20, 0.056, 0], [7.5, 0.2, -150]]) assert.ok(Math.abs(heardPosition(playbackTimeFor(t, lat, off), lat, off) - t) < 1e-9);
 });
+
+test('a line of only dashes or stars is a break, not words', () => {
+  const lines = parseLrc('[00:01.00]--\n[00:02.00]Hello there\n[00:03.00]***');
+  assert.deepStrictEqual(lines.map((l) => l.text), ['', 'Hello there', '']);
+  assert.strictEqual(formatLyricsForDisplay('[00:01.00]--\n[00:02.00]Hello there'), 'Hello there');
+});

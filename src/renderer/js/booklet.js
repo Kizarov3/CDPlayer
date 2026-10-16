@@ -97,14 +97,15 @@ function turn(direction) {
     leaf.style.zIndex = String(leaves.length * 3);
     leaf.classList.remove('turned');
     setTimeout(stack, anim.enabled ? TURN_MS : 0);
-  } else if (direction < 0) closeBooklet();
+  } // (back at the front cover it stays: CLOSE, Esc or a click outside puts it away)
 }
 
 // Resting order: turned leaves on the left with the last one turned on top; the rest on the right, first on top.
 function stack() {
   if (!book) return;
   book.leaves.forEach((leaf, i) => { leaf.style.zIndex = String(i < book.turned ? i + 1 : book.leaves.length * 2 - i); });
-  book.where.textContent = t('{n} OF {total}', { n: book.turned + 1, total: book.leaves.length + 1 });
+  // The front cover on its own, then the spreads inside counted from 1 (the booklet opens at the first of them).
+  book.where.textContent = book.turned ? t('{n} OF {total}', { n: book.turned, total: book.leaves.length }) : t('COVER');
 }
 
 /** Closes the booklet back into the case (and the art back into the corner). */

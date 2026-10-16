@@ -635,7 +635,7 @@ function buildTags(app) {
   const coverNow = v.current && v.current.hasCover ? el('span', { class: 'tag-now' }, t('In the file')) : el('span', { class: 'tag-now' }, t('None'));
   if (v.foundCover) rows.push(el('div', { class: 'tag-row' }, el('span', { class: 'tag-label' }, t('COVER')), coverNow, el('div', {}, thumb(v.foundCover), el('span', { class: 'tag-source' }, t('Cover Art Archive'))), pick('cover')));
   if (v.lyricsOffer) rows.push(el('div', { class: 'tag-row' }, el('span', { class: 'tag-label' }, t('LYRICS')), el('span', { class: 'tag-now' }, t('None')),
-    el('span', { class: 'tag-source' }, `${/^\[\d/m.test(v.lyricsOffer) ? 'Timed' : 'Plain'}, from ${app.state.lyricsSource || 'online'}`), pick('lyrics')));
+    el('span', { class: 'tag-source' }, (/^\[\d/m.test(v.lyricsOffer) ? t('Timed, from {source}', { source: app.state.lyricsSource || t('the internet') }) : t('Plain, from {source}', { source: app.state.lyricsSource || t('the internet') }))), pick('lyrics')));
   const save = el('button', { class: 'pill on', disabled: !v.picked.size || v.busy || !v.canWrite }, t('SAVE TO FILE'));
   save.addEventListener('click', async () => {
     const changes = {};
@@ -655,7 +655,9 @@ function buildTags(app) {
   });
   // Every offer at once: MusicBrainz's whole answer over the file's.
   const waiting = [...(v.offered || [])].filter((k) => !v.picked.has(k));
-  const all = waiting.length && v.canWrite ? pill(t('TICK ALL {n}', { n: waiting.length }), () => { for (const k of waiting) v.picked.add(k); refreshPanel('tags'); }, t('Write everything MusicBrainz says, over what’s in the file')) : null;
+  // (Once used it stays where it was, greyed — so the buttons after it don't move under a finger reaching for CLOSE.)
+  const all = v.offered && v.offered.size && v.canWrite ? pill(waiting.length ? t('TICK ALL {n}', { n: waiting.length }) : t('ALL TICKED'), () => { for (const k of waiting) v.picked.add(k); refreshPanel('tags'); }, t('Write everything MusicBrainz says, over what’s in the file')) : null;
+  if (all) all.disabled = !waiting.length;
   const again = pill(t('LOOK UP AGAIN'), () => { if (!v.busy && v.canWrite) { v.status = t('LOOKING THE SONG UP ON MUSICBRAINZ…'); refreshPanel('tags'); lookUpTags(app, v); } }, t('Ask MusicBrainz again'));
   again.disabled = v.busy || !v.canWrite;
   return [
@@ -1310,6 +1312,7 @@ export function pickDiscToTakeOut(app, c) {
         app.coverForPath(c.queue[d.start]).then((src) => { if (src) b.firstChild.style.backgroundImage = `url("${src}")`; });
         return b;
       })),
+      closeRow(() => closePanel('changer-full'), t('CANCEL')),
     ], { width: 560 });
     p.onClose = () => resolve(chosen);
   });

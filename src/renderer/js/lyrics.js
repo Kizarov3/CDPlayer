@@ -40,6 +40,8 @@ const shifted = (w, by) => (w.end === undefined ? { time: w.time + by, text: w.t
  * "v1"…), and a "[bg: …]" line after it gives it backing vocals (`bg`, timed like words). A line stamped more than
  * once (a repeated chorus) has all of these shifted to each time.
  */
+// A line of only dashes or stars ("--", "***"): some sources' way of marking a break.
+const FILLER = /^[-–—_~*•·.\s]+$/;
 export function parseLrc(raw) {
   const out = [];
   let previous = []; // what the last timed line became (one per stamp), for a [bg: line after it
@@ -61,8 +63,9 @@ export function parseLrc(raw) {
     if (!stamps.length) continue; // header tags like [ti:...] or untimed text
     const who = AGENT.exec(rest.trimStart());
     if (who) rest = rest.trimStart().slice(who[0].length);
-    const text = rest.replace(WORD_STAMP, '').replace(/\s+/g, ' ').trim();
-    const { words, end } = wordsOf(rest, stamps[0]);
+    let text = rest.replace(WORD_STAMP, '').replace(/\s+/g, ' ').trim();
+    let { words, end } = wordsOf(rest, stamps[0]);
+    if (FILLER.test(text)) { text = ''; words = []; } // "--", "***": a break, not words
     previous = stamps.map((time) => {
       const by = time - stamps[0];
       const line = { time, text };
@@ -82,7 +85,8 @@ export function formatLyricsForDisplay(raw) {
     .map((l) => {
       const bg = BG_LINE.exec(l.trim());
       if (bg) return bg[1].replace(WORD_STAMP, '').replace(/\s+/g, ' ').trim();
-      return l.replace(/^(?:\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\])+\s*/, '').replace(AGENT, '').replace(WORD_STAMP, '');
+      const text = l.replace(/^(?:\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\])+\s*/, '').replace(AGENT, '').replace(WORD_STAMP, '');
+      return FILLER.test(text.trim()) ? '' : text;
     })
     .filter((l) => !/^\[(ti|ar|al|by|offset|length|re|ve):[^\]]*\]\s*$/.test(l))
     .join('\n').trim();

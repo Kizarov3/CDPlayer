@@ -512,7 +512,8 @@ function undoEjectSlot() {
   const u = undoEject;
   undoEject = null;
   // Only while nothing else changed in the changer since: else it would take back more than the one disc.
-  if (!u || !state.changerMode || changer.serialize(ch()) !== u.after) return false;
+  if (!u || !state.changerMode) return false;
+  if (changer.serialize(ch()) !== u.after) { setStatus(t('CAN’T PUT IT BACK · THE CHANGER CHANGED SINCE')); return false; }
   clearTimeout(u.timer);
   const playingNow = state.loadedPath;
   putStore(u.store);
@@ -520,8 +521,8 @@ function undoEjectSlot() {
   const at = !u.wasOn && playingNow ? state.queue.indexOf(playingNow) : -1;
   if (at >= 0) apply(changer.moveTo(ch(), at));
   renderQueue(); saveQueueSoon(); spotifyResync();
-  setStatus(t('DISC BACK IN'));
-  if (at < 0 && state.index >= 0) load(state.queue[state.index], { autoPlay: u.playing, startAt: u.position });
+  const said = () => setStatus(t('DISC BACK IN'));
+  if (at < 0 && state.index >= 0) load(state.queue[state.index], { autoPlay: u.playing, startAt: u.position }).then(said); else said();
   return true;
 }
 function resetToIdle(message) {
@@ -857,11 +858,17 @@ function refreshDockSoon() {
   }, 400);
 }
 
-// A song goes into HISTORY when it starts playing — however it got there (a click, the tray closing, Space after a
-// restart) — once per time it's loaded.
-let recordedFor = -1;
+// A song goes into HISTORY once it has played a few seconds — however it got there (a click, the tray closing, Space
+// after a restart) — once per time it's loaded; one skipped past straight away isn't in it.
+const HEARD_SECONDS = 8;
+let recordedFor = -1, heardTimer = null;
 function setPlaying(playing) {
-  if (playing && state.loadedPath && recordedFor !== state.loadToken) { recordedFor = state.loadToken; recordHistory(state.loadedPath); }
+  if (playing && state.loadedPath && recordedFor !== state.loadToken) {
+    const token = state.loadToken, path = state.loadedPath;
+    recordedFor = token;
+    clearTimeout(heardTimer);
+    heardTimer = setTimeout(() => { if (state.loadToken === token && state.loadedPath === path) recordHistory(path); }, HEARD_SECONDS * 1000);
+  }
   disc.spinning = playing;
   noise.setPlaying(playing);
   playButton.setGlyph(playing ? 'PAUSE' : 'PLAY'); pulse(playButton, true);
@@ -1892,6 +1899,7 @@ async function setChangerMode(on) {
     if (undoClear) { clearTimeout(undoClear.timer); undoClear = null; }
     state.loadToken++; dropPrepared(); engine.stop(); setPlaying(false);
     state.playModes = { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } };
+    trail.length = 0; shownIndex = -1; // PREVIOUS goes back through this mode's songs only; its list goes to the song
     state.changerMode = on;
     document.body.classList.toggle('changer-mode', on);
     takePlayModes(); // each mode has its own SHUFFLE and REPEAT
