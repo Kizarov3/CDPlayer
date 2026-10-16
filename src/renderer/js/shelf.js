@@ -189,7 +189,9 @@ function render() {
   const query = $('shelf-filter').value, filtering = !!query.trim();
   const shown = shelf.albums.filter((a) => matchesFilter(a, query, (stickersFor(a).obi || {}).catalog)); // the number on its obi too
   const n = shelf.albums.length;
-  shelf.countBase = [shelf.folderName.toUpperCase(), n === 1 ? t('1 ALBUM') : t('{n} ALBUMS', { n }), filtering ? t('{n} SHOWN', { n: shown.length }) : null].filter(Boolean).join(' · ');
+  // (The folder's name is the count's tooltip: the line keeps its room for the albums and what the shelf is worth.)
+  shelf.countBase = [n === 1 ? t('1 ALBUM') : t('{n} ALBUMS', { n }), filtering ? t('{n} SHOWN', { n: shown.length }) : null].filter(Boolean).join(' · ');
+  $('shelf-count').title = shelf.folderName ? t('Your music folder: {name}', { name: shelf.folderName }) : '';
   renderCount();
   if (!n) { body.replaceChildren(el('div', { class: 'shelf-empty' }, el('div', {}, t('No music in this folder yet.')), pill(t('CHOOSE ANOTHER FOLDER…'), pickFolder))); return; }
   if (!shown.length) { body.replaceChildren(el('div', { class: 'shelf-empty' }, el('div', {}, t('Nothing on the shelf for “{query}”.', { query: query.trim() })), pill(t('CLEAR THE SEARCH'), () => { $('shelf-filter').value = ''; render(); }))); showIndex([]); return; }
@@ -197,7 +199,7 @@ function render() {
     for (const e of entries) if (e.isIntersecting) { shelf.observer.unobserve(e.target); loadCover(e.target.album, e.target); }
   }, { root: body, rootMargin: '200px' });
   const now = Date.now(), sort = shelf.app.state.shelfSort;
-  $('shelf-sort').textContent = t('SORT: {how}', { how: SORT_LABELS[sort] || sort });
+  $('shelf-sort').textContent = `⇅ ${SORT_LABELS[sort] || sort}`; // (what SORT is, the tooltip says)
   if (sort === 'COLOR') { if (shelf.fillCount) shelf.fillCount(); fillColors(shown); }
   shelf.shown = shown;
   if (shelf.boxObserver) shelf.boxObserver.disconnect();

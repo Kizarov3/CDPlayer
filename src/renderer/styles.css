@@ -470,10 +470,12 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 }
 #shelf-index button.long { font-size: 6.5px; letter-spacing: 0; } /* ORANGE, UNDER: whole, smaller */
 #shelf-index button:hover { color: rgb(var(--accent)); background: rgba(255, 255, 255, .06); }
+/* The title with its count under it (albums, the shelf's worth), so the buttons beside have the room. */
+#shelf-heading { flex: 0 0 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 #shelf-title { font-size: 16px; color: rgb(var(--accent)); white-space: nowrap; }
 #shelf-count { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 10px; color: rgb(var(--muted)); white-space: nowrap; }
 /* A narrow window: the count and the search field give way, so the buttons (CLOSE last) always fit. */
-#shelf-filter { flex: 0 12 220px; width: 220px; min-width: 100px; } /* gives way first: the count (the shelf's worth) last */
+#shelf-filter { flex: 0 12 220px; width: 220px; min-width: 80px; } /* gives way first: the count (the shelf's worth) last */
 #shelf-head .pill { flex: none; }
 #shelf-here { padding: 4px 12px; font-size: 15px; line-height: 1; } /* ⌖ alone: the room goes to the shelf's count */
 #shelf-body { flex: 1 1 auto; min-height: 0; padding: 18px 6px 40px; }
