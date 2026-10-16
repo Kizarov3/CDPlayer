@@ -643,7 +643,8 @@ function createMiniWindow() {
     },
   });
   miniWin.setAlwaysOnTop(true, 'floating');
-  miniWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // (On macOS this would make CDPlayer a background app with no Dock icon — for good, even after the mini player: kept.)
+  miniWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
   miniWin.on('moved', () => {
     const [x, y] = miniWin.getPosition();
     store.writeText(store.FILES.miniPosition, `${x},${y}`);
