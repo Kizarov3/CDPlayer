@@ -23,12 +23,16 @@ function rectOf(step) {
   return visible(f) ? f.getBoundingClientRect() : null;
 }
 
-/** Runs the guide; `first`: the first launch, with a welcome before it. → a promise, settled when it's closed. */
-export function startTour({ first = false } = {}) {
+/**
+ * Runs the guide; `first`: the first launch, with a welcome before it. It ends with what makes CDPlayer different, and
+ * `onFeatures` (if given) opens WHAT'S SPECIAL from there. → a promise, settled when it's closed.
+ */
+export function startTour({ first = false, onFeatures = null } = {}) {
   if (open) return open.promise;
-  const welcome = { targets: [], title: t('WELCOME TO CDPLAYER'), text: t('A quick look round: where everything is and how it works. It takes a minute — or SKIP it and explore.') };
-  const steps = [...(first ? [welcome] : []), ...TOUR.filter((s) => rectOf(s))];
-  const counted = steps.filter((s) => s !== welcome).length;
+  const welcome = { targets: [], title: t('WELCOME TO CDPLAYER'), text: t('A CD player for the music on your computer: your albums stand on a shelf, a disc spins as it plays, and it all ages the way real CDs do. A quick look round takes a minute — or SKIP it and explore.') };
+  const finale = { targets: [], title: t('WHAT MAKES IT DIFFERENT'), text: t('It treats your files like a CD collection: albums you don’t play gather dust, discs wear as they’re played, the shelf shows the albums you’re missing and what yours are worth, every album has a booklet, and karaoke lights up word by word. All of it, and where to find it, is in SETTINGS → HELP → WHAT’S SPECIAL.') };
+  const steps = [...(first ? [welcome] : []), ...TOUR.filter((s) => rectOf(s)), finale];
+  const counted = steps.filter((s) => s !== welcome && s !== finale).length;
   const spot = el('div', { class: 'tour-spot' });
   const bubble = el('div', { class: 'tour-bubble', role: 'dialog' });
   const layer = el('div', { class: 'tour-layer' }, spot, bubble);
@@ -40,14 +44,16 @@ export function startTour({ first = false } = {}) {
     const step = steps[i], last = i === steps.length - 1, n = steps.indexOf(step) - (first ? 1 : 0) + 1;
     const next = el('button', { class: 'pill on', onClick: () => go(1) }, last ? (first ? t('START LISTENING') : t('DONE')) : t('NEXT|step'));
     bubble.replaceChildren(...[ // (replaceChildren would write a null out as "null")
-      step === welcome ? null : el('div', { class: 'tour-count' }, t('{step} OF {total}', { step: n, total: counted })),
+      step === welcome || step === finale ? null : el('div', { class: 'tour-count' }, t('{step} OF {total}', { step: n, total: counted })),
       el('div', { class: 'tour-title' }, step.title),
       el('div', { class: 'tour-text' }, step.text),
       el('div', { class: 'tour-actions' },
         last ? null : el('button', { class: 'pill', onClick: close }, t('SKIP')),
         el('span', { class: 'grow' }),
         i ? el('button', { class: 'pill', onClick: () => go(-1) }, t('BACK')) : null,
+        step === finale && onFeatures ? el('button', { class: 'pill', onClick: () => { close(); onFeatures(); } }, t('SHOW THEM')) : null,
         next)].filter(Boolean));
+    bubble.classList.toggle('wide', step === welcome || step === finale);
     const r = step.targets.length ? rectOf(step) : null;
     layer.classList.toggle('dim', !r);
     spot.hidden = !r;

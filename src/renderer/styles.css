@@ -973,4 +973,5 @@ body.no-anim .tour-spot, body.no-anim .tour-bubble { transition: none; }
 .tour-title { font-size: 15px; font-weight: 800; letter-spacing: .03em; color: rgb(var(--accent)); margin-bottom: 6px; }
 .tour-text { font-size: 13px; font-weight: normal; line-height: 1.45; margin-bottom: 12px; }
 .tour-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tour-bubble.wide { width: 470px; } /* the welcome and the last word: more to say, and more buttons */
 .tour-actions .grow { flex: 1; }

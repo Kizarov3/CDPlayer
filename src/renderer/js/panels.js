@@ -334,7 +334,7 @@ function buildSettings(app) {
     hint(t('Pressings and prices come from Discogs’ API. CDPlayer isn’t affiliated with, sponsored or endorsed by Discogs; “Discogs” is a trademark of Zink Media, LLC.')), gap(18),
     section(t('HELP')),
     el('div', { class: 'help-pills' },
-      pill(t('SHOW THE GUIDE'), () => { closePanel('settings'); startTour(); }, t('A look round the window: where everything is and how it works')),
+      pill(t('SHOW THE GUIDE'), () => { closePanel('settings'); startTour({ onFeatures: () => showFeatures(app) }); }, t('A look round the window: where everything is and how it works')),
       pill(t('WHAT’S SPECIAL'), () => showFeatures(app), t('Dust, Discogs prices, missing albums, disc wear — what other players don’t have')),
       pill(t('FAQ'), () => showFaq(), t('Answers to what people ask the first time')),
       pill(t('KEYBOARD SHORTCUTS'), () => showShortcuts(), t('Every key, also with ?'))));
@@ -1073,7 +1073,7 @@ function tipsCard(heading, subtitle, bullets, onDone) {
 // The first time CDPlayer opens: the guide (help.js), five cards to step through — and remembered once it's closed.
 /** The first launch: the guide round the window, then never again (it's in SETTINGS → SHOW THE GUIDE). */
 export async function showOnboarding(app) {
-  await startTour({ first: true });
+  await startTour({ first: true, onFeatures: () => showFeatures(app) });
   app.cdp.markOnboarded();
 }
 
