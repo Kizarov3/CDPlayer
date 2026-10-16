@@ -2206,6 +2206,8 @@ export const app = {
   setStatus, queueDisplay, displayName, formatTime, ensureDetails, load, addToQueue, playNext, appendAndPlay, seekTo,
   detailsFor: (p) => detailsCache.get(p),
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) goTo(i); },
+  // WHAT'S SPECIAL's SHOW ME: the shelf, the disc's other side, CD View or karaoke, opened for a look.
+  showMe: (what) => ({ shelf: () => { if (!isShelfOpen()) toggleShelf(); }, flip: () => disc.flip(), cdview: () => { if (!state.cdView) toggleCdView(); }, karaoke: () => toggleKaraoke() }[what] || (() => {}))(),
   changerState: ch, changerMode: () => state.changerMode, setChangerMode, discLabel, loadDisc, playSlot, ejectSlot, discSkip, coverForPath,
   changerSlotOf: (i) => (changer.slotOf(ch(), i) || { slot: -1 }).slot,
   onFullChanger: (c) => panels.pickDiscToTakeOut(app, c),

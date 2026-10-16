@@ -6,7 +6,7 @@ import { buildThemeEditor } from './theme-editor.js';
 import { t } from './i18n.js';
 import { EQ_FREQUENCIES } from './audio.js';
 import { el, pill, toggle, setToggle, Slider, anim } from './widgets.js';
-import { FAQ, SHORTCUTS } from './help.js';
+import { FAQ, SHORTCUTS, FEATURES } from './help.js';
 import { startTour } from './tour-view.js';
 import { outputName } from './output.js';
 import { levelName, LEVELS } from './quality.js';
@@ -17,7 +17,7 @@ import { formatLyricsForDisplay } from './lyrics.js';
 const layer = () => document.getElementById('overlays');
 const panels = new Map(); // name -> { overlay, card, build }
 // Escape closes the closest thing first, in this order.
-const ESC_ORDER = ['changer-full', 'onboarding', 'guide', 'faq', 'shortcuts', 'changelog', 'tags', 'check', 'card', 'booklet', 'menu', 'theme', 'lyrics', 'eq', 'rip', 'history', 'spotify', 'search', 'settings'];
+const ESC_ORDER = ['changer-full', 'onboarding', 'guide', 'features', 'faq', 'shortcuts', 'changelog', 'tags', 'check', 'card', 'booklet', 'menu', 'theme', 'lyrics', 'eq', 'rip', 'history', 'spotify', 'search', 'settings'];
 
 function openPanel(name, build, { width } = {}) {
   let p = panels.get(name);
@@ -335,6 +335,7 @@ function buildSettings(app) {
     section(t('HELP')),
     el('div', { class: 'help-pills' },
       pill(t('SHOW THE GUIDE'), () => { closePanel('settings'); startTour(); }, t('A look round the window: where everything is and how it works')),
+      pill(t('WHAT’S SPECIAL'), () => showFeatures(app), t('Dust, Discogs prices, missing albums, disc wear — what other players don’t have')),
       pill(t('FAQ'), () => showFaq(), t('Answers to what people ask the first time')),
       pill(t('KEYBOARD SHORTCUTS'), () => showShortcuts(), t('Every key, also with ?'))));
   const version = el('div', { class: 'settings-version' }, `CDPlayer ${app.state.version}`);
@@ -1155,6 +1156,17 @@ export function showFaq() {
       open.has(i) ? el('div', { class: 'faq-a' }, a) : null))),
     closeRow(() => closePanel('faq'))];
   openPanel('faq', build, { width: 520 });
+}
+
+/** WHAT'S SPECIAL: what CDPlayer does that other players don't, in groups, with SHOW ME where there's a thing to see. */
+export function showFeatures(app) {
+  const item = (f) => el('div', { class: 'feature' },
+    el('div', { class: 'feature-head' }, el('span', { class: 'feature-title' }, f.title),
+      f.show ? pill(t('SHOW ME'), () => { closePanel('features'); closePanel('settings'); setTimeout(() => app.showMe(f.show), 200); }) : null),
+    el('div', { class: 'feature-text' }, f.text));
+  openPanel('features', () => [title(t('WHAT’S SPECIAL')), el('div', { class: 'subtitle' }, t('What CDPlayer does that other players don’t')), gap(10),
+    el('div', { class: 'scroll feature-list' }, FEATURES.flatMap((g) => [el('div', { class: 'settings-section' }, g.group), ...g.items.map(item), gap(10)])),
+    closeRow(() => closePanel('features'))], { width: 560 });
 }
 
 export function showShortcuts() {

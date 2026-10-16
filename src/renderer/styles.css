@@ -873,6 +873,13 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 .guide-actions { display: flex; gap: 8px; align-items: center; }
 .guide-actions .grow { flex: 1; }
 .faq-list { max-height: min(420px, 60vh); padding-right: 6px; }
+/* WHAT'S SPECIAL: a feature each — its name, SHOW ME when there's something to see, and a few words. */
+.feature-list { max-height: min(480px, 64vh); padding-right: 8px; }
+.feature { padding: 9px 0 11px; border-bottom: 1px solid rgba(var(--text), .08); }
+.feature-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 24px; }
+.feature-title { font-size: 12px; color: rgb(var(--text)); }
+.feature-head .pill { padding: 4px 10px; font-size: 9px; }
+.feature-text { margin-top: 4px; font-size: 12px; line-height: 1.45; font-weight: normal; color: rgba(var(--text), .78); }
 .faq { border-bottom: 1px solid rgba(var(--text), .1); }
 .faq-q {
   display: flex; gap: 10px; width: 100%; padding: 10px 2px; border: none; background: none; cursor: pointer; text-align: left;
