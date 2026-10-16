@@ -102,6 +102,7 @@
   "Back a page (←)": "Страница назад (←)",
   "Back to the disc": "Обратно к диску",
   "Back to the full player (M)": "Обратно в большой плеер (M)",
+  "Back to the player (Y or Esc)": "Обратно к плееру (Y или Esc)",
   "Back {n} seconds": {
     "one": "Назад на {n} секунду",
     "few": "Назад на {n} секунды",
@@ -444,6 +445,7 @@
   "NOW PLAYING": "СЕЙЧАС ИГРАЕТ",
   "NOW PLAYING CARD": "КАРТОЧКА «СЕЙЧАС ИГРАЕТ»",
   "NOW SPINNING": "КРУТИТСЯ",
+  "NOW SPINNING · SOUND OFF": "КРУТИТСЯ · ЗВУК ВЫКЛЮЧЕН",
   "Never show this one on the shelf again": "Больше не показывать на полке",
   "Next disc (D)": "Следующий диск (D)",
   "Next disc in the changer": "Следующий диск в чейнджере",
@@ -706,6 +708,7 @@
   "Sound Check plays this song {n} dB louder, to match the others": "Выравнивание громкости играет эту песню на {n} дБ громче, чтобы она звучала как остальные",
   "Sound Check plays this song {n} dB quieter, to match the others": "Выравнивание громкости играет эту песню на {n} дБ тише, чтобы она звучала как остальные",
   "Sound Check: this song is already at the level of the others": "Выравнивание громкости: эта песня уже звучит как остальные",
+  "Space|key": "Пробел",
   "Spotify didn’t let CDPlayer in. Try connecting again.": "Spotify не пустил CDPlayer. Попробуй подключиться ещё раз.",
   "Spotify doesn’t know this Client ID and Secret. Copy them again from your app’s Settings on the dashboard — the Secret is under View client secret.": "Spotify не знает такие Client ID и Secret. Скопируй их заново из Settings своего приложения в дашборде — Secret под View client secret.",
   "Spotify lets an app play for only five people, so CDPlayer plays through your own free Spotify developer app. It takes two minutes, once. You need Spotify Premium.": "Spotify разрешает приложению играть только для пяти человек, поэтому CDPlayer играет через твоё собственное бесплатное приложение разработчика Spotify. Это две минуты, один раз. Нужен Spotify Premium.",

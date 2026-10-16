@@ -671,12 +671,13 @@ function buildTags(app) {
 
 // ---- History -----------------------------------------------------------------------------------------------------
 
-export function showHistory(app) { openPanel('history', () => buildHistory(app), { width: 480 }); }
+export function showHistory(app) { openPanel('history', () => buildHistory(app), { width: 600 }); }
 export function refreshHistoryIfOpen(app) { if (isOpen('history')) refreshPanel('history'); }
 function trackRow(app, path, label, onPlay) {
   const now = pill(t('PLAY'), (e) => { e.stopPropagation(); onPlay(); }, t('Play it now'));
   const next = pill(t('NEXT'), (e) => { e.stopPropagation(); app.playNext([path], { sorted: true }); }, app.changerMode() ? t('Into the changer, to play after the disc playing') : t('Play it next, after the song playing'));
   const add = pill(t('ADD'), (e) => { e.stopPropagation(); app.addToQueue([path], { sorted: true }); }, app.changerMode() ? t('Into the changer') : t('Add to queue'));
+  for (const b of [now, next, add]) b.classList.add('small'); // the song's name gets the room
   return el('div', { class: 'list-row', title: t('Play {song}', { song: label }), onClick: onPlay }, el('span', { class: 'entry' }, label), now, next, add);
 }
 function buildHistory(app) {
@@ -766,7 +767,7 @@ async function startLibraryScan(app) {
 export function showSearch(app) {
   search.lastSpotifyUrl = null;
   startLibraryScan(app);
-  openPanel('search', () => buildSearch(app), { width: 480 });
+  openPanel('search', () => buildSearch(app), { width: 600 });
   refreshSearchResults(app);
   setTimeout(() => search.field && search.field.focus(), 50);
 }
@@ -1148,7 +1149,7 @@ export function showFaq() {
 }
 
 export function showShortcuts() {
-  const keys = (text) => text.split('`').map((part, i) => (i % 2 ? el('kbd', {}, part) : part ? el('span', {}, part.trim() === 'or' ? ` ${t('or')} ` : part) : null));
+  const keys = (text) => text.split('`').map((part, i) => (i % 2 ? el('kbd', {}, part === 'Space' ? t('Space|key') : part === 'Esc' ? 'Esc' : part) : part ? el('span', {}, part.trim() === 'or' ? ` ${t('or')} ` : part) : null));
   openPanel('shortcuts', () => [title(t('KEYBOARD SHORTCUTS')), gap(12),
     el('div', { class: 'scroll shortcut-list' }, SHORTCUTS.filter(([, , only]) => !only || document.body.classList.contains('changer-mode')).map(([k, what]) => el('div', { class: 'shortcut' }, el('span', { class: 'keys' }, keys(k)), el('span', { class: 'what' }, what)))),
     closeRow(() => closePanel('shortcuts'))], { width: 520 });

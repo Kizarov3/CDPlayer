@@ -99,7 +99,7 @@ const spotifyTracks = new Map(); // spotify:track:… -> { uri, title, artist, a
 let statusTimer = null;
 function stateStatus() {
   if (disc.trayOpen) return state.queue.length ? t('OPEN · DROP IN A NEW DISC, OR PRESS E TO CLOSE') : t('OPEN · DROP MUSIC ON THE TRAY');
-  if (engine.playing) return t('NOW SPINNING');
+  if (engine.playing) return state.volume === 0 ? t('NOW SPINNING · SOUND OFF') : t('NOW SPINNING'); // (silent: said, so it isn't taken for broken)
   if (spotifyActive() && spotifyTrouble) return spotifyTrouble;
   return state.loadedPath ? t('PAUSED') : t('READY TO PLAY');
 }
@@ -1594,8 +1594,10 @@ async function deleteTheme(name) {
 // ---- Settings setters ------------------------------------------------------------------------------------------
 
 function setVolume(v, { fromSlider = false } = {}) {
+  const was = state.volume;
   state.volume = Math.max(0, Math.min(100, Math.round(v)));
   engine.setVolume(state.volume / 100);
+  if ((was === 0) !== (state.volume === 0) && engine.playing) setStatus(stateStatus()); // SOUND OFF said, or taken back
   if (spotifySession) spotifySession.setVolume(state.volume / 100);
   $('volume-value').textContent = `${state.volume}%`;
   if (!fromSlider) volumeSlider.setValue(state.volume);
@@ -1970,6 +1972,8 @@ function buildStaticUi() {
   cdp.onUpdateProgress((fraction) => { if (updateState.phase === 'downloading') { updateState.progress = fraction; showUpdatePill(); } });
   $('sleep-indicator').addEventListener('click', () => { armSleepTimer(0); panels.refreshSettingsIfOpen(app); });
   $('vis-mode').addEventListener('mousedown', () => { if (state.visualizerMode) toggleVisualizerMode(); });
+  $('karaoke-close').addEventListener('click', () => closeKaraoke());
+  document.querySelector('#hint b').addEventListener('click', () => panels.showShortcuts()); // ? ALL KEYS, clicked
   disc.onEjectPeak = () => nextTrack();
   disc.canGrab = () => !!engine.deck && !state.trayBusy;
   $('disc').addEventListener('contextmenu', async (e) => {

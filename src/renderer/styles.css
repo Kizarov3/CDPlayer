@@ -394,7 +394,8 @@ body.cursor-hidden #cd-exit { opacity: 0; }
   padding: 50px 50px 40px;
 }
 #big-visualizer { flex: 1 1 auto; min-height: 0; width: 100%; margin-bottom: 20px; }
-.vis-hint { text-align: center; font-size: 10px; color: rgb(var(--hint)); animation: vis-hint-out 4s ease forwards; } /* said, then gone: the scene is the point */
+.vis-hint { text-align: center; font-size: 10px; color: rgb(var(--hint)); }
+#vis-mode .vis-hint { animation: vis-hint-out 4s ease forwards; } /* the visualizer's: said, then gone — the scene is the point (karaoke's stays) */
 @keyframes vis-hint-out { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
 
 /* ---- Karaoke Mode (karaoke.js): the lyrics, the current line filling in word by word ---- */
@@ -872,7 +873,8 @@ kbd {
   font: bold 11px var(--font, inherit); color: rgb(var(--text)); background: rgba(var(--text), .1); box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .4);
 }
 .help-pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
-#hint b { color: rgb(var(--accent2)); }
+#hint b { color: rgb(var(--accent2)); cursor: pointer; }
+#karaoke-close { position: absolute; top: 18px; right: 24px; z-index: 2; }
 
 /* LIBRARY CHECK (panels.js): groups that open into rows — what, where, and the buttons to fix or show it. */
 .check-list { max-height: min(460px, 62vh); padding-right: 6px; }
