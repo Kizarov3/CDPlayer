@@ -191,6 +191,7 @@ function render() {
   shelf.countBase = [shelf.folderName.toUpperCase(), n === 1 ? t('1 ALBUM') : t('{n} ALBUMS', { n }), filtering ? t('{n} SHOWN', { n: shown.length }) : null].filter(Boolean).join(' · ');
   renderCount();
   if (!n) { body.replaceChildren(el('div', { class: 'shelf-empty' }, el('div', {}, t('No music in this folder yet.')), pill(t('CHOOSE ANOTHER FOLDER…'), pickFolder))); return; }
+  if (!shown.length) { body.replaceChildren(el('div', { class: 'shelf-empty' }, el('div', {}, t('Nothing on the shelf for “{query}”.', { query: query.trim() })), pill(t('CLEAR THE SEARCH'), () => { $('shelf-filter').value = ''; render(); }))); showIndex([]); return; }
   shelf.observer = new IntersectionObserver((entries) => {
     for (const e of entries) if (e.isIntersecting) { shelf.observer.unobserve(e.target); loadCover(e.target.album, e.target); }
   }, { root: body, rootMargin: '200px' });
@@ -401,7 +402,7 @@ function putDown(drag, target, next = false) {
 function showIndex(targets) {
   const index = $('shelf-index');
   index.hidden = targets.length < 2;
-  index.replaceChildren(...targets.map(({ label, short }) => el('button', { title: label, onClick: () => {
+  index.replaceChildren(...targets.map(({ label, short }) => el('button', { title: label, class: [...short].length > 3 ? 'long' : null, onClick: () => {
     const card = $('shelf-body').querySelector(`[data-section="${CSS.escape(label)}"]`);
     if (card) card.scrollIntoView({ block: 'start', behavior: anim.enabled ? 'smooth' : 'auto' });
   } }, short)));
@@ -822,7 +823,14 @@ function markSpine(id) {
   if (spine) spine.classList.toggle('rare', isRare(spine.album.pressing));
 }
 function renderCount() {
-  if (!shelf.loading) $('shelf-count').textContent = [shelf.countBase, shelf.appraisalNote].filter(Boolean).join(' · ');
+  if (!shelf.loading) $('shelf-count').textContent = [shelf.saying || shelf.countBase, shelf.appraisalNote].filter(Boolean).join(' · ');
+}
+// News while the shelf is open: the player's status line is under it, so it's said in the shelf's own line too, a while.
+function say(text) {
+  shelf.app.setStatus(text);
+  shelf.saying = text; renderCount();
+  clearTimeout(shelf.sayTimer);
+  shelf.sayTimer = setTimeout(() => { shelf.saying = null; renderCount(); }, 5000);
 }
 
 // The case's PRESSING: what's known at once, then Discogs' answer as the case comes out.
@@ -857,12 +865,12 @@ function pressingBlock(a, rare, onEntry) {
 export async function choosePressing(a, anchor, masterId, onChosen = () => {}) {
   const box = anchor.getBoundingClientRect();
   const list = masterId ? await shelf.app.cdp.discogsVersions(masterId) : await shelf.app.cdp.discogsSearch(albumQuery(a));
-  if (!Array.isArray(list) || !list.length) { shelf.app.setStatus(list && list.error ? t('DISCOGS UNAVAILABLE') : t('NOTHING FOUND')); return; }
+  if (!Array.isArray(list) || !list.length) { say(list && list.error ? t('DISCOGS UNAVAILABLE') : t('NOTHING FOUND')); return; }
   shelf.app.pressingMenu(box, list.map((v) => ({
     label: [masterId ? null : v.title, v.label, v.catno, v.country, v.year, v.format].filter(Boolean).join(' · '),
     pick: async () => {
       const entry = await shelf.app.cdp.discogsChoose(albumQuery(a), v.id);
-      if (!entry || entry.error) { shelf.app.setStatus(t('DISCOGS UNAVAILABLE')); return; }
+      if (!entry || entry.error) { say(t('DISCOGS UNAVAILABLE')); return; }
       shelf.pressings.set(a.id, entry);
       const onShelf = shelf.albums.find((x) => x.id === a.id);
       if (onShelf) onShelf.pressing = entry;
@@ -880,8 +888,8 @@ async function appraise() {
   const result = await shelf.app.cdp.discogsAppraise(shelf.albums.map(albumQuery));
   shelf.appraising = { ...result, finished: true };
   if (!result.stopped && !result.error) shelf.appraised = true;
-  if (result.error) shelf.app.setStatus(t('APPRAISAL STOPPED · NO CONNECTION'));
-  else if (result.skipped) shelf.app.setStatus(t('APPRAISED · DISCOGS COULDN’T ANSWER FOR {n}', { n: result.skipped }));
+  if (result.error) say(t('APPRAISAL STOPPED · NO CONNECTION'));
+  else if (result.skipped) say(t('APPRAISED · DISCOGS COULDN’T ANSWER FOR {n}', { n: result.skipped }));
   updateAppraiseCount();
   if (shelf.open) render();
 }

@@ -49,6 +49,12 @@ function rebuild() {
   const d = app.state.details;
   view.lyrics = app.state.lyrics;
   view.lines = parseLrc(view.lyrics);
+  // A word timed in syllables ("be", "neath") is kept on one line: the syllables with no space between are held together.
+  const wholeWords = (spans) => {
+    const groups = [];
+    spans.forEach((sp, i) => { if (!i || /\s$/.test(spans[i - 1].textContent) || /^\s/.test(sp.textContent)) groups.push([]); groups[groups.length - 1].push(sp); });
+    return groups.map((g) => (g.length > 1 ? el('span', { class: 'k-whole' }, g) : g[0]));
+  };
   view.pace = songPace(view.lines);
   const duet = new Set(view.lines.map((l) => l.agent).filter(Boolean)).size > 1;
   view.words = []; view.bgWords = [];
@@ -61,8 +67,8 @@ function rebuild() {
     view.bgWords.push(bg);
     const cls = ['k-line', line.text ? '' : 'gap', duet && line.agent ? `k-${line.agent}` : ''].filter(Boolean).join(' ');
     return el('div', { class: cls, onClick: () => app.seekToLyric(line.time) },
-      line.text ? el('div', { class: 'k-main' }, words) : '♪',
-      bg.length ? el('div', { class: 'k-bg' }, bg) : null,
+      line.text ? el('div', { class: 'k-main' }, wholeWords(words)) : '♪',
+      bg.length ? el('div', { class: 'k-bg' }, wholeWords(bg)) : null,
       el('div', { class: 'k-dots' }, el('i'), el('i'), el('i')));
   });
   view.current = -2;

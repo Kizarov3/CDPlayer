@@ -52,9 +52,17 @@ function createDiscography({ mbFetch, read = () => store.readText(CACHE_FILE), w
   /** { artist, mbid } → { state: 'found' | 'unknown', groups }. Throws when MusicBrainz can't be reached (not cached). */
   async function discographyFor({ artist, mbid }) {
     const key = artistKey(artist), known = artists()[key];
-    if (known && now() - known.fetched < (known.state === 'found' ? FOUND_DAYS : UNKNOWN_DAYS) * DAY) return { state: known.state, groups: known.groups || [] };
-    const id = await findArtist({ artist, mbid });
-    const result = id ? { state: 'found', groups: await releaseGroups(id) } : { state: 'unknown', groups: [] };
+    // (Found with no albums at all: from before that counted as nothing to say — asked again.)
+    const empty = known && known.state === 'found' && !(known.groups || []).length;
+    if (known && !empty && now() - known.fetched < (known.state === 'found' ? FOUND_DAYS : UNKNOWN_DAYS) * DAY) return { state: known.state, groups: known.groups || [] };
+    let id = await findArtist({ artist, mbid }), groups = id ? await releaseGroups(id) : [];
+    // The tags' ID can be another artist of the same name (a DJ called Tool, not the band): with no albums there, by name.
+    if (!groups.length && mbid) {
+      const byName = await findArtist({ artist });
+      if (byName && byName !== id) { id = byName; groups = await releaseGroups(id); }
+    }
+    // No albums known: nothing to say about what's missing — not "you have everything".
+    const result = groups.length ? { state: 'found', groups } : { state: 'unknown', groups: [] };
     artists()[key] = { mbid: id, fetched: now(), ...result };
     write(JSON.stringify({ version: 1, artists: cache }));
     return result;

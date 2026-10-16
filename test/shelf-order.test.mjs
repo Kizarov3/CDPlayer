@@ -79,7 +79,7 @@ test('the sections to jump to: the divider cards in order, short names shortened
   const played = arrange([album('X', 'One', { plays: 3 }), album('Y', 'Two', { plays: 0 })], 'PLAYED');
   assert.deepStrictEqual(jumpTargets(played).map((t) => t.short), ['NOT']);
   const colours = arrange([album('X', 'One', { color: [240, 140, 20] }), album('Y', 'Two', { color: [230, 210, 40] })], 'COLOR');
-  assert.deepStrictEqual(jumpTargets(colours).map((t) => t.short), ['ORA', 'YEL']);
+  assert.deepStrictEqual(jumpTargets(colours).map((t) => t.short), ['ORANGE', 'YELLOW']);
 });
 
 test('same albums → same signature, in any order; a new, gone or retitled song → another', () => {

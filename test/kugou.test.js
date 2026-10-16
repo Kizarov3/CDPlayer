@@ -44,6 +44,13 @@ test('KRC becomes word-timed LRC: each word from its line for its length, dashes
   assert.strictEqual(lrc[3], '[01:12.51]<01:12.51>Denial <01:12.89>has <01:13.32>left <01:13.63>you <01:14.32>all <01:14.88>alone<01:18.88>');
 });
 
+test('Kugou\'s credits are left out: the title line with the artist\'s Chinese name, and "Lyrics by：" lines', () => {
+  const krc = ['[0,500]<0,500,0>With You Linkin Park (林肯公园)', '[600,400]<0,400,0>Lyrics by：Linkin Park', '[1100,400]<0,400,0>Composed by：Linkin Park',
+    '[2000,900]<0,400,0>I <400,500,0>woke', '[3000,500]<0,500,0>作曲：某人'].join('\n');
+  const lrc = krcToLrc(krc, { title: 'With You', artist: 'Linkin Park' }).split('\n');
+  assert.deepStrictEqual(lrc.map((l) => l.replace(/<[^>]*>|\[[^\]]*\]/g, '')), ['I woke']);
+});
+
 const realFetch = global.fetch;
 let asked = [];
 function answer({ candidates = [], content = pack(KRC), fail = false }) {

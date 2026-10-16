@@ -70,8 +70,8 @@ test('a found discography is kept 30 days', async () => {
   const entry = (age) => JSON.stringify({ version: 1, artists: { [artistKey('Tool')]: { mbid: U('e'), fetched: 1000 * DAY - age * DAY, state: 'found', groups: [{ id: 'l', title: 'Lateralus', type: 'Album', secondary: [], year: '2001' }] } } });
   const fresh = make([], { cache: entry(29) });
   assert.strictEqual((await fresh.d.discographyFor({ artist: 'Tool', mbid: U('e') })).groups[0].id, 'l');
-  const stale = make([[/^release-group\?artist=eeee/, { 'release-group-count': 0, 'release-groups': [] }]], { cache: entry(31) });
-  assert.deepStrictEqual((await stale.d.discographyFor({ artist: 'Tool', mbid: U('e') })).groups, []);
+  const stale = make([[/^release-group\?artist=eeee/, { 'release-group-count': 1, 'release-groups': [group('x', 'Some Album')] }]], { cache: entry(31) });
+  assert.deepStrictEqual((await stale.d.discographyFor({ artist: 'Tool', mbid: U('e') })).groups.map((g) => g.id), ['x']);
   assert.strictEqual(stale.net.asked.length, 1);
 });
 
@@ -103,7 +103,7 @@ test('offline: nothing cached, so it is asked again next time', async () => {
 });
 
 test('the queue: one at a time, answers told; an artist scrolled away before its turn is dropped', async () => {
-  const { d, net, answers } = make([[/^release-group\?artist=/, { 'release-group-count': 0, 'release-groups': [] }]]);
+  const { d, net, answers } = make([[/^release-group\?artist=/, { 'release-group-count': 1, 'release-groups': [group('x', 'Some Album')] }]]);
   d.want([{ artist: 'A', mbid: U('a') }, { artist: 'B', mbid: U('b') }, { artist: 'C', mbid: U('c') }]);
   d.want([{ artist: 'A', mbid: U('a') }, { artist: 'D', mbid: U('d') }]); // B and C went off screen
   await new Promise((r) => setTimeout(r, 20));
@@ -137,7 +137,7 @@ test('the search looks at aliases too, so "Kino" finds Кино and not only ban
 test('an MBID tag that isn\'t one ID (a collaboration\'s "id1, id2", or junk): the first real ID, or else the name', async () => {
   const id1 = 'a74b1b7f-71a5-4011-9441-d0b5e4122711', id2 = '8bfac288-ccc5-448d-9573-c33ea2aa5c30';
   const { d, net } = make([
-    [/^release-group\?artist=/, { 'release-group-count': 0, 'release-groups': [] }],
+    [/^release-group\?artist=/, { 'release-group-count': 1, 'release-groups': [group('x', 'Some Album')] }],
     [/^artist\?query=/, { artists: [{ id: 'found', name: 'Nova Drift' }] }],
   ]);
   await d.discographyFor({ artist: 'Radiohead', mbid: `${id1}, ${id2}` });
@@ -145,4 +145,16 @@ test('an MBID tag that isn\'t one ID (a collaboration\'s "id1, id2", or junk): t
   await d.discographyFor({ artist: 'Nova Drift', mbid: 'not an id&x=1' });
   assert.match(net.asked[1], /^artist\?query=/);
   assert.match(net.asked[2], /^release-group\?artist=found&/);
+});
+
+test('the tags\' ID is another artist of the same name, with no albums: the artist by name instead; none anywhere: unknown, not complete', async () => {
+  const { d } = make([
+    [/^release-group\?artist=dddd/, { 'release-group-count': 0, 'release-groups': [] }],
+    [/^artist\?query=.*Tool/, { artists: [{ id: 'band', name: 'Tool' }] }],
+    [/^release-group\?artist=band/, { 'release-group-count': 1, 'release-groups': [group('lat', 'Lateralus')] }],
+    [/^artist\?query=.*Nobody/, { artists: [] }],
+  ]);
+  const tool = await d.discographyFor({ artist: 'Tool', mbid: U('d') });
+  assert.deepStrictEqual([tool.state, tool.groups.map((g) => g.id)], ['found', ['lat']]);
+  assert.strictEqual((await d.discographyFor({ artist: 'Nobody', mbid: U('d') })).state, 'unknown');
 });

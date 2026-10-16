@@ -131,7 +131,7 @@ export function showCard(app, { choices, maxLines, render, copy, save, video }) 
       b.textContent = t('RECORDING…');
       try { if (await video(format, picked, (left) => { b.textContent = t('RECORDING · {left}', { left }); })) closePanel('card'); }
       finally { busy = false; buttons.forEach((x) => { x.disabled = false; }); b.textContent = t('VIDEO {format}', { format }); }
-    }, `${tip} — the disc turning as the picked lines are sung, with the song`);
+    }, t('{use} — the disc turning as the picked lines are sung, with the song', { use: tip }));
     return b;
   };
   const onKey = (e) => {
@@ -239,8 +239,10 @@ function buildSettings(app) {
   lyricsOffset.canvas.title = t('Move the lyrics later (+) or earlier (−) for a song timed a little off');
 
   const mono = toggle(s.mono, () => { app.setMono(!s.mono); setToggle(mono, s.mono); });
-  const spatial = toggle(s.spatial, () => { app.setSpatial(!s.spatial); setToggle(spatial, s.spatial); });
+  const spatial = toggle(s.spatial, () => { app.setSpatial(!s.spatial); setToggle(spatial, s.spatial); spaceRow.classList.toggle('idle', !s.spatial); });
   const spatialValue = el('span', { class: 'row-value' }, `${s.spatialAmount}%`);
+  // SPACE is dimmed while spatial audio is off: it's kept for when it's on (but can still be set).
+  let spaceRow;
   const spatialAmount = new Slider({ min: 0, max: 100, value: s.spatialAmount, onInput: (v) => { spatialValue.textContent = `${v}%`; app.setSpatialAmount(v); } });
   spatialAmount.canvas.title = t('How much room and space');
   const waveform = toggle(s.waveform, () => { app.setWaveform(!s.waveform); setToggle(waveform, s.waveform); });
@@ -275,6 +277,8 @@ function buildSettings(app) {
   const unavailable = (node) => (forSpotify ? el('div', { class: 'unavailable', title: t('Not available for Spotify') }, node) : node);
 
   const github = el('div', { class: 'github-link', title: t('Open GitHub profile'), onClick: () => app.cdp.openGitHub('Kizarov3') }, catSvg(), el('span', {}, 'Kizarov3'));
+  spaceRow = sliderRow(t('SPACE'), spatialAmount, spatialValue);
+  spaceRow.classList.toggle('idle', !s.spatial);
   const body = el('div', { class: 'scroll settings-body' },
     section(t('SOUND')),
     unavailable(row(t('EQUALIZER'), el('div', { class: 'row-pills' }, presetButton, eqButton))),
@@ -287,7 +291,7 @@ function buildSettings(app) {
     unavailable(row(t('MONO AUDIO'), mono)),
     hint(t('Sums the left and right channels together — for a single speaker or one earbud.')),
     unavailable(row(t('SPATIAL AUDIO'), spatial)),
-    unavailable(sliderRow(t('SPACE'), spatialAmount, spatialValue)),
+    unavailable(spaceRow),
     hint(t('For headphones: the music comes from two speakers in front of you instead of from inside your head. Off with mono, and best off on speakers.')),
     unavailable(row(t('SOUND CHECK'), soundCheckButton)),
     hint(t('Plays every song at the same loudness, from its ReplayGain tags or measured once. ALBUM keeps an album’s quiet and loud songs as they were made.')),
@@ -529,6 +533,7 @@ const TAG_ROWS = [
   [t('TITLE'), 'title'], [t('ARTIST'), 'artist'], [t('ALBUM'), 'album'], [t('ALBUM ARTIST'), 'albumArtist'], [t('YEAR'), 'year'],
   [t('TRACK'), 'track', 'trackCount'], [t('DISC'), 'disc', 'discCount'], [t('GENRE'), 'genre'], [t('LABEL'), 'label'],
 ];
+const NUMBERS = new Set(['track', 'trackCount', 'disc', 'discCount']);
 let tagsView = null; // { path, name, canWrite, current, found, foundCover, values, picked: Set, status, busy }
 
 /** The TAGS panel for the song playing — or for any file (`path`, from LIBRARY CHECK); onClose after it's closed. */
@@ -581,6 +586,8 @@ async function lookUpTags(app, view) {
   view.offered = new Set();
   for (const [, ...keys] of TAG_ROWS) for (const k of keys) {
     if (found[k] == null || found[k] === '' || String(found[k]) === String(view.current[k] ?? '')) continue;
+    // A track or disc number the file already has stays: MusicBrainz's may be another edition's running order.
+    if (NUMBERS.has(k) && String(view.current[k] ?? '').trim() !== '') continue;
     view.values[k] = found[k];
     if (String(view.current[k] ?? '').trim() === '') view.picked.add(k); else view.offered.add(k);
   }
@@ -665,9 +672,10 @@ function buildTags(app) {
 export function showHistory(app) { openPanel('history', () => buildHistory(app), { width: 480 }); }
 export function refreshHistoryIfOpen(app) { if (isOpen('history')) refreshPanel('history'); }
 function trackRow(app, path, label, onPlay) {
+  const now = pill(t('PLAY'), (e) => { e.stopPropagation(); onPlay(); }, t('Play it now'));
   const next = pill(t('NEXT'), (e) => { e.stopPropagation(); app.playNext([path], { sorted: true }); }, app.changerMode() ? t('Into the changer, to play after the disc playing') : t('Play it next, after the song playing'));
   const add = pill(t('ADD'), (e) => { e.stopPropagation(); app.addToQueue([path], { sorted: true }); }, app.changerMode() ? t('Into the changer') : t('Add to queue'));
-  return el('div', { class: 'list-row', title: t('Play {song}', { song: label }), onClick: onPlay }, el('span', { class: 'entry' }, label), next, add);
+  return el('div', { class: 'list-row', title: t('Play {song}', { song: label }), onClick: onPlay }, el('span', { class: 'entry' }, label), now, next, add);
 }
 function buildHistory(app) {
   const h = app.state.history;
@@ -791,8 +799,9 @@ function refreshSearchResults(app) {
   for (const p of search.index) {
     if (!words.length || (() => { const text = searchText(p); return words.every((w) => text.includes(w)); })()) { matches.push(p); if (matches.length >= SEARCH_LIMIT) break; }
   }
-  setSearchStatus(search.scanning ? t('SCANNING YOUR MUSIC FOLDER…')
-    : matches.length >= SEARCH_LIMIT ? t('{n}+ MATCHES IN {folder}', { n: matches.length, folder: search.folder }) : t('{n} MATCHES IN {folder}', { n: matches.length, folder: search.folder }));
+  setSearchStatus(search.scanning ? t('SCANNING YOUR MUSIC FOLDER…') : !words.length ? t('{n} SONGS IN {folder} · TYPE TO FIND ONE', { n: search.index.length, folder: search.folder })
+    : matches.length >= SEARCH_LIMIT ? t('{n}+ MATCHES IN {folder}', { n: matches.length, folder: search.folder })
+    : matches.length === 1 ? t('1 MATCH IN {folder}', { folder: search.folder }) : t('{n} MATCHES IN {folder}', { n: matches.length, folder: search.folder }));
   search.results.replaceChildren(...(matches.length
     ? matches.map((p) => trackRow(app, p, searchName(p), async () => {
       if (!(await app.cdp.exists(p))) { app.setStatus(t('FILE NO LONGER FOUND')); startLibraryScan(app); return; }

@@ -6,10 +6,15 @@ import { priceBand } from './shelf-discogs.js';
 
 export const SORTS = ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR', 'PRICE'];
 
-/** Whether an album shows for what's typed in the shelf's filter: every word somewhere in its artist, title, year or note. */
+/**
+ * Whether an album shows for what's typed in the shelf's filter: every word somewhere in its artist, title, year, note,
+ * label or catalogue number (its own, or its pressing's) — accents or not ("motley crue" finds Mötley Crüe).
+ */
+const fold = (s) => String(s || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 export function matchesFilter(album, query) {
-  const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
-  const text = `${album.artist || ''} ${album.title} ${album.year || ''} ${album.note || ''}`.toLowerCase();
+  const words = fold(query).split(/\s+/).filter(Boolean);
+  const info = (album.pressing && album.pressing.info) || {};
+  const text = fold([album.artist, album.title, album.year, album.note, album.label, album.catalog, info.catno, info.label].filter(Boolean).join(' '));
   return words.every((w) => text.includes(w));
 }
 /** What the shelf shows, as one string: each album's id, title, artist, year and its songs' paths and titles — so a
@@ -115,13 +120,13 @@ export function arrange(albums, sort, { currency = null } = {}) {
 
 /**
  * The sections of a shelf as arranged (its divider cards, in order), for the index down its side: { label, short } —
- * short enough for a narrow strip: '1990s' → '90s', 'MAR 2024' → "MAR'24", 'NOT PLAYED YET' → 'NOT', 'ORANGE' → 'ORA'.
+ * short enough for a narrow strip: '1990s' → '90s', 'MAR 2024' → "MAR'24", 'NOT PLAYED YET' → 'NOT', a word of up to six letters whole ('ORANGE', 'UNDER'), a longer one cut to three.
  */
 export function jumpTargets(items) {
   return items.filter((x) => x.divider).map(({ divider: label }) => {
     const month = /^([A-Z]{3}) \d{2}(\d{2})$/.exec(label);
     const word = label.split(' ')[0];
-    const short = /^\d{4}s$/.test(label) ? label.slice(2) : month ? `${month[1]}'${month[2]}` : word.length > 5 ? word.slice(0, 3) : word;
+    const short = /^\d{4}s$/.test(label) ? label.slice(2) : month ? `${month[1]}'${month[2]}` : word.length > 6 ? word.slice(0, 3) : word;
     return { label, short };
   });
 }

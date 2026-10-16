@@ -296,7 +296,8 @@ function renderQueueList() {
     list.replaceChildren();
     return;
   }
-  $('queue-info').textContent = state.shuffle !== 'OFF' ? t('QUEUE {at} / {of} · SHUFFLED', { at: state.index + 1, of: state.queue.length }) : t('QUEUE {at} / {of}', { at: state.index + 1, of: state.queue.length });
+  $('queue-info').textContent = (state.shuffle !== 'OFF' ? t('QUEUE {at} / {of} · SHUFFLED', { at: state.index + 1, of: state.queue.length }) : t('QUEUE {at} / {of}', { at: state.index + 1, of: state.queue.length }))
+    + (state.repeat === 'ALL' ? ` · ${t('ROUND AGAIN AT THE END')}` : '');
   const next = upcomingIndex();
   $('queue-next').textContent = state.repeat === 'TRACK' ? t('REPEATING THIS TRACK')
     : next >= 0 && next !== state.index ? t('UP NEXT · {song}', { song: queueDisplay(state.queue[next]) }) : t('END OF QUEUE');
@@ -321,7 +322,7 @@ function renderQueueList() {
   list.replaceChildren(...rows);
   list.scrollTop = scrollTop;
   // The song playing moved on: the list follows it, if it went out of sight (scrolling by hand is left alone otherwise).
-  if (state.index !== shownIndex && drag.index < 0 && rows[state.index]) rows[state.index].scrollIntoView({ block: 'nearest' });
+  if (state.index !== shownIndex && drag.index < 0 && rows[state.index]) rows[state.index].scrollIntoView({ block: 'center' }); // the next songs in sight too
   shownIndex = state.index;
 }
 let shownIndex = -1;

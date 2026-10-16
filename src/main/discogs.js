@@ -7,6 +7,7 @@
  */
 const store = require('./store');
 const { sameName } = require('./same-name');
+const { searchTitle } = require('./album-story');
 
 const CACHE_FILE = 'discogs.json', SETTINGS_FILE = 'discogs.txt';
 const DAY = 86400e3, INFO_DAYS = 180, PRICE_DAYS = 30, MISSING_DAYS = 7;
@@ -31,12 +32,13 @@ function discogsLink(mbRelease) {
  * catalogue number, then the year and the label; between equals, the pressing most people have (the likeliest to be
  * this one), then Discogs' order.
  */
+const isCd = (release) => (release.formats || []).some((f) => /^(CD|CDr|SACD|Hybrid)$/i.test(f.name || ''));
 function pickRelease(results, album) {
   const various = !album.artist || album.artist === 'Various Artists';
   let best = null, bestScore = -1, bestHave = -1;
   for (const r of results || []) {
     const [artist, ...rest] = String(r.title || '').split(' - ');
-    if (sameName(rest.join(' - ')) !== sameName(album.title)) continue;
+    if (sameName(rest.join(' - ')) !== sameName(album.title) && sameName(searchTitle(rest.join(' - '))) !== sameName(searchTitle(album.title))) continue; // "(Remastered)" or not
     if (!various && sameName(bare(artist)) !== sameName(album.artist)) continue;
     let score = 0;
     if (album.barcode && (r.barcode || []).some((b) => digits(b) && digits(b) === digits(album.barcode))) score += 4;
@@ -119,11 +121,16 @@ function createDiscogs({ fetchJson, mbFetch, read = (f) => store.readText(f), wr
     return p;
   }
 
+  const fetched = new Map(); // a release findRelease already read (to check it's a CD), for lookup to use as it is
   async function findRelease(album) {
     if (album.mbReleaseId && MBID.test(album.mbReleaseId)) {
+      // The release the tags name, if it's on CD (a shelf of files is a shelf of CDs: its vinyl or cassette would be
+      // another price altogether); else it's searched for as a CD, below.
       const link = discogsLink(await mbFetch(`release/${album.mbReleaseId}?inc=url-rels&fmt=json`).catch(() => null));
-      if (link && link.kind === 'release') return link.id;
-      if (link) { const master = await request(`masters/${link.id}`); if (master.main_release) return master.main_release; }
+      let id = null;
+      if (link && link.kind === 'release') id = link.id;
+      else if (link) { const master = await request(`masters/${link.id}`).catch(gone); id = master && master.main_release; }
+      if (id) { const r = await request(`releases/${id}`).catch(gone); if (r && isCd(r)) { fetched.set(id, r); return id; } }
     }
     const barcode = digits(album.barcode);
     if (barcode.length >= 8 && barcode.length <= 14) {
@@ -135,7 +142,7 @@ function createDiscogs({ fetchJson, mbFetch, read = (f) => store.readText(f), wr
     return hit ? hit.id : null;
   }
   const searchQuery = (album, n) => [album.artist && album.artist !== 'Various Artists' ? `artist=${encodeURIComponent(album.artist)}` : null,
-    `release_title=${encodeURIComponent(album.title)}`, 'format=CD', 'type=release', `per_page=${n}`].filter(Boolean).join('&');
+    `release_title=${encodeURIComponent(searchTitle(album.title) || album.title)}`, 'format=CD', 'type=release', `per_page=${n}`].filter(Boolean).join('&');
 
   async function priced(entry) {
     const currency = settingsOf().currency;
@@ -155,12 +162,16 @@ function createDiscogs({ fetchJson, mbFetch, read = (f) => store.readText(f), wr
   function lookup(album) {
     if (inFlight.has(album.id)) return inFlight.get(album.id);
     const p = (async () => {
-      const old = albums()[album.id], stale = staleness(old, now(), settingsOf().currency);
+      const old = albums()[album.id];
+      // (A pressing found before CDs were insisted on, that isn't one: found again.)
+      const notCd = old && old.by !== 'user' && old.info && old.info.formats && !/\b(CD|CDr|SACD|Hybrid)\b/.test(old.info.formats);
+      const stale = notCd ? 'release' : staleness(old, now(), settingsOf().currency);
       if (!stale) return old;
       if (stale === 'price') return keep(album, await priced(old));
       const id = old && old.by === 'user' ? old.releaseId : await findRelease(album).catch(gone);
       if (!id) return keep(album, { releaseId: null, by: 'auto', checkedAt: now() });
-      const release = await request(`releases/${id}`).catch(gone);
+      const release = fetched.get(id) || await request(`releases/${id}`).catch(gone);
+      fetched.delete(id);
       if (!release) return keep(album, { releaseId: null, by: 'auto', checkedAt: now() }); // removed from Discogs
       return keep(album, await priced({ releaseId: id, by: old && old.by === 'user' ? 'user' : 'auto', info: summarize(release), checkedAt: now() }));
     })().finally(() => inFlight.delete(album.id));

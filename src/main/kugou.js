@@ -35,6 +35,8 @@ function decodeKrc(content) {
  * held past LONGEST_WORD is cut there (and so is its line), and the credit line Kugou puts first ("Title - Artist")
  * is left out.
  */
+// Credit lines Kugou puts among the words ("Lyrics by：…", "Composed by：…", 作词：…), wherever they are.
+const CREDIT = /^\s*(lyrics|lyricist|words|music|composed|composer|written|writer|arranged|arranger|produced|producer|mixed|mastered|作词|作曲|编曲|制作|词|曲)[^:：]{0,24}[:：]/i;
 function krcToLrc(krc, { title, artist } = {}) {
   const credits = new Set([bare(`${title}${artist}`), bare(`${artist}${title}`), bare(title), bare(artist)].filter(Boolean));
   const out = [];
@@ -49,7 +51,7 @@ function krcToLrc(krc, { title, artist } = {}) {
       if (w.text.trim()) words.push(w);
     }
     const text = words.map((w) => w.text).join('').trim();
-    if (!text || (!out.length && (credits.has(bare(text)) || /[:：]/.test(text)))) continue;
+    if (!text || CREDIT.test(text) || (!out.length && (credits.has(bare(text)) || credits.has(bare(text.replace(/[(（][^)）]*[)）]/g, ''))) || /[:：]/.test(text)))) continue;
     let lineEnd = start + +head[2] / 1000;
     const last = words[words.length - 1];
     if (last.end - last.time > LONGEST_WORD) { last.end = last.time + LONGEST_WORD; lineEnd = last.end; }

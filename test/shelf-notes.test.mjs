@@ -27,3 +27,11 @@ test('the shelf\'s filter finds albums by artist, title, year and their note', (
   assert.ok(!matchesFilter(a, 'korn'));
   assert.ok(matchesFilter({ artist: null, title: 'X', year: null }, 'x'));
 });
+
+test('the shelf\'s filter finds a catalogue number and ignores accents', () => {
+  const a = { artist: 'Mötley Crüe', title: 'Dr. Feelgood', year: '1989', catalog: 'VICP-34664', pressing: { info: { catno: 'SRCS 6941', label: 'Elektra' } } };
+  assert.ok(matchesFilter(a, 'motley crue'));
+  assert.ok(matchesFilter(a, 'vicp-34664'));
+  assert.ok(matchesFilter(a, 'srcs 6941'));
+  assert.ok(!matchesFilter(a, 'bvcp'));
+});

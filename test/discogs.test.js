@@ -106,6 +106,22 @@ test('a MusicBrainz link to a master: its main release', async () => {
   assert.strictEqual((await engine.lookup({ ...album, mbReleaseId: 'f9e0e4e5-1d7e-4e8d-9a46-3f1d2e6f6b1d' })).releaseId, 88);
 });
 
+test('a MusicBrainz link to a vinyl pressing: the CD is searched for instead', async () => {
+  const cd = { id: 9, title: 'Radiohead - Kid A', year: '2000', label: ['Parlophone'], catno: '', barcode: [] };
+  const { engine } = rig({
+    mb: { 'release/f9e0e4e5-1d7e-4e8d-9a46-3f1d2e6f6b1d': { relations: [{ url: { resource: 'https://www.discogs.com/release/77' } }] } },
+    routes: { 'releases/77': release(77, { formats: [{ name: 'Vinyl', descriptions: ['LP'] }] }), 'barcode=': found(cd), 'releases/9': release(9), 'marketplace/stats/9': stats(4) },
+  });
+  assert.strictEqual((await engine.lookup({ ...album, mbReleaseId: 'f9e0e4e5-1d7e-4e8d-9a46-3f1d2e6f6b1d' })).releaseId, 9);
+});
+
+test('a title with its edition ("(Remastered)") is searched for without it', async () => {
+  const hit = { id: 6, title: 'Metallica - Kill \'Em All', year: '1983', label: ['Megaforce'], catno: '', barcode: [] };
+  const { engine, calls } = rig({ routes: { 'release_title=Kill': found(hit), 'releases/6': release(6), 'marketplace/stats/6': stats(7) } });
+  assert.strictEqual((await engine.lookup({ id: 'k', artist: 'Metallica', title: "Kill 'Em All (Remastered)" })).releaseId, 6);
+  assert.ok(calls.some((c) => c.url.includes("release_title=Kill'Em%20All") || c.url.includes('release_title=Kill%20%27Em%20All') || /release_title=Kill[^&]*All&/.test(c.url)));
+});
+
 test('no MusicBrainz ID: the barcode first, then artist and title', async () => {
   const hit = { id: 5, title: 'Radiohead - Kid A', year: '2000', label: ['Parlophone'], catno: '', barcode: [] };
   const a = rig({ routes: { 'barcode=724352775324': found(hit), 'releases/5': release(5), 'marketplace/stats/5': stats(9) } });
