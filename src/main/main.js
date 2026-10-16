@@ -123,7 +123,7 @@ function createWindow() {
   win.on('enter-full-screen', () => win.webContents.send('fullscreen-changed', true));
   win.on('leave-full-screen', () => win.webContents.send('fullscreen-changed', false));
   win.on('close', () => {
-    try { win.webContents.send('app-closing'); } catch { /* already gone */ }
+    if (!win.webContents.isCrashed()) try { win.webContents.send('app-closing'); } catch { /* already gone */ } // (a page that's gone can't be told)
     persistSettings();
   });
   win.on('closed', () => { win = null; if (miniWin && !miniWin.isDestroyed()) { quitting = true; miniWin.close(); } });
