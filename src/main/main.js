@@ -130,6 +130,18 @@ function createWindow() {
   win.once('ready-to-show', () => { if (!smokeDir) win.show(); });
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // The page's process gone (a crash, or the system ending it): load the player again rather than leave an empty
+  // window — at most three times a minute, so a page that dies as it starts can't go round and round.
+  let revived = [];
+  win.webContents.on('render-process-gone', (_e, details) => {
+    console.error(`The player's page went (${details.reason}, exit code ${details.exitCode})`);
+    if (details.reason === 'clean-exit' || quitting || win.isDestroyed()) return;
+    const now = Date.now();
+    revived = revived.filter((t) => now - t < 60000);
+    if (revived.length >= 3) return;
+    revived.push(now);
+    win.webContents.reload();
+  });
   win.webContents.on('did-finish-load', () => {
     if (smokeDir) { runSmokeTest(); return; }
     if (pendingOpenFiles.length) { win.webContents.send('open-files', pendingOpenFiles.splice(0)); }
