@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import { createRequire } from 'node:module';
-import { sameName, artistsWanting, missingFor, withMissing, boxLabel, boxesFor, renderGate, pickEdition, fullTracklist, groupOf } from '../src/renderer/js/shelf-missing.js';
+import { sameName, artistsWanting, missingFor, withMissing, boxLabel, boxesFor, renderGate, pickEdition, fullTracklist, groupOf, albumKey } from '../src/renderer/js/shelf-missing.js';
 
 const require = createRequire(import.meta.url);
 const main = require('../src/main/same-name');
@@ -136,4 +136,12 @@ test('a case opened on any sort asks for its artist\'s discography once, to find
   assert.strictEqual(await groupFor({ artist: 'Various Artists', title: 'Hits' }, discogs, fetch), null);
   assert.strictEqual(await groupFor({ artist: 'Nobody', title: 'X' }, discogs, async () => { throw new Error('offline'); }), null, 'offline: as it was');
   assert.strictEqual(asked.length, 1);
+});
+
+test('an edition is its album: "Nevermind (Remastered)" owns Nevermind, and finds its release group', () => {
+  const groups = [g('nm', 'Nevermind'), g('iu', 'In Utero'), g('bl', 'Bleach')];
+  assert.deepStrictEqual(missingFor(groups, ['Nevermind (Remastered)', 'In Utero - 20th Anniversary Edition'], new Set()).map((x) => x.id), ['bl']);
+  const discogs = new Map([[sameName('Nirvana'), { state: 'found', groups }]]);
+  assert.strictEqual(groupOf({ artist: 'Nirvana', title: 'Nevermind (Remastered)' }, discogs).id, 'nm');
+  assert.strictEqual(albumKey('Ten (Deluxe Edition)'), albumKey('Ten'));
 });

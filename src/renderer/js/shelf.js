@@ -681,6 +681,7 @@ async function openCase(a, spine) {
     el('span', { class: 'time' }, track.duration ? app.formatTime(track.duration) : ''));
   const tracks = a.tracks.map((t, i) => trackRow(t, i));
   const trackList = el('div', { class: 'case-tracks scroll' }, tracks);
+  let wholeList = null; // the full tracklist once it's known, for the booklet too
   // The album's whole tracklist from MusicBrainz, once its artist's discography is known: the songs you don't have
   // stand in their place, in grey.
   groupFor(a, shelf.discogs, app.cdp.discographyOf).then((group) => group && app.cdp.missingTracklist(group.id)).then((editions) => {
@@ -688,6 +689,7 @@ async function openCase(a, spine) {
     if (!edition || !trackList.isConnected) return;
     const rows = fullTracklist(edition, a.tracks);
     if (rows.every((r) => r.have)) return; // nothing missing: as it was
+    wholeList = rows;
     trackList.replaceChildren(...rows.map((r) => (r.have ? trackRow(r.have, a.tracks.indexOf(r.have), r.no) : el('div', { class: 'case-track missing', title: t('Not in your collection') },
       el('span', { class: 'no' }, String(r.no).padStart(2, '0')), el('span', { class: 'name' }, r.title),
       el('span', { class: 'time' }, r.length ? app.formatTime(r.length) : '')))));
@@ -697,7 +699,7 @@ async function openCase(a, spine) {
   front.title = t('Open the booklet');
   front.addEventListener('click', () => {
     if (a.wrapped) { if (film && anim.enabled) film.animate([{ transform: 'none' }, { transform: 'translateX(-4px)' }, { transform: 'translateX(3px)' }, { transform: 'none' }], { duration: 240 }); return; } // unwrap it first
-    openAlbumBooklet(a, front);
+    openAlbumBooklet(a, front, wholeList);
   });
   const st = a.stickers || stickersFor(a);
   // The sticky note: on the front when there is one; + NOTE sticks a blank one on to write.
@@ -778,7 +780,7 @@ function showCase(card, spine, from, color) {
 }
 
 // The album's booklet, rising out of the case's cover (full size, not the spine's thumbnail).
-async function openAlbumBooklet(a, front) {
+async function openAlbumBooklet(a, front, wholeList = null) {
   const { app } = shelf;
   if (isBookletOpen() || front.classList.contains('opening')) return;
   front.classList.add('opening');
@@ -787,6 +789,7 @@ async function openAlbumBooklet(a, front) {
     let img = null;
     if (src) { img = new Image(); img.src = src; try { await img.decode(); } catch { img = null; } }
     const content = await albumBooklet(app, a, img, {
+      wholeList,
       play: (i) => { closeBooklet(); play(a, i); },
       onClose: () => { front.style.visibility = ''; },
     });

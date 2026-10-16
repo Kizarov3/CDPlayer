@@ -790,6 +790,8 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 .booklet .page-body { flex: 1 1 auto; min-height: 0; }
 .booklet .track { display: flex; align-items: baseline; gap: .8em; padding: .4em .5em; margin: 0 -.5em; border-radius: 4px; }
 .booklet .track:hover { background: rgba(255, 255, 255, .06); }
+.booklet .track.missing { opacity: .38; cursor: default; } /* on the album, not in the collection */
+.booklet .track.missing:hover { background: none; }
 .booklet .track .no { flex: none; width: 1.7em; color: var(--b-muted); font-size: .8em; }
 .booklet .track .name { flex: 1 1 auto; min-width: 0; font-weight: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .booklet .track .time { flex: none; font-size: .82em; color: var(--b-muted); font-weight: normal; }

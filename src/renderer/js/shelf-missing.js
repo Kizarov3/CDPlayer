@@ -7,6 +7,11 @@ const VARIOUS = 'various artists';
 
 /** How the shelf compares names ("OK Computer" = "ok computer!") — the same as main/shelf.js's sameName. */
 export const sameName = (s) => { const low = String(s || '').toLowerCase(); return low.replace(/[^\p{L}\p{N}]+/gu, '') || low.trim(); };
+// An album's title without its edition's words — "Nevermind (Remastered)", "Ten (Deluxe Edition)", "Toxicity - 2011
+// Remaster" are Nevermind, Ten and Toxicity — compared as sameName compares.
+const EDITION = /\s*[([][^)\]]*\b(deluxe|remaster(ed)?|edition|expanded|anniversary|bonus|disc|disk|cd\s*\d|super|reissue|mono|stereo|version)\b[^)\]]*[)\]]/gi;
+const EDITION_TAIL = /\s+[-–—]\s+[^-–—]*\b(remaster(ed)?|deluxe|edition|anniversary|version)\b.*$/i;
+export const albumKey = (title) => sameName(String(title || '').replace(EDITION, ' ').replace(EDITION_TAIL, '').trim() || title);
 
 /** Shelf albums → the artists who get a box (every album artist but Various Artists): Map(key → { key, artist, mbid, owned: their album titles }). */
 export function artistsWanting(albums) {
@@ -27,8 +32,8 @@ const isStudioAlbum = (g) => g.type === 'Album' && !(g.secondary || []).length;
 
 /** An artist's studio albums they don't have (by title, as the shelf compares names) and haven't hidden, oldest first. */
 export function missingFor(groups, owned, hidden) {
-  const have = new Set(owned.map(sameName));
-  return groups.filter((g) => isStudioAlbum(g) && !hidden.has(g.id) && !have.has(sameName(g.title)))
+  const have = new Set(owned.map(albumKey));
+  return groups.filter((g) => isStudioAlbum(g) && !hidden.has(g.id) && !have.has(albumKey(g.title)))
     .sort((a, b) => (!a.year - !b.year) || String(a.year || '').localeCompare(String(b.year || '')) || a.title.localeCompare(b.title));
 }
 
@@ -86,7 +91,8 @@ export function renderGate({ render, busy, later = (fn) => setTimeout(fn, 200) }
 /** An album on the shelf → its release group in its artist's discography (by title, as the shelf compares names), or null. */
 export function groupOf(album, discogs) {
   const d = album.artist && discogs.get(sameName(album.artist));
-  return (d && d.groups.find((g) => sameName(g.title) === sameName(album.title))) || null;
+  if (!d) return null;
+  return d.groups.find((g) => sameName(g.title) === sameName(album.title)) || d.groups.find((g) => albumKey(g.title) === albumKey(album.title)) || null;
 }
 
 /**

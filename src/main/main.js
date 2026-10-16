@@ -476,7 +476,8 @@ handle('discography:want', (artists) => discography.want(Array.isArray(artists) 
 handle('discography:tracklist', (groupId) => discography.tracklist(groupId));
 // The booklet's "About the album" pages (album-story.js), in the interface's language.
 const albumStory = require('./album-story').createAlbumStory({ mbFetch: (q) => online.mbFetch(q), fetchJson: (url, init) => online.fetchJson(url, init), findGroup: (q) => online.musicBrainzAlbum(q) });
-handle('story:album', (q) => albumStory.storyFor({ ...(q || {}), lang: i18n.current().code }));
+// MusicBrainz or Wikipedia busy or out of reach: { unavailable } (nothing's remembered; the booklet asks again).
+handle('story:album', (q) => albumStory.storyFor({ ...(q || {}), lang: i18n.current().code }).catch(() => ({ unavailable: true })));
 handle('story:open', (url) => { if (/^https:\/\/[a-z-]+\.wikipedia\.org\/wiki\//.test(String(url))) shell.openExternal(url); });
 handle('discography:of', (a) => discography.discographyFor({ artist: String((a && a.artist) || ''), mbid: (a && a.mbid) || null }));
 // Discogs (discogs.js): an album's pressing and price when its case is opened, the whole shelf when it's appraised.

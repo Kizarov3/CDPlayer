@@ -272,9 +272,14 @@ async function songContent(app) {
 }
 
 // The album's story from Wikipedia (main/album-story.js), slotted in after the tracklist once it's found.
-function tellStory(app, content, query) {
+// MusicBrainz busy (it often is): asked again a little later, while the booklet is still open, twice at most.
+function tellStory(app, content, query, tries = 3) {
   if (!query.artist || !(query.album || query.title)) return;
   app.cdp.albumStory(query).then((story) => {
+    if (story && story.unavailable) {
+      if (tries > 1) setTimeout(() => { if (isBookletOpen() && book.content === content) tellStory(app, content, query, tries - 1); }, 15000);
+      return;
+    }
     if (!story) return;
     content.story = story;
     refreshBooklet(content);
@@ -286,7 +291,7 @@ function tellStory(app, content, query) {
  * (an <img>, or null). `play(i)` plays the album from track i. Lyrics inside the files are there at once; the rest
  * are looked up online once it's open, a few at a time, and slot in as they're found.
  */
-export async function albumBooklet(app, album, cover, { play, onClose = () => {} }) {
+export async function albumBooklet(app, album, cover, { play, onClose = () => {}, wholeList = null }) {
   const details = await Promise.all(album.tracks.map((t) => app.cdp.details(t.path, { withCover: false }).catch(() => null)));
   const plays = await Promise.all(album.tracks.map((t) => app.cdp.playCount(t.path).catch(() => 0)));
   const pressing = ((await app.cdp.discogsKnown([album.id]).catch(() => ({})))[album.id] || {}).info || null;
@@ -299,7 +304,12 @@ export async function albumBooklet(app, album, cover, { play, onClose = () => {}
     cover, marker: { title: album.title, artist: album.artist },
     tracks: {
       title: album.title, sub: [album.artist, album.year].filter(Boolean).join(' · '),
-      rows: album.tracks.map((tr, i) => ({
+      // The album's whole tracklist when the case knows it: the songs you don't have in their places, in grey.
+      rows: wholeList ? wholeList.map((r) => {
+        const i = r.have ? album.tracks.indexOf(r.have) : -1;
+        return i < 0 ? { no: r.no, name: r.title, time: r.length ? app.formatTime(r.length) : '', missing: true, tip: t('Not in your collection') }
+          : { no: r.no, name: r.have.title, time: r.have.duration ? app.formatTime(r.have.duration) : '', current: i === playing(), tip: t('Play {song}', { song: r.have.title }), play: () => play(i), tally: marks.tallies[i], favorite: i === marks.favorite };
+      }) : album.tracks.map((tr, i) => ({
         name: tr.title, time: tr.duration ? app.formatTime(tr.duration) : '', current: i === playing(), tip: t('Play {song}', { song: tr.title }), play: () => play(i),
         tally: marks.tallies[i], favorite: i === marks.favorite,
       })),
@@ -367,12 +377,12 @@ function insidePages(content, spread, size) {
   // Tracklist.
   const { tracks } = content;
   pages.push(...layout('tracks', (n) => heading(n ? t('{title} (cont.)', { title: tracks.title }) : tracks.title, n ? null : tracks.sub), tracks.rows.map((t, k) => () => {
-    const row = el('div', { class: `track${t.current ? ' current' : ''}${t.favorite ? ' favorite' : ''}`, 'data-play': k, title: t.tip },
-      el('span', { class: 'no' }, String(k + 1).padStart(2, '0')),
+    const row = el('div', { class: `track${t.current ? ' current' : ''}${t.favorite ? ' favorite' : ''}${t.missing ? ' missing' : ''}`, 'data-play': t.play ? k : null, title: t.tip },
+      el('span', { class: 'no' }, t.no === null ? '' : String(t.no || k + 1).padStart(2, '0')),
       el('span', { class: 'name' }, el('span', { class: 'title' }, t.name)),
       t.tally ? tallyMarks(t.tally, k) : null, // beside the name, never cut off with a long one
       el('span', { class: 'time' }, t.time));
-    row.addEventListener('click', (e) => { e.stopPropagation(); t.play(); });
+    row.addEventListener('click', (e) => { e.stopPropagation(); if (t.play) t.play(); }); // (a song you don't have: nothing, not a page turn)
     return row;
   })));
 
