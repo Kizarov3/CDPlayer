@@ -888,7 +888,7 @@ function setPlaying(playing) {
   noise.setPlaying(playing);
   playButton.setGlyph(playing ? 'PAUSE' : 'PLAY'); pulse(playButton, true);
   if (playing) spotifyTrouble = null;
-  setStatus(playing ? t('NOW SPINNING') : spotifyActive() && spotifyTrouble ? spotifyTrouble : state.loadedPath ? t('PAUSED') : t('READY TO PLAY'));
+  setStatus(playing ? (state.volume === 0 ? t('NOW SPINNING · SOUND OFF') : t('NOW SPINNING')) : spotifyActive() && spotifyTrouble ? spotifyTrouble : state.loadedPath ? t('PAUSED') : t('READY TO PLAY'));
   visualizer.setActive(playing); bigVisualizer.setActive(playing);
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = state.loadedPath ? (playing ? 'playing' : 'paused') : 'none';
   pushMini(true);
@@ -2017,7 +2017,7 @@ function buildStaticUi() {
     notePlayed(); // the song that just ended played to its end (the changer marks its disc)
     goTo(mark.index, { seamless: true });
   };
-  engine.onCrossfadeDone = () => { if (engine.playing) setStatus(t('NOW SPINNING')); };
+  engine.onCrossfadeDone = () => { if (engine.playing) setStatus(stateStatus()); };
   drawDivider();
   new ResizeObserver(drawDivider).observe($('divider'));
 }
