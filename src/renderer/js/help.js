@@ -7,7 +7,7 @@ import { t } from './i18n.js';
 export const TOUR = [
   { targets: ['#disc'], title: t('THE DISC'), text: t('Your music plays on this disc. Grab it and turn it to move through the song. Once a song is in, click the small cover in the case’s corner for the album art, and again for its booklet.') },
   { targets: ['#shelf-button'], title: t('THE SHELF'), text: t('Every album in your music folder, spine out — it asks for the folder the first time. Click a spine to take the case out and play it.') },
-  { targets: ['#load-button', '#tray-button'], title: t('PUT SOME MUSIC ON'), text: t('Or bring music in yourself: drag songs or whole folders onto the window, or press LOAD A TRACK. ⏏ opens the tray: drop music on it, like a new CD.') },
+  { targets: ['#load-button', '#tray-button'], title: t('PUT SOME MUSIC ON'), text: t('Music from anywhere else: drag songs or whole folders onto the window, or press LOAD A TRACK. ⏏ opens the tray: drop music on it, like a new CD.') },
   { targets: ['#transport'], title: t('PLAY'), text: t('Play and pause, previous and next, five seconds back and on, SHUFFLE and REPEAT. Space plays and pauses; J and L skip.') },
   { targets: ['#queue-card'], title: t('THE QUEUE'), text: t('Your queue: drag a song to move it, × takes it out. With the CD changer on (in SETTINGS), five discs turn here instead.') },
   { targets: ['#lyrics-button', '#karaoke-button', '#tags-button'], fallback: '#now-row', title: t('LYRICS, KARAOKE, TAGS'), text: t('Here, once a song plays: LYRICS shows its words, lit up as they’re sung, KARAOKE fills the window with them, and TAGS fixes its name and album from MusicBrainz.') },
@@ -21,9 +21,9 @@ export const TOUR = [
 export const FEATURES = [
   { group: t('THE SHELF'), items: [
     { title: t('Dust'), show: 'dust', text: t('An album you haven’t played for a month starts gathering dust on its spine, more each week, thick after half a year. Rub the mouse over the spine to wipe it. PULL ONE takes an album at random — the dustier, the likelier.') },
-    { title: t('Shrink-wrap'), show: 'wrap', text: t('An album new in your music folder arrives in shrink-wrap with a NEW sticker. The film comes off when you play it, or tear it off the case yourself.') },
+    { title: t('Shrink-wrap'), show: 'wrap', text: t('An album new in your music folder arrives in shrink-wrap: the film comes off when you play it, or tear it off the case yourself. Its NEW sticker stays for two weeks.') },
     { title: t('Albums you don’t have'), show: 'missing', text: t('Sorted by artist, each artist’s albums end with a box: their studio albums missing from your shelf, from MusicBrainz. Open it and they stand there as see-through places with their tracklists; an album you only have a song of shows the rest of its songs in grey.') },
-    { title: t('What it’s worth on Discogs'), show: 'discogs', text: t('Pull out a case to see the album’s pressing on Discogs — label, catalogue number, country — and its lowest price there. APPRAISE values the whole shelf, sorting by price stands it dearest first, and a dear or much-wanted pressing gets a gold ★ RARE.') },
+    { title: t('What it’s worth on Discogs'), show: 'discogs', text: t('Discogs is the biggest marketplace for records and CDs. Pull out a case to see the album’s pressing there — label, catalogue number, country — and its lowest price. APPRAISE values the whole shelf, sorting by price stands it dearest first, and a dear or much-wanted pressing gets a gold ★ RARE.') },
     { title: t('A shop’s look'), text: t('The obi strips, the yen and dollar stickers and the shop receipts tucked behind covers are decoration — a collection bought in different shops over the years. The real prices are Discogs’, in the case.') },
     { title: t('Notes on cases'), text: t('+ NOTE sticks a note on a case; its corner shows on the spine, and the shelf’s search finds what you wrote.') },
     { title: t('A check-up'), text: t('CHECK on the shelf finds what’s wrong in your music folder: songs without tags or covers, duplicates, gaps in an album’s track numbers.') },
@@ -47,7 +47,7 @@ export const FEATURES = [
     { title: t('A card to share'), text: t('P: a card of the song with the lines you pick — copy it, save it, or record a video of the disc turning while they’re sung, for Stories.') },
   ] },
   { group: t('THE CD CHANGER'), items: [
-    { title: t('Five discs'), text: t('Settings → CD CHANGER: five discs in a carousel instead of a queue. D skips to the next disc, 1–5 play a slot, and a full changer asks which disc goes back to the shelf.') },
+    { title: t('Five discs'), text: t('Settings → PLAYBACK → CD CHANGER: five discs in a carousel instead of a queue. D skips to the next disc, 1–5 play a slot, and a full changer asks which disc goes back to the shelf.') },
     { title: t('Mixtapes'), text: t('Songs added one at a time go on a home-made CD-R, written on with the day — a compilation you put together as you listen.') },
   ] },
 ];

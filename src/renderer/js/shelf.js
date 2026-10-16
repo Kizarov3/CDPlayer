@@ -96,7 +96,7 @@ export async function shelfShowMe(app, what) {
   };
   if (what === 'dust') {
     const dusty = spines.filter((sp) => sp.dust > 0).sort((a, b) => b.dust - a.dust)[0];
-    if (dusty) point(dusty); else say(t('NO DUST YET · EVERY ALBUM HAS BEEN PLAYED THIS MONTH'));
+    if (dusty) point(dusty); else say(t('NO DUST YET · IT GATHERS ON AN ALBUM NOT PLAYED FOR A MONTH'));
   } else if (what === 'wrap') {
     const wrapped = spines.find((sp) => sp.classList.contains('new'));
     if (wrapped) point(wrapped); else say(t('NOTHING NEW IN YOUR MUSIC FOLDER LATELY'));

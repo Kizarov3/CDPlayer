@@ -32,7 +32,7 @@ export function startTour({ first = false, onFeatures = null } = {}) {
   const welcome = { targets: [], title: t('WELCOME TO CDPLAYER'), text: t('A CD player for the music on your computer: your albums stand on a shelf, a disc spins as it plays, and it all ages the way real CDs do. A quick look round takes a minute — or SKIP it and explore.') };
   const finale = { targets: [], title: t('WHAT MAKES IT DIFFERENT'), text: t('It treats your files like a CD collection: albums you don’t play gather dust, discs wear as they’re played, the shelf shows the albums you’re missing and what yours are worth, every album has a booklet, and karaoke lights up word by word. All of it, and where to find it, is in SETTINGS → HELP → WHAT’S SPECIAL.') };
   const steps = [...(first ? [welcome] : []), ...TOUR.filter((s) => rectOf(s)), finale];
-  const counted = steps.filter((s) => s !== welcome && s !== finale).length;
+  const counted = steps.filter((s) => s !== welcome).length; // the last word counted too: no step after "9 of 9"
   const spot = el('div', { class: 'tour-spot' });
   const bubble = el('div', { class: 'tour-bubble', role: 'dialog' });
   const layer = el('div', { class: 'tour-layer' }, spot, bubble);
@@ -44,7 +44,7 @@ export function startTour({ first = false, onFeatures = null } = {}) {
     const step = steps[i], last = i === steps.length - 1, n = steps.indexOf(step) - (first ? 1 : 0) + 1;
     const next = el('button', { class: 'pill on', onClick: () => go(1) }, last ? (first ? t('START LISTENING') : t('DONE')) : t('NEXT|step'));
     bubble.replaceChildren(...[ // (replaceChildren would write a null out as "null")
-      step === welcome || step === finale ? null : el('div', { class: 'tour-count' }, t('{step} OF {total}', { step: n, total: counted })),
+      step === welcome ? null : el('div', { class: 'tour-count' }, t('{step} OF {total}', { step: n, total: counted })),
       el('div', { class: 'tour-title' }, step.title),
       el('div', { class: 'tour-text' }, step.text),
       el('div', { class: 'tour-actions' },

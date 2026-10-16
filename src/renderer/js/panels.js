@@ -1073,8 +1073,11 @@ function tipsCard(heading, subtitle, bullets, onDone) {
 // The first time CDPlayer opens: the guide (help.js), five cards to step through — and remembered once it's closed.
 /** The first launch: the guide round the window, then never again (it's in SETTINGS → SHOW THE GUIDE). */
 export async function showOnboarding(app) {
-  await startTour({ first: true, onFeatures: () => showFeatures(app) });
+  let toFeatures = false;
+  await startTour({ first: true, onFeatures: () => { toFeatures = true; showFeatures(app); } });
   app.cdp.markOnboarded();
+  // START LISTENING (or SKIP) with nothing in yet: the music is on the shelf, so the shelf opens.
+  if (!toFeatures && !app.state.loadedPath) app.showMe('shelf');
 }
 
 // ---- LIBRARY CHECK (the shelf's CHECK): what's wrong in the music folder, and a way to fix each ------------------

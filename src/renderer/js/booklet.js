@@ -312,6 +312,7 @@ export async function albumBooklet(app, album, cover, { play, onClose = () => {}
         return i < 0 ? { no: r.no, name: r.title, time: r.length ? app.formatTime(r.length) : '', missing: true, tip: t('Not in your collection') }
           : { no: r.no, name: r.have.title, time: r.have.duration ? app.formatTime(r.have.duration) : '', current: i === playing(), tip: t('Play {song}', { song: r.have.title }), play: () => play(i), tally: marks.tallies[i], favorite: i === marks.favorite };
       }) : album.tracks.map((tr, i) => ({
+        no: tr.track || null, // its number on the album (a song you have of it isn't necessarily its first)
         name: tr.title, time: tr.duration ? app.formatTime(tr.duration) : '', current: i === playing(), tip: t('Play {song}', { song: tr.title }), play: () => play(i),
         tally: marks.tallies[i], favorite: i === marks.favorite,
       })),
@@ -380,7 +381,7 @@ function insidePages(content, spread, size) {
   const { tracks } = content;
   pages.push(...layout('tracks', (n) => heading(n ? t('{title} (cont.)', { title: tracks.title }) : tracks.title, n ? null : tracks.sub), tracks.rows.map((t, k) => () => {
     const row = el('div', { class: `track${t.current ? ' current' : ''}${t.favorite ? ' favorite' : ''}${t.missing ? ' missing' : ''}`, 'data-play': t.play ? k : null, title: t.tip },
-      el('span', { class: 'no' }, t.no === null ? '' : String(t.no || k + 1).padStart(2, '0')),
+      el('span', { class: 'no' }, String(t.no || k + 1).padStart(2, '0')),
       el('span', { class: 'name' }, el('span', { class: 'title' }, t.name)),
       t.tally ? tallyMarks(t.tally, k) : null, // beside the name, never cut off with a long one
       el('span', { class: 'time' }, t.time));
