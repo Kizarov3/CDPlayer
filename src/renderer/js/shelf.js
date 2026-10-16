@@ -504,7 +504,7 @@ function ghostSpine(group, artist) {
   return spine;
 }
 // A missing album's ghost case: see-through, its cover from the Cover Art Archive and its tracklist from MusicBrainz,
-// to play on Spotify (when connected), look up on MusicBrainz, or never see again.
+// to play on Spotify (when connected), look up on MusicBrainz or YouTube Music, or never see again.
 async function openGhostCase(group, artist, spine) {
   if (shelf.caseOpen) return;
   const { app } = shelf;
@@ -540,6 +540,7 @@ async function openGhostCase(group, artist, spine) {
         pill(t('NOT INTERESTED'), () => hideMissing(group), t('Never show this one on the shelf again')),
         el('span', { class: 'grow' }),
         pill(t('MUSICBRAINZ'), () => app.cdp.openMusicBrainz(group.id), t('Open its page on MusicBrainz')),
+        pill(t('YOUTUBE MUSIC'), () => app.cdp.openYouTubeMusic(`${artist} ${group.title}`), t('Find it on YouTube Music')),
         spotifyButton)));
   showCase(card, spine, from, hashColor(group.title + artist));
 }

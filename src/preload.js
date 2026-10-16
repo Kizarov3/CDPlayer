@@ -55,6 +55,7 @@ contextBridge.exposeInMainWorld('cdp', {
   onDiscogsProgress: on('discogs-progress'),
   hideMissing: invoke('discography:hide'),
   openMusicBrainz: invoke('discography:open'),
+  openYouTubeMusic: invoke('youtubeMusic:open'),
   onDiscography: on('discography'),
   dockDisc: invoke('dock:disc'),
   setTaskbarDisc: invoke('dock:taskbarDisc'),

@@ -513,6 +513,8 @@ handle('discogs:setCurrency', (code) => discogs.setCurrency(code));
 handle('discogs:open', (uri) => { if (/^https:\/\/www\.discogs\.com\//.test(String(uri))) shell.openExternal(uri); });
 handle('discography:hide', (groupId) => { const hidden = store.readHiddenMissing(); hidden.add(String(groupId)); store.writeHiddenMissing(hidden); });
 handle('discography:open', (groupId) => { if (/^[0-9a-f-]{36}$/.test(groupId)) shell.openExternal(`https://musicbrainz.org/release-group/${groupId}`); });
+// A search on YouTube Music, in the browser or its app: playing it inside CDPlayer isn't possible within YouTube's rules.
+handle('youtubeMusic:open', (query) => { const q = String(query || '').trim().slice(0, 300); if (q) shell.openExternal(`https://music.youtube.com/search?q=${encodeURIComponent(q)}`); });
 // Shrink-wrap on new albums: from the first time the shelf was read with it; unwrapped album by album.
 let wrapState = null;
 function wrap() {
