@@ -80,7 +80,7 @@ export async function openBooklet(app, from, content = null) {
 
 function onKey(e) {
   if (!book) return;
-  if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); turn(1); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); turn(1); } // (Space plays and pauses, as everywhere)
   else if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); turn(-1); }
 }
 
