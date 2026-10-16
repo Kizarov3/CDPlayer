@@ -160,9 +160,10 @@ function drawLyrics(g, l, s, lyr, size) {
  * Records the video: song { cover, face (the disc as drawn), title, artist, subtitle, colors, timed, position() (where
  * the song is now, s) }, audio a MediaStream of what plays (or null: no sound), seconds long, begin() awaited once the
  * frames are ready to go (to put the song where the video starts), onTick(seconds left).
- * → { bytes: Uint8Array, ext } | null (the recorder can't make video here, or it failed).
+ * playing(): whether the music is still going (it stopping ends the video there).
+ * → { bytes: Uint8Array, ext, stoppedEarly } | null (the recorder can't make video here, or it failed).
  */
-export async function recordVideo({ format, song, audio, seconds = VIDEO_SECONDS, begin = async () => {}, onTick = () => {} }) {
+export async function recordVideo({ format, song, audio, seconds = VIDEO_SECONDS, begin = async () => {}, onTick = () => {}, playing = () => true }) {
   const type = pickVideoType();
   if (!type) return null;
   const L = videoLayout(format), back = backdrop(L, song, song.colors);
@@ -182,6 +183,7 @@ export async function recordVideo({ format, song, audio, seconds = VIDEO_SECONDS
   const t0 = performance.now();
   recorder.start(500);
   // Drawn on a timer, not on animation frames: those slow right down when the window isn't in front.
+  let quietSince = null, stoppedEarly = false;
   await new Promise((resolve) => {
     let left = Math.ceil(seconds);
     onTick(left);
@@ -190,7 +192,9 @@ export async function recordVideo({ format, song, audio, seconds = VIDEO_SECONDS
       drawFrame(g, L, back, song, t);
       const now = Math.ceil(seconds - t);
       if (now !== left) { left = now; onTick(Math.max(0, now)); }
-      if (t >= seconds) { clearInterval(timer); resolve(); }
+      // The music stopped (paused, or the song couldn't go on): the video ends there, not on a silent frozen picture.
+      if (playing()) quietSince = null; else if (quietSince === null) quietSince = t;
+      if (t >= seconds || (quietSince !== null && t - quietSince > 0.4)) { stoppedEarly = t < seconds; clearInterval(timer); resolve(); }
     }, 1000 / FPS);
   });
   recorder.stop();
@@ -198,5 +202,5 @@ export async function recordVideo({ format, song, audio, seconds = VIDEO_SECONDS
   for (const track of stream.getVideoTracks()) track.stop();
   if (failed || !chunks.length) return null; // the encoder wouldn't start: nothing to save
   const blob = new Blob(chunks, { type: type.mime });
-  return { bytes: new Uint8Array(await blob.arrayBuffer()), ext: type.ext };
+  return { bytes: new Uint8Array(await blob.arrayBuffer()), ext: type.ext, stoppedEarly };
 }

@@ -811,6 +811,15 @@ function applyCover(img) {
   refreshDockSoon();
 }
 
+// While a video records: whether the song is still going — playing, and its position moving on (not stuck loading).
+function stillGoing() {
+  let last = -1, movedAt = performance.now();
+  return () => {
+    const now = performance.now(), at = engine.position;
+    if (at !== last) { last = at; movedAt = now; }
+    return engine.playing && now - movedAt < 700;
+  };
+}
 // P, or right-click the disc: a picture of what's playing (share-card.js), quoting lines of its lyrics picked in a
 // panel, copied to paste into a chat or saved.
 function shareCard() {
@@ -843,7 +852,7 @@ function shareCard() {
         if (!engine.playing && engine.deck) { await engine.play(); setPlaying(engine.playing); }
       };
       try {
-        const made = await recordVideo({ format, audio: withSound ? engine.recordingStream() : null, onTick, begin,
+        const made = await recordVideo({ format, audio: withSound ? engine.recordingStream() : null, onTick, begin, playing: withSound ? stillGoing() : () => true,
           seconds: span ? span.end - span.start : VIDEO_SECONDS, song: {
             ...song, face: disc.renderFace(512, 1).canvas, colors: { ...colors }, timed,
             // Where the song is as each frame is drawn: what's recorded is taken before the output, so no delay for it.
@@ -851,7 +860,7 @@ function shareCard() {
           } });
         if (!made) { setStatus(t("VIDEO CAN'T BE MADE HERE")); return false; }
         const saved = await cdp.saveVideo(made.bytes, [song.artist, song.title].filter(Boolean).join(' - '), made.ext);
-        if (saved) setStatus(t('VIDEO SAVED'));
+        if (saved) setStatus(made.stoppedEarly ? t('VIDEO SAVED · THE MUSIC STOPPED, SO IT ENDS THERE') : t('VIDEO SAVED'));
         return saved;
       } finally {
         engine.stopRecording();
