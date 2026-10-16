@@ -9,9 +9,14 @@
   --muted: 138, 142, 148;
   --hint: 120, 122, 126;
   --font: "Lucida Grande", "Segoe UI", "DejaVu Sans", "Helvetica Neue", Arial, sans-serif;
-  --anim-in: 130ms;
-  --anim-out: 100ms;
-  --hover: 70ms;
+  /* Motion, one set for the whole app: things arrive quickly and settle (ease-out), leave a little faster
+     (ease-in), and move between places with both (in-out). widgets.js has the same curves for JS animations. */
+  --anim-in: 240ms;
+  --anim-out: 170ms;
+  --hover: 140ms;
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+  --ease-in: cubic-bezier(.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(.65, 0, .35, 1);
 }
 
 * { box-sizing: border-box; }
@@ -120,7 +125,7 @@ body.cd-view #cd-info { display: block !important; }
 #quality-badge.dim, #soundcheck-badge.dim { opacity: 0.45; }
 #track-source { min-width: 0; height: 16px; line-height: 16px; font-size: 12px; font-weight: normal; color: rgb(var(--muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fit { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.fade-in { animation: fadeIn 60ms linear; }
+.fade-in { animation: fadeIn 260ms var(--ease-out); }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 #progress-row { margin-top: 28px; height: 20px; }
@@ -183,15 +188,16 @@ body.cursor-hidden #cd-exit { opacity: 0; }
   background: rgba(255, 255, 255, .047);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .10);
   cursor: pointer; white-space: nowrap;
-  transition: background var(--hover) linear, color 50ms linear;
+  transition: background var(--hover) ease, color var(--hover) ease, transform var(--hover) var(--ease-out);
 }
 .pill::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: -1;
   background: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent2)));
-  opacity: 0; transition: opacity 50ms linear;
+  opacity: 0; transition: opacity 200ms ease;
 }
 .pill.small { padding: 7px 13px; font-size: 10px; }
 .pill:hover { background: rgba(255, 255, 255, .078); }
+.pill:active:not(:disabled) { transform: scale(.97); } /* pressed: it gives a little */
 .pill.on { color: rgb(var(--bg)); }
 .pill.on::before { opacity: 1; }
 .pill:disabled { color: rgba(var(--muted), .39); cursor: default; }
@@ -213,7 +219,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
   background: rgba(255, 255, 255, .047);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .118);
   cursor: pointer; display: grid; place-items: center;
-  transition: background var(--hover) linear;
+  transition: background var(--hover) ease;
 }
 .round:hover { background: rgba(255, 255, 255, .086); }
 .round svg { display: block; overflow: visible; }
@@ -225,7 +231,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 .round.mode::before {
   content: ""; position: absolute; inset: 0; border-radius: 50%;
   background: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent2)));
-  opacity: 0; transition: opacity 50ms linear;
+  opacity: 0; transition: opacity 200ms ease;
 }
 .round.mode svg { position: relative; }
 .round.mode.on { color: rgb(var(--bg)); }
@@ -234,7 +240,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 .glyph-x {
   border: none; background: none; padding: 0 0 0 6px;
   font: bold 13px var(--font); color: rgb(var(--muted)); cursor: pointer;
-  transition: color var(--hover) linear;
+  transition: color var(--hover) ease;
 }
 .glyph-x:hover { color: rgb(var(--text)); }
 
@@ -250,7 +256,11 @@ body.cursor-hidden #cd-exit { opacity: 0; }
   position: absolute; inset: 0; pointer-events: auto;
   background: rgba(0, 0, 0, .55);
   display: grid; place-items: center;
+  animation: overlayIn var(--anim-in) var(--ease-out); /* the dimming fades in and out with the panel */
 }
+.overlay.closing { animation: overlayOut var(--anim-out) var(--ease-in) forwards; pointer-events: none; }
+@keyframes overlayIn { from { background: rgba(0, 0, 0, 0); } }
+@keyframes overlayOut { to { background: rgba(0, 0, 0, 0); } }
 .card {
   background: rgb(var(--card));
   border: 1px solid rgba(255, 255, 255, .157);
@@ -258,11 +268,12 @@ body.cursor-hidden #cd-exit { opacity: 0; }
   max-height: calc(100vh - 40px);
   display: flex; flex-direction: column;
   transform-origin: center;
-  animation: cardIn var(--anim-in) cubic-bezier(.215, .61, .355, 1);
+  animation: cardIn var(--anim-in) var(--ease-out);
 }
-.overlay.closing .card { animation: cardOut var(--anim-out) linear forwards; }
-@keyframes cardIn { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: scale(1); } }
-@keyframes cardOut { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(.9); } }
+.overlay.closing .card { animation: cardOut var(--anim-out) var(--ease-in) forwards; }
+/* A panel rises a touch as it comes, and sinks a touch as it goes — no big zoom. */
+@keyframes cardIn { from { opacity: 0; transform: translateY(10px) scale(.975); } to { opacity: 1; transform: none; } }
+@keyframes cardOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(6px) scale(.985); } }
 .card h1 { margin: 0; font-size: 16px; color: rgb(var(--accent)); font-weight: bold; }
 .card .subtitle { margin-top: 6px; font-size: 11px; color: rgb(var(--muted)); }
 .card .close-row { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 16px; }
@@ -309,7 +320,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 .settings-foot { margin-top: 18px; display: flex; align-items: center; justify-content: space-between; }
 .settings-foot .github-link { margin-top: 0; }
 .settings-version { font-size: 11px; color: rgb(var(--muted)); font-variant-numeric: tabular-nums; user-select: text; }
-.github-link { margin-top: 18px; display: flex; justify-content: center; align-items: center; gap: 6px; font-size: 11px; color: rgb(var(--muted)); cursor: pointer; transition: color var(--hover) linear; }
+.github-link { margin-top: 18px; display: flex; justify-content: center; align-items: center; gap: 6px; font-size: 11px; color: rgb(var(--muted)); cursor: pointer; transition: color var(--hover) ease; }
 .github-link:hover { color: rgb(var(--text)); }
 .github-link svg { width: 15px; height: 15px; }
 
@@ -318,7 +329,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 .list-row.plain { cursor: default; color: rgb(var(--muted)); min-height: 20px; }
 .empty-note { font-size: 12px; color: rgb(var(--muted)); padding: 4px 0 30px; }
 
-.lyrics-line { padding: 3px 0; font-size: 13px; font-weight: normal; color: rgb(var(--muted)); cursor: pointer; transition: color var(--hover) linear; }
+.lyrics-line { padding: 3px 0; font-size: 13px; font-weight: normal; color: rgb(var(--muted)); cursor: pointer; transition: color var(--hover) ease; }
 .lyrics-line:hover { color: rgb(var(--text)); }
 .lyrics-line.current { color: rgb(var(--accent)); font-weight: bold; font-size: 14px; }
 .lyrics-plain { font-size: 13px; font-weight: normal; color: rgb(var(--text)); white-space: pre-wrap; line-height: 1.35; user-select: text; -webkit-user-select: text; }
@@ -371,6 +382,8 @@ body.cursor-hidden #cd-exit { opacity: 0; }
   position: absolute; background: rgb(var(--card)); border: 1px solid rgba(255, 255, 255, .118);
   display: flex; flex-direction: column; padding: 2px 0; max-height: calc(100vh - 16px); overflow-y: auto;
 }
+.theme-menu { transform-origin: top left; animation: menuIn 180ms var(--ease-out); } /* opens out of what was clicked */
+@keyframes menuIn { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
 .theme-item { display: flex; align-items: center; gap: 10px; padding: 8px 16px 8px 12px; font-size: 11px; color: rgb(var(--text)); cursor: pointer; }
 .theme-item:hover { background: rgba(255, 255, 255, .06); }
 .theme-item.current { color: rgb(var(--accent)); }
@@ -495,7 +508,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
     linear-gradient(to bottom, rgba(255, 255, 255, .12), transparent 18%, transparent 85%, rgba(0, 0, 0, .3)),
     rgb(var(--spine));
   color: rgb(var(--ink)); box-shadow: 0 2px 6px rgba(0, 0, 0, .5);
-  transition: transform 140ms ease, box-shadow 140ms ease;
+  transition: transform 260ms var(--ease-out), box-shadow 260ms ease;
 }
 .spine.double { width: 52px; }
 /* Spines, cards and boxes off screen aren't laid out or painted at all: with thousands of albums on the shelf, that's

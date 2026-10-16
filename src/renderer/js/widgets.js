@@ -5,6 +5,8 @@ import { t } from './i18n.js';
 import { glyphSvg } from './glyphs.js';
 
 export const anim = { enabled: true };
+// The motion curves of styles.css (--ease-out, --ease-in, --ease-in-out), for animations made in JS.
+export const EASE = { out: 'cubic-bezier(.22, 1, .36, 1)', in: 'cubic-bezier(.4, 0, 1, 1)', inOut: 'cubic-bezier(.65, 0, .35, 1)' };
 
 export function el(tag, props = {}, ...children) {
   const node = document.createElement(tag);

@@ -5,7 +5,7 @@ import { AudioEngine } from './audio.js';
 import { Disc } from './disc.js';
 import { Visualizer } from './visualizer.js';
 import { Particles } from './particles.js';
-import { anim, el, pill, roundButton, modeButton, Slider, fitText, pulse } from './widgets.js';
+import { anim, EASE, el, pill, roundButton, modeButton, Slider, fitText, pulse } from './widgets.js';
 import { openBooklet, closeBooklet } from './booklet.js';
 import { parseLrc, currentLineIndex, heardPosition, playbackTimeFor, looksOnlineFor, takesOnline } from './lyrics.js';
 import { shortcutKey } from './keys.js';
@@ -104,7 +104,10 @@ function stateStatus() {
   return state.loadedPath ? t('PAUSED') : t('READY TO PLAY');
 }
 function setStatus(text) {
-  $('status').textContent = STATUS_DOT + text;
+  const node = $('status'), said = STATUS_DOT + text;
+  // A new word fades in over the old (the same one said again stays still).
+  if (anim.enabled && node.textContent !== said) node.animate([{ opacity: 0.25 }, { opacity: 1 }], { duration: 220, easing: EASE.out });
+  node.textContent = said;
   clearTimeout(statusTimer);
   statusTimer = setTimeout(() => { if (!state.trayBusy && !disc.reading) $('status').textContent = STATUS_DOT + stateStatus(); }, 6000);
 }
@@ -1510,14 +1513,31 @@ function applyThemeModes(theme) {
   panels.updateThemeButton(app, theme.name);
 }
 let shownTheme = THEMES[0]; // the theme on screen: the one chosen, or the one being made in the editor
+let glowFade = 0;
 function paintCoverGlow() {
   const backdrop = $('backdrop'), art = $('backdrop-art');
   if (!shownTheme.image && state.ambient && state.cover) {
     // A 48×48 center crop, stretched to fill the window — the browser's bilinear upscale makes it a soft glow.
+    // The glow there before (another album's) fades into this one, rather than the background jumping.
+    const had = backdrop.classList.contains('has-art') && art.width === 48;
+    const before = had && anim.enabled ? Object.assign(document.createElement('canvas'), { width: 48, height: 48 }) : null;
+    if (before) before.getContext('2d').drawImage(art, 0, 0);
     art.width = art.height = 48;
     const g = art.getContext('2d');
-    const iw = state.cover.naturalWidth, ih = state.cover.naturalHeight, s = Math.min(iw, ih);
-    g.drawImage(state.cover, (iw - s) / 2, (ih - s) / 2, s, s, 0, 0, 48, 48);
+    const cover = state.cover, iw = cover.naturalWidth, ih = cover.naturalHeight, s = Math.min(iw, ih);
+    const draw = (f) => {
+      g.globalAlpha = 1;
+      if (before && f < 1) g.drawImage(before, 0, 0);
+      g.globalAlpha = before ? f : 1;
+      g.drawImage(cover, (iw - s) / 2, (ih - s) / 2, s, s, 0, 0, 48, 48);
+      g.globalAlpha = 1;
+    };
+    cancelAnimationFrame(glowFade);
+    if (before) {
+      const start = performance.now();
+      const step = (now) => { const p = Math.min(1, (now - start) / 600); draw(p * p * (3 - 2 * p)); if (p < 1 && state.cover === cover) glowFade = requestAnimationFrame(step); };
+      glowFade = requestAnimationFrame(step);
+    } else draw(1);
     art.style.objectFit = 'cover';
     backdrop.classList.add('has-art');
   } else backdrop.classList.remove('has-art');
@@ -1734,9 +1754,9 @@ function toggleVisualizerMode() {
   if (state.visualizerMode) {
     state.visualizerEnteredAt = Date.now();
     node.hidden = false;
-    if (anim.enabled) node.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 140 });
+    if (anim.enabled) node.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 360, easing: EASE.out });
   } else if (anim.enabled) {
-    node.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140 }).onfinish = () => { if (!state.visualizerMode) node.hidden = true; };
+    node.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 240, easing: EASE.in }).onfinish = () => { if (!state.visualizerMode) node.hidden = true; };
   } else node.hidden = true;
 }
 

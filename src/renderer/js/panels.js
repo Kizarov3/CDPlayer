@@ -51,8 +51,7 @@ function refreshPanel(name) {
   const p = panels.get(name);
   if (!p) return;
   const scrollers = [...p.card.querySelectorAll('.scroll')].map((s) => s.scrollTop);
-  p.card.replaceChildren(...[p.build()].flat(Infinity));
-  p.card.style.animation = 'none';
+  p.card.replaceChildren(...[p.build()].flat(Infinity)); // (the card stays: its arriving or leaving goes on as it was)
   p.card.querySelectorAll('.scroll').forEach((s, i) => { s.scrollTop = scrollers[i] || 0; });
 }
 export const isOpen = (name) => panels.has(name);

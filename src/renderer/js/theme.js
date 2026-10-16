@@ -34,7 +34,9 @@ function applyColors() {
 }
 
 let transition = null;
-/** Animates every theme color over 150ms (or jumps, with animations off). */
+/** Animates every theme color over COLOR_MS, easing in and out (or jumps, with animations off). */
+const COLOR_MS = 450;
+const easeInOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 export function setColors(target, animate) {
   if (transition) cancelAnimationFrame(transition.raf);
   transition = null;
@@ -46,10 +48,10 @@ export function setColors(target, animate) {
   const from = Object.fromEntries(KEYS.map((k) => [k, [...colors[k]]]));
   const start = performance.now();
   const step = (now) => {
-    const f = Math.min(1, (now - start) / 150);
+    const p = Math.min(1, (now - start) / COLOR_MS), f = easeInOut(p);
     for (const k of KEYS) colors[k] = lerpColor(from[k], target[k], f);
     applyColors();
-    if (f < 1) transition.raf = requestAnimationFrame(step);
+    if (p < 1) transition.raf = requestAnimationFrame(step);
     else transition = null;
   };
   transition = { raf: requestAnimationFrame(step) };

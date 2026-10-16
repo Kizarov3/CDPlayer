@@ -7,7 +7,7 @@
 // wipe it. PULL ONE takes one off the shelf at random, the dustier the likelier. A case can have a sticky note on it
 // (shelf-notes.js), whose corner shows above its spine. A new album comes in shrink-wrap until it's played or
 // unwrapped by hand, dragging the film off its case.
-import { el, pill, anim } from './widgets.js';
+import { el, pill, anim, EASE } from './widgets.js';
 import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './booklet.js';
 import { stickersFor } from './shelf-stickers.js';
 import { arrange, SORTS, matchesFilter, dominantColor, jumpTargets, shelfSignature } from './shelf-order.js';
@@ -75,7 +75,7 @@ export async function openShelf(app) {
   shelf.open = true;
   const root = $('shelf');
   root.hidden = false;
-  if (anim.enabled) root.animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }], { duration: 200, easing: 'ease-out' });
+  if (anim.enabled) root.animate([{ opacity: 0, transform: 'translateY(18px)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: EASE.out });
   $('shelf-filter').value = '';
   await load();
 }
@@ -88,7 +88,7 @@ export function closeShelf() {
   shelf.openBoxes.clear();
   stopLookups();
   const root = $('shelf');
-  if (anim.enabled) root.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140 }).onfinish = () => { if (!shelf.open) root.hidden = true; };
+  if (anim.enabled) root.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(10px)' }], { duration: 200, easing: EASE.in }).onfinish = () => { if (!shelf.open) root.hidden = true; };
   else root.hidden = true;
 }
 
@@ -778,8 +778,8 @@ function showCase(card, spine, from, color) {
   card.animate([
     { transform: `translate(${from.left - to.left}px, ${from.top - to.top - 30}px) scale(${sx}, ${sy}) rotateY(75deg)`, opacity: 0.2, transformOrigin: 'left top' },
     { transform: 'none', opacity: 1, transformOrigin: 'left top' },
-  ], { duration: 420, easing: 'cubic-bezier(.2,.8,.25,1)' });
-  layer.animate([{ background: 'rgba(0,0,0,0)' }, { background: 'rgba(0,0,0,.6)' }], { duration: 300 });
+  ], { duration: 460, easing: EASE.out });
+  layer.animate([{ background: 'rgba(0,0,0,0)' }, { background: 'rgba(0,0,0,.6)' }], { duration: 360, easing: EASE.out });
 }
 
 // The album's booklet, rising out of the case's cover (full size, not the spine's thumbnail).
@@ -809,8 +809,8 @@ function closeCase(instant = false) {
   shelf.caseOpen = null;
   c.spine.classList.remove('out');
   if (instant || !anim.enabled) { c.layer.remove(); return; }
-  c.card.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.92) rotateY(-25deg)' }], { duration: 160, easing: 'ease-in' });
-  c.layer.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 170 }).onfinish = () => c.layer.remove();
+  c.card.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.94) rotateY(-20deg)' }], { duration: 220, easing: EASE.in });
+  c.layer.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 230, easing: EASE.in }).onfinish = () => c.layer.remove();
 }
 
 // PLAY: the album goes into the player as a disc (from track `from`, when a track in the list was clicked).

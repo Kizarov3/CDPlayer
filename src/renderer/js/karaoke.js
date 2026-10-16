@@ -3,7 +3,7 @@
 // (from Unison or NetEase), shared by syllables at the song's own pace where they only time lines. A word lifts as
 // it's sung and one held long glows; backing vocals fill under their line; a duet's singers sit left and right; and
 // in a long break the line settles while three dots breathe until the next. Click a line to jump there.
-import { el, anim } from './widgets.js';
+import { el, anim, EASE } from './widgets.js';
 import { parseLrc, lineState, lineWords, wordProgress, songPace } from './lyrics.js';
 import { t } from './i18n.js';
 
@@ -18,7 +18,7 @@ export function openKaraoke(app) {
   if (view || !canKaraoke(app.state.lyrics)) return false;
   const root = $('karaoke');
   root.hidden = false;
-  if (anim.enabled) root.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180 });
+  if (anim.enabled) root.animate([{ opacity: 0, transform: 'scale(1.015)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: EASE.out });
   view = { app };
   rebuild();
   return true;
@@ -28,7 +28,7 @@ export function closeKaraoke() {
   if (!view) return;
   view = null;
   const root = $('karaoke');
-  if (anim.enabled) root.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140 }).onfinish = () => { if (!view) root.hidden = true; };
+  if (anim.enabled) root.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, easing: EASE.in }).onfinish = () => { if (!view) root.hidden = true; };
   else root.hidden = true;
 }
 
