@@ -109,3 +109,18 @@ test('when the album came out, and how long ago', async () => {
   assert.strictEqual(releasedLine('2025-10-01', { locale: 'en', now }), 'Released 1 October 2025 · 1 year ago');
   assert.strictEqual(releasedLine(null, { locale: 'en', now }), null);
 });
+
+test('a found hidden song is written in under its track, and isn\'t listed as missing', async () => {
+  const { penHidden } = await import('../src/renderer/js/booklet-content.js');
+  const rows = [
+    { name: 'Polly', track: 0 },
+    { name: 'Something in the Way', track: 1 },
+    { name: 'Endless, Nameless', missing: true, track: -1 }, // MusicBrainz's own track for it
+  ];
+  assert.deepStrictEqual(penHidden(rows, [null, 'Endless, Nameless']), [
+    { name: 'Polly', track: 0 },
+    { name: 'Something in the Way', track: 1 },
+    { pen: true, name: 'Endless, Nameless' },
+  ]);
+  assert.deepStrictEqual(penHidden(rows, [null, null]), rows);
+});

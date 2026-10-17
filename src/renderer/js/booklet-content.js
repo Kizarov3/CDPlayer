@@ -80,6 +80,18 @@ function ago(then, now) {
 }
 
 /**
+ * The tracklist's rows (`track`: the index of the album's track a row is, or -1) with the hidden songs found in them
+ * (`hidden[i]`: track i's, or null) written in under their track, in pen as the owner would — and a missing row of
+ * the same name (MusicBrainz lists some as tracks of their own) left out, as it's on the disc after all.
+ */
+export function penHidden(rows, hidden) {
+  const names = new Set(hidden.filter(Boolean).map((n) => n.toLowerCase()));
+  if (!names.size) return rows;
+  return rows.flatMap((r) => (r.missing && names.has(String(r.name).toLowerCase()) ? []
+    : r.track >= 0 && hidden[r.track] ? [r, { pen: true, name: hidden[r.track] }] : [r]));
+}
+
+/**
  * An album's songs' plays, and when each was first and last played (ms, or null) → the owner's pen marks: tally marks
  * beside each song ({ fives, ones }, or { times: '×47' } past twenty; null for none), the favourite (the most played,
  * three plays or more; -1 for none) to circle, and notes for the back cover ('1st spin: 12 Mar 2024', 'last: today').

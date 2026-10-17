@@ -8,7 +8,8 @@ import { el, anim } from './widgets.js';
 import { deriveAutoTheme, rgb } from './theme.js';
 import { parseLrc, formatLyricsForDisplay, currentLineIndex } from './lyrics.js';
 import { paginate, leavesFor, ean13 } from './booklet-layout.js';
-import { albumCredits, albumSummary, albumSmallPrint, sameAlbum, ownerMarks, storyChunks, releasedLine, formatReleased } from './booklet-content.js';
+import { albumCredits, albumSummary, albumSmallPrint, sameAlbum, ownerMarks, storyChunks, releasedLine, formatReleased, penHidden } from './booklet-content.js';
+import { hiddenName } from './hidden-track.js';
 import { t, locale } from './i18n.js';
 
 const LIFT_MS = 420, TURN_MS = 650;
@@ -298,6 +299,9 @@ export async function albumBooklet(app, album, cover, { play, onClose = () => {}
   const plays = await Promise.all(album.tracks.map((t) => app.cdp.playCount(t.path).catch(() => 0)));
   const pressing = ((await app.cdp.discogsKnown([album.id]).catch(() => ({})))[album.id] || {}).info || null;
   const times = await app.cdp.playTimes(album.tracks.map((t) => t.path)).catch(() => ({ first: [], last: [] }));
+  // The hidden songs heard on it (hidden-track.js): written in under their track.
+  const hidden = await Promise.all(album.tracks.map((tr, i) => app.cdp.hidden.get(tr.path)
+    .then((g) => (g && g.entry && g.entry.found ? hiddenName(g.entry, details[i] || { title: tr.title }) || t('Hidden track') : null)).catch(() => null)));
   const marks = ownerMarks({ plays, first: album.tracks.map((t, i) => times.first[i] || null), last: album.tracks.map((t, i) => times.last[i] || null) });
   const small = albumSmallPrint(details);
   const playing = () => album.tracks.findIndex((t) => t.path === app.state.loadedPath);
@@ -307,15 +311,15 @@ export async function albumBooklet(app, album, cover, { play, onClose = () => {}
     tracks: {
       title: album.title, sub: [album.artist, album.year].filter(Boolean).join(' · '),
       // The album's whole tracklist when the case knows it: the songs you don't have in their places, in grey.
-      rows: wholeList ? wholeList.map((r) => {
+      rows: penHidden(wholeList ? wholeList.map((r) => {
         const i = r.have ? album.tracks.indexOf(r.have) : -1;
-        return i < 0 ? { no: r.no, name: r.title, time: r.length ? app.formatTime(r.length) : '', missing: true, tip: t('Not in your collection') }
-          : { no: r.no, name: r.have.title, time: r.have.duration ? app.formatTime(r.have.duration) : '', current: i === playing(), tip: t('Play {song}', { song: r.have.title }), play: () => play(i), tally: marks.tallies[i], favorite: i === marks.favorite };
+        return i < 0 ? { no: r.no, name: r.title, time: r.length ? app.formatTime(r.length) : '', missing: true, tip: t('Not in your collection'), track: -1 }
+          : { no: r.no, name: r.have.title, time: r.have.duration ? app.formatTime(r.have.duration) : '', current: i === playing(), tip: t('Play {song}', { song: r.have.title }), play: () => play(i), tally: marks.tallies[i], favorite: i === marks.favorite, track: i };
       }) : album.tracks.map((tr, i) => ({
         no: tr.track || null, // its number on the album (a song you have of it isn't necessarily its first)
         name: tr.title, time: tr.duration ? app.formatTime(tr.duration) : '', current: i === playing(), tip: t('Play {song}', { song: tr.title }), play: () => play(i),
-        tally: marks.tallies[i], favorite: i === marks.favorite,
-      })),
+        tally: marks.tallies[i], favorite: i === marks.favorite, track: i,
+      })), hidden),
     },
     lyrics: [],
     credits: { sub: album.title, none: t('No credits in these files’ tags.'), rows: albumCredits(details, pressing), summaryTitle: t('THIS ALBUM'), summary: albumSummary({ details, plays, discs: album.discs }) },
@@ -380,6 +384,9 @@ function insidePages(content, spread, size) {
   // Tracklist.
   const { tracks } = content;
   pages.push(...layout('tracks', (n) => heading(n ? t('{title} (cont.)', { title: tracks.title }) : tracks.title, n ? null : tracks.sub), tracks.rows.map((t, k) => () => {
+    if (t.pen) { // a hidden song written in under its track: no number, no time, a little crooked
+      return el('div', { class: 'track hidden-pen' }, el('span', { class: 'no' }), el('span', { class: 'name' }, el('span', { class: 'pen', style: `display: inline-block; transform: rotate(${((k * 37) % 5) - 2}deg)` }, `+ ${t.name}`)));
+    }
     const row = el('div', { class: `track${t.current ? ' current' : ''}${t.favorite ? ' favorite' : ''}${t.missing ? ' missing' : ''}`, 'data-play': t.play ? k : null, title: t.tip },
       el('span', { class: 'no' }, String(t.no || k + 1).padStart(2, '0')),
       el('span', { class: 'name' }, el('span', { class: 'title' }, t.name)),
