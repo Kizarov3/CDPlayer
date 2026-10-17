@@ -163,3 +163,35 @@ test('the music’s key changes with the songs, their order, the mode and the di
   assert.notStrictEqual(musicKey({ queue: paths, changerMode: true, slots: [null, disc] }), c);
   assert.notStrictEqual(musicKey({ queue: paths, changerMode: true, slots: [{ ...disc, end: 4 }, null] }), c);
 });
+
+// The desktop's status line can name a folder (RIPPED TO … · <folder>, RIP FAILED · <an fs error>): never the phone's.
+const withPath = [
+  'RIPPED TO MOON SAFARI · /Users/me/Music/Air/Moon Safari',
+  'RIP FAILED · EACCES: PERMISSION DENIED, MKDIR \'/Volumes/Music/Air\'',
+  'RIPPED TO DEBUT · C:\\Users\\me\\Music\\Björk\\Debut',
+  'RIPPED TO DEBUT · D:/Music/Björk/Debut',
+  'RIP FAILED · \\\\nas\\music\\Björk is not reachable',
+  'RIPPED TO DEBUT · ~/Music/Björk/Debut',
+  'COULDN’T OPEN file:///Users/me/Music/a.flac',
+];
+const looksLikePath = /\/Users|\/Volumes|[A-Z]:[\\/]|\\\\nas|~\/|file:/;
+
+for (const statusWord of withPath) {
+  test(`a status naming a path is replaced by the plain word for what the player is doing: ${statusWord}`, () => {
+    const s = snapshot({ state: base, player, track, details, statusWord, statusFallback: 'NOW SPINNING', rev: 1 });
+    assert.strictEqual(s.status, 'NOW SPINNING');
+    assert.ok(!looksLikePath.test(JSON.stringify(s)));
+  });
+}
+
+test('a fallback naming a path is no better: the status is left empty', () => {
+  const s = snapshot({ state: base, player, track, details, statusWord: withPath[0], statusFallback: withPath[2], rev: 1 });
+  assert.strictEqual(s.status, '');
+});
+
+test('the desktop’s own words go through as they are', () => {
+  for (const statusWord of ['NOW SPINNING · SOUND OFF', 'ALREADY IN SLOT 2', 'QUEUE 3 / 12', 'RIPPING 3/12 · 40%', 'DISC 3 IN · AC/DC WENT BACK TO THE SHELF', 'UP NEXT · Air · Sexy Boy']) {
+    const s = snapshot({ state: base, player, track, details, statusWord, statusFallback: 'PAUSED', rev: 1 });
+    assert.strictEqual(s.status, statusWord);
+  }
+});

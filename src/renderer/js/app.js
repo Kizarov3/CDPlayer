@@ -1911,7 +1911,7 @@ function remoteState() {
     state, player: { playing: engine.playing, position: engine.position, duration: engine.duration },
     track: { title: state.titleText || t('Pick a track to get started.'), artist: state.artistText || null, album: state.details && state.details.album ? state.details.album : null, coverKey },
     details: (p) => { const d = detailsCache.get(p); return { title: queueDisplay(p), duration: d ? d.duration : 0 }; },
-    changerView: shownChanger, slotCover, statusWord: statusWords(), rev: state.rev, canUndo: !!undoClear,
+    changerView: shownChanger, slotCover, statusWord: statusWords(), statusFallback: stateStatus(), rev: state.rev, canUndo: !!undoClear,
   });
   if (coverKey !== sentRemoteCoverKey) { sentRemoteCoverKey = coverKey; s.cover = cover && cover.startsWith('data:') ? cover : null; }
   return s;
