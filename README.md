@@ -36,6 +36,7 @@ When a new version is out, an **AVAILABLE** button appears in the player's top-l
 - **Lyrics & Karaoke** (`Y`) — lyrics found online, highlighted word by word as they're sung
 - **Spotify** (Premium) — your saved albums and playlists play as discs, with lyrics and karaoke
 - **CD changer** — a mode (Settings → CD CHANGER): five discs in a carousel instead of the queue, each keeping its own music; albums, folders, `.m3u` playlists, Spotify and real CDs go in as discs; SHUFFLE and REPEAT for this disc or all of them (each mode keeps its own, across restarts), DISC SKIP (`D`) and `1`–`5` to play a slot
+- **Hidden tracks** — a song hidden after minutes of silence at the end of a disc's last track (*Nevermind*'s "Endless, Nameless") is found: the silence plays as on the CD with a countdown to it, and the song is named when it begins and written into the booklet
 - **Playback** — gapless playback (an album's tracks run into each other, as on the CD), the queue (drag to reorder, PLAY NEXT), crossfade, 10-band EQ with presets, output device picker, sleep timer, `.m3u` playlists, media keys
 - **Spatial audio** — for headphones: any song — a file, a CD or a rip — heard from two speakers in front of you instead of from inside your head; **SPACE** sets how much
 - **Quality** — as in Apple Music: LOSSLESS and HI-RES LOSSLESS play each song at its own sample rate (up to 192 kHz), with your headphones' or DAC's rate switched to match on macOS and Windows and put back when CDPlayer closes; a ◈ LOSSLESS badge says what reaches the output
