@@ -106,4 +106,24 @@ const keepAwake = ({ on, phones, lastSeen, now }) => !!on && (phones > 0 || (las
  */
 const shelfCacheFor = (cache, folder) => (cache && cache.folder === folder ? cache.data : null);
 
-module.exports = { DEFAULT_PORT, shelfCacheFor, readRemoteConf, dataUrlBytes, nextRemoteState, albumCommand, createReplies, keepAwake };
+// The phone's page (src/remote/) and the player's own modules it imports (src/renderer/js/, served under /js/).
+const PAGE_MODULES = ['disc.js', 'theme.js', 'jog.js', 'disc-wear.js', 'disc-data.js', 'i18n.js', 'i18n-format.js', 'shelf-order.js',
+  'shelf-dust.js', 'shelf-discogs.js', 'glyphs.js', 'queue-move.js', 'remote-view.js'];
+const JS = 'text/javascript; charset=utf-8';
+/**
+ * The files the phone remote serves, by exact path — remote.js serves nothing else. `read(rel)` → the bytes of a
+ * file under src/ (only the names listed here are ever asked for); `dict()` → the language in use ({ code, dict }),
+ * which /boot.js hands the page as the preload hands the desktop's (window.cdp.i18nDict), read on each load.
+ */
+function pageFiles({ read, dict }) {
+  const files = {
+    '/': { body: read('remote/index.html'), type: 'text/html; charset=utf-8' },
+    '/remote.css': { body: read('remote/remote.css'), type: 'text/css; charset=utf-8' },
+    '/remote.js': { body: read('remote/remote.js'), type: JS },
+    '/boot.js': { body: () => Buffer.from(`window.cdp = { i18nDict: () => (${JSON.stringify(dict())}) };\n`), type: JS },
+  };
+  for (const name of PAGE_MODULES) files[`/js/${name}`] = { body: read(`renderer/js/${name}`), type: JS };
+  return files;
+}
+
+module.exports = { DEFAULT_PORT, shelfCacheFor, pageFiles, readRemoteConf, dataUrlBytes, nextRemoteState, albumCommand, createReplies, keepAwake };

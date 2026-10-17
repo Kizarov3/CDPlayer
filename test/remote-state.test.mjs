@@ -91,6 +91,15 @@ test('in changer mode the snapshot has five slots with covers, the playing discâ
   noPaths(s);
 });
 
+test('the phone gets the themeâ€™s accent colours (only those: its page stays dark), copied, not the live arrays', () => {
+  const colors = { bg: [17, 17, 19], card: [31, 31, 34], accent: [196, 20, 28], accent2: [180, 186, 194], text: [232, 233, 236], muted: [138, 142, 148] };
+  const s = snapshot({ state: base, player, track, details, statusWord: '', rev: 1, colors });
+  assert.deepStrictEqual(s.colors, { accent: [196, 20, 28], accent2: [180, 186, 194] });
+  colors.accent[0] = 0;
+  assert.strictEqual(s.colors.accent[0], 196);
+  assert.strictEqual(snapshot({ state: base, player, track, details, statusWord: '', rev: 1 }).colors, null);
+});
+
 test('a changer with nothing playing has no tracks and plays no slot', () => {
   const s = snapshot({ state: { ...base, changerMode: true }, player, track, details, changerView: { slots: [null, null, null, null, null], playingSlot: -1, tracks: [] }, slotCover, statusWord: '', rev: 1 });
   assert.deepStrictEqual(s.changer, { slots: [null, null, null, null, null], playing: -1, tracks: [] });

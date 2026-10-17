@@ -17,14 +17,16 @@ export function phoneStatus(words, fallback = '') {
  * volumeBeforeMute); `player`: { playing, position, duration }; `track`: { title, artist, album, coverKey };
  * `details(path)` → { title, duration } as the desktop's queue shows the song; `changerView`: what the carousel was
  * last drawn from (changer mode); `slotCover(firstPath)` → a small data URL or null. Paths are read, never passed on:
- * a `statusWord` naming one gives way to `statusFallback` (what the player is doing), or to nothing.
+ * a `statusWord` naming one gives way to `statusFallback` (what the player is doing), or to nothing. `colors`: the
+ * theme's, of which the phone takes only the accents (its page is always dark).
  */
-export function snapshot({ state, player, track, details, changerView, slotCover = () => null, statusWord, statusFallback = '', rev, canUndo = false }) {
+export function snapshot({ state, player, track, details, changerView, slotCover = () => null, statusWord, statusFallback = '', rev, canUndo = false, colors = null }) {
   const s = {
     rev, playing: !!player.playing, position: player.position || 0, duration: player.duration || 0,
     volume: state.volume, muted: state.volumeBeforeMute >= 0,
     shuffle: state.shuffle, repeat: state.repeat, changerMode: !!state.changerMode,
     status: phoneStatus(statusWord, statusFallback), canUndo: !!canUndo,
+    colors: colors ? { accent: [...colors.accent], accent2: [...colors.accent2] } : null,
     track: { title: track.title || '', artist: track.artist || null, album: track.album || null, coverKey: track.coverKey || null },
   };
   if (!state.changerMode) {

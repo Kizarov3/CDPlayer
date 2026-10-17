@@ -112,3 +112,52 @@ test('the phone\'s shelf is used only for the music folder it was read from', ()
   assert.strictEqual(w.shelfCacheFor({ folder: null, data }, null), data, 'none then, none now');
   assert.strictEqual(w.shelfCacheFor(null, '/Music'), null, 'nothing read yet (or the library changed)');
 });
+
+// ---- The phone's page: the files served, by exact path ------------------------------------------------------------
+
+const fs = require('fs');
+const path = require('path');
+const SRC = path.join(__dirname, '..', 'src');
+const readSrc = (rel) => fs.readFileSync(path.join(SRC, rel));
+
+test('the phone page\'s files: the page, its style and script, boot.js, and the desktop modules it uses — nothing else', () => {
+  const asked = [];
+  const files = w.pageFiles({ read: (rel) => { asked.push(rel); return Buffer.from(rel); }, dict: () => ({ code: 'en', dict: {} }) });
+  assert.deepStrictEqual(Object.keys(files).sort(), ['/', '/boot.js', '/remote.css', '/remote.js',
+    ...['disc.js', 'theme.js', 'jog.js', 'disc-wear.js', 'disc-data.js', 'i18n.js', 'i18n-format.js', 'shelf-order.js', 'shelf-dust.js',
+      'shelf-discogs.js', 'glyphs.js', 'queue-move.js', 'remote-view.js'].map((n) => `/js/${n}`)].sort());
+  assert.strictEqual(files['/'].type, 'text/html; charset=utf-8');
+  assert.strictEqual(files['/remote.css'].type, 'text/css; charset=utf-8');
+  for (const [p, f] of Object.entries(files)) if (p.endsWith('.js')) assert.strictEqual(f.type, 'text/javascript; charset=utf-8', p);
+  assert.strictEqual(files['/'].body.toString(), 'remote/index.html');
+  assert.strictEqual(files['/js/disc.js'].body.toString(), 'renderer/js/disc.js');
+  assert.ok(asked.every((rel) => /^(remote\/[\w.-]+|renderer\/js\/[\w.-]+)$/.test(rel)), asked.join(' '));
+});
+
+test('boot.js hands the page the language in use as it is when the page is loaded', () => {
+  let now = { code: 'en', dict: {} };
+  const files = w.pageFiles({ read: () => Buffer.alloc(0), dict: () => now });
+  const run = () => { const window = {}; new Function('window', files['/boot.js'].body().toString())(window); return window.cdp.i18nDict(); };
+  assert.deepStrictEqual(run(), { code: 'en', dict: {} });
+  now = { code: 'ru', dict: { _locale: 'ru', SHELF: 'ПОЛКА', 'A "quote" </script> ': 'x' } };
+  assert.deepStrictEqual(run(), now);
+});
+
+test('every module the phone page imports, and theirs, is one it is served', () => {
+  const files = w.pageFiles({ read: readSrc, dict: () => ({ code: 'en', dict: {} }) });
+  const seen = new Set();
+  const visit = (url) => {
+    if (seen.has(url)) return;
+    seen.add(url);
+    assert.ok(Object.prototype.hasOwnProperty.call(files, url), `imported but not served: ${url}`);
+    const text = files[url].body.toString();
+    for (const m of text.matchAll(/^\s*(?:import|export)\s[^'"]*?from\s*['"]([^'"]+)['"]|^\s*import\s*['"]([^'"]+)['"]/gm)) {
+      visit(new URL(m[1] || m[2], `http://phone${url}`).pathname);
+    }
+  };
+  visit('/remote.js');
+  assert.ok(seen.has('/js/disc.js') && seen.has('/js/remote-view.js'));
+  const html = files['/'].body.toString();
+  for (const m of html.matchAll(/\b(?:src|href)="([^"]+)"/g)) assert.ok(Object.prototype.hasOwnProperty.call(files, m[1]), `the page asks for ${m[1]}`);
+  assert.ok(html.indexOf('/boot.js') < html.indexOf('/remote.js'), 'boot.js before the module');
+});

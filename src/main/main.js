@@ -830,9 +830,11 @@ function phonePageBack() {
   toPage('remote-listening', true); // the page sends its full state at once
 }
 
+// The phone's page and the modules it uses, read as each server starts (only the names remote-wiring lists).
+const remotePageFiles = () => remoteWiring.pageFiles({ read: (rel) => fs.readFileSync(path.join(__dirname, '..', rel)), dict: () => i18n.current() });
 function newRemoteServer(address, port) {
   return createRemote({
-    address, port, token: remoteConf.token, files: {},
+    address, port, token: remoteConf.token, files: remotePageFiles(),
     snapshot: () => remoteKept.state,
     command: phoneCommand,
     albums: async () => remoteShelf.phoneAlbums((await phoneShelfData()).albums, store.readShelfColors()),

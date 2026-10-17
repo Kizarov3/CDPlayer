@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- Dark before anything else loads: the page's CSP allows no inline style, so the browser's own canvas is made dark
+       (color-scheme), the bars around the page (theme-color), and the body's colour by its attribute. -->
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#000000">
+  <title>CDPlayer</title>
+  <link rel="stylesheet" href="/remote.css">
+  <script src="/boot.js"></script>
+  <script type="module" src="/remote.js"></script>
+</head>
+<body bgcolor="#000000" text="#e8e9ec" class="waiting">
+  <div id="banner" hidden></div>
+
+  <main id="views">
+    <section id="view-playing" class="view">
+      <div id="disc-wrap"><canvas id="disc"></canvas></div>
+      <div id="meta">
+        <div id="title" class="line"></div>
+        <div id="subtitle" class="line"></div>
+        <div id="status" class="line"></div>
+      </div>
+      <div id="seek" class="bar"><div class="track"><div class="fill"></div></div><div class="knob"></div></div>
+      <div id="times"><span id="elapsed">0:00</span><span id="remaining">-0:00</span></div>
+      <div id="transport">
+        <button id="shuffle" class="mode" title="Shuffle" data-i18n-title><span class="badge"></span></button>
+        <button id="prev" class="skip" title="Previous track" data-i18n-title></button>
+        <button id="play" title="Play/Pause" data-i18n-title></button>
+        <button id="next" class="skip" title="Next track" data-i18n-title></button>
+        <button id="repeat" class="mode" title="Repeat" data-i18n-title><span class="badge"></span></button>
+      </div>
+      <div id="modes" class="line"></div>
+      <div id="volume-row">
+        <button id="mute" title="Mute / unmute" data-i18n-title>
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="waves" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="cross" d="M16.5 9.5l5 5M21.5 9.5l-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+        <div id="volume" class="bar"><div class="track"><div class="fill"></div></div><div class="knob"></div></div>
+        <span id="volume-value">0</span>
+      </div>
+    </section>
+
+    <section id="view-shelf" class="view" hidden>
+      <div class="head">
+        <input id="filter" type="search" placeholder="Find an album or artist" spellcheck="false" autocomplete="off" data-i18n-placeholder>
+        <button id="sort" class="pill"></button>
+      </div>
+      <div id="shelf-count" class="info"></div>
+      <div id="shelf-list" class="list"></div>
+    </section>
+
+    <section id="view-queue" class="view" hidden>
+      <div class="head">
+        <div id="queue-info" class="info line"></div>
+        <button id="clear" class="pill"></button>
+      </div>
+      <div id="queue-list" class="list"></div>
+    </section>
+
+    <section id="view-changer" class="view" hidden>
+      <div id="slots"></div>
+      <div class="head">
+        <div id="changer-heading" class="info line"></div>
+        <button id="disc-skip" class="pill" data-i18n>DISC SKIP</button>
+      </div>
+      <div id="changer-list" class="list"></div>
+    </section>
+  </main>
+
+  <div id="case" class="sheet" hidden>
+    <div class="sheet-top"><button id="case-back" class="back" data-i18n>BACK ON THE SHELF</button></div>
+    <div id="case-body" class="sheet-body"></div>
+    <div class="actions">
+      <button id="case-next" class="pill" data-i18n>PLAY NEXT</button>
+      <button id="case-add" class="pill"></button>
+      <button id="case-play" class="pill on" data-i18n>PLAY</button>
+    </div>
+  </div>
+
+  <div id="picker" class="sheet" hidden>
+    <div class="sheet-body">
+      <div class="sheet-title" data-i18n>THE CHANGER IS FULL</div>
+      <div class="sheet-subtitle" data-i18n>Which disc goes back to the shelf?</div>
+      <div id="picker-list" class="list"></div>
+    </div>
+    <div class="actions"><button id="picker-cancel" class="pill" data-i18n>CANCEL</button></div>
+  </div>
+
+  <div id="toast" hidden></div>
+  <nav id="tabs">
+    <button data-tab="playing" class="on" data-i18n>PLAYING</button>
+    <button data-tab="shelf" data-i18n>SHELF</button>
+    <button data-tab="third" id="tab-third"></button>
+  </nav>
+</body>
+</html>
