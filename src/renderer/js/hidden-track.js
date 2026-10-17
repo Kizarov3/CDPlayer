@@ -93,3 +93,8 @@ export function displayTitle(details) {
   const split = splitTitle(details && details.title);
   return split ? split.main : details && details.title;
 }
+
+/** The player's title for a file: A of "A / B" only when it hides B (h); a medley named "A / B" keeps it whole. */
+export function shownTitle(details, h) {
+  return h ? displayTitle(details) : details && details.title;
+}

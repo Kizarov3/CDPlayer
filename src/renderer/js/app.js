@@ -24,7 +24,7 @@ import { wearFor } from './disc-wear.js';
 import { targetRate, albumRate, badgeLabel, badgeText, badgeExact, levelName, LEVELS } from './quality.js';
 import { createSoundCheck, measureFile } from './sound-check.js';
 import { seamlessNext, PREPARE_SECONDS } from './gapless.js';
-import { detectHidden, hiddenPhase, countdown, hiddenName, displayTitle, splitTitle } from './hidden-track.js';
+import { detectHidden, hiddenPhase, countdown, hiddenName, displayTitle, shownTitle, splitTitle } from './hidden-track.js';
 import { pickOutput, outputName } from './output.js';
 import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
@@ -569,6 +569,7 @@ function resetToIdle(message) {
   state.index = -1; state.loadToken++;
   engine.stop();
   state.loadedPath = null; state.details = null; state.lyrics = null;
+  resetHidden(); // no ? on an empty seek bar, no HIDDEN badge
   disc.setWear(null);
   showInPlayer(null);
   setTrackTitle(t('Pick a track to get started.'), null);
@@ -708,7 +709,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   if (token !== state.loadToken) return;
   state.details = details; state.detailsPath = path;
   detailsCache.set(path, { ...details, cover: undefined, duration: details.duration || engine.duration });
-  setTrackTitle(displayTitle(details), details.artist);
+  setTrackTitle(details.title, details.artist); // (A of "A / B" once it's known to hide B: followHidden)
   updateWear();
   updateQualityBadge();
   fadeInNowPlaying();
@@ -770,6 +771,7 @@ async function followHidden(path, details, token, power) {
       h.name = r.name; h.asked = true;
     }).catch(() => {});
   }
+  if (shownTitle(details, h) !== details.title) setTrackTitle(shownTitle(details, h), details.artist);
   showHidden();
   followHiddenPhase();
 }
@@ -789,8 +791,10 @@ function followHiddenPhase() {
     if (phase === 'hidden') {
       if (was) setStatus(t('HIDDEN TRACK'));
       setTrackTitle(hiddenName(h, state.details) || t('Hidden track'), state.artistText);
-    } else if (was === 'hidden') setTrackTitle(displayTitle(state.details), state.artistText);
+    } else if (was === 'hidden') setTrackTitle(shownTitle(state.details, h), state.artistText);
     $('hidden-badge').hidden = phase !== 'hidden';
+    // Out of the silence (a seek back into the song): the countdown leaves the pill.
+    if (was === 'silence' && phase === 'song' && !statusHeld) setText($('status'), STATUS_DOT + stateStatus());
     if (was) { updateMediaSession(); renderQueue(); }
   }
   if (phase === 'hidden' && !h.found && engine.playing && engine.position - h.hiddenStart >= HEARD_SECONDS) {

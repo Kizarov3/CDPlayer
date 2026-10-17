@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { powerEnvelope, detectHidden, BLOCK_SECONDS, splitTitle, hiddenPhase, countdown, hiddenName, displayTitle } from '../src/renderer/js/hidden-track.js';
+import { powerEnvelope, detectHidden, BLOCK_SECONDS, splitTitle, hiddenPhase, countdown, hiddenName, displayTitle, shownTitle } from '../src/renderer/js/hidden-track.js';
 
 // Synthetic songs at 8 kHz (the waveform's decode rate): noise-and-tone "music" at a given level, digital zeros,
 // 16-bit dither, tape hiss.
@@ -93,4 +93,10 @@ test('the hidden song\'s name, and the title shown before it', () => {
   assert.strictEqual(hiddenName(h, { title: 'Something in the Way' }), null);
   assert.strictEqual(displayTitle({ title: 'Something in the Way / Endless, Nameless' }), 'Something in the Way');
   assert.strictEqual(displayTitle({ title: 'AC/DC' }), 'AC/DC');
+});
+
+test('a medley "A / B" keeps its whole title; only a file with a hidden track shows A', () => {
+  assert.strictEqual(shownTitle({ title: 'Speak to Me / Breathe' }, null), 'Speak to Me / Breathe');
+  assert.strictEqual(shownTitle({ title: 'Something in the Way / Endless, Nameless' }, h), 'Something in the Way');
+  assert.strictEqual(shownTitle({ title: 'Polly' }, h), 'Polly');
 });
