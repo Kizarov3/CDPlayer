@@ -15,6 +15,7 @@ export const SEAM_LEAD = 0.011, SEAM_WATCH = 0.15, SEAM_BLEND = 0.005;
 // duration and seek are then relative to that stretch, and reaching its end counts as the track ending.
 
 import { Spatializer } from './spatial.js';
+import { powerEnvelope } from './hidden-track.js';
 
 export const EQ_FREQUENCIES = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 
@@ -423,13 +424,19 @@ export class AudioEngine {
     return out;
   }
 
-  /** The seek bar's waveform: 220 buckets of RMS amplitude, normalized to the loudest bucket. */
+  /**
+   * The seek bar's waveform: 220 buckets of RMS amplitude, normalized to the loudest bucket — and, from the same
+   * decode, each 100 ms block's power over every channel, for finding a hidden track (hidden-track.js).
+   * → { buckets, power }.
+   */
   async computeWaveform(url, buckets = 220) {
     const res = await fetch(url);
     const buf = await res.arrayBuffer();
     // Decoded at a low sample rate — plenty for an amplitude outline, and a fraction of the memory.
     const decoded = await new OfflineAudioContext(1, 1, 8000).decodeAudioData(buf);
-    const data = decoded.getChannelData(0);
+    const channels = Array.from({ length: decoded.numberOfChannels }, (_, i) => decoded.getChannelData(i));
+    const power = powerEnvelope(channels, decoded.sampleRate);
+    const data = channels[0];
     const per = Math.max(1, Math.floor(data.length / buckets));
     const rms = new Float32Array(buckets);
     let peak = 0;
@@ -440,6 +447,6 @@ export class AudioEngine {
       if (rms[b] > peak) peak = rms[b];
     }
     if (peak > 0) for (let b = 0; b < buckets; b++) rms[b] = Math.min(1, rms[b] / peak);
-    return rms;
+    return { buckets: rms, power };
   }
 }

@@ -24,6 +24,7 @@ import { wearFor } from './disc-wear.js';
 import { targetRate, albumRate, badgeLabel, badgeText, badgeExact, levelName, LEVELS } from './quality.js';
 import { createSoundCheck, measureFile } from './sound-check.js';
 import { seamlessNext, PREPARE_SECONDS } from './gapless.js';
+import { detectHidden, hiddenPhase, countdown, hiddenName, displayTitle, splitTitle } from './hidden-track.js';
 import { pickOutput, outputName } from './output.js';
 import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
@@ -56,6 +57,7 @@ const state = {
   queue: [], index: -1, shuffle: 'OFF', repeat: 'OFF', playModes: null, // playModes: the other mode's SHUFFLE / REPEAT, kept for it; SHUFFLE OFF / DISC / ALL, REPEAT OFF / TRACK / DISC / ALL
   changer: { slots: Array(changer.SLOTS).fill(null), nextDisc: null }, // the slots over queue and index (changer.js)
   changerMode: false,  // Settings → CHANGER: the five-disc changer instead of the queue (each keeps its own music)
+  hidden: null, hiddenPhase: null, // the playing file's hidden track and where the position is in it (hidden-track.js)
   nextUp: null,        // the queue's { start, end }: the run put to PLAY NEXT (play-next.js)
   volume: 100, volumeBeforeMute: -1, crossfade: 0, mono: false, spatial: false, spatialAmount: 50, waveform: true, ambient: true, miniMode: false, discord: true, discNoise: false, discWear: true, discShine: true, taskbarDisc: true,
   trayBusy: false, // the tray is moving or the disc is being read: transport presses wait
@@ -96,9 +98,10 @@ const spotifyTracks = new Map(); // spotify:track:… -> { uri, title, artist, a
 // ---- Status / labels ---------------------------------------------------------------------------------------
 
 // The status line: a word on what just happened, then — after a few seconds — back to what the player is doing.
-let statusTimer = null;
+let statusTimer = null, statusHeld = false; // held: a word just said, for its six seconds
 function stateStatus() {
   if (disc.trayOpen) return state.queue.length ? t('OPEN · DROP IN A NEW DISC, OR PRESS E TO CLOSE') : t('OPEN · DROP MUSIC ON THE TRAY');
+  if (engine.playing && state.hidden && state.hiddenPhase === 'silence') return countdown(state.hidden, engine.position);
   if (engine.playing) return state.volume === 0 ? t('NOW SPINNING · SOUND OFF') : t('NOW SPINNING'); // (silent: said, so it isn't taken for broken)
   if (spotifyActive() && spotifyTrouble) return spotifyTrouble;
   return state.loadedPath ? t('PAUSED') : t('READY TO PLAY');
@@ -109,7 +112,8 @@ function setStatus(text) {
   if (anim.enabled && node.textContent !== said) node.animate([{ opacity: 0.25 }, { opacity: 1 }], { duration: 220, easing: EASE.out });
   node.textContent = said;
   clearTimeout(statusTimer);
-  statusTimer = setTimeout(() => { if (!state.trayBusy && !disc.reading) $('status').textContent = STATUS_DOT + stateStatus(); }, 6000);
+  statusHeld = true;
+  statusTimer = setTimeout(() => { statusHeld = false; if (!state.trayBusy && !disc.reading) $('status').textContent = STATUS_DOT + stateStatus(); }, 6000);
 }
 // A cue sheet track is queued as "<path to .cue>#<track number>" (see src/main/cue.js).
 const cueRef = (p) => /^(.*\.cue)#(\d+)$/i.exec(p);
@@ -623,6 +627,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   state.crossfadeStarted = false;
   if (state.loadedPath !== path) flushFoundSoon();
   state.loadedPath = path;
+  resetHidden();
   showSoundCheck(null); // until it's known (and hidden for Spotify and CDs)
   showInPlayer(path);
   $('tags-button').hidden = false;
@@ -687,7 +692,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   if (token !== state.loadToken) return;
   state.details = details; state.detailsPath = path;
   detailsCache.set(path, { ...details, cover: undefined, duration: details.duration || engine.duration });
-  setTrackTitle(details.title, details.artist);
+  setTrackTitle(displayTitle(details), details.artist);
   updateWear();
   updateQualityBadge();
   fadeInNowPlaying();
@@ -710,8 +715,74 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   // track: that would mean decoding the entire album file for one song's outline. Nor for a CD track: it would read
   // the whole track off the disc first.)
   if (!cue && !isAudioCdTrack(path) && engine.duration && engine.duration < 30 * 60) {
-    engine.computeWaveform(cdp.mediaUrl(path)).then((w) => { if (token === state.loadToken) progress.setWaveform(w); }).catch(() => {});
+    const waveform = engine.computeWaveform(cdp.mediaUrl(path));
+    waveform.then((w) => { if (token === state.loadToken) progress.setWaveform(w.buckets); }).catch(() => {});
+    followHidden(path, details, token, waveform.then((w) => w.power, () => null));
   }
+}
+
+// ---- Hidden tracks (hidden-track.js) -----------------------------------------------------------------------------
+// A song hidden after minutes of silence at the end of a disc's last track. The silence plays, as on the CD, counted
+// down to in the pill; the hidden song is named when it begins. Nothing gives it away before the silence the first
+// time; once 8 s of it have been heard it's "found", and shown from the start after that.
+
+function resetHidden() {
+  state.hidden = null; state.hiddenPhase = null;
+  progress.setMarker(null);
+  $('hidden-badge').hidden = true;
+}
+// What hidden.json knows of the file at once, else what the waveform's decode (`power`) shows once it's done.
+async function followHidden(path, details, token, power) {
+  const got = await cdp.hidden.get(path).catch(() => null);
+  if (!got || token !== state.loadToken) return;
+  const track = details.credits && details.credits.track;
+  const last = got.lastOfDisc ?? !!(track && track.of && track.no === track.of);
+  let entry = got.entry;
+  if (entry === undefined) {
+    const p = await power;
+    if (!p || token !== state.loadToken) return;
+    const found = detectHidden(p);
+    entry = found ? { ...found, name: null, asked: false, found: false } : null;
+    cdp.hidden.put(path, entry).catch(() => {});
+  }
+  if (!entry || !last) return;
+  const h = state.hidden = { ...entry, name: hiddenName(entry, details), path, revealed: entry.found }; // (its name from "A / B" too)
+  if (!h.name && !h.asked && !splitTitle(details.title)) { // asked once; kept to itself until the hidden song begins
+    cdp.hidden.name({ artist: details.artist, title: displayTitle(details), duration: engine.duration }).then((r) => {
+      if (!r || r.networkError) return;
+      cdp.hidden.update(path, { name: r.name, asked: true }).catch(() => {});
+      h.name = r.name; h.asked = true;
+    }).catch(() => {});
+  }
+  showHidden();
+  followHiddenPhase();
+}
+function showHidden() {
+  const h = state.hidden;
+  progress.setMarker(h && h.revealed && engine.duration ? (h.hiddenStart * 1000) / engine.duration : null);
+  renderQueue();
+}
+// Each tick (and seek): the title, badge, pill and what the media keys and Discord say follow where the position is.
+function followHiddenPhase() {
+  const h = state.hidden;
+  if (!h || h.path !== state.loadedPath) return;
+  const phase = hiddenPhase(h, engine.position), was = state.hiddenPhase;
+  if (phase !== was) {
+    state.hiddenPhase = phase;
+    if (phase !== 'song' && !h.revealed) { h.revealed = true; showHidden(); }
+    if (phase === 'hidden') {
+      if (was) setStatus(t('HIDDEN TRACK'));
+      setTrackTitle(hiddenName(h, state.details) || t('Hidden track'), state.artistText);
+    } else if (was === 'hidden') setTrackTitle(displayTitle(state.details), state.artistText);
+    $('hidden-badge').hidden = phase !== 'hidden';
+    if (was) { updateMediaSession(); renderQueue(); }
+  }
+  if (phase === 'hidden' && !h.found && engine.playing && engine.position - h.hiddenStart >= HEARD_SECONDS) {
+    h.found = true;
+    cdp.hidden.update(h.path, { found: true }).catch(() => {});
+    renderQueue();
+  }
+  if (phase === 'silence' && engine.playing && !statusHeld) setText($('status'), STATUS_DOT + stateStatus());
 }
 
 // Under the artist: the album (and its year), then the format — or, for a file with no name in its tags, what to do.
@@ -850,7 +921,7 @@ function shareCard() {
   const themeImage = shownTheme.image ? $('backdrop-theme') : null;
   const song = { cover: state.cover, title: state.titleText, artist: state.artistText, subtitle: cardSubtitle(state.details),
     backdrop: themeImage && themeImage.complete ? { image: themeImage, blur: shownTheme.blur, dim: shownTheme.dim } : null };
-  const choices = lyricChoices(state.lyrics, lyricsPosition());
+  const choices = lyricChoices(state.hiddenPhase === 'hidden' ? null : state.lyrics, lyricsPosition()); // a hidden song: not the main song's lines
   const png = (picked) => drawCard({ ...song, quote: quoteLines(choices.lines, picked) }, { ...colors });
   const attempt = (work, done) => async (picked) => {
     try { if (!(await work(await png(picked)))) return false; setStatus(done); return true; } catch { setStatus(t("COULDN'T MAKE THE CARD")); return false; }
@@ -1041,6 +1112,7 @@ function seekTo(seconds) {
   if (!engine.deck) return;
   engine.seek(seconds);
   updateProgressUi(true);
+  followHiddenPhase();
   updateMediaSessionPosition();
   pushMini();
   pushDiscord();
@@ -1382,7 +1454,7 @@ function updateMediaSession() {
   if (!('mediaSession' in navigator) || !state.details) return;
   const d = state.details;
   navigator.mediaSession.metadata = new MediaMetadata({
-    title: d.title || '', artist: d.artist || '', album: d.album || '',
+    title: state.titleText || d.title || '', artist: d.artist || '', album: d.album || '',
     artwork: d.cover ? [{ src: d.cover, sizes: '512x512', type: 'image/jpeg' }] : [],
   });
   updateMediaSessionPosition();
@@ -1397,9 +1469,12 @@ function pushDiscord() {
   const d = state.details;
   const current = d && state.detailsPath === state.loadedPath;
   if (state.discord && current && engine.playing) findDiscordCover(d);
+  // With a hidden track, the bar is the song's own stretch: none through the silence, so it never runs past the song.
+  const h = state.hidden && state.hidden.path === state.loadedPath ? state.hidden : null, phase = h && state.hiddenPhase;
   cdp.setDiscordTrack(state.discord && current && engine.playing ? {
-    title: d.title, artist: d.artist, album: d.album, coverUrl: d.coverUrl || null,
-    position: engine.position, duration: engine.duration,
+    title: state.titleText || d.title, artist: d.artist, album: d.album, coverUrl: d.coverUrl || null,
+    position: phase === 'hidden' ? engine.position - h.hiddenStart : engine.position,
+    duration: phase === 'silence' ? 0 : phase === 'hidden' ? engine.duration - h.hiddenStart : phase === 'song' ? h.songEnd : engine.duration,
   } : null);
 }
 // Discord only shows covers by web address. A cover found online already has one; a cover inside the file doesn't, so
@@ -2178,7 +2253,7 @@ function playbackTick() {
     }
   }
   const now = performance.now();
-  if (now - sessionTick > 1000) { sessionTick = now; updateMediaSessionPosition(); }
+  if (now - sessionTick > 1000) { sessionTick = now; updateMediaSessionPosition(); followHiddenPhase(); }
   if (state.miniMode) {
     const msg = { playing: true, position: pos, duration: dur };
     if (now - miniLevelsAt > 30) { miniLevelsAt = now; const raw = engine.levels(5, 90); if (raw) msg.levels = raw; }
