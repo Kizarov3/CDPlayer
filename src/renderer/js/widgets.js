@@ -75,6 +75,7 @@ export function modeButton(glyph, title, onClick) {
 // ---- Slider ---------------------------------------------------------------------------------------------------
 
 const THUMB = 11;
+const MARKER_SNAP = 6; // px
 const allSliders = new Set();
 onColorsChanged(() => { for (const s of allSliders) s.draw(); });
 
@@ -88,6 +89,7 @@ export class Slider {
     this.waveformCapable = waveform;
     this.waveformEnabled = true;
     this.waveform = null;
+    this.marker = null; // a ? where something starts (a hidden track), in the slider's own values
     this.dragging = false;
     this.enabled = true;
     this.canvas = el('canvas', { class: 'slider' });
@@ -120,7 +122,8 @@ export class Slider {
     if (!this.enabled) return;
     const x = e.clientX - this.canvas.getBoundingClientRect().left;
     if (phase === 'down') { this.dragging = true; this.canvas.setPointerCapture(e.pointerId); }
-    const v = this.valueForX(x);
+    // Let go within a few pixels of the ?, it lands on it exactly.
+    const v = phase === 'up' && this.marker !== null && Math.abs(x - this.xForValue(this.marker)) <= MARKER_SNAP ? this.marker : this.valueForX(x);
     if (v !== this.value || phase === 'down') { this.value = v; this.draw(); if (phase !== 'up' && this.onInput) this.onInput(v); }
     if (phase === 'up') {
       this.dragging = false;
@@ -135,6 +138,11 @@ export class Slider {
     this.value = v;
     this.draw();
   }
+  xForValue(v) {
+    const { x: tx, w } = this.track;
+    return tx + (this.max > this.min ? (v - this.min) / (this.max - this.min) : 0) * w;
+  }
+  setMarker(v) { if (v !== this.marker) { this.marker = v; this.draw(); } }
   setWaveform(data) { this.waveform = data; this.draw(); }
   setWaveformEnabled(on) { this.waveformEnabled = on; this.draw(); }
   draw() {
@@ -165,6 +173,14 @@ export class Slider {
         ctx.fillStyle = g;
         roundRect(ctx, tx, cy - 1.5, fill, 3, 1.5);
       }
+    }
+    if (this.marker !== null) { // on the bar itself: it's flat there (silence), and the bar is all the height there is
+      const mx = this.xForValue(this.marker);
+      ctx.clearRect(mx - 5, 0, 10, h);
+      ctx.font = `bold 12px ${getComputedStyle(document.documentElement).getPropertyValue('--font')}`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = rgb(colors.accent);
+      ctx.fillText('?', mx, cy + 0.5);
     }
     ctx.fillStyle = 'rgba(255,255,255,0.137)';
     ctx.beginPath(); ctx.arc(thumbX, cy, THUMB / 2 + 3, 0, Math.PI * 2); ctx.fill();
