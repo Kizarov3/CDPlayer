@@ -109,9 +109,12 @@ function medianCut(counts, maxSwatches) {
 }
 
 /**
- * AUTO theme from a cover image: sample a 48×48 grid, drop grays/near-black/near-white, median-cut into swatches,
+ * AUTO theme from a cover image: sample a 160×160 grid, drop grays/near-black/near-white, median-cut into swatches,
  * then favour populous *and* saturated swatches — so a small, vivid logo on an otherwise gray photo still wins.
+ * (A 48×48 grid was too sparse: on lettering in rows, as In Rainbows' cover is, it could land on one colour's rows
+ * at one size of the image and not at another — a blue theme for an orange cover.)
  */
+const SAMPLE_GRID = 160;
 export function deriveAutoTheme(image) {
   let hue = 0.58, sat = 0.55, hue2 = null, monochrome = false;
   if (image && image.width) {
@@ -120,7 +123,7 @@ export function deriveAutoTheme(image) {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.drawImage(image, 0, 0);
     const data = ctx.getImageData(0, 0, w, h).data;
-    const stepX = Math.max(1, Math.floor(w / 48)), stepY = Math.max(1, Math.floor(h / 48));
+    const stepX = Math.max(1, Math.floor(w / SAMPLE_GRID)), stepY = Math.max(1, Math.floor(h / SAMPLE_GRID));
     const counts = new Map();
     let total = 0, qualifying = 0;
     for (let y = 0; y < h; y += stepY) {
