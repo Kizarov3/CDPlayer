@@ -60,3 +60,9 @@ export function detectHidden(power) {
   }
   return best && { songEnd: best.songEnd, hiddenStart: best.hiddenStart };
 }
+
+/** "Something in the Way / Endless, Nameless" → the song and the hidden one (rips named from MusicBrainz); else null. */
+export function splitTitle(title) {
+  const m = /^(.+?) \/ (.+)$/.exec(String(title || '').trim());
+  return m && m[1].trim() && m[2].trim() ? { main: m[1].trim(), hidden: m[2].trim() } : null;
+}

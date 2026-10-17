@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { powerEnvelope, detectHidden, BLOCK_SECONDS } from '../src/renderer/js/hidden-track.js';
+import { powerEnvelope, detectHidden, BLOCK_SECONDS, splitTitle } from '../src/renderer/js/hidden-track.js';
 
 // Synthetic songs at 8 kHz (the waveform's decode rate): noise-and-tone "music" at a given level, digital zeros,
 // 16-bit dither, tape hiss.
@@ -62,4 +62,11 @@ test('the envelope has one block per 100 ms, the last one partial', () => {
   const x = zeros(10.05);
   assert.strictEqual(BLOCK_SECONDS, 0.1);
   assert.strictEqual(powerEnvelope([x, x], RATE).length, Math.ceil(x.length / 800));
+});
+
+test('a title "A / B" names the song and the hidden one; anything else doesn\'t', () => {
+  assert.deepStrictEqual(splitTitle('Something in the Way / Endless, Nameless'), { main: 'Something in the Way', hidden: 'Endless, Nameless' });
+  assert.strictEqual(splitTitle('AC/DC'), null);
+  assert.strictEqual(splitTitle('A / '), null);
+  assert.strictEqual(splitTitle(null), null);
 });

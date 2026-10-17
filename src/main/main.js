@@ -306,6 +306,7 @@ handle('hidden:get', (file) => {
   return { entry: hiddenCache.get(file), lastOfDisc: a ? shelf.isLastOfDisc(a, file) : null };
 });
 handle('hidden:put', (file, entry) => { if (typeof file === 'string' && (entry === null || hiddenEntry(entry))) hiddenCache.put(file, entry); });
+handle('hidden:name', (d) => (d && typeof d === 'object' ? online.findHiddenName({ artist: d.artist, title: d.title, duration: Number(d.duration) }) : { name: null }));
 handle('hidden:update', (file, fields) => { if (typeof file === 'string' && fields && typeof fields === 'object') hiddenCache.update(file, fields); });
 // The now-playing card (share-card.js), onto the clipboard as a picture.
 handle('clipboard:image', (png) => clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]));

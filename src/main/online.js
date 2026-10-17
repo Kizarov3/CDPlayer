@@ -186,6 +186,26 @@ function pickRecording(recordings, { artist, title, album, duration, byIsrc = fa
   return pressing;
 }
 
+// A hidden track's name: MusicBrainz names a last track with a song hidden in it "A / B" ("Something in the Way /
+// Endless, Nameless"). Its recording as long as the file (within 5 s), whose A is the file's title → B; else null.
+function hiddenNameFrom(recordings, { title, duration }) {
+  const same = (a, b) => bareTitle(a).trim().toLowerCase() === bareTitle(b).trim().toLowerCase();
+  for (const r of recordings || []) {
+    const m = /^(.+?) \/ (.+)$/.exec(String(r.title || ''));
+    if (m && r.length > 0 && Math.abs(r.length / 1000 - duration) <= 5 && same(m[1], title)) return m[2].trim();
+  }
+  return null;
+}
+/** The hidden song of a file of `duration` seconds titled `title` → { name } (null: none known), or { networkError }. */
+async function findHiddenName({ artist, title, duration }) {
+  if (!artist || !title || !(duration > 0)) return { name: null };
+  const query = `recording:${phrase(bareTitle(title))} AND artist:${phrase(artist)} AND dur:[${Math.round(duration - 5) * 1000} TO ${Math.round(duration + 5) * 1000}]`;
+  try {
+    const json = await mbFetch(`recording?query=${encodeURIComponent(query)}&fmt=json&limit=25`);
+    return { name: hiddenNameFrom(json.recordings, { title, duration }) };
+  } catch { return { networkError: true }; }
+}
+
 /**
  * What MusicBrainz says a song's tags should be, for the Tags panel: { title, artist, album, albumArtist, year, track,
  * trackCount, disc, discCount, genre, label, musicBrainzTrackId, musicBrainzReleaseId, coverUrl } — or null when it
@@ -453,4 +473,4 @@ async function findLyrics({ title, artist, album, duration, guessed }) {
   return null;
 }
 
-module.exports = { fetchJson, musicBrainzAlbum, sameSong, findCover, findCoverUrl, findAlbumCover, findAlbumCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, wordOverlapRatio };
+module.exports = { fetchJson, musicBrainzAlbum, sameSong, hiddenNameFrom, findHiddenName, findCover, findCoverUrl, findAlbumCover, findAlbumCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, wordOverlapRatio };
