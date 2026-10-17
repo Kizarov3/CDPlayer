@@ -100,4 +100,10 @@ function createReplies({ send, timeoutMs, setTimer = setTimeout, clearTimer = cl
 /** Whether the PC is kept from sleeping: the remote on, and a phone connected now or within the last 30 minutes. */
 const keepAwake = ({ on, phones, lastSeen, now }) => !!on && (phones > 0 || (lastSeen > 0 && now - lastSeen < AWAKE_MS));
 
-module.exports = { DEFAULT_PORT, readRemoteConf, dataUrlBytes, nextRemoteState, albumCommand, createReplies, keepAwake };
+/**
+ * The shelf as read for the phone (`cache`: { folder, data }) → its data while the music folder is still the one it
+ * was read from, else null (read it again). Keyed by the folder itself, so no change of folder can be missed.
+ */
+const shelfCacheFor = (cache, folder) => (cache && cache.folder === folder ? cache.data : null);
+
+module.exports = { DEFAULT_PORT, shelfCacheFor, readRemoteConf, dataUrlBytes, nextRemoteState, albumCommand, createReplies, keepAwake };

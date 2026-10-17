@@ -102,3 +102,13 @@ test('the PC is kept awake while the remote is on and a phone is connected or wa
   assert.strictEqual(w.keepAwake({ on: true, phones: 0, lastSeen: 0, now }), false, 'no phone yet');
   assert.strictEqual(w.keepAwake({ on: false, phones: 1, lastSeen: now, now }), false, 'off: never');
 });
+
+test('the phone\'s shelf is used only for the music folder it was read from', () => {
+  const data = Promise.resolve({ albums: [], byKey: new Map() });
+  const cache = { folder: '/Music', data };
+  assert.strictEqual(w.shelfCacheFor(cache, '/Music'), data);
+  assert.strictEqual(w.shelfCacheFor(cache, '/Other Music'), null, 'another folder picked: read again');
+  assert.strictEqual(w.shelfCacheFor(cache, null), null, 'no folder any more');
+  assert.strictEqual(w.shelfCacheFor({ folder: null, data }, null), data, 'none then, none now');
+  assert.strictEqual(w.shelfCacheFor(null, '/Music'), null, 'nothing read yet (or the library changed)');
+});

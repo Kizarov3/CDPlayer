@@ -733,7 +733,7 @@ let remotePhones = [];
 let remoteSeen = 0; // when a phone was last connected (the PC stays awake 30 minutes after)
 let remoteBlocker = null; // the powerSaveBlocker's id, while it keeps the PC awake
 let remoteWork = Promise.resolve(); // starts and stops, one at a time
-let phoneShelf = null; // a promise of the shelf's { albums, byKey } for the phone, until the music folder changes
+let phoneShelf = null; // { folder, data: a promise of the shelf's { albums, byKey } } for the phone, read from `folder`
 
 const saveRemoteConf = () => store.writeText(store.FILES.remote, JSON.stringify(remoteConf));
 const pageAlive = () => !!win && !win.isDestroyed() && !win.webContents.isCrashed();
@@ -775,14 +775,17 @@ function phonesChanged(list) {
   sendRemoteStatus();
 }
 
-// The shelf as the phone sees it: read as the desktop shelf reads it (once, then kept until the music folder changes).
+// The shelf as the phone sees it: read as the desktop shelf reads it, then kept while it's the same music folder and
+// nothing in it has changed (another folder picked: read again, so a key never plays the old folder's songs).
 function phoneShelfData() {
-  if (!phoneShelf) {
-    const reading = shelfListing().then((r) => ({ albums: r.albums, byKey: remoteShelf.byKey(r.albums) }));
-    phoneShelf = reading;
-    reading.catch(() => { if (phoneShelf === reading) phoneShelf = null; });
-  }
-  return phoneShelf;
+  const folder = store.readLastPath();
+  const kept = remoteWiring.shelfCacheFor(phoneShelf, folder);
+  if (kept) return kept;
+  const reading = shelfListing().then((r) => ({ albums: r.albums, byKey: remoteShelf.byKey(r.albums) }));
+  const entry = { folder, data: reading };
+  phoneShelf = entry;
+  reading.catch(() => { if (phoneShelf === entry) phoneShelf = null; });
+  return reading;
 }
 async function phoneCover(key) {
   const album = (await phoneShelfData()).byKey.get(key);
@@ -872,11 +875,15 @@ async function stopRemote(reason, { quiet = false } = {}) {
 function watchRemote() {
   remoteDo(async () => {
     if (!remoteConf.on) return;
-    // The address it's on gone (or none yet): on the first one offered now.
-    const move = remoteNet.addressChanged(remoteAt ? remoteAt.address : null, lookAtAddresses());
+    // The address it's on (or, not running, the one kept) gone: on the first one offered now. Not running with an
+    // address offered (the network back, a port refused before): tried again.
+    const list = lookAtAddresses();
+    const move = remoteNet.addressChanged(remoteAt ? remoteAt.address : remoteConf.address, list);
     if (move) {
       await stopRemote('off', { quiet: true });
       remoteConf = { ...remoteConf, address: move };
+      await startRemote();
+    } else if (!remote && list.length) {
       await startRemote();
     }
     remoteKeepAwake();
