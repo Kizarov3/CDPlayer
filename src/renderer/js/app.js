@@ -3,6 +3,7 @@
 import { THEMES, colors, setColors, deriveAutoTheme, visualizerModeFor, particleModeFor, rgb, onColorsChanged, setUserThemes, toFile } from './theme.js';
 import { AudioEngine } from './audio.js';
 import { moveItem } from './queue-move.js';
+import { snapshot as remoteSnapshot, fullSlots, commandError, isStale, musicKey } from './remote-state.js';
 import { Disc } from './disc.js';
 import { Visualizer } from './visualizer.js';
 import { Particles } from './particles.js';
@@ -74,6 +75,8 @@ const state = {
   sleepRemaining: 0, sleepMinutes: 0,
   lastActivity: Date.now(), lastCdMouse: Date.now(), cursorHidden: false, visualizerEnteredAt: 0,
   lastPath: null, version: '', platform: '',
+  remoteListening: false, // a phone remote is connected (main says so): the state is sent to it as it changes
+  rev: Date.now(),        // the music's version for the phone (+1 at each queue or changer change; never the same after a reload)
 };
 const engine = new AudioEngine();
 // Settings → SOUND CHECK (sound-check.js): every song at the same loudness — not Spotify's (it does its own) nor a live CD's.
@@ -98,6 +101,7 @@ const spotifyTracks = new Map(); // spotify:track:… -> { uri, title, artist, a
 
 // The status line: a word on what just happened, then — after a few seconds — back to what the player is doing.
 let statusTimer = null;
+let remoteTimer = null; // a full state for the phone, coming (remoteSoon)
 function stateStatus() {
   if (disc.trayOpen) return state.queue.length ? t('OPEN · DROP IN A NEW DISC, OR PRESS E TO CLOSE') : t('OPEN · DROP MUSIC ON THE TRAY');
   if (engine.playing) return state.volume === 0 ? t('NOW SPINNING · SOUND OFF') : t('NOW SPINNING'); // (silent: said, so it isn't taken for broken)
@@ -109,9 +113,11 @@ function setStatus(text) {
   // A new word fades in over the old (the same one said again stays still).
   if (anim.enabled && node.textContent !== said) node.animate([{ opacity: 0.25 }, { opacity: 1 }], { duration: 220, easing: EASE.out });
   node.textContent = said;
+  remoteSoon(); // the phone shows the same words
   clearTimeout(statusTimer);
-  statusTimer = setTimeout(() => { if (!state.trayBusy && !disc.reading) $('status').textContent = STATUS_DOT + stateStatus(); }, 6000);
+  statusTimer = setTimeout(() => { if (!state.trayBusy && !disc.reading) { $('status').textContent = STATUS_DOT + stateStatus(); remoteSoon(); } }, 6000);
 }
+const statusWords = () => $('status').textContent.replace(STATUS_DOT, '');
 // A cue sheet track is queued as "<path to .cue>#<track number>" (see src/main/cue.js).
 const cueRef = (p) => /^(.*\.cue)#(\d+)$/i.exec(p);
 function displayName(p) {
@@ -182,6 +188,7 @@ let preparedNext = null; // gapless: { path, index, token } — the track waitin
 // …dropped when something it was prepared for changes (modes, quality, Sound Check, crossfade, the mode); prepared again on a tick.
 function dropPrepared() { engine.cancelPrepared(); preparedNext = null; }
 let changerView = null; // the carousel (changer-view.js)
+let shownChanger = null; // what it was last drawn from — the phone's changer is the same
 let picking = Promise.resolve(); // the full changer's question, one at a time
 // A disc's cover in the carousel: the album's (its first song's folder or tags), or the Spotify album's.
 const coverForPath = (p) => (isSpotifyUri(p) ? Promise.resolve((spotifyTracks.get(p) || {}).cover || null) : cdp.shelfCover(p).catch(() => null));
@@ -256,6 +263,8 @@ function discPosition() {
 
 function renderQueue() {
   if (!changerView) return; // not built yet
+  syncRev();
+  remoteSoon();
   updateDiscData();
   showChangerSlots();
   if (undoClear && state.queue.length) { clearTimeout(undoClear.timer); undoClear = null; } // new music since: keep it
@@ -273,7 +282,7 @@ function renderQueue() {
   if (!here) {
     $('queue-info').textContent = c.queue.length ? t('CHANGER · {n} DISCS', { n: slots.filter(Boolean).length }) : t('CHANGER EMPTY');
     $('queue-next').textContent = t('OPEN THE SHELF (S) AND PUT AN ALBUM IN — OR DROP A FOLDER HERE');
-    changerView.render({ slots, playingSlot: -1, tracks: [], heading: '' });
+    changerView.render(shownChanger = { slots, playingSlot: -1, tracks: [], heading: '' });
     return;
   }
   const d = c.slots[here.slot];
@@ -286,9 +295,9 @@ function renderQueue() {
   const tracks = changer.tracksOf(c, here.slot).map((p, k) => {
     ensureDetails(p);
     const det = detailsCache.get(p);
-    return { index: d.start + k, no: k + 1, title: queueDisplay(p), time: formatDuration(det ? det.duration : 0), current: d.start + k === state.index };
+    return { index: d.start + k, no: k + 1, title: queueDisplay(p), time: formatDuration(det ? det.duration : 0), duration: det ? det.duration : 0, current: d.start + k === state.index };
   });
-  changerView.render({ slots, playingSlot: here.slot, tracks, heading: [t('DISC {n}', { n: here.slot + 1 }), d.kind === 'cdr' ? 'CD-R' : null, discLabel(d), d.artist].filter(Boolean).join(' · ') });
+  changerView.render(shownChanger = { slots, playingSlot: here.slot, tracks, heading: [t('DISC {n}', { n: here.slot + 1 }), d.kind === 'cdr' ? 'CD-R' : null, discLabel(d), d.artist].filter(Boolean).join(' · ') });
 }
 
 // The queue, as 2.14 showed it: every song, the one playing marked, PLAY NEXT's run tagged; drag to reorder, × to remove.
@@ -419,12 +428,18 @@ function removeFromQueue(i) {
   spotifyResync();
   renderQueue(); saveQueueSoon();
 }
-async function loadDisc(item, tracks, { play = false, next = false, startPlayback = true } = {}) {
-  if (startPlayback && disc.trayOpen && !state.trayBusy) { await putDiscOnTray(tracks, 0, undefined, { disc: item }); return { slot: -1 }; } // music dropped on the open tray
+// `remote`: the phone's — never onto the tray, and a full changer answers { full: true } instead of asking here (the
+// phone asks, and sends the disc again with the `slot` to take out, used only if the changer is still full).
+async function loadDisc(item, tracks, { play = false, next = false, startPlayback = true, remote = false, slot: chosen = null } = {}) {
+  if (!remote && startPlayback && disc.trayOpen && !state.trayBusy) { await putDiscOnTray(tracks, 0, undefined, { disc: item }); return { slot: -1 }; } // music dropped on the open tray
   if (!state.changerMode) return queueAdd(tracks, { play, next, startPlayback });
   // One song to play, already on a disc in the changer (from SEARCH or HISTORY): it's played there, not loaded again.
   if (play && startPlayback && tracks.length === 1 && state.queue.includes(tracks[0])) { goTo(state.queue.indexOf(tracks[0])); return { slot: changer.slotOf(ch(), state.index).slot }; }
   let r = changer.load(ch(), item, tracks, { play, next });
+  if (r.full && remote) {
+    if (chosen == null) return { full: true };
+    r = changer.load(ch(), item, tracks, { play, next, slot: chosen }); // the slot playing (by now) gives -1: cancelled below
+  }
   if (r.full) {
     // One question at a time: a second disc waits for the first answer (and is asked about the changer as it is then).
     const asked = picking.then(() => { const again = changer.load(ch(), item, tracks, { play, next }); return again.full ? app.onFullChanger(ch()) : -1; });
@@ -1670,6 +1685,7 @@ function setVolume(v, { fromSlider = false } = {}) {
   if (spotifySession) spotifySession.setVolume(state.volume / 100);
   $('volume-value').textContent = `${state.volume}%`;
   if (!fromSlider) volumeSlider.setValue(state.volume);
+  remoteSoon(); // the phone's slider follows
   saveSettingsSoon();
 }
 function adjustVolume(delta) { state.volumeBeforeMute = -1; setVolume(state.volume + delta); }
@@ -1814,13 +1830,23 @@ async function setMiniMode(enabled) {
 // ---- Mini player sync ----------------------------------------------------------------------------------------
 
 let lastMiniCover = null, miniCoverKey = 0, sentMiniCoverKey = -1;
+// The cover playing now, its key moved on when it changes (the mini player's and the phone's).
+function currentCover() {
+  const cover = state.cover ? state.cover.src : null;
+  if (cover !== lastMiniCover) { lastMiniCover = cover; miniCoverKey++; }
+  return cover;
+}
+// The phone (remote-state.js) gets the same moments as the mini player, while it's listening: a full state on every
+// pushMini(true) (gathered into one), else where the song is.
 function pushMini(full = false) {
+  if (state.remoteListening) {
+    if (full) remoteSoon(); else cdp.sendRemoteState({ playing: engine.playing, position: engine.position, duration: engine.duration });
+  }
   if (!state.miniMode) return;
   const msg = { playing: engine.playing, position: engine.position, duration: engine.duration };
   if (full) {
     const d = state.details;
-    const cover = state.cover ? state.cover.src : null;
-    if (cover !== lastMiniCover) { lastMiniCover = cover; miniCoverKey++; }
+    const cover = currentCover();
     Object.assign(msg, {
       colors, animations: anim.enabled, shine: state.discShine, visMode: visualizerModeFor(shownTheme),
       shuffle: state.shuffle, repeat: state.repeat,
@@ -1851,6 +1877,150 @@ function onMiniCommand({ action, value }) {
     case 'exit': setMiniMode(false); break;
     default: break;
   }
+}
+
+// ---- Phone remote --------------------------------------------------------------------------------------------
+// Main runs the server (main/remote.js); this page tells it what the phone shows and carries out what the phone
+// presses — as the desktop's own buttons do, but never by the tray, never by a question asked here.
+
+// Full states carry `rev`; the cover playing now goes to main (for /cover/now) only when its key moved on, in `cover`,
+// which main keeps and takes off before the state goes to a phone. Between them, { playing, position, duration }.
+const COVER_RUN = Date.now().toString(36); // keys from an earlier page (before a reload) can't name this page's covers
+let sentRemoteCoverKey = null, remoteTickAt = 0, remoteSentAt = 0, musicShown = null;
+// Changes close together go as one full state, and at most 4 a second (a long queue's titles arrive a few at a time).
+const REMOTE_GATHER_MS = 30, REMOTE_FULL_MS = 250;
+function remoteSoon() {
+  if (!state.remoteListening || remoteTimer) return;
+  const wait = Math.max(REMOTE_GATHER_MS, remoteSentAt + REMOTE_FULL_MS - performance.now());
+  remoteTimer = setTimeout(() => {
+    remoteTimer = null;
+    if (!state.remoteListening) return;
+    remoteSentAt = performance.now();
+    cdp.sendRemoteState(remoteState());
+  }, wait);
+}
+// The music the phone's indexes point into changed: a new rev (a command sent against the old one is refused).
+function syncRev() {
+  const key = musicKey({ queue: state.queue, changerMode: state.changerMode, slots: state.changer.slots });
+  if (key !== musicShown) { musicShown = key; state.rev++; }
+}
+function remoteState() {
+  syncRev();
+  const cover = currentCover(), coverKey = cover ? `${COVER_RUN}.${miniCoverKey}` : null;
+  const s = remoteSnapshot({
+    state, player: { playing: engine.playing, position: engine.position, duration: engine.duration },
+    track: { title: state.titleText || t('Pick a track to get started.'), artist: state.artistText || null, album: state.details && state.details.album ? state.details.album : null, coverKey },
+    details: (p) => { const d = detailsCache.get(p); return { title: queueDisplay(p), duration: d ? d.duration : 0 }; },
+    changerView: shownChanger, slotCover, statusWord: statusWords(), rev: state.rev, canUndo: !!undoClear,
+  });
+  if (coverKey !== sentRemoteCoverKey) { sentRemoteCoverKey = coverKey; s.cover = cover && cover.startsWith('data:') ? cover : null; }
+  return s;
+}
+// The changer's covers for the phone: small (96 px), made once per disc from the cover the carousel shows.
+const slotCovers = new Map(); // first song's path → data URL, or null while it's made (or when there's none)
+const SLOT_COVER_PX = 96, SLOT_COVERS_KEPT = 20;
+function slotCover(first) {
+  if (!first) return null;
+  if (slotCovers.has(first)) return slotCovers.get(first);
+  slotCovers.set(first, null);
+  if (slotCovers.size > SLOT_COVERS_KEPT) slotCovers.delete(slotCovers.keys().next().value);
+  const big = isSpotifyUri(first) ? (((spotifyTracks.get(first) || {}).cover && cdp.spotifyCover(spotifyTracks.get(first).cover)) || Promise.resolve(null)) : coverForPath(first);
+  Promise.resolve(big).then(smallCover).then((small) => { if (small && slotCovers.has(first)) { slotCovers.set(first, small); remoteSoon(); } }).catch(() => {});
+  return null;
+}
+async function smallCover(src) {
+  const img = await decodeCover(src);
+  if (!img) return null;
+  const scale = Math.min(1, SLOT_COVER_PX / Math.max(img.naturalWidth, img.naturalHeight));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(img.naturalWidth * scale)); canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.8);
+}
+function onRemoteListening(on) {
+  state.remoteListening = !!on;
+  clearTimeout(remoteTimer); remoteTimer = null;
+  if (!on) return;
+  sentRemoteCoverKey = undefined; // a fresh start for main (or the page reloaded): the cover goes again
+  remoteSentAt = performance.now();
+  cdp.sendRemoteState(remoteState()); // only what's there — a phone (re)connecting never starts the music
+}
+async function onRemoteCommand({ id, cmd }) {
+  let result;
+  try { result = await remoteCommand(cmd || {}); } catch { result = { error: 'failed' }; }
+  cdp.remoteReply(id, result || { ok: true });
+}
+// main has checked the command's shape (remote-net.js validCommand); here, whether it's still for the music as it is.
+async function remoteCommand(cmd) {
+  syncRev();
+  if (isStale(cmd, state.rev)) return { stale: true };
+  const here = playingSlot();
+  const error = commandError(cmd, { queueLength: state.queue.length, slots: state.changerMode ? state.changer.slots : null, changerMode: state.changerMode, playingSlot: here ? here.slot : -1 });
+  if (error) return { error };
+  const v = cmd.value;
+  switch (cmd.action) {
+    case 'toggle':
+      if (!engine.deck && !state.queue.length) return { error: 'empty' }; // the desktop's PLAY would open the shelf here
+      await toggle(); break;
+    case 'prev': previousTrack(); break;
+    case 'next': userNext(); break;
+    case 'seek': seekTo(v); break;
+    case 'volume': state.volumeBeforeMute = -1; setVolume(v); break; // where to, not by how much (the mini player's)
+    case 'mute': toggleMute(); break;
+    case 'shuffle': toggleShuffle(); break;
+    case 'repeat': cycleRepeat(); break;
+    case 'playIndex': goTo(v); break;
+    case 'remove': removeFromQueue(v); break;
+    case 'move': // as the drag does, all at once
+      if (v.from === v.to) break;
+      ({ queue: state.queue, index: state.index } = moveItem(state.queue, state.index, v.from, v.to));
+      state.nextUp = null; upcomingCache = null;
+      renderQueue(); saveQueueSoon(); spotifyResync();
+      break;
+    case 'clear': clearQueue(); break;
+    case 'undo': if (undoClear) undoClearQueue(); else if (undoEject) undoEjectSlot(); break; // as ⌘Z
+    case 'playSlot': playSlot(v); break;
+    case 'discSkip': discSkip(); break;
+    case 'album': return remoteAlbum(v);
+    default: return { error: 'unknown' };
+  }
+  return { ok: true };
+}
+// An album from the phone's shelf (main has turned its key into the shelf album, paths and all), as the case's buttons
+// do it on the desktop: PLAY puts it in and plays (from `track`), PLAY NEXT and ADD as theirs; then its shrink-wrap comes off.
+async function remoteAlbum({ how, track = 0, slot, album }) {
+  const item = { id: album.id, kind: 'album', title: album.title, artist: album.artist }; // the shelf's own disc (discOfAlbum)
+  let r;
+  if (how === 'play') r = await remoteInsert(album.paths, track, item, slot);
+  else if (!state.changerMode && spotifyDiscIn()) r = await remoteInsert(album.paths, 0, item); // files replace a Spotify disc, like a new CD
+  else r = await loadDisc(item, album.paths, { next: how === 'next', remote: true, slot });
+  if (r && r.full) return { full: fullSlots(shownChanger, slotCover) };
+  if (r && r.error) return r;
+  if (r && r.cancelled) return { error: 'playing' };
+  if (album.wrapped !== false) cdp.tearWrap(album.id).catch(() => {}); // (main keeps it torn once; the desktop shelf shows it next time it's read)
+  return { ok: true };
+}
+// PLAY from the phone: what insertDisc does — the queue replaced, or the disc into a slot of the changer — but not by
+// the tray (and in Mini Mode too). A tray already out (opened on the desktop) gets the disc and closes, as PLAY would.
+async function remoteInsert(paths, start, item, slot) {
+  if (state.trayBusy) return { error: 'busy' };
+  const from = (n, length) => Math.max(0, Math.min(n || 0, length - 1));
+  if (!state.changerMode) {
+    state.nextUp = null; state.queue = paths.slice();
+    state.index = from(start, paths.length);
+    upcomingCache = null;
+  } else {
+    const r = await loadDisc(item, paths, { play: true, startPlayback: false, remote: true, slot });
+    if (r.full || r.cancelled) return r;
+    const run = state.changer.slots[r.slot];
+    apply(changer.moveTo(ch(), run.start + from(start, run.end - run.start)));
+  }
+  renderQueue(); saveQueueSoon();
+  if (!disc.trayOpen) { load(state.queue[state.index], { autoPlay: true }); return { slot: -1 }; }
+  trayResume = { playing: false }; // the disc that was in doesn't play on: a new one went in
+  await load(state.queue[state.index], { autoPlay: false });
+  closeTray(); // reads, then plays
+  return { slot: -1 };
 }
 function waitForFullscreen(target) {
   return new Promise((resolve) => {
@@ -2184,6 +2354,7 @@ function playbackTick() {
     if (now - miniLevelsAt > 30) { miniLevelsAt = now; const raw = engine.levels(5, 90); if (raw) msg.levels = raw; }
     cdp.sendMiniState(msg);
   }
+  if (state.remoteListening && now - remoteTickAt >= 1000) { remoteTickAt = now; cdp.sendRemoteState({ playing: true, position: pos, duration: dur }); }
 }
 
 let last = performance.now(), idleCheck = 0;
@@ -2363,6 +2534,8 @@ async function start() {
   cdp.onFullscreenChanged((fs) => { state.fullscreen = fs; particles.w = 0; });
   cdp.onOpenFiles((files) => addToQueue(files));
   cdp.onMiniCommand(onMiniCommand);
+  cdp.onRemoteCommand(onRemoteCommand);
+  cdp.onRemoteListening(onRemoteListening);
   onColorsChanged(() => { drawDivider(); pushMini(true); });
   window.addEventListener('resize', () => { drawDivider(); if (state.titleText) setTrackTitle(state.titleText, state.artistText); });
 

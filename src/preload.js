@@ -146,4 +146,10 @@ contextBridge.exposeInMainWorld('cdp', {
   onMiniState: on('mini-state'),
   sendMiniCommand: (command) => ipcRenderer.send('mini:command', command),
   onMiniCommand: on('mini-command'),
+
+  // Phone remote <-> main window: the state for the phone, and the phone's commands, each answered by its id
+  sendRemoteState: (state) => ipcRenderer.send('remote:state', state),
+  onRemoteCommand: on('remote-command'),
+  remoteReply: (id, result) => ipcRenderer.send('remote:reply', id, result),
+  onRemoteListening: on('remote-listening'),
 });
