@@ -183,8 +183,13 @@ function scanAlbums(onProgress) {
 let onShelf = null;
 function byTrack(albums) {
   const map = new Map();
-  for (const a of albums) { const album = { id: a.id, paths: a.tracks.map((t) => t.path) }; for (const p of album.paths) map.set(p, album); }
+  for (const a of albums) { const album = { id: a.id, paths: a.tracks.map((t) => t.path), discs: a.tracks.map((t) => t.disc) }; for (const p of album.paths) map.set(p, album); }
   return map;
+}
+/** Whether `p` is the last track of its disc on a shelf album (albumOf's: paths in disc and track order, their discs). */
+function isLastOfDisc(album, p) {
+  const i = album.paths.indexOf(p), disc = (k) => album.discs[k] || 1;
+  return i >= 0 && (i === album.paths.length - 1 || disc(i + 1) !== disc(i));
 }
 /**
  * When an album was last touched, for its dust: the latest of when it turned up in the music folder, when a song of it
@@ -310,4 +315,4 @@ async function albumCoverFull(firstTrack) {
 /** A file's tags changed: its album's cover thumbnail is made again next time. */
 function forget(filePath) { thumbs.delete(filePath); fromWeb.delete(filePath); onShelf = null; } // its tags changed: it may be on another album now
 
-module.exports = { COVER_FILE, scanAlbums, trackNumbers, albumOf, albumTracks, touchedAt, isWrapped, readCache, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };
+module.exports = { COVER_FILE, scanAlbums, trackNumbers, albumOf, albumTracks, isLastOfDisc, touchedAt, isWrapped, readCache, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };

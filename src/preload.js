@@ -98,6 +98,7 @@ contextBridge.exposeInMainWorld('cdp', {
   shelfCover: invoke('shelf:cover'),
   shelfCoverFull: invoke('shelf:coverFull'),
   soundCheck: { get: invoke('soundcheck:get'), put: invoke('soundcheck:put'), album: invoke('soundcheck:album') },
+  hidden: { get: invoke('hidden:get'), put: invoke('hidden:put'), update: invoke('hidden:update'), name: invoke('hidden:name') },
   onShelfProgress: on('shelf-progress'),
   onLibraryChanged: on('library-changed'),
   checkLibrary: invoke('library:check'),

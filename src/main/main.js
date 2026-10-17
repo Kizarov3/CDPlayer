@@ -292,6 +292,21 @@ const soundCheckCache = require('./soundcheck-cache').createSoundCheckCache({
 handle('soundcheck:get', (files) => soundCheckCache.get(Array.isArray(files) ? files.filter((f) => typeof f === 'string') : []));
 handle('soundcheck:put', (file, entry) => { if (typeof file === 'string' && entry && typeof entry === 'object') soundCheckCache.put(file, entry); });
 handle('soundcheck:album', (p) => { const a = shelf.albumOf(p); return a ? a.paths : null; });
+// Hidden tracks (hidden-track.js): what each file was found to hide, kept in hidden.json; and whether a song is the
+// last of its disc on the shelf (null: not on the shelf — the renderer goes by its tags).
+const hiddenCache = require('./hidden-cache').createHiddenCache({
+  read: () => store.readText('hidden.json'),
+  write: (s) => store.writeText('hidden.json', s),
+  stat: (f) => { try { return fs.statSync(f); } catch { return null; } },
+});
+const hiddenEntry = (e) => e && typeof e === 'object' && Number.isFinite(e.songEnd) && Number.isFinite(e.hiddenStart);
+handle('hidden:get', (file) => {
+  if (typeof file !== 'string') return { entry: undefined, lastOfDisc: null };
+  const a = shelf.albumOf(file);
+  return { entry: hiddenCache.get(file), lastOfDisc: a ? shelf.isLastOfDisc(a, file) : null };
+});
+handle('hidden:put', (file, entry) => { if (typeof file === 'string' && (entry === null || hiddenEntry(entry))) hiddenCache.put(file, entry); });
+handle('hidden:update', (file, fields) => { if (typeof file === 'string' && fields && typeof fields === 'object') hiddenCache.update(file, fields); });
 // The now-playing card (share-card.js), onto the clipboard as a picture.
 handle('clipboard:image', (png) => clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]));
 // …or saved as a picture, named after the song, in the Pictures folder to start with. → true once saved.

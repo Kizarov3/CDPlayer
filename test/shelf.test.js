@@ -238,3 +238,14 @@ test('an album carries what its tracks\' tags say about its pressing: the most c
   ]);
   assert.deepStrictEqual([a.barcode, a.catalog, a.label, a.mbReleaseId], ['724352775324', 'X1', 'Parlophone', 'f9e0e4e5-1d7e-4e8d-9a46-3f1d2e6f6b1d']);
 });
+
+test('the last track of each disc of a shelf album', () => {
+  const { isLastOfDisc } = require('../src/main/shelf');
+  const one = { paths: ['/a/1.flac', '/a/2.flac', '/a/3.flac'], discs: [1, 1, 1] };
+  assert.deepStrictEqual(one.paths.map((p) => isLastOfDisc(one, p)), [false, false, true]);
+  const two = { paths: ['/d/1-1.flac', '/d/1-2.flac', '/d/2-1.flac', '/d/2-2.flac'], discs: [1, 1, 2, 2] };
+  assert.deepStrictEqual(two.paths.map((p) => isLastOfDisc(two, p)), [false, true, false, true]);
+  const untagged = { paths: ['/u/a.mp3', '/u/b.mp3'], discs: [null, null] };
+  assert.deepStrictEqual(untagged.paths.map((p) => isLastOfDisc(untagged, p)), [false, true]);
+  assert.strictEqual(isLastOfDisc(one, '/elsewhere.flac'), false);
+});
