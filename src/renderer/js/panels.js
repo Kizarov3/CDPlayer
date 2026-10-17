@@ -222,12 +222,21 @@ function buildSettings(app) {
     pick: () => app.setSoundCheck(mode).then(() => refreshSettingsIfOpen(app)),
   }))), t('Every song at the same loudness'));
 
-  const crossfadeValue = el('span', { class: 'row-value' }, s.crossfade ? t('{n}S', { n: s.crossfade }) : t('OFF'));
-  const crossfade = new Slider({ min: 0, max: 15, value: s.crossfade, onInput: (v) => { crossfadeValue.textContent = v ? t('{n}S', { n: v }) : t('OFF'); app.setCrossfade(v); } });
-  crossfade.canvas.title = t('Crossfade between tracks (0 = off, up to 15s)');
-  // CROSSFADE waits while AUTOMIX is on (its seconds kept for when it's off again).
-  let crossfadeRow;
-  const automix = toggle(s.automix, () => { app.setAutomix(!s.automix); setToggle(automix, s.automix); crossfadeRow.classList.toggle('idle', s.automix); crossfadeRow.classList.toggle('inactive', s.automix); });
+  // TRANSITION: how one song goes into the next — OFF (back to back, gapless), AUTOMIX, or CROSSFADE over the seconds
+  // set below it (only shown then; kept while another is picked).
+  const TRANSITION_NAMES = { OFF: t('OFF'), AUTOMIX: t('AUTOMIX'), CROSSFADE: t('CROSSFADE') };
+  const TRANSITION_HINTS = {
+    OFF: t('Each song follows the last with no gap, as on a CD — the silence that’s in the files stays.'),
+    AUTOMIX: t('Blends one song into the next where it winds down, so there’s no silence between them. An album played in order stays gapless.'),
+    CROSSFADE: t('Every song fades into the next over the seconds set — albums too.'),
+  };
+  const transitionButton = pill(TRANSITION_NAMES[s.transition] || t('OFF'), () => showMenu(transitionButton, ['OFF', 'AUTOMIX', 'CROSSFADE'].map((mode) => ({
+    label: TRANSITION_NAMES[mode], current: mode === s.transition,
+    pick: () => { app.setTransition(mode); refreshSettingsIfOpen(app); },
+  }))), t('How one song goes into the next'));
+  const crossfadeValue = el('span', { class: 'row-value' }, t('{n}S', { n: s.crossfade }));
+  const crossfade = new Slider({ min: 1, max: 15, value: s.crossfade, onInput: (v) => { crossfadeValue.textContent = t('{n}S', { n: v }); app.setCrossfade(v); } });
+  crossfade.canvas.title = t('How long each song fades into the next (1–15 s)');
 
   // Arms a one-shot countdown from now, only once the drag settles — not on every intermediate value.
   const sleepValue = el('span', { class: 'row-value' }, s.sleepMinutes ? t('{n}M', { n: s.sleepMinutes }) : t('OFF'));
@@ -283,15 +292,13 @@ function buildSettings(app) {
 
   const github = el('div', { class: 'github-link', title: t('Open GitHub profile'), onClick: () => app.cdp.openGitHub('Kizarov3') }, catSvg(), el('span', {}, 'Kizarov3'));
   spaceRow = sliderRow(t('SPACE'), spatialAmount, spatialValue);
-  crossfadeRow = sliderRow(t('CROSSFADE'), crossfade, crossfadeValue);
-  crossfadeRow.classList.toggle('idle', !!s.automix); crossfadeRow.classList.toggle('inactive', !!s.automix);
   spaceRow.classList.toggle('idle', !s.spatial);
   const body = el('div', { class: 'scroll settings-body' },
     section(t('SOUND')),
     unavailable(row(t('EQUALIZER'), el('div', { class: 'row-pills' }, presetButton, eqButton))),
-    unavailable(crossfadeRow),
-    unavailable(row(t('AUTOMIX'), automix)),
-    hint(t('Blends one song into the next where it winds down, so there’s no silence between them. An album played in order stays gapless.')),
+    unavailable(row(t('TRANSITION'), transitionButton)),
+    ...(s.transition === 'CROSSFADE' ? [unavailable(sliderRow(t('LENGTH'), crossfade, crossfadeValue))] : []),
+    hint(TRANSITION_HINTS[s.transition] || TRANSITION_HINTS.OFF),
     unavailable(row(t('OUTPUT'), outputButton)),
     unavailable(row(t('QUALITY'), qualityButton)),
     hint(document.body.dataset.platform === 'linux' // no output-rate helper there

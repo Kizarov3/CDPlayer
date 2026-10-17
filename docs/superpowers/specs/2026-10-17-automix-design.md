@@ -132,13 +132,15 @@ Gapless's standby deck and seam become the mix's:
 
 ## Settings
 
-- `settings.txt`: one more line after SHUFFLE/REPEAT: AUTOMIX `1` / `0`, missing → `0`. `DEFAULT_SETTINGS.automix =
-  false`. The settings test covers the round trip and old files.
-- Settings panel: `row(t('AUTOMIX'), automix)` (a `toggle`) after CROSSFADE, wrapped in `unavailable` for Spotify; a
-  hint: "Blends one song into the next where it winds down — no silence between them. Albums played in order stay
-  gapless." While on, the CROSSFADE row gets an inactive state (dimmed, no pointer events).
-- Help/FAQ and the guide mention AUTOMIX where they mention crossfade. Strings go through `t()` and into `ru.json`
-  (`AUTOMIX` → `АВТОМИКС`).
+After hearing it, the user asked for AUTOMIX and CROSSFADE as options of one setting:
+
+- Settings → SOUND → **TRANSITION** (ПЕРЕХОД), a menu like QUALITY's: **OFF** (back to back, gapless — the default),
+  **AUTOMIX**, **CROSSFADE**. Only under CROSSFADE is its **LENGTH** slider shown (1–15 s, 5 by default), kept while
+  another is picked. Each has its own hint. Unavailable for Spotify, as before.
+- `settings.txt`: the second line holds the crossfade's seconds only while CROSSFADE is picked (else 0 — what the Java
+  app reads); a 27th line holds the transition and the kept seconds (`AUTOMIX 7`). A file without it: CROSSFADE if its
+  second line had seconds, else OFF (`1`, the first AUTOMIX build's line, reads as AUTOMIX).
+- Help/FAQ mention AUTOMIX where they mention crossfade. Strings go through `t()` and into `ru.json`.
 
 ## Testing
 
