@@ -465,7 +465,8 @@ handle('tags:write', async (p, changes) => {
 // The music folder, watched so an open shelf keeps up with it (library-watch.js); it follows the folder the shelf reads.
 const libraryWatch = require('./library-watch').createLibraryWatch({ onChange: () => { if (win && !win.isDestroyed()) win.webContents.send('library-changed'); } });
 const watchMusicFolder = () => { if (!smokeDir) { const f = store.readLastPath(); libraryWatch.start(f && store.isDir(f) ? f : null); } };
-handle('shelf:albums', async () => {
+// The shelf's albums with plays, dust, notes and shrink-wrap added; the handler and the phone remote both read it.
+async function shelfListing() {
   watchMusicFolder();
   const result = await shelf.scanAlbums((done, total) => { if (win) win.webContents.send('shelf-progress', { done, total }); });
   // How many times each album's songs have been played, for the shelf's MOST PLAYED order.
@@ -481,7 +482,8 @@ handle('shelf:albums', async () => {
   for (const a of result.albums) a.wrapped = shelf.isWrapped(a, w);
   result.hiddenMissing = [...store.readHiddenMissing()];
   return result;
-});
+}
+handle('shelf:albums', () => shelfListing());
 // Missing albums (discography.js): each artist's official releases from MusicBrainz, for the artists on screen.
 const discography = require('./discography').createDiscography({
   mbFetch: (q) => require('./online').mbFetch(q),
