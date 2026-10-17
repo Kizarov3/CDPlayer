@@ -22,8 +22,10 @@ import { t, locale, translatePage } from './i18n.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
 import { wearFor } from './disc-wear.js';
 import { targetRate, albumRate, badgeLabel, badgeText, badgeExact, levelName, LEVELS } from './quality.js';
-import { createSoundCheck, measureFile } from './sound-check.js';
+import { createSoundCheck, measureFile, MAX_DECODE_BYTES } from './sound-check.js';
+import { MAX_MEASURE_SECONDS } from './loudness.js';
 import { seamlessNext, PREPARE_SECONDS } from './gapless.js';
+import { measureEdges, mixPlan, continuesAlbum, MAX_OVERLAP } from './automix.js';
 import { pickOutput, outputName } from './output.js';
 import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
@@ -57,7 +59,7 @@ const state = {
   changer: { slots: Array(changer.SLOTS).fill(null), nextDisc: null }, // the slots over queue and index (changer.js)
   changerMode: false,  // Settings → CHANGER: the five-disc changer instead of the queue (each keeps its own music)
   nextUp: null,        // the queue's { start, end }: the run put to PLAY NEXT (play-next.js)
-  volume: 100, volumeBeforeMute: -1, crossfade: 0, mono: false, spatial: false, spatialAmount: 50, waveform: true, ambient: true, miniMode: false, discord: true, discNoise: false, discWear: true, discShine: true, taskbarDisc: true,
+  volume: 100, volumeBeforeMute: -1, crossfade: 0, automix: false, mono: false, spatial: false, spatialAmount: 50, waveform: true, ambient: true, miniMode: false, discord: true, discNoise: false, discWear: true, discShine: true, taskbarDisc: true,
   trayBusy: false, // the tray is moving or the disc is being read: transport presses wait
   saveFound: false, // covers and lyrics found online are written into the song's file
   lyricsOffset: 0,  // ms the lyrics are moved by (+ later), on top of the output latency
@@ -619,7 +621,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   preparedNext = null;
   dropJog();
   disc.discPresent = true;
-  let fade = allowCrossfade && engine.playing && state.crossfade > 0 ? state.crossfade : 0;
+  let fade = allowCrossfade && engine.playing && crossfadeSeconds() > 0 ? crossfadeSeconds() : 0;
   state.crossfadeStarted = false;
   if (state.loadedPath !== path) flushFoundSoon();
   state.loadedPath = path;
@@ -678,6 +680,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   if (token !== state.loadToken) return;
   setPlaying(autoPlay);
   if (fade) setStatus(t('CROSSFADING'));
+  else if (seamless && engine.crossfading) setStatus(t('AUTOMIX')); // mixing in: the last song still winding down under it
   else if (!autoPlay) setStatus(t('TRACK LOADED'));
   $('length').textContent = formatTime(engine.duration);
   updateProgressUi(true);
@@ -795,7 +798,7 @@ function flushFoundSoon() {
       const r = await cdp.writeTags(path, changes).catch(() => null);
       if (r && r.ok) detailsCache.delete(path);
     }
-  }, (state.crossfade + 2) * 1000);
+  }, (Math.max(crossfadeSeconds(), state.automix ? MAX_OVERLAP : 0) + 2) * 1000);
 }
 function setSaveFound(on) { state.saveFound = on; if (!on) pendingFound.clear(); saveSettingsSoon(); }
 function setLyricsOffset(ms) { state.lyricsOffset = ms; saveSettingsSoon(); }
@@ -1007,23 +1010,91 @@ function continuesCurrent(p, { atBoundary = true } = {}) {
 async function prepareNext() {
   if (state.deckToken !== state.loadToken) return; // a track is still loading: what's playing is on its way out
   const next = upcomingIndex(), path = next >= 0 ? state.queue[next] : null;
-  if (preparedNext && preparedNext.path === path && preparedNext.index === next) return;
+  if (preparedNext && preparedNext.path === path && preparedNext.index === next && preparedNext.seen === edgesSeen(path)) return;
   if (preparedNext || engine.prepared) dropPrepared();
   if (!path || isSpotifyUri(path)) return;
-  const token = state.loadToken, mark = { path, index: next, token };
+  const token = state.loadToken, mark = { path, index: next, token, seen: edgesSeen(path) };
   preparedNext = mark;
   const nextDetails = detailsCache.get(path) || await cdp.details(path, { withCover: false }).catch(() => null);
   if (preparedNext !== mark || token !== state.loadToken) return;
   const plan = seamlessNext({
-    crossfade: state.crossfade, repeat: state.repeat, spotify: spotifyActive(), nextPath: path, nextDetails, aimedRate: albumAimFor(path, nextDetails),
+    crossfade: crossfadeSeconds(), repeat: state.repeat, spotify: spotifyActive(), nextPath: path, nextDetails, aimedRate: albumAimFor(path, nextDetails),
     isCdTrack: isAudioCdTrack(path), sameFileCue: continuesCurrent(path, { atBoundary: false }),
     quality: state.quality, customRate: engine.customRate, rateInfo: state.rateInfo, engineRate: engine.rate,
     mediaUrl: (p) => cdp.mediaUrl(p),
   });
   if (!plan) return; // stays marked, so it isn't asked again every tick; the 'ended' path plays it
+  // AUTOMIX: past the next song's leading silence, and mixed in where this one winds down — unless its album runs on.
+  let mix = null, startAt = 0;
+  if (state.automix && !plan.segment && !albumRunsOn(next)) {
+    const out = edgesOf(state.loadedPath), inc = edgesOf(path);
+    if (inc) startAt = inc.start;
+    if (out) mix = mixPlan(out, inc || null);
+  }
   const level = await soundCheck.known(path, evensOut(path) ? state.soundCheck : 'OFF').catch(() => null);
   if (preparedNext !== mark || token !== state.loadToken) return;
-  await engine.prepare(plan.url, { segment: plan.segment, trim: level ? level.linear : 1 });
+  if (await engine.prepare(plan.url, { segment: plan.segment, trim: level ? level.linear : 1, startAt }) && mix && preparedNext === mark) engine.armMix(mix);
+}
+
+// ---- AUTOMIX ------------------------------------------------------------------------------------------------------
+// Where the playing and the upcoming song start, wind down and end (automix.js edges): measured one file at a time
+// while AUTOMIX is on — from automix.json when measured before — and kept here. null: silent, or not measurable (a cue
+// track's album file, a Spotify or CD track, too long to decode).
+const songEdges = new Map(), edgesWanted = new Set();
+let edgesJobs = Promise.resolve();
+const crossfadeSeconds = () => (state.automix ? 0 : state.crossfade); // the CROSSFADE slider waits while AUTOMIX is on
+const upcomingPath = () => { const n = upcomingIndex(); return n >= 0 ? state.queue[n] : null; };
+const edgesOf = (p) => songEdges.get(p); // undefined: not known yet
+const edgesKnown = (p) => songEdges.has(p);
+function measureEdgesSoon(p) {
+  if (!state.automix || !p || songEdges.has(p) || edgesWanted.has(p)) return;
+  if (isSpotifyUri(p) || isAudioCdTrack(p) || cueRef(p)) { songEdges.set(p, null); return; }
+  edgesWanted.add(p);
+  edgesJobs = edgesJobs.then(async () => {
+    if (!state.automix || (p !== state.loadedPath && p !== upcomingPath())) return; // no longer playing or next: asked again if it is
+    try {
+      const cached = (await cdp.automix.get([p]))[p];
+      if (cached !== undefined) { songEdges.set(p, cached); return; }
+      const d = detailsCache.get(p) || await cdp.details(p, { withCover: false }).catch(() => null);
+      const duration = d && d.duration, rate = (d && d.format && d.format.sampleRate) || 48000;
+      if (!(duration > 0) || duration > MAX_MEASURE_SECONDS || duration * rate * 2 * 4 > MAX_DECODE_BYTES) { songEdges.set(p, null); return; }
+      const e = await measureEdges(cdp.mediaUrl(p));
+      songEdges.set(p, e);
+      cdp.automix.put(p, e).catch(() => {});
+    } catch { songEdges.set(p, null); }
+  }).catch(() => {}).finally(() => edgesWanted.delete(p));
+}
+// The queue's next song carries on the playing one's album, so it follows gaplessly, never mixed. Not known: not mixed.
+function albumRunsOn(next) {
+  const p = state.queue[next], a = detailsCache.get(state.loadedPath), b = detailsCache.get(p);
+  if (!a || !b) return true;
+  return continuesAlbum({ path: state.loadedPath, details: a }, { path: p, details: b }, { inOrder: state.shuffle === 'OFF' && next === state.index + 1 });
+}
+// The prepared next song was planned before both songs' edges were known: planned again once they are.
+const edgesSeen = (path) => `${edgesKnown(state.loadedPath)}|${edgesKnown(path)}`;
+// How long before the end the next song may have to be ready: the earliest a mix can start, plus the usual lead.
+function prepareWindow() {
+  const out = state.automix ? edgesOf(state.loadedPath) : null;
+  return PREPARE_SECONDS + (out ? Math.max(0, engine.duration - out.end + MAX_OVERLAP) : 0);
+}
+// A mix that can't overlap (the next song needs the output at another rate) still loses the silence: this song ends where
+// its sound does, and the next starts where its own begins.
+function automixSkipSilence() {
+  const out = edgesOf(state.loadedPath);
+  if (!state.automix || !out || engine.prepared || engine.crossfading || state.repeat === 'TRACK' || state.automixSkipped === state.loadToken) return;
+  if (engine.deck.el.currentTime < out.end || engine.timeLeft() < 0.3) return; // what's left: let it end as it would
+  const next = upcomingIndex();
+  if (next < 0 || albumRunsOn(next)) return;
+  state.automixSkipped = state.loadToken;
+  const inc = edgesOf(state.queue[next]);
+  notePlayed();
+  goTo(next, { startAt: inc ? inc.start : 0 });
+}
+/** Settings → AUTOMIX: on or off; what's next is planned again. */
+function setAutomix(on) {
+  state.automix = !!on;
+  saveSettingsSoon();
+  dropPrepared();
 }
 function trackFinished(deck) {
   if (deck !== engine.deck) return;
@@ -1893,7 +1964,7 @@ const appendAndPlay = (p) => addToQueue([p], { sorted: true, play: true });
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, changer: state.changerMode, playModes: { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } } };
+  return { volume: state.volume, crossfade: state.crossfade, automix: state.automix, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, changer: state.changerMode, playModes: { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } } };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -2159,17 +2230,19 @@ let sessionTick = 0, miniLevelsAt = 0;
 function playbackTick() {
   if (!engine.deck || !engine.playing || jog) return; // the snatches heard while the disc is turned by hand aren't playing
   engine.watchSegmentEnd();
-  if (state.crossfade === 0 && !spotifyActive()) { // gapless: the next track waits on the standby deck for the seam
-    const left = engine.duration - engine.position;
-    if (left > 0 && left <= PREPARE_SECONDS) prepareNext();
-    else if (preparedNext && left > PREPARE_SECONDS + 1) { engine.cancelPrepared(); preparedNext = null; } // seeked back
+  if (crossfadeSeconds() === 0 && !spotifyActive()) { // gapless: the next track waits on the standby deck for the seam (or the mix)
+    if (state.automix) { measureEdgesSoon(state.loadedPath); measureEdgesSoon(upcomingPath()); }
+    const left = engine.duration - engine.position, window = prepareWindow();
+    if (left > 0 && left <= window) prepareNext();
+    else if (preparedNext && left > window + 1) { engine.cancelPrepared(); preparedNext = null; } // seeked back
     engine.watchSeam();
+    automixSkipSilence();
   }
   if (spotifyActive()) { if (spotifySession) spotifySession.tick(); }
   // Crossfade into the next track once we're within the crossfade window of the end — except between cue sheet
   // tracks that run into each other in the same file, which play on through, as on the album.
   const dur = engine.duration, pos = engine.position;
-  if (!state.crossfadeStarted && state.crossfade > 0 && !spotifyActive() && dur > 0 && dur - pos <= state.crossfade) {
+  if (!state.crossfadeStarted && crossfadeSeconds() > 0 && !spotifyActive() && dur > 0 && dur - pos <= crossfadeSeconds()) {
     state.crossfadeStarted = true;
     if (state.repeat === 'TRACK' && state.loadedPath) load(state.loadedPath, { allowCrossfade: true });
     else {
@@ -2254,7 +2327,7 @@ export const app = {
   onFullChanger: (c) => panels.pickDiscToTakeOut(app, c),
   coverSource: () => state.coverFrom || null,
   switchTheme, previewTheme, restoreTheme, shownTheme: () => shownTheme, saveTheme, importTheme, pasteThemeCode, exportTheme, copyThemeCode, deleteTheme,
-  setQuality, setSoundCheck, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setTaskbarDisc, setOutput, listOutputs, currentOutputName,
+  setQuality, setSoundCheck, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setAnimations, setCrossfade, setAutomix, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setTaskbarDisc, setOutput, listOutputs, currentOutputName,
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
   pressingMenu: (anchor, items) => panels.pressingMenu(anchor, items),
@@ -2380,6 +2453,7 @@ async function start() {
   setAnimations(s.animations);
   setVolume(s.volume);
   state.crossfade = s.crossfade;
+  state.automix = !!s.automix;
   setMono(s.mono);
   state.spatialAmount = Number.isFinite(s.spatialAmount) ? s.spatialAmount : 50;
   setSpatial(!!s.spatial);

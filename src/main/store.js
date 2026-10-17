@@ -59,11 +59,11 @@ const safePath = (p) => typeof p === 'string' && !/[\r\n]/.test(p);
 
 // settings.txt — one value per line, in the Java app's order: volume, crossfade, mono, animations, theme, EQ
 // gains, waveform, mini mode, window bounds, ambient background, then Discord status, disc noise and saving found
-// art & lyrics into files, the lyrics offset in ms, how the shelf is sorted, disc wear, the audio output ("id<TAB>name") and the language (AUTO, en or a locale code), then the sound quality (HIGH, LOSSLESS or HIRES), spatial audio (1/0) and its amount (0–100), the disc's shine (1/0) and the disc on the app's icon (1/0; on unless turned off, but off on Windows unless turned on) and Sound Check (OFF, TRACK or ALBUM), then the CD changer mode (ON/OFF), then SHUFFLE and REPEAT for the queue and for the changer ("OFF ALL DISC TRACK") (CDPlayer 2 only). Missing trailing
+// art & lyrics into files, the lyrics offset in ms, how the shelf is sorted, disc wear, the audio output ("id<TAB>name") and the language (AUTO, en or a locale code), then the sound quality (HIGH, LOSSLESS or HIRES), spatial audio (1/0) and its amount (0–100), the disc's shine (1/0) and the disc on the app's icon (1/0; on unless turned off, but off on Windows unless turned on) and Sound Check (OFF, TRACK or ALBUM), then the CD changer mode (ON/OFF), then SHUFFLE and REPEAT for the queue and for the changer ("OFF ALL DISC TRACK"), then AUTOMIX (1/0) (CDPlayer 2 only). Missing trailing
 // lines keep their defaults.
 const DEFAULT_SETTINGS = {
   volume: 100, crossfade: 0, mono: false, animations: true, theme: 'RED', eq: new Array(10).fill(0),
-  waveform: true, miniMode: false, bounds: null, ambient: true, discord: false, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false, playModes: defaultPlayModes(),
+  waveform: true, miniMode: false, bounds: null, ambient: true, discord: false, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false, playModes: defaultPlayModes(), automix: false,
 };
 const SHELF_SORTS = ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR', 'PRICE'];
 const QUALITIES = ['HIGH', 'LOSSLESS', 'HIRES'];
@@ -116,6 +116,7 @@ function readSettings() {
   s.soundCheck = l.length >= 24 && SOUND_CHECKS.includes(l[23].trim()) ? l[23].trim() : 'OFF';
   s.changer = l.length >= 25 && l[24].trim() === 'ON';
   s.playModes = readPlayModes(l[25]);
+  s.automix = l.length >= 27 && l[26].trim() === '1';
   return s;
 }
 function writeSettings(s) {
@@ -128,7 +129,7 @@ function writeSettings(s) {
     LANGUAGE.test(s.language || '') ? s.language : 'AUTO',
     QUALITIES.includes(s.quality) ? s.quality : 'HIGH', s.spatial ? 1 : 0,
     Math.max(0, Math.min(100, Math.round(Number.isFinite(s.spatialAmount) ? s.spatialAmount : 50))), s.discShine === false ? 0 : 1, s.taskbarDisc ? 1 : 0,
-    SOUND_CHECKS.includes(s.soundCheck) ? s.soundCheck : 'OFF', s.changer ? 'ON' : 'OFF', writePlayModes(s.playModes)].join('\n') + '\n';
+    SOUND_CHECKS.includes(s.soundCheck) ? s.soundCheck : 'OFF', s.changer ? 'ON' : 'OFF', writePlayModes(s.playModes), s.automix ? 1 : 0].join('\n') + '\n';
   return writeText(FILES.settings, content);
 }
 

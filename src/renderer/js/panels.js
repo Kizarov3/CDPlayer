@@ -225,6 +225,9 @@ function buildSettings(app) {
   const crossfadeValue = el('span', { class: 'row-value' }, s.crossfade ? t('{n}S', { n: s.crossfade }) : t('OFF'));
   const crossfade = new Slider({ min: 0, max: 15, value: s.crossfade, onInput: (v) => { crossfadeValue.textContent = v ? t('{n}S', { n: v }) : t('OFF'); app.setCrossfade(v); } });
   crossfade.canvas.title = t('Crossfade between tracks (0 = off, up to 15s)');
+  // CROSSFADE waits while AUTOMIX is on (its seconds kept for when it's off again).
+  let crossfadeRow;
+  const automix = toggle(s.automix, () => { app.setAutomix(!s.automix); setToggle(automix, s.automix); crossfadeRow.classList.toggle('idle', s.automix); crossfadeRow.classList.toggle('inactive', s.automix); });
 
   // Arms a one-shot countdown from now, only once the drag settles — not on every intermediate value.
   const sleepValue = el('span', { class: 'row-value' }, s.sleepMinutes ? t('{n}M', { n: s.sleepMinutes }) : t('OFF'));
@@ -280,11 +283,15 @@ function buildSettings(app) {
 
   const github = el('div', { class: 'github-link', title: t('Open GitHub profile'), onClick: () => app.cdp.openGitHub('Kizarov3') }, catSvg(), el('span', {}, 'Kizarov3'));
   spaceRow = sliderRow(t('SPACE'), spatialAmount, spatialValue);
+  crossfadeRow = sliderRow(t('CROSSFADE'), crossfade, crossfadeValue);
+  crossfadeRow.classList.toggle('idle', !!s.automix); crossfadeRow.classList.toggle('inactive', !!s.automix);
   spaceRow.classList.toggle('idle', !s.spatial);
   const body = el('div', { class: 'scroll settings-body' },
     section(t('SOUND')),
     unavailable(row(t('EQUALIZER'), el('div', { class: 'row-pills' }, presetButton, eqButton))),
-    unavailable(sliderRow(t('CROSSFADE'), crossfade, crossfadeValue)),
+    unavailable(crossfadeRow),
+    unavailable(row(t('AUTOMIX'), automix)),
+    hint(t('Blends one song into the next where it winds down, so there’s no silence between them. An album played in order stays gapless.')),
     unavailable(row(t('OUTPUT'), outputButton)),
     unavailable(row(t('QUALITY'), qualityButton)),
     hint(document.body.dataset.platform === 'linux' // no output-rate helper there

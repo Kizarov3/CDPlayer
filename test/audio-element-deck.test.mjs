@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 
 // Just enough Web Audio for AudioEngine's constructor and gain handling.
-const param = () => ({ value: 1, setTargetAtTime() {}, cancelScheduledValues() {}, setValueCurveAtTime() {} });
+const param = () => ({ value: 1, setTargetAtTime() {}, cancelScheduledValues() {}, setValueCurveAtTime() {}, setValueAtTime() {}, exponentialRampToValueAtTime() {} });
 const node = () => ({ connect() {}, disconnect() {}, gain: param() });
 globalThis.AudioContext = class {
   constructor() { this.currentTime = 0; this.state = 'running'; this.destination = node(); this.sampleRate = 44100; }
@@ -195,4 +195,88 @@ test('a refused play keeps the old deck', async () => {
   engine.watchSeam(); await tick(20);
   assert.strictEqual(engine.deck, old);
   assert.strictEqual(engine.deck.gain.gain.value, 1);
+});
+
+// AUTOMIX: the standby starts at a moment before the end, and the two overlap.
+const timedCurves = (deck) => { const got = []; deck.gain.gain.setValueCurveAtTime = (c, at, len) => got.push({ c: Array.from(c), at, len }); return got; };
+
+test('prepare can start past a song\'s leading silence', async () => {
+  const engine = routedEngine();
+  await engine.load('cdp://app/media?p=a', { autoPlay: true });
+  await engine.prepare('cdp://app/media?p=b', { startAt: 1.5 });
+  assert.strictEqual(engine.standby.el.currentTime, 1.5);
+  assert.deepStrictEqual(engine.prepared, { url: 'cdp://app/media?p=b', start: 0 });
+});
+
+test('a mix: the standby starts at its moment, both stay on for the overlap, the old one fades and loses its bass', async () => {
+  const engine = routedEngine();
+  await engine.load('cdp://app/media?p=a', { autoPlay: true });
+  await engine.prepare('cdp://app/media?p=b');
+  engine.armMix({ at: 190, overlap: 0.2, fadeIn: 0.1, fadeOut: true });
+  const outgoing = engine.deck, incoming = engine.standby, out = timedCurves(outgoing), inn = timedCurves(incoming);
+  let bass = null;
+  outgoing.filter.frequency.exponentialRampToValueAtTime = (v, at) => { bass = { v, at }; };
+  const advanced = [], ended = [];
+  engine.onAdvance = (d) => advanced.push(d);
+  engine.onEnded = (d) => ended.push(d);
+  outgoing.el.currentTime = 150;
+  engine.watchSeam(); await tick(20);
+  assert.strictEqual(incoming.el.paused, true, 'not yet: 40 s before its moment');
+  outgoing.el.currentTime = 190 - SEAM_LEAD / 2;
+  engine.watchSeam(); await tick(20);
+  assert.strictEqual(engine.deck, incoming);
+  assert.deepStrictEqual(advanced, [incoming]);
+  assert.strictEqual(out[0].len, 0.2); assert.ok(out[0].c[0] > 0.99 && out[0].c.at(-1) < 0.01, 'out falls over the overlap');
+  assert.strictEqual(inn[0].len, 0.1); assert.ok(inn[0].c.at(-1) > 0.99, 'in rises over its fade-in');
+  assert.ok(bass && bass.v === 250, 'the bass goes');
+  assert.ok(engine.crossfading, 'the old deck plays on through the overlap');
+  assert.strictEqual(outgoing.el.paused, false);
+  outgoing.el.fire('ended');
+  assert.deepStrictEqual(ended, []);
+  await tick(300);
+  assert.ok(!engine.crossfading); assert.ok(outgoing.el.paused, 'let go after the overlap');
+});
+
+test('a dead stop keeps its last second as it is', async () => {
+  const engine = routedEngine();
+  await engine.load('cdp://app/media?p=a', { autoPlay: true });
+  await engine.prepare('cdp://app/media?p=b');
+  engine.armMix({ at: 199, overlap: 1, fadeIn: 1, fadeOut: false });
+  const outgoing = engine.deck, out = timedCurves(outgoing);
+  let bass = false;
+  outgoing.filter.frequency.exponentialRampToValueAtTime = () => { bass = true; };
+  outgoing.el.currentTime = 199 - SEAM_LEAD / 2;
+  engine.watchSeam(); await tick(20);
+  assert.strictEqual(engine.deck.url, 'cdp://app/media?p=b');
+  assert.strictEqual(out.length, 1);
+  assert.ok(out[0].at >= 0.95 && out[0].len <= 0.05, 'only a short fade at its very end');
+  assert.strictEqual(bass, false);
+  engine.stop();
+});
+
+test('seeked past the mix\'s moment, the mix starts at once; pausing mid-mix lets the old song go', async () => {
+  const engine = routedEngine();
+  await engine.load('cdp://app/media?p=a', { autoPlay: true });
+  await engine.prepare('cdp://app/media?p=b');
+  engine.armMix({ at: 190, overlap: 5, fadeIn: 3, fadeOut: true });
+  const outgoing = engine.deck;
+  outgoing.el.currentTime = 195;
+  engine.watchSeam(); await tick(20);
+  assert.strictEqual(engine.deck.url, 'cdp://app/media?p=b');
+  assert.ok(engine.crossfading);
+  engine.pause();
+  assert.ok(!engine.crossfading); assert.ok(outgoing.el.paused);
+  assert.strictEqual(engine.deck.gain.gain.value, 1);
+});
+
+test('a dropped standby forgets its mix: the next one seams at the end', async () => {
+  const engine = routedEngine();
+  await engine.load('cdp://app/media?p=a', { autoPlay: true });
+  await engine.prepare('cdp://app/media?p=b');
+  engine.armMix({ at: 100, overlap: 5, fadeIn: 3, fadeOut: true });
+  await engine.prepare('cdp://app/media?p=c');
+  assert.strictEqual(engine.mix, null);
+  engine.deck.el.currentTime = 100;
+  engine.watchSeam(); await tick(20);
+  assert.strictEqual(engine.deck.url, 'cdp://app/media?p=a');
 });

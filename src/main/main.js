@@ -292,6 +292,14 @@ const soundCheckCache = require('./soundcheck-cache').createSoundCheckCache({
 handle('soundcheck:get', (files) => soundCheckCache.get(Array.isArray(files) ? files.filter((f) => typeof f === 'string') : []));
 handle('soundcheck:put', (file, entry) => { if (typeof file === 'string' && entry && typeof entry === 'object') soundCheckCache.put(file, entry); });
 handle('soundcheck:album', (p) => { const a = shelf.albumOf(p); return a ? a.paths : null; });
+// AUTOMIX (automix.js): where songs measured before start, wind down and end, kept in automix.json.
+const automixCache = require('./automix-cache').createAutomixCache({
+  read: () => store.readText('automix.json'),
+  write: (s) => store.writeText('automix.json', s),
+  stat: (f) => { try { return fs.statSync(f); } catch { return null; } },
+});
+handle('automix:get', (files) => automixCache.get(Array.isArray(files) ? files.filter((f) => typeof f === 'string') : []));
+handle('automix:put', (file, edges) => { if (typeof file === 'string' && (edges === null || typeof edges === 'object')) automixCache.put(file, edges); });
 // The now-playing card (share-card.js), onto the clipboard as a picture.
 handle('clipboard:image', (png) => clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]));
 // …or saved as a picture, named after the song, in the Pictures folder to start with. → true once saved.
