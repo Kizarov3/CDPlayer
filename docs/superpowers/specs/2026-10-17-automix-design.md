@@ -77,6 +77,15 @@ mono at a low rate (Sound Check's way: `OfflineAudioContext` at 16 kHz):
 
 Constants (the −40 / −6 dB thresholds, 2 / 10 s, 3 s, 250 Hz) are starting points to tune by ear on real songs.
 
+## Keeping the overlap from clipping
+
+Measured on the user's library (191 songs, each mixed into another): 26 of 191 overlaps summed past full scale, by
+up to +2.2 dB for up to ~11 ms — dead stops and endings alike (CROSSFADE does the same). So the engine's output goes
+through a guard: ×0.5 → a WaveShaper → ×2 (both exact in floats). The shaper has no curve — Chromium then passes the
+sound bit for bit (checked: 96000 of 96000 samples identical) — except while two songs overlap (a mix or a crossfade),
+when `softClipCurve` leaves everything below ±0.9 as it is (to float rounding) and bends what's above smoothly towards
+±1, never past it. Overs a file decodes to by itself (loud AAC masters) are left as they always were.
+
 ## Measuring and caching
 
 - `measureEdges(url)` in the renderer decodes as `measureFile` does (and when Sound Check is measuring the same file

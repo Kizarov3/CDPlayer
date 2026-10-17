@@ -25,7 +25,7 @@ import { targetRate, albumRate, badgeLabel, badgeText, badgeExact, levelName, LE
 import { createSoundCheck, measureFile, MAX_DECODE_BYTES } from './sound-check.js';
 import { MAX_MEASURE_SECONDS } from './loudness.js';
 import { seamlessNext, PREPARE_SECONDS } from './gapless.js';
-import { measureEdges, mixPlan, continuesAlbum, MAX_OVERLAP } from './automix.js';
+import { measureEdges, continuesAlbum, nextPlan, prepareWindow, skipSilence, MAX_OVERLAP } from './automix.js';
 import { pickOutput, outputName } from './output.js';
 import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
@@ -1025,12 +1025,7 @@ async function prepareNext() {
   });
   if (!plan) return; // stays marked, so it isn't asked again every tick; the 'ended' path plays it
   // AUTOMIX: past the next song's leading silence, and mixed in where this one winds down — unless its album runs on.
-  let mix = null, startAt = 0;
-  if (state.automix && !plan.segment && !albumRunsOn(next)) {
-    const out = edgesOf(state.loadedPath), inc = edgesOf(path);
-    if (inc) startAt = inc.start;
-    if (out) mix = mixPlan(out, inc || null);
-  }
+  const { mix, startAt } = nextPlan({ automix: state.automix, albumRunsOn: albumRunsOn(next), segment: plan.segment, out: edgesOf(state.loadedPath), inc: edgesOf(path) });
   const level = await soundCheck.known(path, evensOut(path) ? state.soundCheck : 'OFF').catch(() => null);
   if (preparedNext !== mark || token !== state.loadToken) return;
   if (await engine.prepare(plan.url, { segment: plan.segment, trim: level ? level.linear : 1, startAt }) && mix && preparedNext === mark) engine.armMix(mix);
@@ -1072,23 +1067,24 @@ function albumRunsOn(next) {
 }
 // The prepared next song was planned before both songs' edges were known: planned again once they are.
 const edgesSeen = (path) => `${edgesKnown(state.loadedPath)}|${edgesKnown(path)}`;
-// How long before the end the next song may have to be ready: the earliest a mix can start, plus the usual lead.
-function prepareWindow() {
-  const out = state.automix ? edgesOf(state.loadedPath) : null;
-  return PREPARE_SECONDS + (out ? Math.max(0, engine.duration - out.end + MAX_OVERLAP) : 0);
-}
 // A mix that can't overlap (the next song needs the output at another rate) still loses the silence: this song ends where
 // its sound does, and the next starts where its own begins.
 function automixSkipSilence() {
-  const out = edgesOf(state.loadedPath);
-  if (!state.automix || !out || engine.prepared || engine.crossfading || state.repeat === 'TRACK' || state.automixSkipped === state.loadToken) return;
-  if (engine.deck.el.currentTime < out.end || engine.timeLeft() < 0.3) return; // what's left: let it end as it would
+  if (state.automixSkipped === state.loadToken) return;
   const next = upcomingIndex();
-  if (next < 0 || albumRunsOn(next)) return;
+  if (!skipSilence({
+    automix: state.automix, out: edgesOf(state.loadedPath), fileTime: engine.deck.el.currentTime, timeLeft: engine.timeLeft(),
+    prepared: !!engine.prepared, crossfading: engine.crossfading, repeat: state.repeat, hasNext: next >= 0, albumRunsOn: next >= 0 && albumRunsOn(next),
+  })) return;
   state.automixSkipped = state.loadToken;
-  const inc = edgesOf(state.queue[next]);
   notePlayed();
-  goTo(next, { startAt: inc ? inc.start : 0 });
+  goTo(next, automixStart(next));
+}
+// Where the queue's next song starts when it's put on after this one ended (not mixed): past its leading silence under
+// AUTOMIX, unless its album runs on.
+function automixStart(next) {
+  const inc = state.automix && !albumRunsOn(next) ? edgesOf(state.queue[next]) : null;
+  return inc ? { startAt: inc.start } : undefined;
 }
 /** Settings → AUTOMIX: on or off; what's next is planned again. */
 function setAutomix(on) {
@@ -1104,7 +1100,7 @@ function trackFinished(deck) {
   // A cue sheet track ends mid-file: unless the next track carries straight on from here, stop the file right now
   // rather than let the following song start playing underneath.
   if (next < 0 || !continuesCurrent(state.queue[next])) engine.pause();
-  if (nextTrack()) return;
+  if (next >= 0) { goTo(next, automixStart(next)); return; }
   setPlaying(false);
 }
 function seek(delta) { if (engine.deck) seekTo(engine.position + delta); }
@@ -2232,7 +2228,8 @@ function playbackTick() {
   engine.watchSegmentEnd();
   if (crossfadeSeconds() === 0 && !spotifyActive()) { // gapless: the next track waits on the standby deck for the seam (or the mix)
     if (state.automix) { measureEdgesSoon(state.loadedPath); measureEdgesSoon(upcomingPath()); }
-    const left = engine.duration - engine.position, window = prepareWindow();
+    const left = engine.duration - engine.position;
+    const window = prepareWindow({ out: state.automix ? edgesOf(state.loadedPath) : null, duration: engine.duration, lead: PREPARE_SECONDS });
     if (left > 0 && left <= window) prepareNext();
     else if (preparedNext && left > window + 1) { engine.cancelPrepared(); preparedNext = null; } // seeked back
     engine.watchSeam();

@@ -2,9 +2,11 @@
 // protocol, so seeking is instant and memory stays flat), routed through one shared Web Audio graph:
 //
 //   deck → trim (Sound Check) → bass cut (AUTOMIX) → deck gain (crossfade) ─┐
-//   deck → trim (Sound Check) → bass cut (AUTOMIX) → deck gain (crossfade) ─┴→ mono downmix → 10-band EQ → spatial audio → analyser (visualizer/beats) → volume → speakers
+//   deck → trim (Sound Check) → bass cut (AUTOMIX) → deck gain (crossfade) ─┴→ mono downmix → 10-band EQ → spatial audio → analyser (visualizer/beats) → volume → guard → speakers
 //
 // That graph replaces the Java app's hand-written PCM pump: gain, mono, EQ and crossfade are all native nodes.
+// The guard is a WaveShaper between ×0.5 and ×2 (both exact in floats) with no curve — it passes the sound untouched —
+// except while two songs overlap (a crossfade, a mix), when automix.js softClipCurve keeps their sum from clipping.
 //
 // Gapless (gapless.js): the next track waits on a standby deck and is started this long before the playing one
 // ends — an <audio> element starts on the audio pipeline's block grid, about 10 ms after play() (measured: 11 ms
@@ -19,7 +21,7 @@ export const SEAM_LEAD = 0.011, SEAM_WATCH = 0.15, SEAM_BLEND = 0.005;
 // duration and seek are then relative to that stretch, and reaching its end counts as the track ending.
 
 import { Spatializer } from './spatial.js';
-import { BASS_CUT_HZ } from './automix.js';
+import { BASS_CUT_HZ, softClipCurve } from './automix.js';
 
 // An equal-power (sin/cos) curve: rising, or falling.
 function equalPower(rising, n = 64) {
@@ -27,6 +29,8 @@ function equalPower(rising, n = 64) {
   for (let i = 0; i < n; i++) { const a = (i / (n - 1)) * (Math.PI / 2); c[i] = rising ? Math.sin(a) : Math.cos(a); }
   return c;
 }
+
+const GUARD_CURVE = softClipCurve();
 
 export const EQ_FREQUENCIES = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 
@@ -39,6 +43,7 @@ export class AudioEngine {
     this.mix = null; // AUTOMIX: the standby's mix plan (automix.js mixPlan), or null for a gapless seam
     this.spatialOn = false; this.spatialAmount = 0.5; // Settings → SPATIAL AUDIO (spatial.js)
     this.contextListeners = [];
+    this.guarding = false;     // the clipping guard's curve is on (two songs overlap)
     this.build(null);
     this.deck = null;          // the current track
     this.fadingOut = null;     // the previous track, while a crossfade is in progress
@@ -67,7 +72,12 @@ export class AudioEngine {
     node.connect(this.spatial.input);
     this.spatial.output.connect(this.analyser);
     this.analyser.connect(this.master);
-    this.master.connect(ctx.destination);
+    const halve = ctx.createGain(), double = ctx.createGain();
+    halve.gain.value = 0.5; double.gain.value = 2;
+    this.guard = ctx.createWaveShaper();
+    this.guard.curve = this.guarding ? GUARD_CURVE : null;
+    this.master.connect(halve); halve.connect(this.guard); this.guard.connect(double); double.connect(ctx.destination);
+    this.out = double;
     this.samples = new Float32Array(this.analyser.fftSize);
     this.freq = null;
     this.recDest = null;
@@ -86,7 +96,7 @@ export class AudioEngine {
   async setRate(rate) {
     if ((rate || null) === this.customRate && (!rate || rate === this.ctx.sampleRate)) return true;
     this.stop();
-    const old = this.ctx, oldNodes = { input: this.input, eq: this.eq, spatial: this.spatial, analyser: this.analyser, master: this.master, samples: this.samples };
+    const old = this.ctx, oldNodes = { input: this.input, eq: this.eq, spatial: this.spatial, analyser: this.analyser, master: this.master, guard: this.guard, out: this.out, samples: this.samples };
     try { this.build(rate); } catch {
       Object.assign(this, { ctx: old }, oldNodes);
       return false;
@@ -98,6 +108,8 @@ export class AudioEngine {
     return true;
   }
 
+  /** The guard against clipping: on while two songs overlap, else off (no curve: the sound passes untouched). */
+  setGuard(on) { this.guarding = !!on; if (this.guard) this.guard.curve = on ? GUARD_CURVE : null; }
   setVolume(v) { this.volume = v; this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.01); }
   /** Sound Check: the playing deck's own gain, before the crossfade's (1 = as it is). Ramped over `seconds`. */
   setTrim(linear, seconds = 0) {
@@ -204,9 +216,10 @@ export class AudioEngine {
     outgoing.gain.gain.setValueCurveAtTime(fadeOut, now, seconds);
     incoming.gain.gain.setValueCurveAtTime(fadeIn, now, seconds);
     this.fadingOut = outgoing;
+    this.setGuard(true);
     this.fadeTimer = setTimeout(() => {
       this.fadeTimer = null;
-      if (this.fadingOut === outgoing) { this.disposeDeck(outgoing); this.fadingOut = null; }
+      if (this.fadingOut === outgoing) { this.disposeDeck(outgoing); this.fadingOut = null; this.setGuard(false); }
       if (this.onCrossfadeDone) this.onCrossfadeDone();
     }, seconds * 1000 + 50);
   }
@@ -214,6 +227,7 @@ export class AudioEngine {
   cancelCrossfade() {
     if (this.fadeTimer) { clearTimeout(this.fadeTimer); this.fadeTimer = null; }
     if (this.fadingOut) { this.disposeDeck(this.fadingOut); this.fadingOut = null; }
+    this.setGuard(false);
     if (this.deck) {
       const g = this.deck.gain.gain;
       g.cancelScheduledValues(this.ctx.currentTime);
@@ -333,9 +347,10 @@ export class AudioEngine {
       og.setValueCurveAtTime(equalPower(false), now + Math.max(0, overlap - 0.05), 0.05); // what's left is silence
     }
     this.fadingOut = outgoing;
+    this.setGuard(true);
     this.fadeTimer = setTimeout(() => {
       this.fadeTimer = null;
-      if (this.fadingOut === outgoing) { this.disposeDeck(outgoing); this.fadingOut = null; }
+      if (this.fadingOut === outgoing) { this.disposeDeck(outgoing); this.fadingOut = null; this.setGuard(false); }
       if (this.onCrossfadeDone) this.onCrossfadeDone();
     }, overlap * 1000 + 50);
   }
@@ -439,7 +454,7 @@ export class AudioEngine {
    */
   recordingStream() {
     if (!this.recDest) this.recDest = this.ctx.createMediaStreamDestination();
-    this.master.connect(this.recDest);
+    this.out.connect(this.recDest);
     if (this.ctx.sampleRate <= 48000) return this.recDest.stream;
     // A new one each time: one suspended and resumed for the next video records a second of it, without sound.
     this.closeRecordingContext();
@@ -449,7 +464,7 @@ export class AudioEngine {
     return out.stream;
   }
   stopRecording() {
-    if (this.recDest) try { this.master.disconnect(this.recDest); } catch { /* not connected */ }
+    if (this.recDest) try { this.out.disconnect(this.recDest); } catch { /* not connected */ }
     this.closeRecordingContext();
   }
   closeRecordingContext() { if (this.recCtx) this.recCtx.close().catch(() => {}); this.recCtx = null; }

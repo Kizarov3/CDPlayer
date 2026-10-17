@@ -79,6 +79,47 @@ export function mixPlan(out, inc) {
   return { at: out.end - overlap, overlap, startAt, fadeIn: Math.min(overlap, quietOpening ? QUIET_FADE_IN : LOUD_FADE_IN), fadeOut: ending };
 }
 
+/**
+ * How the queue's next song follows, gapless.js having found it can follow at all → { mix, startAt }: mixed in
+ * (mixPlan), or (mix null) a gapless seam at the end — from startAt, past its leading silence when that's known.
+ * Plain gapless, from 0, with AUTOMIX off, for a cue track, or when the album runs on.
+ */
+export function nextPlan({ automix, albumRunsOn, segment, out, inc }) {
+  if (!automix || segment || albumRunsOn) return { mix: null, startAt: 0 };
+  return { mix: out ? mixPlan(out, inc || null) : null, startAt: inc ? inc.start : 0 };
+}
+
+/** How long before its end the playing song's next one has to be ready: the earliest a mix can start, plus `lead`. */
+export function prepareWindow({ out, duration, lead }) {
+  return lead + (out ? Math.max(0, duration - out.end + MAX_OVERLAP) : 0);
+}
+
+/**
+ * A mix that can't overlap (nothing was prepared — the next song needs the output at another rate) still loses the
+ * silence: true once the playing song has passed the end of its sound (`fileTime`) with more than a moment of its file
+ * left, so the next one should load now. Not while something is prepared or fading, nor under REPEAT ONE.
+ */
+export function skipSilence({ automix, out, fileTime, timeLeft, prepared, crossfading, repeat, hasNext, albumRunsOn }) {
+  if (!automix || !out || prepared || crossfading || repeat === 'TRACK' || !hasNext || albumRunsOn) return false;
+  return fileTime >= out.end && timeLeft >= 0.3;
+}
+
+/**
+ * The guard against two songs adding up past full scale while they overlap: a WaveShaper curve over [-2, 2] (the
+ * shaper's input is the signal halved, its output doubled again) — the signal as it is up to ±SOFT_FROM, then bent
+ * smoothly towards ±1, which it never passes. Only while songs overlap; otherwise the shaper has no curve at all.
+ */
+export const SOFT_FROM = 0.9;
+export function softClipCurve(n = 4097) {
+  const c = new Float32Array(n), room = 1 - SOFT_FROM;
+  for (let i = 0; i < n; i++) {
+    const x = ((i / (n - 1)) * 2 - 1) * 2, a = Math.abs(x);
+    const y = a <= SOFT_FROM ? a : SOFT_FROM + room * Math.tanh((a - SOFT_FROM) / room);
+    c[i] = (Math.sign(x) * y) / 2;
+  }
+  return c;
+}
+
 const albumKey = (d) => (d && d.album ? `${(d.credits && d.credits.albumArtist) || d.artist || ''}\n${d.album}`.toLowerCase() : null);
 const num = (x) => (x && Number.isFinite(Number(x.no)) && Number(x.no) > 0 ? Number(x.no) : null);
 const dirOf = (p) => String(p || '').replace(/[\\/][^\\/]*$/, '');

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { edges, mixPlan, continuesAlbum, MAX_OVERLAP } from '../src/renderer/js/automix.js';
+import { edges, mixPlan, continuesAlbum, nextPlan, prepareWindow, skipSilence, softClipCurve, SOFT_FROM, MAX_OVERLAP } from '../src/renderer/js/automix.js';
 
 const RATE = 8000;
 // A 440 Hz tone, its amplitude given second by second by `shape(t)`, `seconds` long.
@@ -84,4 +84,41 @@ test('incomplete tags: in order, the same album name or the same folder', () => 
   assert.strictEqual(continuesAlbum(bare('/m/a/1.mp3'), bare('/m/a/2.mp3'), { inOrder: true }), true);
   assert.strictEqual(continuesAlbum(bare('/m/a/1.mp3'), bare('/m/b/2.mp3'), { inOrder: true }), false);
   assert.strictEqual(continuesAlbum(bare('/m/a/1.mp3'), t('X', 1), { inOrder: true }), false);
+});
+
+test('nextPlan: mixed only under AUTOMIX, between files, when the album doesn\'t run on', () => {
+  const out = e(0, 200, 194), inc = e(1.5, 180);
+  const on = { automix: true, albumRunsOn: false, segment: null, out, inc };
+  assert.deepStrictEqual(nextPlan(on), { mix: mixPlan(out, inc), startAt: 1.5 });
+  for (const change of [{ automix: false }, { albumRunsOn: true }, { segment: { start: 0, end: 60 } }]) {
+    assert.deepStrictEqual(nextPlan({ ...on, ...change }), { mix: null, startAt: 0 }, JSON.stringify(change));
+  }
+  // this song's edges not known (yet): a gapless seam at its end, but still past the next one's leading silence
+  assert.deepStrictEqual(nextPlan({ ...on, out: undefined }), { mix: null, startAt: 1.5 });
+  // the next one's not known: mixed, from its start
+  assert.strictEqual(nextPlan({ ...on, inc: null }).startAt, 0);
+  assert.ok(nextPlan({ ...on, inc: null }).mix);
+});
+
+test('prepareWindow: the usual lead, or early enough for the earliest mix', () => {
+  assert.strictEqual(prepareWindow({ out: null, duration: 200, lead: 10 }), 10);
+  // sound ends 6 s before the file does; a mix may start 10 s before that
+  assert.strictEqual(prepareWindow({ out: e(0, 194), duration: 200, lead: 10 }), 26);
+});
+
+test('skipSilence: past the end of its sound, with nothing prepared, the next song comes now', () => {
+  const base = { automix: true, out: e(0, 194), fileTime: 195, timeLeft: 5, prepared: false, crossfading: false, repeat: 'OFF', hasNext: true, albumRunsOn: false };
+  assert.strictEqual(skipSilence(base), true);
+  for (const change of [{ automix: false }, { out: null }, { fileTime: 193.9 }, { timeLeft: 0.2 }, { prepared: true }, { crossfading: true }, { repeat: 'TRACK' }, { hasNext: false }, { albumRunsOn: true }]) {
+    assert.strictEqual(skipSilence({ ...base, ...change }), false, JSON.stringify(change));
+  }
+});
+
+test('the clipping guard: the sound as it is below 0.9, bent smoothly towards full scale above, never past it', () => {
+  const c = softClipCurve(4097);
+  // as a WaveShaper reads it: input halved onto [-1, 1], linear between points, output doubled
+  const at = (x) => { const i = ((x / 2 + 1) / 2) * (c.length - 1); const k = Math.floor(i), f = i - k; return (k + 1 < c.length ? c[k] * (1 - f) + c[k + 1] * f : c[k]) * 2; };
+  for (const x of [0, 0.25, -0.5, 0.75, -0.89]) assert.ok(Math.abs(at(x) - x) < 1e-6, `${x} → ${at(x)}`);
+  for (const x of [0.95, 1, 1.3, 2]) { assert.ok(at(x) <= 1 && at(x) > SOFT_FROM, `${x} → ${at(x)}`); assert.ok(Math.abs(at(-x) + at(x)) < 1e-6, 'symmetric'); }
+  for (let i = 1; i < c.length; i++) assert.ok(c[i] >= c[i - 1], 'never folds back');
 });

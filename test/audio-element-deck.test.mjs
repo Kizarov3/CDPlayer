@@ -7,6 +7,7 @@ const node = () => ({ connect() {}, disconnect() {}, gain: param() });
 globalThis.AudioContext = class {
   constructor() { this.currentTime = 0; this.state = 'running'; this.destination = node(); this.sampleRate = 44100; }
   createGain() { return node(); }
+  createWaveShaper() { return { connect() {}, disconnect() {}, curve: null }; }
   createBiquadFilter() { return { ...node(), type: '', frequency: param(), Q: param() }; }
   createAnalyser() { return { ...node(), fftSize: 0, frequencyBinCount: 1024, smoothingTimeConstant: 0 }; }
   createChannelSplitter() { return node(); }
@@ -279,4 +280,70 @@ test('a dropped standby forgets its mix: the next one seams at the end', async (
   engine.deck.el.currentTime = 100;
   engine.watchSeam(); await tick(20);
   assert.strictEqual(engine.deck.url, 'cdp://app/media?p=a');
+});
+
+test('the clipping guard is on only while two songs overlap', async () => {
+  const engine = routedEngine();
+  assert.strictEqual(engine.guard.curve, null);
+  await engine.load('cdp://app/media?p=a', { autoPlay: true });
+  await engine.prepare('cdp://app/media?p=b');
+  engine.armMix({ at: 190, overlap: 0.1, fadeIn: 0.1, fadeOut: true });
+  engine.deck.el.currentTime = 190;
+  engine.watchSeam(); await tick(20);
+  assert.ok(engine.guard.curve instanceof Float32Array, 'on during the mix');
+  await tick(200);
+  assert.strictEqual(engine.guard.curve, null, 'off after it');
+  // a crossfade, too — and a NEXT in the middle of one turns it off with the old song
+  await engine.load('cdp://app/media?p=c', { autoPlay: true, crossfadeSeconds: 5 });
+  assert.ok(engine.guard.curve);
+  await engine.load('cdp://app/media?p=d', { autoPlay: true });
+  assert.strictEqual(engine.guard.curve, null);
+});
+
+test('mid-mix, a new song or stop cuts the old one off at once', async () => {
+  const engine = routedEngine();
+  await engine.load('cdp://app/media?p=a', { autoPlay: true });
+  await engine.prepare('cdp://app/media?p=b');
+  engine.armMix({ at: 190, overlap: 5, fadeIn: 3, fadeOut: true });
+  const old = engine.deck;
+  old.el.currentTime = 190;
+  engine.watchSeam(); await tick(20);
+  await engine.load('cdp://app/media?p=c', { autoPlay: true });
+  assert.ok(old.el.paused); assert.ok(!engine.crossfading);
+  await engine.prepare('cdp://app/media?p=d');
+  engine.armMix({ at: 190, overlap: 5, fadeIn: 3, fadeOut: true });
+  const old2 = engine.deck;
+  old2.el.currentTime = 190;
+  engine.watchSeam(); await tick(20);
+  engine.stop();
+  assert.ok(old2.el.paused); assert.strictEqual(engine.deck, null); assert.ok(!engine.crossfading);
+});
+
+test('a mix whose next song won\'t start leaves the old one playing, unfaded', async () => {
+  const engine = routedEngine();
+  await engine.load('cdp://app/media?p=a', { autoPlay: true });
+  await engine.prepare('cdp://app/media?p=b');
+  engine.armMix({ at: 190, overlap: 5, fadeIn: 3, fadeOut: true });
+  const old = engine.deck;
+  engine.standby.el.play = () => Promise.reject(new Error('NotAllowedError'));
+  const out = timedCurves(old);
+  old.el.currentTime = 190;
+  engine.watchSeam(); await tick(20);
+  assert.strictEqual(engine.deck, old); assert.ok(!engine.crossfading);
+  assert.deepStrictEqual(out, []); assert.strictEqual(engine.guard.curve, null);
+  assert.strictEqual(old.el.paused, false);
+});
+
+test('while a mix is still fading the old song out, no next seam starts', async () => {
+  const engine = routedEngine();
+  await engine.load('cdp://app/media?p=a', { autoPlay: true });
+  await engine.prepare('cdp://app/media?p=b');
+  engine.armMix({ at: 190, overlap: 5, fadeIn: 3, fadeOut: true });
+  engine.deck.el.currentTime = 190;
+  engine.watchSeam(); await tick(20);
+  await engine.prepare('cdp://app/media?p=c');
+  engine.deck.el.currentTime = engine.deck.el.duration - 0.005;
+  engine.watchSeam(); await tick(20);
+  assert.strictEqual(engine.deck.url, 'cdp://app/media?p=b');
+  engine.stop();
 });

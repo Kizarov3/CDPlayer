@@ -7,6 +7,7 @@ const node = () => ({ connect() {}, disconnect() {}, gain: param() });
 globalThis.AudioContext = class {
   constructor() { this.currentTime = 0; this.state = 'running'; this.destination = node(); this.sampleRate = 44100; }
   createGain() { return node(); }
+  createWaveShaper() { return { connect() {}, disconnect() {}, curve: null }; }
   createBiquadFilter() { return { ...node(), type: '', frequency: param(), Q: param() }; }
   createAnalyser() { return { ...node(), fftSize: 0, frequencyBinCount: 1024, smoothingTimeConstant: 0 }; }
   createChannelSplitter() { return node(); }
