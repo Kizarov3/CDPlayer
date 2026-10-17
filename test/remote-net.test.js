@@ -29,6 +29,11 @@ test('pickAddresses accepts numeric family 4 and the 172.16/12 range only', () =
   assert.deepStrictEqual(net.pickAddresses(undefined), []);
 });
 
+test('pickAddresses keeps a Windows wired adapter named Local Area Connection but drops loopback names', () => {
+  const ifs = { 'Local Area Connection': [v4('192.168.1.30')], 'Loopback Pseudo-Interface 1': [v4('192.168.9.9')], lo: [v4('10.1.1.1')], tapvpn: [v4('10.2.2.2')] };
+  assert.deepStrictEqual(net.pickAddresses(ifs), [{ name: 'Local Area Connection', address: '192.168.1.30' }]);
+});
+
 test('hostAllowed wants exactly IP:PORT', () => {
   assert.strictEqual(net.hostAllowed('192.168.1.20:47800', '192.168.1.20', 47800), true);
   assert.strictEqual(net.hostAllowed('evil.example:47800', '192.168.1.20', 47800), false);
@@ -67,6 +72,8 @@ test('validCommand accepts each command\'s good shape', () => {
   for (const action of ['toggle', 'prev', 'next', 'mute', 'shuffle', 'repeat', 'clear', 'undo', 'discSkip'])
     assert.deepStrictEqual(net.validCommand({ action }), { action, value: undefined, rev: undefined });
   assert.deepStrictEqual(net.validCommand({ action: 'seek', value: 12.5 }), { action: 'seek', value: 12.5, rev: undefined });
+  assert.deepStrictEqual(net.validCommand({ action: 'seek', value: 0 }), { action: 'seek', value: 0, rev: undefined });
+  assert.deepStrictEqual(net.validCommand({ action: 'volume', value: 0 }), { action: 'volume', value: 0, rev: undefined });
   assert.deepStrictEqual(net.validCommand({ action: 'volume', value: 100 }), { action: 'volume', value: 100, rev: undefined });
   assert.deepStrictEqual(net.validCommand({ action: 'playIndex', value: 3, rev: 7 }), { action: 'playIndex', value: 3, rev: 7 });
   assert.deepStrictEqual(net.validCommand({ action: 'remove', value: 0, rev: 1 }), { action: 'remove', value: 0, rev: 1 });
@@ -88,6 +95,8 @@ test('validCommand refuses anything off the list', () => {
     { action: 'album', value: { id: 'ab12', how: 'play', slot: 5 }, rev: 1 },
     { action: 'playIndex', value: 1 }, { action: 'playIndex', value: 1, rev: 1.5 }, { action: 'playIndex', value: -1, rev: 1 },
     { action: 'playSlot', value: 5, rev: 1 },
+    { action: 'move', value: 0, rev: 1 }, { action: 'move', value: '', rev: 1 }, { action: 'move', value: NaN, rev: 1 },
+    { action: 'album', value: 0, rev: 1 }, { action: 'album', value: '', rev: 1 },
   ];
   for (const b of bad) assert.strictEqual(net.validCommand(b), null, JSON.stringify(b));
 });

@@ -6,7 +6,7 @@
  */
 const crypto = require('crypto');
 
-const BAD_NAME = /^(utun|tun|tap|wg|ppp|docker|veth|vmnet|vboxnet|tailscale|zt|lo)|vethernet|virtual|vpn/i;
+const BAD_NAME = /^(utun\d|tun\d|tap\d|wg\d|ppp\d|docker|veth|vmnet|vboxnet|tailscale|zt[0-9a-z]{6,}$|lo\d*$|loopback)|vethernet|virtual|vpn/i;
 const GOOD_NAME = /^en0$|wi-?fi|wlan|ethernet|^eth/i;
 
 function privateV4(a) {
@@ -44,19 +44,20 @@ function cookieOk(header, token) {
   });
 }
 
+const FAIL = Symbol('fail');
 const isInt = (v, min, max = Infinity) => Number.isInteger(v) && v >= min && v <= max;
 const COMMANDS = {
   toggle: null, prev: null, next: null, mute: null, shuffle: null, repeat: null, clear: null, undo: null, discSkip: null,
-  seek: (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v,
-  volume: (v) => isInt(v, 0, 100) && v,
-  playIndex: (v) => isInt(v, 0) && v,
-  remove: (v) => isInt(v, 0) && v,
-  playSlot: (v) => isInt(v, 0, 4) && v,
-  move: (v) => v && isInt(v.from, 0) && isInt(v.to, 0) && { from: v.from, to: v.to },
+  seek: (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : FAIL),
+  volume: (v) => (isInt(v, 0, 100) ? v : FAIL),
+  playIndex: (v) => (isInt(v, 0) ? v : FAIL),
+  remove: (v) => (isInt(v, 0) ? v : FAIL),
+  playSlot: (v) => (isInt(v, 0, 4) ? v : FAIL),
+  move: (v) => (v && typeof v === 'object' && isInt(v.from, 0) && isInt(v.to, 0) ? { from: v.from, to: v.to } : FAIL),
   album: (v) => {
-    if (!v || typeof v.id !== 'string' || !/^[0-9a-f]{1,40}$/i.test(v.id) || !['play', 'next', 'add'].includes(v.how)) return false;
-    if (v.track !== undefined && !isInt(v.track, 0)) return false;
-    if (v.slot !== undefined && !isInt(v.slot, 0, 4)) return false;
+    if (!v || typeof v !== 'object' || typeof v.id !== 'string' || !/^[0-9a-f]{1,40}$/i.test(v.id) || !['play', 'next', 'add'].includes(v.how)) return FAIL;
+    if (v.track !== undefined && !isInt(v.track, 0)) return FAIL;
+    if (v.slot !== undefined && !isInt(v.slot, 0, 4)) return FAIL;
     const o = { id: v.id, how: v.how };
     if (v.track !== undefined) o.track = v.track;
     if (v.slot !== undefined) o.slot = v.slot;
@@ -72,7 +73,7 @@ function validCommand(body) {
   let value;
   if (COMMANDS[action]) {
     value = COMMANDS[action](body.value);
-    if (value === false || value === undefined || value === null) return null;
+    if (value === FAIL) return null;
   }
   let rev;
   if (NEEDS_REV.has(action)) { if (!Number.isInteger(body.rev)) return null; rev = body.rev; }
