@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { powerEnvelope, detectHidden, BLOCK_SECONDS, splitTitle } from '../src/renderer/js/hidden-track.js';
+import { powerEnvelope, detectHidden, BLOCK_SECONDS, splitTitle, hiddenPhase, countdown, hiddenName, displayTitle } from '../src/renderer/js/hidden-track.js';
 
 // Synthetic songs at 8 kHz (the waveform's decode rate): noise-and-tone "music" at a given level, digital zeros,
 // 16-bit dither, tape hiss.
@@ -69,4 +69,28 @@ test('a title "A / B" names the song and the hidden one; anything else doesn\'t'
   assert.strictEqual(splitTitle('AC/DC'), null);
   assert.strictEqual(splitTitle('A / '), null);
   assert.strictEqual(splitTitle(null), null);
+});
+
+const h = { songEnd: 232, hiddenStart: 830, found: false, name: null };
+
+test('the song, the silence and the hidden song are where the position is, however it got there', () => {
+  assert.strictEqual(hiddenPhase(null, 10), null);
+  assert.deepStrictEqual([0, 231.9, 232, 500, 829.9, 830, 1235].map((p) => hiddenPhase(h, p)), ['song', 'song', 'silence', 'silence', 'silence', 'hidden', 'hidden']);
+  assert.strictEqual(hiddenPhase(h, 900), 'hidden'); // a seek from the start straight into it
+});
+
+test('the pill counts down to the hidden song, rounding up', () => {
+  assert.strictEqual(countdown(h, 830 - 462), 'NOT OVER YET · 7:42');
+  assert.strictEqual(countdown(h, 830 - 461.2), 'NOT OVER YET · 7:42');
+  assert.strictEqual(countdown(h, 830 - 0.4), 'NOT OVER YET · 0:01');
+  assert.strictEqual(countdown({ ...h, found: true, name: 'Endless, Nameless' }, 368), 'ENDLESS, NAMELESS IN 7:42');
+  assert.strictEqual(countdown({ ...h, found: true }, 368), 'HIDDEN TRACK IN 7:42');
+});
+
+test('the hidden song\'s name, and the title shown before it', () => {
+  assert.strictEqual(hiddenName({ ...h, name: 'Endless, Nameless' }, { title: 'Something in the Way' }), 'Endless, Nameless');
+  assert.strictEqual(hiddenName(h, { title: 'Something in the Way / Endless, Nameless' }), 'Endless, Nameless');
+  assert.strictEqual(hiddenName(h, { title: 'Something in the Way' }), null);
+  assert.strictEqual(displayTitle({ title: 'Something in the Way / Endless, Nameless' }), 'Something in the Way');
+  assert.strictEqual(displayTitle({ title: 'AC/DC' }), 'AC/DC');
 });

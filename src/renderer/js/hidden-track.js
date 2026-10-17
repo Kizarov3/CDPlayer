@@ -1,6 +1,7 @@
 // Hidden tracks: a song hidden at the end of a disc's last track, after minutes of silence (Nevermind's "Endless,
 // Nameless", Dookie's "All by Myself"). Found in the power of the file the waveform already decodes, 100 ms at a
 // time. Pure, for node --test.
+import { t } from './i18n.js';
 
 export const BLOCK_SECONDS = 0.1;
 const SMOOTH_SECONDS = 1;
@@ -65,4 +66,30 @@ export function detectHidden(power) {
 export function splitTitle(title) {
   const m = /^(.+?) \/ (.+)$/.exec(String(title || '').trim());
   return m && m[1].trim() && m[2].trim() ? { main: m[1].trim(), hidden: m[2].trim() } : null;
+}
+
+/** Where `position` is in a file with a hidden track `h`: 'song', 'silence' or 'hidden' (null without one). */
+export function hiddenPhase(h, position) {
+  if (!h) return null;
+  return position < h.songEnd ? 'song' : position < h.hiddenStart ? 'silence' : 'hidden';
+}
+
+/** The status pill through the silence: what's coming (once it's been heard) and in how long, to the second up. */
+export function countdown(h, position) {
+  const s = Math.max(0, Math.ceil(h.hiddenStart - position - 1e-9));
+  const time = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  if (!h.found) return t('NOT OVER YET · {time}', { time });
+  return h.name ? t('{name} IN {time}', { name: h.name.toUpperCase(), time }) : t('HIDDEN TRACK IN {time}', { time });
+}
+
+/** The hidden song's name: looked up, or from the title "A / B"; null when neither knows it. */
+export function hiddenName(h, details) {
+  const split = splitTitle(details && details.title);
+  return (h && h.name) || (split && split.hidden) || null;
+}
+
+/** The title shown for the song itself: A of "A / B". */
+export function displayTitle(details) {
+  const split = splitTitle(details && details.title);
+  return split ? split.main : details && details.title;
 }

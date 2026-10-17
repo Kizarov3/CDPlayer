@@ -328,6 +328,7 @@
   "HELP": "ПОМОЩЬ",
   "HI-RES LOSSLESS": "HI-RES LOSSLESS",
   "HI-RES LOSSLESS · UP TO 24-BIT / 192 KHZ": "HI-RES LOSSLESS · ДО 24-БИТ / 192 KHZ",
+  "HIDDEN TRACK IN {time}": "СКРЫТЫЙ ТРЕК ЧЕРЕЗ {time}",
   "HIGH": "ВЫСОКОЕ",
   "HISTORY": "ИСТОРИЯ",
   "Here, once a song plays: LYRICS shows its words, lit up as they’re sung, KARAOKE fills the window with them, and TAGS fixes its name and album from MusicBrainz.": "Здесь, когда заиграет песня: ТЕКСТ показывает её слова и подсвечивает строку, которую поют, КАРАОКЕ разворачивает их на всё окно, а ТЕГИ исправляют название и альбом по MusicBrainz.",
@@ -465,6 +466,7 @@
   "NOT INTERESTED": "НЕ ИНТЕРЕСНО",
   "NOT ON DISCOGS": "НЕТ НА DISCOGS",
   "NOT ON SPOTIFY": "НЕТ В SPOTIFY",
+  "NOT OVER YET · {time}": "ЕЩЁ НЕ ВСЁ · {time}",
   "NOT PLAYED YET": "ЕЩЁ НЕ ИГРАЛИ",
   "NOTHING BEING RIPPED": "НИЧЕГО НЕ РИПАЕТСЯ",
   "NOTHING FOUND": "НИЧЕГО НЕ НАЙДЕНО",
@@ -940,6 +942,7 @@
     "other": "НАЙДЕНО В БИБЛИОТЕКЕ И ДОБАВЛЕНО {found} ИЗ {n} ТРЕКОВ"
   },
   "{have} have · {want} want": "есть у {have} · хотят {want}",
+  "{name} IN {time}": "{name} ЧЕРЕЗ {time}",
   "{n} ALBUMS": {
     "one": "{n} АЛЬБОМ",
     "few": "{n} АЛЬБОМА",
