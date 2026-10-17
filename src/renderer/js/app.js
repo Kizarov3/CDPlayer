@@ -181,7 +181,8 @@ function pumpDetails() {
 const ch = () => ({ ...state.changer, queue: state.queue, index: state.index });
 let preparedNext = null; // gapless: { path, index, token } — the track waiting on the engine's standby deck
 // …dropped when something it was prepared for changes (modes, quality, Sound Check, crossfade, the mode); prepared again on a tick.
-function dropPrepared() { engine.cancelPrepared(); preparedNext = null; }
+// (A song already starting on the standby — the seam's ~10 ms — keeps its mark: onAdvance needs it to show that song.)
+function dropPrepared() { engine.cancelPrepared(); if (!engine.seaming) preparedNext = null; }
 let changerView = null; // the carousel (changer-view.js)
 let picking = Promise.resolve(); // the full changer's question, one at a time
 // A disc's cover in the carousel: the album's (its first song's folder or tags), or the Spotify album's.
@@ -1009,14 +1010,19 @@ function continuesCurrent(p, { atBoundary = true } = {}) {
 // starts the moment this one ends. Re-done when what comes next changes; dropped by any other load.
 async function prepareNext() {
   if (state.deckToken !== state.loadToken) return; // a track is still loading: what's playing is on its way out
+  if (engine.seaming) return; // the prepared one is starting this moment
   const next = upcomingIndex(), path = next >= 0 ? state.queue[next] : null;
-  if (preparedNext && preparedNext.path === path && preparedNext.index === next && preparedNext.seen === edgesSeen(path)) return;
+  const same = preparedNext && preparedNext.path === path && preparedNext.index === next;
+  if (same && preparedNext.seen === edgesSeen(path)) return;
+  // Edges learnt this late would only re-plan a seam that's about to happen — and might miss it: it stays as armed.
+  if (same && engine.prepared && engine.seamLeft() < 3) return;
   if (preparedNext || engine.prepared) dropPrepared();
   if (!path || isSpotifyUri(path)) return;
   const token = state.loadToken, mark = { path, index: next, token, seen: edgesSeen(path) };
   preparedNext = mark;
   const nextDetails = detailsCache.get(path) || await cdp.details(path, { withCover: false }).catch(() => null);
   if (preparedNext !== mark || token !== state.loadToken) return;
+  if (nextDetails && !detailsCache.has(path)) detailsCache.set(path, { ...nextDetails, cover: undefined }); // albumRunsOn reads it
   const plan = seamlessNext({
     crossfade: crossfadeSeconds(), repeat: state.repeat, spotify: spotifyActive(), nextPath: path, nextDetails, aimedRate: albumAimFor(path, nextDetails),
     isCdTrack: isAudioCdTrack(path), sameFileCue: continuesCurrent(path, { atBoundary: false }),
@@ -1070,13 +1076,15 @@ const edgesSeen = (path) => `${edgesKnown(state.loadedPath)}|${edgesKnown(path)}
 // A mix that can't overlap (the next song needs the output at another rate) still loses the silence: this song ends where
 // its sound does, and the next starts where its own begins.
 function automixSkipSilence() {
-  if (state.automixSkipped === state.loadToken) return;
+  // (Not while a song is loading: the deck playing is still the last one, the edges already the new one's.)
+  if (state.deckToken !== state.loadToken || state.automixSkipped === state.loadToken) return;
   const next = upcomingIndex();
   if (!skipSilence({
     automix: state.automix, out: edgesOf(state.loadedPath), fileTime: engine.deck.el.currentTime, timeLeft: engine.timeLeft(),
     prepared: !!engine.prepared, crossfading: engine.crossfading, repeat: state.repeat, hasNext: next >= 0, albumRunsOn: next >= 0 && albumRunsOn(next),
   })) return;
   state.automixSkipped = state.loadToken;
+  engine.pause(); // its silence mustn't run on to 'ended' meanwhile, which would move on a second time
   notePlayed();
   goTo(next, automixStart(next));
 }

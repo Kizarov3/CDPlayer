@@ -45,37 +45,39 @@ last N seconds of the *file* blindly — over silence if the song ended early, o
 
 ## Finding what's audible — `src/renderer/js/automix.js` (pure, tested)
 
-`edges(channels, sampleRate)` → `{ duration, start, end, fadeStart, body }` in seconds / dBFS, from the song decoded
-mono at a low rate (Sound Check's way: `OfflineAudioContext` at 16 kHz):
+`edges(channels, sampleRate)`, from the song decoded at 8 kHz (`OfflineAudioContext`), all levels against the song's
+`body` (its typical loud level: the 75th percentile of 50 ms block levels):
 
-- An envelope of 50 ms RMS blocks in dBFS.
-- `body`: the song's typical loud level — the median of the loudest half of the blocks.
-- `start`: the first block above `body − 40 dB` (and above −60 dBFS), minus 50 ms. `end`: the last such block, plus
-  50 ms. Everything outside is silence (or near-silence: room tone, a hiss tail) to skip.
-- `fadeStart`: going back from `end`, the earliest time after which the 1-second smoothed level stays below
-  `body − 6 dB` to `end` — where the song's ending (a fade-out, a ringing last chord, an outro) begins. Equal to `end`
-  when the song stops dead.
-- `introRise`: from `start`, the first time the smoothed level reaches `body − 6 dB` (a song that fades in or opens
-  quietly has a long one).
+- `start` / `end`: the first / last block above `body − 40 dB` (and −60 dBFS), ±50 ms. Outside is silence to skip.
+- `fadeStart`: from where the 1-s smoothed level stays below `body − 6 dB` to the end — where its ending begins.
+- `settle`: from where it stays below `body − 24 dB` — where the ending has died away for good. (−18 dB, the first
+  try, sat on quiet last verses: the next song talked over Thom Yorke's last words in *The Bends*.)
+- `gapEnd`: where the last ≥ 1 s silence inside the sound ends (a quiet coda after a pause, as in *Sour*).
+- `introRise`: how long the song takes to get loud; `endLevel` / `headLevel`: its last / first second.
 
-`mixPlan(out, inc)` → `{ at, overlap, startAt, fadeIn }` (all seconds; `at` and `startAt` are file times):
+## Planning the mix — `mixPlan(out, inc)` → `{ at, overlap, startAt, fadeIn, fadeFrom, fadeOut }`
 
-- `startAt = inc.start` — the incoming song's own leading silence is skipped.
-- The outgoing's tail `tail = out.end − out.fadeStart`:
-  - an ending (`tail ≥ 2 s`): `overlap = clamp(tail, 2, 10)`; `at = out.end − overlap` — the next song arrives as this
-    one winds down;
-  - a dead stop: `overlap = 1`, `at = out.end − 1`, and the outgoing song is **not** faded or filtered — it plays its
-    last second at full level to its end (then a 50 ms fade over what's only silence), with the incoming one rising
-    under it: no silence, and the final hit or chord isn't softened.
-- `overlap` never exceeds a third of either song's audible length (`end − start`) — short songs stay whole.
-- `fadeIn`: a song that opens loud (`inc.introRise − inc.start < 2 s`) is brought up over `min(overlap, 3)`; one that
-  opens quietly or fades in by itself already arrives gently, so it gets only `min(overlap, 0.5)`.
-- So the plan also says how the outgoing goes: `fadeOut` (`true` for an ending, `false` for a dead stop). With it, its
-  gain falls 1 → 0 along an equal-power curve from `at` to `at + overlap` and its high-pass glides 20 Hz → 250 Hz over
-  the first half of the overlap; without it, it stays as it is until `at + overlap`. The incoming rises 0 → 1 over
-  `fadeIn` (equal-power).
+Tuned against the user's verdicts on six real transitions (v1: 1 too early, 5 and 6 a bit abrupt, 2 excellent, 3 and 4
+good), a second opinion over all 573 pairings of their library, and a simulation of every pairing for clipping and for
+holes the curves make.
 
-Constants (the −40 / −6 dB thresholds, 2 / 10 s, 3 s, 250 Hz) are starting points to tune by ear on real songs.
+- `startAt = inc.start`: the next song's leading silence is skipped.
+- **An ending that dies away** (`end − fadeStart ≥ 2 s` and `end − settle ≥ 0.5 s`): the next song comes in at
+  `max(settle, gapEnd, end − 10)`, but at least 1 s before the end — never over the last words, never in a silence
+  before a coda. The old song plays its own decay for the first half of the overlap, then fades (equal-power) over the
+  second, its bass drawn out by a high-pass gliding 20 → 250 Hz over the first half (fading it from the start left a
+  hole: *Street Spirit*). The next one comes in at −10 dB (`fadeFrom`) and rises to full over 3 s — however short the
+  overlap — so a loud song after a quiet ending doesn't jump in (*Sail To The Moon → By Myself*) and an opening hit
+  isn't lost (*Master Of Puppets*); a song whose first second is 15 dB under its body opens quietly by itself and
+  gets 0.5 s.
+- **Anything else** — a dead stop, or an ending still sounding at its end (a ringing last chord, *Pyramid Song*):
+  its end is kept as it is (no fade, no bass cut, a 50 ms fade over what's then only silence). The next song comes in
+  1 s before the end and rises from silence within that second (0.5 s if it opens quietly) — or, when the old one's
+  last second is within 5 dB of its body (it stops at full tilt, *Given Up*), only 0.3 s before: two loud things at
+  once sound like a collision.
+- `overlap` never exceeds a third of either song's audible length.
+
+The constants are the ones these checks settled on; the next tuning should come from listening.
 
 ## Keeping the overlap from clipping
 

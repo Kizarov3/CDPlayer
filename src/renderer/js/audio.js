@@ -23,10 +23,10 @@ export const SEAM_LEAD = 0.011, SEAM_WATCH = 0.15, SEAM_BLEND = 0.005;
 import { Spatializer } from './spatial.js';
 import { BASS_CUT_HZ, softClipCurve } from './automix.js';
 
-// An equal-power (sin/cos) curve: rising, or falling.
-function equalPower(rising, n = 64) {
+// An equal-power (sin/cos) curve: rising (from `from`, 0 = silence), or falling.
+function equalPower(rising, n = 64, from = 0) {
   const c = new Float32Array(n);
-  for (let i = 0; i < n; i++) { const a = (i / (n - 1)) * (Math.PI / 2); c[i] = rising ? Math.sin(a) : Math.cos(a); }
+  for (let i = 0; i < n; i++) { const a = (i / (n - 1)) * (Math.PI / 2); c[i] = rising ? from + (1 - from) * Math.sin(a) : Math.cos(a); }
   return c;
 }
 
@@ -269,6 +269,7 @@ export class AudioEngine {
     if (!ok) { this.cancelPrepared(); return false; }
     if (segment) { Object.assign(deck, { start: segment.start, end: segment.end === null || segment.end === undefined ? null : segment.end }); deck.el.currentTime = segment.start; }
     else if (startAt > 0) deck.el.currentTime = startAt;
+    deck.from = deck.el.currentTime; // where it waits, for when a seam is called off
     return true;
   }
   /** AUTOMIX: the standby starts when the playing deck reaches `plan.at` (file time) and the two overlap (mixPlan). */
@@ -319,6 +320,13 @@ export class AudioEngine {
       if (!started && this.deck === outgoing && endedMeanwhile() && this.onEnded) this.onEnded(outgoing);
       return;
     }
+    if (outgoing.el.paused && !endedMeanwhile()) {
+      // Paused while the next one started: the pause wins. It waits on standby again for when the music plays on.
+      incoming.el.pause();
+      incoming.el.currentTime = incoming.from || 0;
+      this.standby = incoming; this.mix = mix;
+      return;
+    }
     if (mix && mix.overlap > 0) this.startMix(outgoing, incoming, mix);
     else {
       const now = this.ctx.currentTime;
@@ -334,12 +342,15 @@ export class AudioEngine {
    * AUTOMIX's overlap: the outgoing deck is the one fadingOut until it's over (a manual load, stop or pause cuts it off,
    * as a crossfade's). An ending fades out and loses its bass; a dead stop plays to its end as it is.
    */
-  startMix(outgoing, incoming, { overlap, fadeIn, fadeOut }) {
+  startMix(outgoing, incoming, { overlap, fadeIn, fadeOut, fadeFrom = 0 }) {
     const now = this.ctx.currentTime, og = outgoing.gain.gain, ig = incoming.gain.gain;
     og.cancelScheduledValues(now); ig.cancelScheduledValues(now);
-    ig.setValueCurveAtTime(equalPower(true), now, Math.max(SEAM_BLEND, Math.min(fadeIn, overlap)));
+    ig.setValueCurveAtTime(equalPower(true, 64, fadeFrom), now, Math.max(SEAM_BLEND, fadeIn)); // (it may go on rising after the old one is gone)
     if (fadeOut) {
-      og.setValueCurveAtTime(equalPower(false), now, overlap);
+      // It has already died away (mixPlan comes in at its settle): it plays its own decay for the first half, so it's
+      // still there while the next one comes up — fading it from the start leaves a hole — and fades over the second.
+      og.setValueAtTime(og.value, now);
+      og.setValueCurveAtTime(equalPower(false), now + overlap / 2, overlap / 2);
       const f = outgoing.filter && outgoing.filter.frequency;
       if (f) { f.cancelScheduledValues(now); f.setValueAtTime(20, now); f.exponentialRampToValueAtTime(BASS_CUT_HZ, now + overlap / 2); }
     } else {

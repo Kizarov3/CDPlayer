@@ -8,7 +8,13 @@ const setup = (stats, text = null) => {
   const cache = createAutomixCache({ read: () => text, write: (s) => writes.push(JSON.parse(s)), stat: (f) => stats[f] || null, delayMs: 0 });
   return { cache, writes };
 };
-const edges = { start: 0.25, end: 201.5, fadeStart: 195.1234, introRise: 1, duration: 203 };
+const edges = { start: 0.25, end: 201.5, fadeStart: 195.1234, settle: 199, gapEnd: 0.25, introRise: 1, endLevel: -24.5, headLevel: -3, duration: 203 };
+
+test("an older cache (version 1, without where songs die away) is measured again", () => {
+  const stats = { '/a.flac': { size: 10, mtimeMs: 1000 } };
+  const v1 = JSON.stringify({ version: 1, tracks: { '/a.flac': { stamp: '10:1000', start: 0, end: 200, fadeStart: 190, introRise: 0, duration: 203 } } });
+  assert.deepStrictEqual(setup(stats, v1).cache.get(['/a.flac']), {});
+});
 
 test("a song's edges are kept with its file's size and date, and dropped once the file changes", async () => {
   const stats = { '/a.flac': { size: 10, mtimeMs: 1000 } };

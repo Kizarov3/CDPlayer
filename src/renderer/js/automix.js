@@ -7,8 +7,18 @@
 const BLOCK = 0.05;       // the envelope's step, seconds
 const SILENT_BELOW = 40;  // dB under the song's body: silence, room tone, a hiss tail
 const ENDING_BELOW = 6;   // dB under the body, smoothed over a second: the song's ending (or quiet opening)
+const SETTLED_BELOW = 24; // …and where it has died away for good: the next song comes in there, not over its last words
 const SMOOTH = 1;         // seconds
-export const MAX_OVERLAP = 10, MIN_ENDING = 2, DEAD_STOP_OVERLAP = 1, LOUD_FADE_IN = 3, QUIET_FADE_IN = 0.5;
+const GAP = 1;            // seconds of silence inside the sound (before a coda) that a mix mustn't start in
+export const MAX_OVERLAP = 10, MIN_OVERLAP = 1, MIN_ENDING = 2, DEAD_STOP_OVERLAP = 1, FULL_TILT_OVERLAP = 0.3, LOUD_FADE_IN = 3, QUIET_FADE_IN = 0.5;
+// A song whose last second is this close to its body stops at full tilt: the next one is only laid under it for an
+// instant (two loud things at once sound like a collision, not a mix). dB.
+const FULL_TILT_ABOVE = -5;
+// After an ending, a song whose first second is this far under its body opens quietly and needs no long fade-in. dB.
+const QUIET_HEAD_BELOW = -15;
+// …and the next one comes in already at this much of its level (-10 dB), not from silence: rising from nothing, an
+// opening hit (Master Of Puppets') would be lost and leave a hole where the old song has already gone.
+export const AFTER_ENDING_FROM = 0.316;
 export const BASS_CUT_HZ = 250;
 
 /** Decodes `url` at 8 kHz (as the waveform is) and finds its edges. */
@@ -22,9 +32,12 @@ const db = (meanSquare) => (meanSquare > 0 ? 10 * Math.log10(meanSquare) : -Infi
 
 /**
  * Where the music is in a decoded song (`channels`: Float32Arrays at `sampleRate`) → { duration, start, end,
- * fadeStart, introRise, body } in seconds (body in dBFS), or null for silence. start/end: the first and last audible
- * moment; fadeStart: where its ending begins (= end when it stops dead); introRise: how long after start it takes to
- * get loud (long for a song that fades in or opens quietly).
+ * fadeStart, settle, gapEnd, introRise, endLevel, headLevel, body } in seconds (body in dBFS), or null for silence.
+ * gapEnd: where the last second-or-longer silence inside the sound ends (before a quiet coda), else start.
+ * start/end: the first and last audible moment; fadeStart: where its ending begins (= end when it stops dead); settle:
+ * where that ending has died away for good (still singing quietly is not died away); introRise: how long after start
+ * it takes to get loud (long for a song that fades in or opens quietly); endLevel / headLevel: its last / first second
+ * of sound, in dB against its body.
  */
 export function edges(channels, sampleRate) {
   const n = channels[0] ? channels[0].length : 0, step = Math.max(1, Math.round(sampleRate * BLOCK)), blocks = Math.ceil(n / step);
@@ -49,34 +62,52 @@ export function edges(channels, sampleRate) {
     while (lo < b - half) sum -= power[lo++];
     smooth[b] = db(sum / (hi - lo + 1));
   }
-  const loud = body - ENDING_BELOW;
-  let fade = last + 1;
-  while (fade > first && smooth[fade - 1] < loud) fade--;
+  // The first block from which the smoothed level stays below `below` to the end of the sound.
+  const from = (below) => { let b = last + 1; while (b > first && smooth[b - 1] < below) b--; return b; };
+  const fade = from(body - ENDING_BELOW), settled = from(body - SETTLED_BELOW);
   let rise = first;
-  while (rise <= last && smooth[rise] < loud) rise++;
+  while (rise <= last && smooth[rise] < body - ENDING_BELOW) rise++;
+  let gapEnd = first, run = 0;
+  for (let b = last; b > first; b--) {
+    if (level[b] > floor) { run = 0; continue; }
+    if (++run >= GAP / BLOCK) { gapEnd = b + run; break; }
+  }
+  while (gapEnd > first && gapEnd <= last && level[gapEnd] <= floor) gapEnd++;
+  const second = Math.round(1 / BLOCK), mean = (a, b) => { let t = 0; for (let k = a; k <= b; k++) t += power[k]; return t / (b - a + 1); };
   const start = Math.max(0, first * BLOCK - BLOCK), end = Math.min(duration, (last + 1) * BLOCK + BLOCK);
+  const at = (b) => (b > last ? end : Math.max(start, b * BLOCK));
   return {
     duration, start, end, body,
-    fadeStart: fade > last ? end : Math.max(start, fade * BLOCK),
+    fadeStart: at(fade), settle: at(settled), gapEnd: gapEnd > first ? gapEnd * BLOCK : start,
     introRise: Math.max(0, Math.min(rise, last) * BLOCK - start),
+    endLevel: db(mean(Math.max(first, last - second + 1), last)) - body,
+    headLevel: db(mean(first, Math.min(last, first + second - 1))) - body,
   };
 }
 
 /**
  * The mix from `out` (the playing song's edges) into `inc` (the next one's, or null when not known) → { at, overlap,
  * startAt, fadeIn, fadeOut }: the next song starts at `startAt` (its own file time) when the playing one reaches `at`
- * (file time); they overlap for `overlap` s. fadeOut: the playing song fades (and loses its bass) over the overlap — an
- * ending; false: it plays its last second as it is — a song that stops dead keeps its final hit.
+ * (file time); they overlap for `overlap` s, and it rises from `fadeFrom` (of its level) to all of it over `fadeIn` s.
+ * An ending that dies away (fadeOut): the next song comes in where it has died away for good (settle) — never over its
+ * last words, nor in a silence before a coda — at most MAX_OVERLAP and at least MIN_OVERLAP before its end; it plays
+ * its own decay, then fades and loses its bass. The next one comes in at -10 dB and rises over 3 s, however short the
+ * overlap, unless it opens quietly — a loud song after a quiet ending mustn't jump in, nor its opening hit be lost.
+ * Anything else — a dead stop, or an ending still sounding at its end (a last chord ringing out) — keeps its end as it
+ * is: a second's overlap with the next one rising under it within that second, or only an instant when it stops at
+ * full tilt.
  */
 export function mixPlan(out, inc) {
   const startAt = inc ? inc.start : 0;
-  const tail = out.end - out.fadeStart, ending = tail >= MIN_ENDING;
-  let overlap = ending ? Math.min(tail, MAX_OVERLAP) : DEAD_STOP_OVERLAP;
+  const diesAway = out.end - out.fadeStart >= MIN_ENDING && out.end - out.settle >= 0.5;
+  let overlap = diesAway ? Math.max(MIN_OVERLAP, out.end - Math.max(out.settle, out.gapEnd || out.start, out.end - MAX_OVERLAP))
+    : out.endLevel > FULL_TILT_ABOVE ? FULL_TILT_OVERLAP : DEAD_STOP_OVERLAP;
   overlap = Math.min(overlap, (out.end - out.start) / 3);
   if (inc) overlap = Math.min(overlap, (inc.end - inc.start) / 3);
   overlap = Math.max(0, overlap);
-  const quietOpening = inc && inc.introRise >= MIN_ENDING;
-  return { at: out.end - overlap, overlap, startAt, fadeIn: Math.min(overlap, quietOpening ? QUIET_FADE_IN : LOUD_FADE_IN), fadeOut: ending };
+  const fadeIn = diesAway ? (inc && inc.headLevel < QUIET_HEAD_BELOW ? QUIET_FADE_IN : LOUD_FADE_IN)
+    : Math.min(overlap, inc && inc.introRise >= MIN_ENDING ? QUIET_FADE_IN : LOUD_FADE_IN);
+  return { at: out.end - overlap, overlap, startAt, fadeIn: overlap > 0 ? fadeIn : 0, fadeFrom: diesAway ? AFTER_ENDING_FROM : 0, fadeOut: diesAway };
 }
 
 /**
@@ -130,16 +161,17 @@ const dirOf = (p) => String(p || '').replace(/[\\/][^\\/]*$/, '');
  */
 export function continuesAlbum(a, b, { inOrder }) {
   const da = a.details, dbb = b.details;
-  const key = albumKey(da);
-  if (key && key === albumKey(dbb)) {
-    const ta = num(da.credits && da.credits.track), tb = num(dbb.credits && dbb.credits.track);
-    const ka = num(da.credits && da.credits.disc) || 1, kb = num(dbb.credits && dbb.credits.disc) || 1;
-    if (ta && tb && ((kb === ka && tb === ta + 1) || (kb === ka + 1 && tb === 1))) return true;
-  }
-  if (!inOrder) return false;
-  // Tags that don't say (no track numbers; a compilation whose artist changes with each song): in order, the same album
-  // name — or, with no album on either, the same folder.
+  const key = albumKey(da), sameKey = !!key && key === albumKey(dbb);
+  // Tags that don't say whose album it is (a compilation whose artist changes with each song): played in order, the same
+  // album name — or, with no album on either, the same folder.
   const name = (d) => (d && d.album ? String(d.album).toLowerCase() : null);
-  if (name(da) || name(dbb)) return name(da) === name(dbb);
-  return dirOf(a.path) === dirOf(b.path);
+  const sameName = name(da) || name(dbb) ? name(da) === name(dbb) : dirOf(a.path) === dirOf(b.path);
+  if (!sameKey && !(inOrder && sameName)) return false;
+  // Track numbers, when both have them, say whether it's the album's next; without them, being next in the queue does.
+  const ta = num(da.credits && da.credits.track), tb = num(dbb.credits && dbb.credits.track);
+  if (ta && tb) {
+    const ka = num(da.credits && da.credits.disc) || 1, kb = num(dbb.credits && dbb.credits.disc) || 1;
+    return (kb === ka && tb === ta + 1) || (kb === ka + 1 && tb === 1);
+  }
+  return inOrder && sameName;
 }

@@ -1,12 +1,12 @@
 'use strict';
 /**
  * AUTOMIX's measurements (automix.js edges in the renderer), kept in automix.json in the data folder so a song is
- * measured once: { version, tracks: { [file]: { stamp, start, end, fadeStart, introRise, duration } } }. `stamp` is
+ * measured once: { version, tracks: { [file]: { stamp, start, end, fadeStart, settle, gapEnd, introRise, endLevel, headLevel, duration } } }. `stamp` is
  * the file's "size:mtime", as in Sound Check's cache — a changed file is measured again. A song found silent is kept as
  * { stamp, silent: true }, so it isn't decoded again for nothing.
  */
-const VERSION = 1;
-const FIELDS = ['start', 'end', 'fadeStart', 'introRise', 'duration'];
+const VERSION = 3; // 2: settle, endLevel, headLevel; 3: settle at -24 dB, gapEnd (older entries are measured again)
+const FIELDS = ['start', 'end', 'fadeStart', 'settle', 'gapEnd', 'introRise', 'endLevel', 'headLevel', 'duration'];
 
 function createAutomixCache({ read, write, stat, delayMs = 1000 }) {
   let tracks = null, timer = null;

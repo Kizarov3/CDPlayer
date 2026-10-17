@@ -227,7 +227,8 @@ test('a mix: the standby starts at its moment, both stay on for the overlap, the
   engine.watchSeam(); await tick(20);
   assert.strictEqual(engine.deck, incoming);
   assert.deepStrictEqual(advanced, [incoming]);
-  assert.strictEqual(out[0].len, 0.2); assert.ok(out[0].c[0] > 0.99 && out[0].c.at(-1) < 0.01, 'out falls over the overlap');
+  assert.deepStrictEqual([out[0].at, out[0].len], [0.1, 0.1], 'out plays its own decay, then fades over the second half');
+  assert.ok(out[0].c[0] > 0.99 && out[0].c.at(-1) < 0.01, 'out falls');
   assert.strictEqual(inn[0].len, 0.1); assert.ok(inn[0].c.at(-1) > 0.99, 'in rises over its fade-in');
   assert.ok(bass && bass.v === 250, 'the bass goes');
   assert.ok(engine.crossfading, 'the old deck plays on through the overlap');
@@ -236,6 +237,19 @@ test('a mix: the standby starts at its moment, both stay on for the overlap, the
   assert.deepStrictEqual(ended, []);
   await tick(300);
   assert.ok(!engine.crossfading); assert.ok(outgoing.el.paused, 'let go after the overlap');
+});
+
+test('after an ending the next song comes in at the level the plan says, not from silence', async () => {
+  const engine = routedEngine();
+  await engine.load('cdp://app/media?p=a', { autoPlay: true });
+  await engine.prepare('cdp://app/media?p=b');
+  engine.armMix({ at: 190, overlap: 1, fadeIn: 3, fadeFrom: 0.316, fadeOut: true });
+  const inn = timedCurves(engine.standby);
+  engine.deck.el.currentTime = 190;
+  engine.watchSeam(); await tick(20);
+  assert.strictEqual(inn[0].len, 3, 'it rises for longer than the overlap');
+  assert.ok(Math.abs(inn[0].c[0] - 0.316) < 1e-6 && inn[0].c.at(-1) > 0.999, `from -10 dB to full: ${inn[0].c[0]}`);
+  engine.stop();
 });
 
 test('a dead stop keeps its last second as it is', async () => {
