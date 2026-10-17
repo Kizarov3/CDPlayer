@@ -291,6 +291,8 @@ function renderQueue() {
     const det = detailsCache.get(p);
     return { index: d.start + k, no: k + 1, title: queueDisplay(p), time: formatDuration(det ? det.duration : 0), current: d.start + k === state.index };
   });
+  const ghost = ghostRow(), at = tracks.findIndex((tr) => tr.current);
+  if (ghost && at >= 0) tracks.splice(at + 1, 0, { ghost });
   changerView.render({ slots, playingSlot: here.slot, tracks, heading: [t('DISC {n}', { n: here.slot + 1 }), d.kind === 'cdr' ? 'CD-R' : null, discLabel(d), d.artist].filter(Boolean).join(' · ') });
 }
 
@@ -326,13 +328,27 @@ function renderQueueList() {
     });
     return row;
   });
-  list.replaceChildren(...rows);
+  const ghost = ghostRow();
+  list.replaceChildren(...(ghost ? [...rows.slice(0, state.index + 1), ghost, ...rows.slice(state.index + 1)] : rows));
   list.scrollTop = scrollTop;
   // The song playing moved on: the list follows it, if it went out of sight (scrolling by hand is left alone otherwise).
   if (state.index !== shownIndex && drag.index < 0 && rows[state.index]) rows[state.index].scrollIntoView({ block: 'center' }); // the next songs in sight too
   shownIndex = state.index;
 }
 let shownIndex = -1;
+// A hidden track's row, under the song playing (the row, not every row of that file): no number, no time; ??? until
+// it's been heard, then its name, a click away once it's been found.
+let ghostShown = null;
+function ghostRow() {
+  const h = state.hidden;
+  if (!h || !h.revealed || h.path !== state.loadedPath) return null;
+  const name = h.found || state.hiddenPhase === 'hidden' ? h.name || t('Hidden track') : null;
+  const row = el('div', { class: `queue-row ghost${h.found ? ' found' : ''}`, title: h.found ? t('Play {song}', { song: name }) : '', onClick: () => { if (h.found && state.hidden === h) seekTo(h.hiddenStart); } },
+    el('span', { class: 'entry' }, `· · ·  ${name || '???'}`));
+  if (name && ghostShown === '???') pulseClass(row, 'fade-in'); // the ??? turns into its name
+  ghostShown = name || '???';
+  return row;
+}
 function setupQueueDrag() {
   const list = $('queue-list');
   list.addEventListener('pointermove', (e) => {

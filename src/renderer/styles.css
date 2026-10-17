@@ -165,6 +165,8 @@ body.cd-view #cd-info { display: block !important; }
 .queue-row .glyph-x { display: none; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
 .queue-row:hover .duration { visibility: hidden; }
 .queue-row:hover .glyph-x { display: inline-block; }
+.queue-row.ghost { padding-left: 36px; font-style: italic; opacity: .7; cursor: default; } /* a hidden track, under its song */
+.queue-row.ghost.found { cursor: pointer; }
 .queue-row:hover { color: rgb(var(--text)); }
 .queue-row.active { color: rgb(var(--accent)); background: rgba(var(--accent), .10); }
 .queue-row.active .duration { color: rgb(var(--accent2)); }
