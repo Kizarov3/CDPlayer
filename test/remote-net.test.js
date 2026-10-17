@@ -100,3 +100,13 @@ test('validCommand refuses anything off the list', () => {
   ];
   for (const b of bad) assert.strictEqual(net.validCommand(b), null, JSON.stringify(b));
 });
+
+test('addressChanged keeps the address while it is still offered, moves to the first one when it went, and stays put with none', () => {
+  const list = [{ name: 'en0', address: '192.168.1.20' }, { name: 'en7', address: '10.0.0.5' }];
+  assert.strictEqual(net.addressChanged('10.0.0.5', list), null, 'still there (not first): kept');
+  assert.strictEqual(net.addressChanged('192.168.1.20', list), null);
+  assert.strictEqual(net.addressChanged('192.168.1.31', list), '192.168.1.20', 'gone (a new lease): the first one');
+  assert.strictEqual(net.addressChanged(null, list), '192.168.1.20', 'none yet (no network when it was turned on): the first one');
+  assert.strictEqual(net.addressChanged('192.168.1.20', []), null, 'no network at all: nothing to move to');
+  assert.strictEqual(net.addressChanged(null, []), null);
+});

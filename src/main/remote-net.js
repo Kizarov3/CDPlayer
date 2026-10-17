@@ -27,6 +27,13 @@ function pickAddresses(interfaces) {
   return out.map((e, k) => ({ e, k })).sort((a, b) => rank(a.e.name) - rank(b.e.name) || a.k - b.k).map((x) => x.e);
 }
 
+// Checked again every few seconds while the remote is on: the address it's on gone (a new lease, Wi-Fi switched, no
+// address when it was turned on) → the one to move to, the first offered; still offered (or nothing offered) → null.
+function addressChanged(prev, list) {
+  if (!list || !list.length || list.some((e) => e.address === prev)) return null;
+  return list[0].address;
+}
+
 const hostAllowed = (host, address, port) => host === `${address}:${port}`;
 const originAllowed = (origin, address, port) => origin === `http://${address}:${port}`;
 
@@ -81,4 +88,4 @@ function validCommand(body) {
   return { action, value, rev };
 }
 
-module.exports = { pickAddresses, hostAllowed, originAllowed, newToken, tokenOk, cookieValue, cookieOk, COMMANDS, validCommand };
+module.exports = { privateV4, pickAddresses, addressChanged, hostAllowed, originAllowed, newToken, tokenOk, cookieValue, cookieOk, COMMANDS, validCommand };

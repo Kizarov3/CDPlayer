@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog, protocol, screen, shell, Menu, nativeTheme, components, clipboard, ClipboardItem, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, protocol, screen, shell, Menu, nativeTheme, components, clipboard, ClipboardItem, nativeImage, powerSaveBlocker } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -135,6 +135,7 @@ function createWindow() {
   let revived = [];
   win.webContents.on('render-process-gone', (_e, details) => {
     console.error(`The player's page went (${details.reason}, exit code ${details.exitCode})`);
+    phonePageGone();
     if (details.reason === 'clean-exit' || quitting || win.isDestroyed()) return;
     const now = Date.now();
     revived = revived.filter((t) => now - t < 60000);
@@ -145,6 +146,7 @@ function createWindow() {
   win.webContents.on('did-finish-load', () => {
     if (smokeDir) { runSmokeTest(); return; }
     if (pendingOpenFiles.length) { win.webContents.send('open-files', pendingOpenFiles.splice(0)); }
+    phonePageBack();
   });
   win.loadURL('cdp://app/index.html');
 }
@@ -463,12 +465,15 @@ handle('tags:write', async (p, changes) => {
   return result;
 });
 // The music folder, watched so an open shelf keeps up with it (library-watch.js); it follows the folder the shelf reads.
-const libraryWatch = require('./library-watch').createLibraryWatch({ onChange: () => { if (win && !win.isDestroyed()) win.webContents.send('library-changed'); } });
+const libraryWatch = require('./library-watch').createLibraryWatch({ onChange: () => {
+  phoneShelf = null; // the phone remote's list is read again when it's next asked for
+  if (win && !win.isDestroyed()) win.webContents.send('library-changed');
+} });
 const watchMusicFolder = () => { if (!smokeDir) { const f = store.readLastPath(); libraryWatch.start(f && store.isDir(f) ? f : null); } };
 // The shelf's albums with plays, dust, notes and shrink-wrap added; the handler and the phone remote both read it.
 async function shelfListing() {
   watchMusicFolder();
-  const result = await shelf.scanAlbums((done, total) => { if (win) win.webContents.send('shelf-progress', { done, total }); });
+  const result = await shelf.scanAlbums((done, total) => { if (win && !win.isDestroyed()) win.webContents.send('shelf-progress', { done, total }); });
   // How many times each album's songs have been played, for the shelf's MOST PLAYED order.
   const counts = plays();
   for (const a of result.albums) a.plays = a.tracks.reduce((n, t) => n + (counts.get(t.path) || 0), 0);
@@ -705,6 +710,216 @@ handle('win:setMiniMode', async (enabled) => {
 ipcMain.on('mini:state', (_e, s) => { if (miniWin && !miniWin.isDestroyed()) miniWin.webContents.send('mini-state', s); });
 ipcMain.on('mini:command', (_e, c) => { if (win) win.webContents.send('mini-command', c); });
 ipcMain.on('discord:track', (_e, track) => { if (!smokeDir) discord.setTrack(track); });
+
+// ---- Phone remote ------------------------------------------------------------------------------------------------
+// Settings → PHONE REMOTE, off unless turned on (and never in a smoke test): a small server on one home-network address
+// (remote.js) that a phone pairs with by the QR code. The phone's state and commands go by the player's page, as the
+// mini player's do. remote.json keeps { on, token, port, address }; the token never leaves main but inside the QR's
+// address, given to Settings.
+const os = require('os');
+const remoteNet = require('./remote-net');
+const remoteWiring = require('./remote-wiring');
+const remoteShelf = require('./remote-shelf');
+const { createRemote } = require('./remote');
+const REMOTE_WATCH_MS = 10000, REMOTE_REPLY_MS = 5000;
+let remoteConf = remoteWiring.readRemoteConf(store.readText(store.FILES.remote));
+let remote = null; // the server, while it runs
+let remoteAt = null; // { address, port } it runs on
+let remoteError = null; // on, but not running: 'network' (no home-network address to offer) or 'port' (refused)
+let remoteAddresses = []; // the addresses that could be offered, as last looked at
+let remoteWatch = null; // the address checked every 10 s, while on
+let remoteKept = { state: null, cover: null }; // the page's last full state for the phone, and the cover playing now
+let remotePhones = [];
+let remoteSeen = 0; // when a phone was last connected (the PC stays awake 30 minutes after)
+let remoteBlocker = null; // the powerSaveBlocker's id, while it keeps the PC awake
+let remoteWork = Promise.resolve(); // starts and stops, one at a time
+let phoneShelf = null; // a promise of the shelf's { albums, byKey } for the phone, until the music folder changes
+
+const saveRemoteConf = () => store.writeText(store.FILES.remote, JSON.stringify(remoteConf));
+const pageAlive = () => !!win && !win.isDestroyed() && !win.webContents.isCrashed();
+const toPage = (channel, ...args) => { if (pageAlive()) win.webContents.send(channel, ...args); };
+const remoteDo = (fn) => (remoteWork = remoteWork.then(fn).catch((e) => console.error(`Phone remote: ${e && e.message}`)));
+const lookAtAddresses = () => (remoteAddresses = remoteNet.pickAddresses(os.networkInterfaces()));
+
+function remoteStatus() {
+  const at = remote ? remoteAt : null;
+  return {
+    on: remoteConf.on,
+    url: at ? `http://${at.address}:${at.port}/pair?k=${remoteConf.token}` : null,
+    address: at ? at.address : null,
+    addresses: remoteAddresses,
+    port: at ? at.port : null,
+    phones: remotePhones,
+    error: remoteConf.on && !remote ? remoteError : null,
+  };
+}
+let sentRemoteStatus = null;
+function sendRemoteStatus() {
+  const status = remoteStatus(), text = JSON.stringify(status);
+  if (text === sentRemoteStatus) return;
+  sentRemoteStatus = text;
+  toPage('remote-status', status);
+}
+
+// The PC kept awake while the remote is on and a phone is connected or was in the last 30 minutes (a locked phone drops
+// its connection; playing music keeps the PC up anyway).
+function remoteKeepAwake() {
+  const want = remoteWiring.keepAwake({ on: remoteConf.on, phones: remotePhones.length, lastSeen: remoteSeen, now: Date.now() });
+  if (want && remoteBlocker === null) remoteBlocker = powerSaveBlocker.start('prevent-app-suspension');
+  else if (!want && remoteBlocker !== null) { powerSaveBlocker.stop(remoteBlocker); remoteBlocker = null; }
+}
+function phonesChanged(list) {
+  if (list.length || remotePhones.length) remoteSeen = Date.now();
+  remotePhones = list;
+  remoteKeepAwake();
+  sendRemoteStatus();
+}
+
+// The shelf as the phone sees it: read as the desktop shelf reads it (once, then kept until the music folder changes).
+function phoneShelfData() {
+  if (!phoneShelf) {
+    const reading = shelfListing().then((r) => ({ albums: r.albums, byKey: remoteShelf.byKey(r.albums) }));
+    phoneShelf = reading;
+    reading.catch(() => { if (phoneShelf === reading) phoneShelf = null; });
+  }
+  return phoneShelf;
+}
+async function phoneCover(key) {
+  const album = (await phoneShelfData()).byKey.get(key);
+  if (!album || !album.tracks.length) return null;
+  // What's on this computer, or was found online before — the phone's scrolling never sends the web a search, nor
+  // pushes the desktop shelf's thumbnails out of their cache (the phone keeps its covers itself, for a day).
+  return remoteWiring.dataUrlBytes(await shelf.albumCover(album.tracks[0].path, { online: false, cached: true, keep: false }));
+}
+
+// The phone's commands go to the page, each answered by its id (none within 5 s: busy). An album's key is turned into
+// the shelf album here, paths and all; a key that names none any more is answered here.
+const pageReplies = remoteWiring.createReplies({
+  timeoutMs: REMOTE_REPLY_MS,
+  send: (id, cmd) => { if (!pageAlive()) return false; win.webContents.send('remote-command', { id, cmd }); return true; },
+});
+async function phoneCommand(cmd) {
+  if (cmd.action === 'album') {
+    const { byKey } = await phoneShelfData();
+    cmd = remoteWiring.albumCommand(cmd, byKey.get(cmd.value.id));
+    if (!cmd) return { error: 'gone' };
+  }
+  return pageReplies.ask(cmd);
+}
+ipcMain.on('remote:reply', (e, id, result) => { if (win && e.sender === win.webContents) pageReplies.reply(id, result); });
+// The page's states: full ones (with `rev`) kept without their cover, which is kept apart for /cover/now; where the
+// song is, merged into the last full one. Each goes to the phones as it comes.
+ipcMain.on('remote:state', (e, s) => {
+  if (!remoteConf.on || !win || e.sender !== win.webContents) return;
+  const next = remoteWiring.nextRemoteState(remoteKept, s);
+  remoteKept = { state: next.state, cover: next.cover };
+  if (remote && next.state) remote.broadcast(next.state);
+});
+// The page gone (a crash): the phones get 503 until it's back and has sent a fresh state.
+function phonePageGone() {
+  remoteKept = { state: null, cover: null };
+  pageReplies.failAll({ error: 'busy' });
+  if (remote) remote.setDown(true);
+}
+function phonePageBack() {
+  if (!remote) return;
+  remote.setDown(false);
+  toPage('remote-listening', true); // the page sends its full state at once
+}
+
+function newRemoteServer(address, port) {
+  return createRemote({
+    address, port, token: remoteConf.token, files: {},
+    snapshot: () => remoteKept.state,
+    command: phoneCommand,
+    albums: async () => remoteShelf.phoneAlbums((await phoneShelfData()).albums, store.readShelfColors()),
+    album: async (key) => { const a = (await phoneShelfData()).byKey.get(key); return a ? remoteShelf.phoneAlbum(a) : null; },
+    coverFor: phoneCover,
+    nowCover: () => remoteKept.cover,
+    onPhones: phonesChanged,
+    log: (text) => console.error(text),
+  });
+}
+// On the address kept while it's still offered, else the first offered; on the port kept, or one the system picks
+// when that's taken — both then kept.
+async function startRemote() {
+  if (remote || !remoteConf.on || smokeDir) return;
+  const list = lookAtAddresses();
+  const address = remoteNet.addressChanged(remoteConf.address, list) || (list.length ? remoteConf.address : null);
+  if (!address) { remoteError = 'network'; return; }
+  let server = newRemoteServer(address, remoteConf.port), port;
+  try {
+    ({ port } = await server.start());
+  } catch (e) {
+    if (e.code !== 'EADDRINUSE') { remoteError = e.code === 'EADDRNOTAVAIL' ? 'network' : 'port'; console.error(`Phone remote: ${e.message}`); return; }
+    server = newRemoteServer(address, 0);
+    try { ({ port } = await server.start()); } catch (e2) { remoteError = 'port'; console.error(`Phone remote: ${e2.message}`); return; }
+  }
+  remote = server; remoteAt = { address, port }; remoteError = null;
+  remoteConf = { ...remoteConf, address, port };
+  saveRemoteConf();
+  toPage('remote-listening', true);
+}
+// `quiet`: the phones aren't told it closed — they try again, and find they must scan the new code (NEW CODE, a new
+// address). Otherwise they're told why: 'off' or 'quit'.
+async function stopRemote(reason, { quiet = false } = {}) {
+  const server = remote;
+  remote = null; remoteAt = null;
+  if (!server) return;
+  if (quiet) server.disconnectAll();
+  await server.stop(reason);
+}
+function watchRemote() {
+  remoteDo(async () => {
+    if (!remoteConf.on) return;
+    // The address it's on gone (or none yet): on the first one offered now.
+    const move = remoteNet.addressChanged(remoteAt ? remoteAt.address : null, lookAtAddresses());
+    if (move) {
+      await stopRemote('off', { quiet: true });
+      remoteConf = { ...remoteConf, address: move };
+      await startRemote();
+    }
+    remoteKeepAwake();
+    sendRemoteStatus();
+  });
+}
+async function turnRemoteOn() {
+  if (smokeDir) return;
+  if (!remoteConf.on || !remoteConf.token) {
+    remoteConf = { ...remoteConf, on: true, token: remoteConf.token || remoteNet.newToken() };
+    saveRemoteConf();
+  }
+  if (!remoteWatch) remoteWatch = setInterval(watchRemote, REMOTE_WATCH_MS);
+  await startRemote();
+  remoteKeepAwake();
+  sendRemoteStatus();
+}
+async function turnRemoteOff() {
+  if (remoteConf.on) { remoteConf = { ...remoteConf, on: false }; saveRemoteConf(); }
+  clearInterval(remoteWatch); remoteWatch = null;
+  await stopRemote('off');
+  remoteKept = { state: null, cover: null }; remoteError = null; remotePhones = [];
+  toPage('remote-listening', false);
+  remoteKeepAwake();
+  sendRemoteStatus();
+}
+handle('remote:status', () => { lookAtAddresses(); return remoteStatus(); });
+handle('remote:set', (on) => remoteDo(() => (on === true ? turnRemoteOn() : turnRemoteOff())).then(remoteStatus));
+// Another of the offered addresses, picked in Settings (the phones scan the code again).
+handle('remote:address', (address) => remoteDo(async () => {
+  if (!lookAtAddresses().some((e) => e.address === address)) return;
+  remoteConf = { ...remoteConf, address };
+  saveRemoteConf();
+  if (remote && remoteAt.address !== address) { await stopRemote('off', { quiet: true }); await startRemote(); }
+  sendRemoteStatus();
+}).then(remoteStatus));
+// NEW CODE: a new token, and a new server with it — every phone's cookie stops working, so each must scan again.
+handle('remote:newCode', () => remoteDo(async () => {
+  remoteConf = { ...remoteConf, token: remoteNet.newToken() };
+  saveRemoteConf();
+  if (remote) { await stopRemote('off', { quiet: true }); await startRemote(); }
+  sendRemoteStatus();
+}).then(remoteStatus));
 handle('win:toggleFullscreen', () => { if (win && !miniMode) win.setFullScreen(!win.isFullScreen()); });
 handle('win:isFullscreen', () => !!(win && win.isFullScreen()));
 // The newest release the last check found (with this system's file), and its download once one has started.
@@ -894,6 +1109,7 @@ app.whenReady().then(() => {
   buildMenu();
   createWindow();
   watchMusicFolder();
+  if (remoteConf.on && !smokeDir && gotLock) remoteDo(turnRemoteOn); // (a second launch, handing over to the first, never)
   if (!smokeDir && (process.platform === 'darwin' || process.platform === 'linux' || process.platform === 'win32' || process.env.CDPLAYER_CD_ROOT)) {
     setTimeout(pollDiscs, 1500);
     setInterval(pollDiscs, 3000);
@@ -915,5 +1131,10 @@ app.on('before-quit', (e) => {
   restoredRate = true;
   // a helper call can take 5 s, so the cap is longer; the final restore also stops any later switch
   Promise.race([outputRate.restore({ final: true }), new Promise((r) => setTimeout(r, 8000))]).catch(() => {}).finally(() => app.quit());
+});
+// The phones are told CDPlayer closed.
+app.on('will-quit', () => {
+  clearInterval(remoteWatch); remoteWatch = null;
+  if (remote) { remote.stop('quit'); remote = null; }
 });
 app.on('window-all-closed', () => app.quit());

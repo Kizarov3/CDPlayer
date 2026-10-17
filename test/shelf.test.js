@@ -238,3 +238,12 @@ test('an album carries what its tracks\' tags say about its pressing: the most c
   ]);
   assert.deepStrictEqual([a.barcode, a.catalog, a.label, a.mbReleaseId], ['724352775324', 'X1', 'Parlophone', 'f9e0e4e5-1d7e-4e8d-9a46-3f1d2e6f6b1d']);
 });
+
+test('cachedOnly (the phone remote\'s covers): a cover found online before is given; with none, nothing is searched or remembered', async () => {
+  const find = counting({ cover: 'data:image/jpeg;base64,CCCC' });
+  const q = { artist: 'Portishead', album: 'Dummy' };
+  assert.strictEqual(await onlineCover(q, { find, cachedOnly: true }), null);
+  assert.strictEqual(find.calls.length, 0, 'not searched');
+  assert.strictEqual(await onlineCover(q, { find }), 'data:image/jpeg;base64,CCCC', 'nothing was remembered as "no cover": a real search still runs');
+  assert.strictEqual(await onlineCover(q, { find: counting(null), cachedOnly: true }), 'data:image/jpeg;base64,CCCC');
+});

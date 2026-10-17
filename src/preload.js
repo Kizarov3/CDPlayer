@@ -152,4 +152,10 @@ contextBridge.exposeInMainWorld('cdp', {
   onRemoteCommand: on('remote-command'),
   remoteReply: (id, result) => ipcRenderer.send('remote:reply', id, result),
   onRemoteListening: on('remote-listening'),
+  // Settings → PHONE REMOTE: { on, url, address, addresses, port, phones, error }, and what changes it
+  remoteStatus: invoke('remote:status'),
+  remoteSet: invoke('remote:set'),
+  remoteAddress: invoke('remote:address'),
+  remoteNewCode: invoke('remote:newCode'),
+  onRemoteStatus: on('remote-status'),
 });
