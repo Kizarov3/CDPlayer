@@ -30,13 +30,15 @@ export function dropTarget(from, dy, rowHeight, length) {
 // 'connecting' (nothing heard yet), 'live', 'down' (not reachable: trying again), 'quit' / 'off' (the PC said it
 // closed, or the remote was turned off), 'unpaired' (the cookie's no good any more: NEW CODE, another address).
 
-/** The connection after `event`: { type: 'state' } | { type: 'error' } | { type: 'closed', reason } | { type: 'unpaired' }. */
+/** The connection after `event`: { type: 'state' | 'error' | 'resume' | 'unpaired' } | { type: 'closed', reason }. */
 export function connectionAfter(conn, event) {
   switch (event.type) {
     case 'state': return 'live';
     case 'closed': return event.reason === 'off' ? 'off' : 'quit';
     case 'unpaired': return 'unpaired';
-    case 'error': return conn === 'quit' || conn === 'off' || conn === 'unpaired' ? conn : 'down';
+    // 'resume': back after a long while hidden (a locked phone) — what's on screen may be minutes old, so it isn't live
+    // until a fresh state comes.
+    case 'error': case 'resume': return conn === 'quit' || conn === 'off' || conn === 'unpaired' ? conn : 'down';
     default: return conn;
   }
 }

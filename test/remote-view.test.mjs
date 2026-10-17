@@ -58,6 +58,16 @@ test('the connection: live on a state, down on an error, closed (and so it stays
   assert.strictEqual(connectionAfter('quit', { type: 'state' }), 'live'); // the app back, the remote on again
 });
 
+test('back from a long lock the old state is not live: nothing can be pressed until a fresh one comes', () => {
+  assert.strictEqual(connectionAfter('live', { type: 'resume' }), 'down');
+  assert.strictEqual(connectionAfter('connecting', { type: 'resume' }), 'down');
+  assert.strictEqual(canSend(connectionAfter('live', { type: 'resume' })), false);
+  assert.strictEqual(connectionAfter('quit', { type: 'resume' }), 'quit'); // what the PC said still stands
+  assert.strictEqual(connectionAfter('off', { type: 'resume' }), 'off');
+  assert.strictEqual(connectionAfter('unpaired', { type: 'resume' }), 'unpaired');
+  assert.strictEqual(connectionAfter(connectionAfter('live', { type: 'resume' }), { type: 'state' }), 'live');
+});
+
 test('only a live connection sends anything; the others say why, and when to try again', () => {
   assert.deepStrictEqual(['connecting', 'live', 'down', 'quit', 'off', 'unpaired'].map(canSend), [false, true, false, false, false, false]);
   assert.strictEqual(connectionWords('live'), '');

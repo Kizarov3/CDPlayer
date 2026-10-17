@@ -77,10 +77,14 @@ function tryLater() {
   retryTimer = setTimeout(connect, wait);
 }
 // A locked phone freezes the page (iOS) and its connection may be dead without saying so: opened again on return.
+// Back after a long while, what's on screen may be minutes old: dimmed, and nothing pressed, until a fresh state.
+// Hidden, nothing still on its way goes out later (iOS holds requests while the Wi-Fi comes back).
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { hiddenAt = Date.now(); return; }
-  if (!source || source.readyState === EventSource.CLOSED || (hiddenAt && Date.now() - hiddenAt > 20000)) connect();
+  if (document.hidden) { hiddenAt = Date.now(); for (const c of inFlight) c.abort(); return; }
+  const long = hiddenAt && Date.now() - hiddenAt > 20000;
   hiddenAt = 0;
+  if (long) setConnection({ type: 'resume' });
+  if (long || !source || source.readyState === EventSource.CLOSED) connect();
 });
 window.addEventListener('pageshow', (e) => { if (e.persisted) connect(); });
 
@@ -94,22 +98,26 @@ function setConnection(event) {
 }
 
 /** Sends a command, if connected (else nothing: never later). `rev`: the music as the press saw it. → its outcome. */
+const COMMAND_MS = 4000; // an answer not back by then: not sent, as far as the page is concerned (never sent again)
+const inFlight = new Set();
 async function send(action, value, rev) {
   if (!canSend(conn) || !real) return { kind: 'dropped' };
   const body = { action };
   if (value !== undefined) body.value = value;
   if (rev !== undefined) body.rev = rev;
   let status = 0, data = null;
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), COMMAND_MS); // (AbortSignal.timeout: iOS 16+ only)
+  inFlight.add(ctl);
   try {
     // The server checks Origin. Under the page's own Referrer-Policy (no-referrer) the Fetch standard may send a POST's
     // Origin as "null", so this request's policy is same-origin: its origin goes, to this server only.
     const r = await fetch('/command', {
-      method: 'POST', cache: 'no-store', referrerPolicy: 'same-origin',
+      method: 'POST', cache: 'no-store', referrerPolicy: 'same-origin', signal: ctl.signal,
       headers: { 'Content-Type': 'application/json', 'X-CDP': '1' }, body: JSON.stringify(body),
     });
     status = r.status;
     data = await r.json().catch(() => null);
-  } catch { /* not reached */ }
+  } catch { /* not reached, or given up on */ } finally { clearTimeout(timer); inFlight.delete(ctl); }
   const o = outcome(status, data);
   if (o.kind === 'error') {
     if (o.error === 'unpaired') setConnection({ type: 'unpaired' });
@@ -406,6 +414,7 @@ function openCase(a) {
     tracks);
   $('case-body').scrollTop = 0;
   $('case').hidden = false;
+  sheetsShown();
   fetch(`/api/album/${a.id}`, { cache: 'no-store' })
     .then((r) => (r.ok ? r.json() : null))
     .then((album) => {
@@ -426,6 +435,8 @@ function openCase(a) {
     .catch(() => { if (caseAlbum === a) tracks.replaceChildren(el('div', { class: 'empty' }, errorWords('failed'))); });
 }
 function closeCase() { caseAlbum = null; $('case').hidden = true; closePicker(); }
+// The toast (an error's words) stands above an open sheet's buttons, not under them.
+function sheetsShown() { document.body.classList.toggle('sheet-open', !$('case').hidden || !$('picker').hidden); }
 $('case-back').addEventListener('click', closeCase);
 $('case-next').addEventListener('click', () => putIn('next'));
 $('case-add').addEventListener('click', () => putIn('add'));
@@ -451,8 +462,9 @@ function askSlot(slots, pick) {
       el('div', { class: 'a-title line' }, [t('DISC {n}', { n: s.slot + 1 }), s.title].filter(Boolean).join(' · ')),
       el('div', { class: 'a-sub line' }, s.artist || '')))));
   $('picker').hidden = false;
+  sheetsShown();
 }
-function closePicker() { $('picker').hidden = true; }
+function closePicker() { $('picker').hidden = true; sheetsShown(); }
 $('picker-cancel').addEventListener('click', closePicker);
 
 // ---- QUEUE -----------------------------------------------------------------------------------------------------

@@ -26,7 +26,7 @@ button:disabled { opacity: .35; cursor: default; }
 /* Nothing heard yet: nothing to show. Not reachable / closed: the last state, dimmed, nothing to press. */
 body.waiting #views, body.waiting #tabs { visibility: hidden; }
 body.offline #views, body.offline .sheet { opacity: .38; }
-body.offline #views button, body.offline #views .bar, body.offline #views .row, body.offline .sheet button { pointer-events: none; }
+body.offline #views button, body.offline #views .bar, body.offline #views .row, body.offline .sheet button, body.offline .sheet .row { pointer-events: none; }
 #banner {
   position: fixed; z-index: 30; left: 0; right: 0; top: 0;
   padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
@@ -48,10 +48,11 @@ body.offline:not(.waiting) #views { top: calc(41px + env(safe-area-inset-top)); 
 #tabs button { flex: 1 1 0; font-size: 11px; font-weight: 600; letter-spacing: .12em; color: rgb(var(--muted)); }
 #tabs button.on { color: rgb(var(--accent)); }
 #toast {
-  position: fixed; z-index: 11; left: 16px; right: 16px; bottom: calc(var(--tabs) + 10px);
+  position: fixed; z-index: 26; left: 16px; right: 16px; bottom: calc(var(--tabs) + 10px); /* over the sheets, under the banner */
   padding: 10px 14px; border-radius: 10px; background: rgba(32, 32, 36, .97);
   font-size: 12px; letter-spacing: .06em; text-align: center; color: rgb(var(--text));
 }
+body.sheet-open #toast { bottom: calc(76px + env(safe-area-inset-bottom)); } /* above the sheet's buttons */
 
 .head { display: flex; align-items: center; gap: 10px; min-height: 56px; flex: 0 0 auto; }
 .head .info { flex: 1 1 auto; min-width: 0; }
