@@ -2,6 +2,7 @@
 // fullscreen), keyboard shortcuts, persistence, and the per-frame render loop.
 import { THEMES, colors, setColors, deriveAutoTheme, visualizerModeFor, particleModeFor, rgb, onColorsChanged, setUserThemes, toFile } from './theme.js';
 import { AudioEngine } from './audio.js';
+import { moveItem } from './queue-move.js';
 import { Disc } from './disc.js';
 import { Visualizer } from './visualizer.js';
 import { Particles } from './particles.js';
@@ -342,8 +343,7 @@ function setupQueueDrag() {
       if (target < 0 || target >= state.queue.length) break;
       drag.moved = true; changed = true;
       state.nextUp = null; // reordered by hand: the order is the queue's now
-      [state.queue[drag.index], state.queue[target]] = [state.queue[target], state.queue[drag.index]];
-      if (state.index === drag.index) state.index = target; else if (state.index === target) state.index = drag.index;
+      ({ queue: state.queue, index: state.index } = moveItem(state.queue, state.index, drag.index, target));
       drag.index = target;
       drag.accumulated -= dir * step;
     }
