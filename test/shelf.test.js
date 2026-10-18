@@ -249,3 +249,12 @@ test('the last track of each disc of a shelf album', () => {
   assert.deepStrictEqual(untagged.paths.map((p) => isLastOfDisc(untagged, p)), [false, true]);
   assert.strictEqual(isLastOfDisc(one, '/elsewhere.flac'), false);
 });
+
+test('cachedOnly (the phone remote\'s covers): a cover found online before is given; with none, nothing is searched or remembered', async () => {
+  const find = counting({ cover: 'data:image/jpeg;base64,CCCC' });
+  const q = { artist: 'Portishead', album: 'Dummy' };
+  assert.strictEqual(await onlineCover(q, { find, cachedOnly: true }), null);
+  assert.strictEqual(find.calls.length, 0, 'not searched');
+  assert.strictEqual(await onlineCover(q, { find }), 'data:image/jpeg;base64,CCCC', 'nothing was remembered as "no cover": a real search still runs');
+  assert.strictEqual(await onlineCover(q, { find: counting(null), cachedOnly: true }), 'data:image/jpeg;base64,CCCC');
+});

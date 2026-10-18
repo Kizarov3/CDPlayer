@@ -241,11 +241,12 @@ const onlineKey = ({ artist, album }) => `${String(artist).toLowerCase()}\n${Str
 /**
  * The cover found online for the album { artist, album } (`find`: online.findAlbumCover — the album itself, not one
  * of its songs, which can be on another album too), made small by `shrink` before it's kept. → data URL or null.
- * Untagged music isn't searched for.
+ * Untagged music isn't searched for. `cachedOnly`: only a cover found before — nothing searched, nothing remembered.
  */
-async function onlineCover(query, { find = (q) => require('./online').findAlbumCover(q), shrink = (c) => c, now = Date.now() } = {}) {
+async function onlineCover(query, { find = (q) => require('./online').findAlbumCover(q), shrink = (c) => c, now = Date.now(), cachedOnly = false } = {}) {
   if (!query.artist || !query.album) return null;
   const known = readOnline(), key = onlineKey(query), entry = known[key];
+  if (cachedOnly) return (entry && entry.cover) || null;
   if (entry && (entry.cover || now - entry.none < RETRY_AFTER_MS)) return entry.cover || null;
   let found = null;
   try { found = await find(query); } catch { return null; }
@@ -263,8 +264,10 @@ async function onlineCover(query, { find = (q) => require('./online').findAlbumC
 // `online: false` looks only on this computer (and remembers nothing when there's nothing here), for sorting the
 // whole shelf by colour without asking the web about every album.
 // `local: true` counts only a cover in the files or beside them — not one found online before (LIBRARY CHECK).
+// `cached: true` with `online: false` also gives a cover found online before, without asking the web, and `keep: false`
+// leaves the thumbnails kept as they were (the phone remote: a phone scrolling its shelf mustn't push the desktop's out).
 const fromWeb = new Set();
-async function albumCover(firstTrack, { online = true, local = false } = {}) {
+async function albumCover(firstTrack, { online = true, local = false, cached = false, keep = true } = {}) {
   if (thumbs.get(firstTrack) !== undefined) return local && fromWeb.has(firstTrack) ? null : thumbs.get(firstTrack);
   let thumb = null;
   const dirs = [...new Set([path.dirname(sourceOf(firstTrack)), albumFolder(firstTrack)])];
@@ -278,15 +281,16 @@ async function albumCover(firstTrack, { online = true, local = false } = {}) {
     try {
       const d = await metadata.getDetails(firstTrack, { withCover: true });
       if (d.cover) thumb = toThumb(nativeImage.createFromDataURL(d.cover));
-      else if (!online) return null;
       else {
         const query = { artist: (d.credits && d.credits.albumArtist) || d.artist, album: d.album };
-        thumb = await onlineCover(query, { shrink: (c) => toThumb(nativeImage.createFromDataURL(c)) });
-        if (thumb) fromWeb.add(firstTrack);
+        if (!online && !cached) return null;
+        thumb = await onlineCover(query, { shrink: (c) => toThumb(nativeImage.createFromDataURL(c)), cachedOnly: !online });
+        if (!thumb && !online) return null; // (nothing kept: the shelf may still find one online)
+        if (thumb && keep) fromWeb.add(firstTrack);
       }
     } catch { /* no art */ }
   }
-  thumbs.set(firstTrack, thumb);
+  if (keep) thumbs.set(firstTrack, thumb);
   return thumb;
 }
 
