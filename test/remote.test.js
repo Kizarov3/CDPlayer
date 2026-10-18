@@ -3,6 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const http = require('http');
 const zlib = require('zlib');
+const net = require('net');
 const { createRemote } = require('../src/main/remote');
 const { cookieValue } = require('../src/main/remote-net');
 
@@ -113,6 +114,36 @@ test('without the cookie, or with a wrong one, every route but /pair answers 401
   const headers = { ...POST_OK(port) }; delete headers.cookie;
   assert.strictEqual((await post(port, { action: 'toggle' }, headers)).status, 401);
   assert.strictEqual(calls.command.length, 0);
+});
+
+test('a browser opening the page unpaired gets a page saying to scan the code; the API still answers JSON', async (t) => {
+  const page = '<!doctype html><html lang="en"><body bgcolor="#000000">Scan the code</body></html>';
+  const { port } = await serve(t, { unpairedPage: () => page });
+  for (const path of ['/', '/?from=settings']) {
+    const r = await request(port, { path, headers: { cookie: 'cdp=nope' } });
+    assert.strictEqual(r.status, 401, path);
+    assert.strictEqual(r.headers['content-type'], 'text/html; charset=utf-8', path);
+    assert.strictEqual(r.body.toString(), page, path);
+    assert.strictEqual(r.headers['content-security-policy'], CSP, path);
+    assert.strictEqual(r.headers['x-content-type-options'], 'nosniff', path);
+    assert.strictEqual(r.headers['referrer-policy'], 'no-referrer', path);
+    assert.strictEqual(r.headers['cache-control'], 'no-store', path);
+  }
+  // Another page a browser opens itself (it says it wants HTML): the same page.
+  const other = await request(port, { path: '/index.html', headers: { accept: 'text/html,application/xhtml+xml,*/*;q=0.8' } });
+  assert.strictEqual(other.status, 401);
+  assert.strictEqual(other.body.toString(), page);
+  // What the page's own script asks for, and anything else: JSON, as before — the API even when it says it takes HTML.
+  for (const path of ['/events', '/api/albums', '/api/album/0123456789abcdef', '/cover/0123456789abcdef', '/cover/now?v=x', '/remote.js', '/favicon.ico']) {
+    const r = await request(port, { path, headers: /^\/(events|api|cover)/.test(path) ? { accept: 'text/html,*/*' } : {} });
+    assert.strictEqual(r.status, 401, path);
+    assert.match(r.headers['content-type'], /^application\/json/, path);
+    assert.deepStrictEqual(JSON.parse(r.body), { error: 'unpaired' }, path);
+  }
+  const headers = { ...POST_OK(port), accept: 'text/html' }; delete headers.cookie;
+  const r = await post(port, { action: 'toggle' }, headers);
+  assert.strictEqual(r.status, 401);
+  assert.deepStrictEqual(JSON.parse(r.body), { error: 'unpaired' });
 });
 
 test('a Host other than exactly IP:PORT answers 421, even for a right pairing', async (t) => {
@@ -228,6 +259,51 @@ test('two SSE clients each get the snapshot on connect and every broadcast; phon
   assert.strictEqual(remote.phones()[0].name, 'Android');
   assert.deepStrictEqual(seen, [1, 2, 1]);
   b.close();
+});
+
+test('a tick goes as its own small event, only where the song is', async (t) => {
+  const { remote, port } = await serve(t);
+  const s = await events(port);
+  await s.waitFor(1);
+  remote.broadcast({ playing: true, position: 12.5, duration: 200 }, 'tick');
+  await s.waitFor(2);
+  assert.deepStrictEqual(s.list[1], { event: 'tick', data: '{"playing":true,"position":12.5,"duration":200}', comment: null });
+  s.close();
+});
+
+// A phone that's stopped reading (a locked iPhone's suspended page, a phone gone from the Wi-Fi): a raw connection
+// that asks for /events and then never reads.
+async function stuckPhone(port) {
+  const sock = net.connect(port, '127.0.0.1');
+  await new Promise((resolve, reject) => { sock.once('connect', resolve); sock.once('error', reject); });
+  sock.on('error', () => {});
+  sock.write(`GET /events HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nCookie: ${COOKIE}\r\nUser-Agent: ${IPHONE}\r\n\r\n`);
+  sock.pause();
+  return sock;
+}
+const until = (ok) => new Promise((resolve) => { const look = () => (ok() ? resolve() : setTimeout(look, 5)); look(); });
+const BIG = { rev: 2, pad: 'x'.repeat(64 * 1024) };
+
+test('a phone that stops reading is dropped once 256 KB wait for it, and counts as gone', async (t) => {
+  const seen = [];
+  const { remote, port } = await serve(t, { onPhones: (list) => seen.push(list.length) });
+  const sock = await stuckPhone(port);
+  t.after(() => sock.destroy());
+  await until(() => remote.phones().length === 1);
+  let sent = 0;
+  while (remote.phones().length && sent < 4000) { remote.broadcast(BIG); sent++; await new Promise((r) => setImmediate(r)); }
+  assert.deepStrictEqual(remote.phones(), [], `still there after ${sent} states of 64 KB`);
+  assert.deepStrictEqual(seen, [1, 0]);
+  await new Promise((r) => sock.once('close', r).resume()); // and its connection is closed
+});
+
+test('a phone that keeps reading is never dropped, however much it is sent', async (t) => {
+  const { remote, port } = await serve(t);
+  const s = await events(port);
+  await s.waitFor(1);
+  for (let k = 0; k < 40; k++) { remote.broadcast(BIG); await s.waitFor(k + 2); }
+  assert.strictEqual(remote.phones().length, 1);
+  s.close();
 });
 
 test('a browser that is neither iPhone nor Android is named Browser', async (t) => {

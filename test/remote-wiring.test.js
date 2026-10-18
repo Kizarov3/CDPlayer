@@ -45,6 +45,49 @@ test('between full states, where the song is goes into the last full state', () 
   assert.strictEqual(w.nextRemoteState(kept, null).state, kept.state);
 });
 
+test('the phones get a whole state only when it changed, else a tick of where the song is', () => {
+  const slots = [{ title: 'Moon Safari', cover: `data:image/jpeg;base64,${'A'.repeat(4000)}` }, null, null, null, null];
+  const full = { rev: 3, playing: true, position: 10, duration: 200, volume: 40, track: { title: 'Airbag' }, changer: { slots } };
+  let kept = { state: null, cover: null }, sent = null;
+  const step = (msg) => { const next = w.nextRemoteState(kept, msg); kept = { state: next.state, cover: next.cover }; const out = w.phoneEvent(next, sent); sent = out.sent; return out; };
+
+  const first = step(full);
+  assert.strictEqual(first.event, 'state');
+  assert.deepStrictEqual(first.data, full);
+  const tick = step({ playing: true, position: 11, duration: 200 });
+  assert.deepStrictEqual(tick, { event: 'tick', data: { playing: true, position: 11, duration: 200 }, sent });
+  assert.ok(JSON.stringify(tick.data).length < 60);
+  assert.strictEqual(kept.state.position, 11, 'main keeps it in its state, for a phone that connects next');
+  // The same state again, only further along: a tick too.
+  assert.deepStrictEqual(step({ ...full, position: 12 }), { event: 'tick', data: { playing: true, position: 12, duration: 200 }, sent });
+  // Something else changed: the whole state.
+  const moved = step({ ...full, position: 13, volume: 41 });
+  assert.strictEqual(moved.event, 'state');
+  assert.strictEqual(moved.data.volume, 41);
+  assert.strictEqual(step({ ...full, position: 13, volume: 41, rev: 4 }).event, 'state', 'a new rev is a change');
+  // Nothing kept to tick on: nothing goes.
+  assert.deepStrictEqual(w.phoneEvent({ state: null, cover: null, full: false }, 'x'), { event: null, data: null, sent: 'x' });
+});
+
+test('the page for a browser that isn\'t paired: dark, no script, in the interface\'s language', () => {
+  const i18n = require('../src/main/i18n');
+  const en = w.unpairedPage();
+  assert.match(en, /^<!doctype html>/i);
+  assert.match(en, /<html lang="en">/);
+  assert.match(en, /bgcolor="#000000"/);
+  assert.match(en, /<meta name="theme-color" content="#000000">/);
+  assert.match(en, /<meta name="color-scheme" content="dark">/);
+  assert.match(en, /Settings → PHONE REMOTE/);
+  assert.doesNotMatch(en, /<script|<style|style=|<link/i, 'nothing the page’s CSP would refuse');
+  i18n.loadLocale('ru', []);
+  try {
+    const ru = w.unpairedPage();
+    assert.match(ru, /<html lang="ru">/);
+    assert.match(ru, /ПУЛЬТ-ТЕЛЕФОН/);
+    assert.doesNotMatch(ru, /Settings|PHONE REMOTE|scan/i);
+  } finally { i18n.loadLocale('en', []); }
+});
+
 test('dataUrlBytes decodes a base64 data URL and nothing else', () => {
   assert.deepStrictEqual(w.dataUrlBytes('data:image/jpeg;base64,AAEC'), Buffer.from([0, 1, 2]));
   for (const bad of [null, '', 'https://x/y.jpg', 'data:image/jpeg,AAEC', 'data:image/jpeg;base64,']) assert.strictEqual(w.dataUrlBytes(bad), null, String(bad));

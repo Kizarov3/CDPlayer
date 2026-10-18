@@ -1,10 +1,12 @@
 'use strict';
 /**
  * How main carries the phone remote between its server (remote.js) and the player's page, all pure: what remote.json
- * may say, the page's states as the phone gets them (the cover kept apart), an album command turned into the shelf
- * album the page plays, the page's answers awaited by id, and when the PC is kept awake for a phone.
+ * may say, the page's states as the phone gets them (the cover kept apart; a whole state or a tick), the page for a
+ * browser that isn't paired, an album command turned into the shelf album the page plays, the page's answers awaited
+ * by id, and when the PC is kept awake for a phone.
  */
 const { privateV4 } = require('./remote-net');
+const { t, current } = require('./i18n');
 
 const DEFAULT_PORT = 47800;
 const AWAKE_MS = 30 * 60e3; // a locked phone drops its connection: the PC stays up this long after the last one went
@@ -53,6 +55,50 @@ function nextRemoteState(kept, msg) {
   if (!kept.state) return { state: null, cover: kept.cover, full: false };
   const { playing, position, duration } = msg;
   return { state: { ...kept.state, playing: !!playing, position: Number(position) || 0, duration: Number(duration) || 0 }, cover: kept.cover, full: false };
+}
+
+/**
+ * What goes to the phones for one of the page's messages (`next`: nextRemoteState's answer; `sent`: what the last whole
+ * state sent was, but for where the song is). A full state that changed in anything else → event 'state' with it
+ * whole (the queue, the changer's covers…); otherwise → a 'tick' with only { playing, position, duration }, so where
+ * the song is costs a phone a few bytes a second. Nothing kept yet → nothing. → { event, data, sent }.
+ */
+function phoneEvent(next, sent) {
+  if (!next || !next.state) return { event: null, data: null, sent };
+  const { playing, position, duration, ...rest } = next.state;
+  if (next.full) {
+    const key = JSON.stringify(rest);
+    if (key !== sent) return { event: 'state', data: next.state, sent: key };
+  }
+  return { event: 'tick', data: { playing, position, duration }, sent };
+}
+
+/**
+ * The page a browser gets when it opens the remote without being paired (the address typed in, a reload after NEW
+ * CODE, a camera app that kept its cookie elsewhere): dark, in the interface's language, saying where the code is.
+ * No script and no style — the page's CSP (default-src 'self') refuses inline ones, and nothing else is served unpaired.
+ */
+function unpairedPage() {
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const { code } = current();
+  const font = 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif';
+  return `<!doctype html>
+<html lang="${esc(code)}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
+<title>CDPlayer</title>
+</head>
+<body bgcolor="#000000" text="#e8e9ec">
+<table width="100%" cellpadding="24"><tr><td align="center">
+<font face="${font}" size="5"><b>${esc(t('THIS PHONE ISN’T PAIRED'))}</b></font>
+<p><font face="${font}" size="4" color="#a9adb6">${esc(t('Open CDPlayer on the computer, go to Settings → PHONE REMOTE and scan the code with this phone’s camera.'))}</font></p>
+</td></tr></table>
+</body>
+</html>
+`;
 }
 
 /**
@@ -126,4 +172,4 @@ function pageFiles({ read, dict }) {
   return files;
 }
 
-module.exports = { DEFAULT_PORT, shelfCacheFor, pageFiles, readRemoteConf, dataUrlBytes, nextRemoteState, albumCommand, createReplies, keepAwake };
+module.exports = { DEFAULT_PORT, shelfCacheFor, pageFiles, readRemoteConf, dataUrlBytes, nextRemoteState, phoneEvent, unpairedPage, albumCommand, createReplies, keepAwake };

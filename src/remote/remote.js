@@ -8,7 +8,7 @@ import { t, translatePage } from './js/i18n.js';
 import { moveItem } from './js/queue-move.js';
 import {
   PHONE_SORTS, nextSort, sortLabel, shelfRows, dropTarget, connectionAfter, canSend, connectionWords, retryDelay,
-  outcome, errorWords, modeWords, badges, formatTime, livePosition, discHeading, pickableSlots,
+  outcome, errorWords, modeWords, badges, formatTime, livePosition, withTick, discHeading, pickableSlots,
 } from './js/remote-view.js';
 
 translatePage(document);
@@ -41,6 +41,7 @@ let tab = 'playing';
 // ---- Talking to the PC --------------------------------------------------------------------------------------
 
 let source = null, retryTimer = null, hiddenAt = 0;
+const PROBE_MS = 3000;
 function connect() {
   clearTimeout(retryTimer); retryTimer = null;
   if (source) source.close();
@@ -53,6 +54,16 @@ function connect() {
     setConnection({ type: 'state' });
     take(s);
   });
+  // Where the song is (once a second while it plays): only that moves on; everything else stays as the last state.
+  es.addEventListener('tick', (e) => {
+    if (source !== es || !real) return;
+    let tick;
+    try { tick = JSON.parse(e.data); } catch { return; }
+    const wasShown = shown === real;
+    real = withTick(real, tick); heardAt = performance.now();
+    if (wasShown) shown = real; // (a reorder made here and not yet answered stays on screen)
+    drawPlaying();
+  });
   es.addEventListener('closed', (e) => {
     if (source !== es) return;
     let reason = 'quit';
@@ -62,12 +73,17 @@ function connect() {
     tryLater();
   });
   // Not reachable, or refused (503 while the player's page reloads; 401 when the code changed): the page tries again
-  // itself, so a refusal doesn't end it — and it asks once whether it's still paired.
+  // itself, so a refusal doesn't end it — and it asks once whether it's still paired (given up after 3 s: a PC asleep
+  // doesn't answer, and the next try isn't kept waiting for it).
   es.addEventListener('error', () => {
     if (source !== es) return;
     es.close(); source = null;
     setConnection({ type: 'error' });
-    fetch('/cover/now', { cache: 'no-store' }).then((r) => { if (r.status === 401) setConnection({ type: 'unpaired' }); }).catch(() => {}).finally(tryLater);
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), PROBE_MS);
+    fetch('/cover/now', { cache: 'no-store', signal: ctl.signal })
+      .then((r) => { if (r.status === 401) { setConnection({ type: 'unpaired' }); tryLater(); } }) // (no more tries)
+      .catch(() => {}).finally(() => clearTimeout(timer));
+    tryLater();
   });
 }
 function tryLater() {
@@ -76,11 +92,18 @@ function tryLater() {
   if (wait === null || document.hidden || conn === 'live') return; // looked at again: connect() then
   retryTimer = setTimeout(connect, wait);
 }
-// A locked phone freezes the page (iOS) and its connection may be dead without saying so: opened again on return.
+// A locked phone freezes the page (iOS) and its connection may be dead without saying so: hidden, the page closes its
+// connection itself (so the PC isn't left sending to a phone that doesn't read), and opens it again on return.
 // Back after a long while, what's on screen may be minutes old: dimmed, and nothing pressed, until a fresh state.
 // Hidden, nothing still on its way goes out later (iOS holds requests while the Wi-Fi comes back).
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { hiddenAt = Date.now(); for (const c of inFlight) c.abort(); return; }
+  if (document.hidden) {
+    hiddenAt = Date.now();
+    for (const c of inFlight) c.abort();
+    clearTimeout(retryTimer); retryTimer = null;
+    if (source) { source.close(); source = null; }
+    return;
+  }
   const long = hiddenAt && Date.now() - hiddenAt > 20000;
   hiddenAt = 0;
   if (long) setConnection({ type: 'resume' });

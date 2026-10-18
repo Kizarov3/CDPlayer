@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import {
   PHONE_SORTS, nextSort, shelfRows, dropTarget, connectionAfter, canSend, connectionWords, retryDelay,
-  outcome, errorWords, modeWords, badges, formatTime, livePosition, discHeading, pickableSlots,
+  outcome, errorWords, modeWords, badges, formatTime, livePosition, withTick, discHeading, pickableSlots,
 } from '../src/renderer/js/remote-view.js';
 
 const DAY = 86400000, now = Date.UTC(2026, 9, 17);
@@ -128,6 +128,16 @@ test('times as the player prints them; where the song is now, between the PC’s
   assert.strictEqual(livePosition({ playing: false, position: 10, duration: 200 }, 1000, 3500), 10);
   assert.strictEqual(livePosition({ playing: true, position: 199, duration: 200 }, 0, 5000), 200);
   assert.strictEqual(livePosition({ playing: true, position: 5, duration: 0 }, 0, 5000), 5); // no length known: as it was
+});
+
+test('a tick moves the song on in the last state and changes nothing else', () => {
+  const real = { rev: 3, playing: false, position: 10, duration: 200, volume: 40, queue: [{ title: 'Airbag' }] };
+  const next = withTick(real, { playing: true, position: 11.5, duration: 201, volume: 99, queue: [] });
+  assert.deepStrictEqual(next, { ...real, playing: true, position: 11.5, duration: 201 });
+  assert.strictEqual(next.queue, real.queue);
+  assert.strictEqual(real.position, 10, 'the last state is left as it was');
+  assert.deepStrictEqual(withTick(real, { playing: 1, position: 'x' }), { ...real, playing: true, position: 0, duration: 0 });
+  assert.strictEqual(withTick(null, { playing: true, position: 1, duration: 2 }), null, 'no state yet: nothing to move on');
 });
 
 test('the changer’s playing disc, as its heading reads', () => {

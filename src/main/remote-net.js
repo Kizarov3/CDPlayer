@@ -6,7 +6,10 @@
  */
 const crypto = require('crypto');
 
-const BAD_NAME = /^(utun\d|tun\d|tap\d|wg\d|ppp\d|docker|veth|vmnet|vboxnet|tailscale|zt[0-9a-z]{6,}$|lo\d*$|loopback)|vethernet|virtual|vpn/i;
+// Tunnels, VPNs, loopback, and the switches virtual machines and Internet Sharing make: macOS bridge100 (UTM,
+// Parallels, Internet Sharing), Linux virbr0 (libvirt) and br-… (Docker networks), Windows "VMware Network Adapter
+// VMnet8", Hyper-V's vEthernet, VirtualBox. A LAN bridge set up by hand (Linux br0) is kept.
+const BAD_NAME = /^(utun\d|tun\d|tap\d|wg\d|ppp\d|docker|veth|vboxnet|tailscale|zt[0-9a-z]{6,}$|lo\d*$|loopback|bridge\d|virbr|br-)|vmnet|vethernet|virtual|vpn/i;
 const GOOD_NAME = /^en0$|wi-?fi|wlan|ethernet|^eth/i;
 
 function privateV4(a) {
@@ -27,11 +30,14 @@ function pickAddresses(interfaces) {
   return out.map((e, k) => ({ e, k })).sort((a, b) => rank(a.e.name) - rank(b.e.name) || a.k - b.k).map((x) => x.e);
 }
 
-// Checked again every few seconds while the remote is on: the address it's on gone (a new lease, Wi-Fi switched, no
-// address when it was turned on) → the one to move to, the first offered; still offered (or nothing offered) → null.
-function addressChanged(prev, list) {
-  if (!list || !list.length || list.some((e) => e.address === prev)) return null;
-  return list[0].address;
+// The address to be on, of those offered now (checked again every few seconds while the remote is on): the preferred
+// one (picked in Settings, or the first it was ever on) whenever it's offered — so a moment without it never leaves the
+// remote elsewhere for good; else the one it's on while that's still offered; else the first; none offered → null.
+function addressToUse(preferred, current, list) {
+  const offered = (a) => !!a && (list || []).some((e) => e.address === a);
+  if (offered(preferred)) return preferred;
+  if (offered(current)) return current;
+  return list && list.length ? list[0].address : null;
 }
 
 const hostAllowed = (host, address, port) => host === `${address}:${port}`;
@@ -88,4 +94,4 @@ function validCommand(body) {
   return { action, value, rev };
 }
 
-module.exports = { privateV4, pickAddresses, addressChanged, hostAllowed, originAllowed, newToken, tokenOk, cookieValue, cookieOk, COMMANDS, validCommand };
+module.exports = { privateV4, pickAddresses, addressToUse, hostAllowed, originAllowed, newToken, tokenOk, cookieValue, cookieOk, COMMANDS, validCommand };

@@ -19,6 +19,10 @@ const PAGE_HEADERS = {
 const BODY_LIMIT = 16 * 1024;
 const DRAIN_LIMIT = 1024 * 1024; // past this an oversized body isn't read to its end, the connection is dropped
 const PING_MS = 20000;
+// A phone that stops reading (a locked iPhone's suspended page, one gone from the Wi-Fi) makes what's sent to it wait
+// in main: past this, it's dropped — and counts as gone (the PHONE tag, keeping the PC awake).
+const BACKLOG_LIMIT = 256 * 1024;
+const KEEPALIVE_MS = 15000;
 const COVERS_AT_ONCE = 3;
 const COOKIE_AGE = 400 * 24 * 3600; // the longest browsers keep one
 const KEY = /^[0-9a-f]{16}$/;
@@ -32,7 +36,15 @@ function imageType(b) {
   return 'image/jpeg';
 }
 
-function createRemote({ address, port, token, files = {}, snapshot, command, albums, album, coverFor, nowCover, onPhones = () => {}, log = () => {} }) {
+// What a browser opens itself (the address typed in, a page reloaded after NEW CODE) — not the page's own requests.
+const API = /^\/(events|command|api\/|cover\/)/;
+const wantsPage = (req, path) => !API.test(path) && (path === '/' || /\btext\/html\b/.test(String(req.headers.accept || '')));
+
+/**
+ * `unpairedPage()` → the HTML shown to a browser that opens the page without the cookie (it says to scan the code),
+ * or none: JSON, as the API answers.
+ */
+function createRemote({ address, port, token, files = {}, snapshot, command, albums, album, coverFor, nowCover, unpairedPage = null, onPhones = () => {}, log = () => {} }) {
   let server = null;
   let boundPort = null;
   let ping = null;
@@ -109,12 +121,28 @@ function createRemote({ address, port, token, files = {}, snapshot, command, alb
     const state = down ? null : snapshot();
     if (!state) return fail(res, 503, 'player');
     req.socket.setTimeout(0);
+    req.socket.setKeepAlive(true, KEEPALIVE_MS);
     res.writeHead(200, { ...PAGE_HEADERS, 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
     res.write(`event: state\ndata: ${JSON.stringify(state)}\n\n`);
     const id = nextId++;
     clients.set(id, { res, name: phoneName(req.headers['user-agent']), since: Date.now() });
     res.on('close', () => { if (clients.delete(id)) phonesChanged(); });
     phonesChanged();
+  }
+
+  // `text` to every open stream; one with more than BACKLOG_LIMIT still waiting to go is dropped (and gone at once).
+  function toStreams(text) {
+    let dropped = false;
+    for (const [id, c] of clients) {
+      c.res.write(text);
+      if (c.res.writableLength > BACKLOG_LIMIT) {
+        clients.delete(id);
+        c.res.destroy();
+        dropped = true;
+        log(`phone remote: a phone (${c.name}) stopped reading; dropped`);
+      }
+    }
+    if (dropped) phonesChanged();
   }
 
   async function postCommand(req, res) {
@@ -140,7 +168,10 @@ function createRemote({ address, port, token, files = {}, snapshot, command, alb
     const path = q < 0 ? raw : raw.slice(0, q);
     const query = new URLSearchParams(q < 0 ? '' : raw.slice(q + 1));
     if (path === '/pair' && req.method === 'GET') return pair(res, query);
-    if (!cookieOk(req.headers.cookie, token)) return fail(res, 401, 'unpaired');
+    if (!cookieOk(req.headers.cookie, token)) {
+      if (req.method === 'GET' && unpairedPage && wantsPage(req, path)) return send(res, 401, unpairedPage(), { 'Content-Type': 'text/html; charset=utf-8' });
+      return fail(res, 401, 'unpaired');
+    }
     if (path === '/command') return req.method === 'POST' ? postCommand(req, res) : fail(res, 405, 'method');
     if (req.method !== 'GET') return fail(res, 405, 'method');
 
@@ -202,7 +233,7 @@ function createRemote({ address, port, token, files = {}, snapshot, command, alb
           s.on('error', (e) => log(`phone remote: server error: ${e.message}`));
           server = s;
           boundPort = s.address().port;
-          ping = setInterval(() => { for (const { res } of clients.values()) res.write(': ping\n\n'); }, PING_MS);
+          ping = setInterval(() => toStreams(': ping\n\n'), PING_MS);
           if (ping.unref) ping.unref();
           resolve({ port: boundPort });
         });
@@ -221,10 +252,8 @@ function createRemote({ address, port, token, files = {}, snapshot, command, alb
         s.closeAllConnections();
       });
     },
-    broadcast(state) {
-      const event = `event: state\ndata: ${JSON.stringify(state)}\n\n`;
-      for (const { res } of clients.values()) res.write(event);
-    },
+    // `event`: 'state' (the whole state) or 'tick' ({ playing, position, duration }: where the song is).
+    broadcast(data, event = 'state') { toStreams(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); },
     setDown(value) { down = !!value; },
     phones,
     disconnectAll() { closeStreams(null); },

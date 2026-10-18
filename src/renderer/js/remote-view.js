@@ -101,6 +101,9 @@ export function livePosition({ playing, position, duration }, heardAt, now) {
   if (!playing || !(duration > 0)) return position;
   return Math.min(duration, position + Math.max(0, now - heardAt) / 1000);
 }
+/** The PC's tick (where the song is, once a second) → the last state with only that moved on; no state yet: null. */
+export const withTick = (state, { playing, position, duration }) => (state
+  ? { ...state, playing: !!playing, position: Number(position) || 0, duration: Number(duration) || 0 } : null);
 /** The heading over the changer's tracklist: DISC 3 · its title · its artist ('' with no disc playing). */
 export function discHeading(changer) {
   const d = changer && changer.playing >= 0 ? changer.slots[changer.playing] : null;

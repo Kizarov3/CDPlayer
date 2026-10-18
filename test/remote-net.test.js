@@ -15,7 +15,17 @@ test('pickAddresses offers private LAN addresses, Wi-Fi first, and skips tunnels
     tailscale0: [v4('100.101.1.2')],
     en0: [v4('192.168.1.20')],
   };
-  assert.deepStrictEqual(net.pickAddresses(ifs), [{ name: 'en0', address: '192.168.1.20' }, { name: 'bridge100', address: '192.168.64.1' }]);
+  assert.deepStrictEqual(net.pickAddresses(ifs), [{ name: 'en0', address: '192.168.1.20' }]);
+});
+
+test('pickAddresses skips the bridges virtual machines and Internet Sharing make, and keeps every real adapter', () => {
+  const vm = ['bridge100', 'bridge0', 'virbr0', 'br-3f2a9c1d7e44', 'VMware Network Adapter VMnet8', 'VMware Network Adapter VMnet1', 'vmnet8', 'vboxnet0',
+    'VirtualBox Host-Only Network', 'vEthernet (Default Switch)', 'docker0', 'veth12ab'];
+  const real = ['en0', 'en1', 'Wi-Fi', 'Wi-Fi 2', 'WLAN', 'Ethernet', 'Ethernet 2', 'Local Area Connection', 'wlan0', 'eth0', 'enp3s0', 'wlp2s0', 'eno1', 'br0'];
+  const ifs = {};
+  vm.forEach((name, k) => { ifs[name] = [v4(`192.168.${100 + k}.1`)]; });
+  real.forEach((name, k) => { ifs[name] = [v4(`10.0.${k}.5`)]; });
+  assert.deepStrictEqual(net.pickAddresses(ifs).map((e) => e.name).sort(), [...real].sort());
 });
 
 test('pickAddresses on Windows names keeps Wi-Fi and drops the WSL switch', () => {
@@ -101,12 +111,34 @@ test('validCommand refuses anything off the list', () => {
   for (const b of bad) assert.strictEqual(net.validCommand(b), null, JSON.stringify(b));
 });
 
-test('addressChanged keeps the address while it is still offered, moves to the first one when it went, and stays put with none', () => {
+test('addressToUse: the preferred address while it is offered, else the one it is on while that is, else the first', () => {
   const list = [{ name: 'en0', address: '192.168.1.20' }, { name: 'en7', address: '10.0.0.5' }];
-  assert.strictEqual(net.addressChanged('10.0.0.5', list), null, 'still there (not first): kept');
-  assert.strictEqual(net.addressChanged('192.168.1.20', list), null);
-  assert.strictEqual(net.addressChanged('192.168.1.31', list), '192.168.1.20', 'gone (a new lease): the first one');
-  assert.strictEqual(net.addressChanged(null, list), '192.168.1.20', 'none yet (no network when it was turned on): the first one');
-  assert.strictEqual(net.addressChanged('192.168.1.20', []), null, 'no network at all: nothing to move to');
-  assert.strictEqual(net.addressChanged(null, []), null);
+  assert.strictEqual(net.addressToUse('10.0.0.5', '10.0.0.5', list), '10.0.0.5', 'the preferred one, offered (not first): kept');
+  assert.strictEqual(net.addressToUse('10.0.0.5', '192.168.1.20', list), '10.0.0.5', 'the preferred one back: moved back to it');
+  assert.strictEqual(net.addressToUse('192.168.1.31', '10.0.0.5', list), '10.0.0.5', 'the preferred one gone: stays where it is');
+  assert.strictEqual(net.addressToUse('192.168.1.31', '192.168.1.99', list), '192.168.1.20', 'both gone (a new lease): the first one');
+  assert.strictEqual(net.addressToUse('192.168.1.31', null, list), '192.168.1.20', 'not running, the preferred one gone: the first one');
+  assert.strictEqual(net.addressToUse(null, null, list), '192.168.1.20', 'none yet (no network when it was turned on): the first one');
+  assert.strictEqual(net.addressToUse('192.168.1.20', '192.168.1.20', []), null, 'no network at all: nowhere');
+  assert.strictEqual(net.addressToUse(null, null, []), null);
+});
+
+test('the Wi-Fi gone for a moment while a VM bridge is up: it never settles on the bridge, and comes back to the Wi-Fi', () => {
+  const both = { en0: [v4('192.168.88.7')], bridge100: [v4('192.168.64.1')] };
+  const noWifi = { en0: [], bridge100: [v4('192.168.64.1')] };
+  const preferred = '192.168.88.7';
+  let at = net.addressToUse(preferred, null, net.pickAddresses(both));
+  assert.strictEqual(at, '192.168.88.7');
+  at = net.addressToUse(preferred, at, net.pickAddresses(noWifi));
+  assert.strictEqual(at, null, 'no home network then: not on the bridge');
+  at = net.addressToUse(preferred, at, net.pickAddresses(both));
+  assert.strictEqual(at, '192.168.88.7');
+  // An address picked in Settings (a second network) is preferred: when it comes back, it's moved back to.
+  const two = { en0: [v4('192.168.88.7')], en5: [v4('10.0.0.5')] };
+  at = net.addressToUse('10.0.0.5', null, net.pickAddresses(two));
+  assert.strictEqual(at, '10.0.0.5');
+  at = net.addressToUse('10.0.0.5', at, net.pickAddresses({ en0: [v4('192.168.88.7')] }));
+  assert.strictEqual(at, '192.168.88.7');
+  at = net.addressToUse('10.0.0.5', at, net.pickAddresses(two));
+  assert.strictEqual(at, '10.0.0.5');
 });

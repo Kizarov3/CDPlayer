@@ -176,7 +176,14 @@ export function showSettings(app) {
   open();
   loadDiscogsSettings(app).then(() => refreshSettingsIfOpen(app));
 }
-export function refreshSettingsIfOpen(app) { if (isOpen('settings')) refreshPanel('settings'); }
+// Settings drawn again (a phone came, the Discogs token loaded…) — but not from under a menu open over it (the phone
+// remote's address list): then once that menu closes.
+let settingsStale = false;
+export function refreshSettingsIfOpen(app) {
+  if (!isOpen('settings')) return;
+  if (menuLayer) { settingsStale = true; return; }
+  refreshPanel('settings');
+}
 
 const section = (text) => el('div', { class: 'settings-section' }, text);
 
@@ -411,7 +418,10 @@ function showMenu(anchor, items) {
 }
 /** A list of Discogs pressings to pick from (the shelf's OTHER PRESSING… and CHOOSE PRESSING…), under `anchor`. */
 export function pressingMenu(anchor, items) { showMenu(anchor, items); }
-export function closeMenu() { if (menuLayer) { menuLayer.remove(); menuLayer = null; } }
+export function closeMenu() {
+  if (menuLayer) { menuLayer.remove(); menuLayer = null; }
+  if (settingsStale) { settingsStale = false; if (isOpen('settings')) refreshPanel('settings'); }
+}
 
 const themeSwatch = (theme) => (theme.image ? `center / cover url("${theme.image}")` : `linear-gradient(135deg, rgb(${theme.accent}), rgb(${theme.accent2}))`);
 function showThemeMenu(app) {

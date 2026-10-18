@@ -1947,8 +1947,18 @@ function onRemoteListening(on) {
   cdp.sendRemoteState(remoteState()); // only what's there — a phone (re)connecting never starts the music
 }
 async function onRemoteCommand({ id, cmd }) {
+  syncRev();
+  const rev = state.rev;
   let result;
   try { result = await remoteCommand(cmd || {}); } catch { result = { error: 'failed' }; }
+  // The music its indexes point into changed (a row moved, one removed, an album in): the phones get the new state
+  // before the answer — so a row moved there doesn't jump back, and the next move goes with the new rev, not a 409.
+  syncRev();
+  if (state.remoteListening && state.rev !== rev) {
+    clearTimeout(remoteTimer); remoteTimer = null;
+    remoteSentAt = performance.now();
+    cdp.sendRemoteState(remoteState());
+  }
   cdp.remoteReply(id, result || { ok: true });
 }
 // main has checked the command's shape (remote-net.js validCommand); here, whether it's still for the music as it is.

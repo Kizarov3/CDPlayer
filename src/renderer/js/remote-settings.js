@@ -4,13 +4,17 @@ import { t } from './i18n.js';
 
 const clock = (ms) => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
+// main names a phone iPhone, Android (names, the same in every language) or Browser (a word: translated here, so it
+// follows the language).
+const phoneName = (name) => (name === 'Browser' ? t('Browser') : name);
+
 /** "iPhone · since 23:10" for a connected phone { name, since }. */
-export const phoneLine = (phone) => t('{name} · since {time}', { name: phone.name, time: clock(phone.since) });
+export const phoneLine = (phone) => t('{name} · since {time}', { name: phoneName(phone.name), time: clock(phone.since) });
 
 /** The PHONE tag's tooltip: the phones' names, one repeated as "iPhone ×2". */
 export function phoneTagTitle(phones) {
   const counts = new Map();
-  for (const p of phones) counts.set(p.name, (counts.get(p.name) || 0) + 1);
+  for (const p of phones) counts.set(phoneName(p.name), (counts.get(phoneName(p.name)) || 0) + 1);
   return [...counts].map(([name, n]) => (n > 1 ? `${name} ×${n}` : name)).join(', ');
 }
 

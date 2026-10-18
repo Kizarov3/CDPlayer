@@ -271,6 +271,7 @@ handle('plays:add', (p) => {
   // Played, its album is out of its shrink-wrap for good (not only while its play count is kept).
   const album = shelf.albumOf(p), w = album && wrap();
   if (w && !w.torn.has(album.id)) { w.torn.add(album.id); store.writeWrap(w); }
+  phoneShelf = null; // the phone's shelf counts it (and shows the album unwrapped) when it's next read
   return n;
 });
 handle('plays:count', (p) => plays().get(p) || 0);
@@ -531,7 +532,7 @@ function wrap() {
   }
   return wrapState;
 }
-handle('wrap:tear', (id) => { const w = wrap(); if (typeof id === 'string' && !w.torn.has(id)) { w.torn.add(id); store.writeWrap(w); } });
+handle('wrap:tear', (id) => { const w = wrap(); if (typeof id === 'string' && !w.torn.has(id)) { w.torn.add(id); store.writeWrap(w); phoneShelf = null; } });
 // Dust on the shelf: gathering since the first time the shelf was read with it, wiped album by album.
 let dustState = null;
 function dust() {
@@ -715,7 +716,8 @@ ipcMain.on('discord:track', (_e, track) => { if (!smokeDir) discord.setTrack(tra
 // Settings → PHONE REMOTE, off unless turned on (and never in a smoke test): a small server on one home-network address
 // (remote.js) that a phone pairs with by the QR code. The phone's state and commands go by the player's page, as the
 // mini player's do. remote.json keeps { on, token, port, address }; the token never leaves main but inside the QR's
-// address, given to Settings.
+// address, given to Settings. Its `address` is the preferred one — picked in Settings, or the first it was ever on —
+// which the remote goes back to whenever it's offered again.
 const os = require('os');
 const remoteNet = require('./remote-net');
 const remoteWiring = require('./remote-wiring');
@@ -729,6 +731,7 @@ let remoteError = null; // on, but not running: 'network' (no home-network addre
 let remoteAddresses = []; // the addresses that could be offered, as last looked at
 let remoteWatch = null; // the address checked every 10 s, while on
 let remoteKept = { state: null, cover: null }; // the page's last full state for the phone, and the cover playing now
+let remoteSent = null; // the last whole state the phones were sent, but for where the song is (remote-wiring phoneEvent)
 let remotePhones = [];
 let remoteSeen = 0; // when a phone was last connected (the PC stays awake 30 minutes after)
 let remoteBlocker = null; // the powerSaveBlocker's id, while it keeps the PC awake
@@ -807,20 +810,25 @@ async function phoneCommand(cmd) {
     cmd = remoteWiring.albumCommand(cmd, byKey.get(cmd.value.id));
     if (!cmd) return { error: 'gone' };
   }
-  return pageReplies.ask(cmd);
+  const result = await pageReplies.ask(cmd);
+  if (cmd.action === 'album') phoneShelf = null; // its NEW sticker off, its plays counted: the shelf read again next time
+  return result;
 }
 ipcMain.on('remote:reply', (e, id, result) => { if (win && e.sender === win.webContents) pageReplies.reply(id, result); });
 // The page's states: full ones (with `rev`) kept without their cover, which is kept apart for /cover/now; where the
-// song is, merged into the last full one. Each goes to the phones as it comes.
+// song is, merged into the last full one. To the phones as they come: a whole state when it changed, else a tick of
+// where the song is (a few bytes, not the queue and the changer's covers once a second).
 ipcMain.on('remote:state', (e, s) => {
   if (!remoteConf.on || !win || e.sender !== win.webContents) return;
   const next = remoteWiring.nextRemoteState(remoteKept, s);
   remoteKept = { state: next.state, cover: next.cover };
-  if (remote && next.state) remote.broadcast(next.state);
+  const out = remoteWiring.phoneEvent(next, remoteSent);
+  remoteSent = out.sent;
+  if (remote && out.event) remote.broadcast(out.data, out.event);
 });
 // The page gone (a crash): the phones get 503 until it's back and has sent a fresh state.
 function phonePageGone() {
-  remoteKept = { state: null, cover: null };
+  remoteKept = { state: null, cover: null }; remoteSent = null;
   pageReplies.failAll({ error: 'busy' });
   if (remote) remote.setDown(true);
 }
@@ -841,16 +849,18 @@ function newRemoteServer(address, port) {
     album: async (key) => { const a = (await phoneShelfData()).byKey.get(key); return a ? remoteShelf.phoneAlbum(a) : null; },
     coverFor: phoneCover,
     nowCover: () => remoteKept.cover,
+    unpairedPage: () => remoteWiring.unpairedPage(),
     onPhones: phonesChanged,
     log: (text) => console.error(text),
   });
 }
-// On the address kept while it's still offered, else the first offered; on the port kept, or one the system picks
-// when that's taken — both then kept.
+// On the preferred address while it's offered, else the first offered (which becomes the preferred one only when there
+// was none: a moment without the Wi-Fi never makes another network the one it stays on); on the port kept, or one the
+// system picks when that's taken — then kept.
 async function startRemote() {
   if (remote || !remoteConf.on || smokeDir) return;
   const list = lookAtAddresses();
-  const address = remoteNet.addressChanged(remoteConf.address, list) || (list.length ? remoteConf.address : null);
+  const address = remoteNet.addressToUse(remoteConf.address, null, list);
   if (!address) { remoteError = 'network'; return; }
   let server = newRemoteServer(address, remoteConf.port), port;
   try {
@@ -861,7 +871,7 @@ async function startRemote() {
     try { ({ port } = await server.start()); } catch (e2) { remoteError = 'port'; console.error(`Phone remote: ${e2.message}`); return; }
   }
   remote = server; remoteAt = { address, port }; remoteError = null;
-  remoteConf = { ...remoteConf, address, port };
+  remoteConf = { ...remoteConf, address: remoteConf.address || address, port };
   saveRemoteConf();
   toPage('remote-listening', true);
 }
@@ -877,13 +887,12 @@ async function stopRemote(reason, { quiet = false } = {}) {
 function watchRemote() {
   remoteDo(async () => {
     if (!remoteConf.on) return;
-    // The address it's on (or, not running, the one kept) gone: on the first one offered now. Not running with an
-    // address offered (the network back, a port refused before): tried again.
+    // Running, but on another address than it should be now (the one it's on gone; the preferred one back): moved.
+    // Not running with an address offered (the network back, a port refused before): tried again.
     const list = lookAtAddresses();
-    const move = remoteNet.addressChanged(remoteAt ? remoteAt.address : remoteConf.address, list);
-    if (move) {
+    const want = remote ? remoteNet.addressToUse(remoteConf.address, remoteAt.address, list) : null;
+    if (want && want !== remoteAt.address) {
       await stopRemote('off', { quiet: true });
-      remoteConf = { ...remoteConf, address: move };
       await startRemote();
     } else if (!remote && list.length) {
       await startRemote();
@@ -907,7 +916,8 @@ async function turnRemoteOff() {
   if (remoteConf.on) { remoteConf = { ...remoteConf, on: false }; saveRemoteConf(); }
   clearInterval(remoteWatch); remoteWatch = null;
   await stopRemote('off');
-  remoteKept = { state: null, cover: null }; remoteError = null; remotePhones = [];
+  remoteKept = { state: null, cover: null }; remoteSent = null; remoteError = null; remotePhones = [];
+  remoteSeen = 0; // on again soon after, the PC isn't kept awake for a phone that was here before
   toPage('remote-listening', false);
   remoteKeepAwake();
   sendRemoteStatus();
