@@ -2355,6 +2355,7 @@ function buildStaticUi() {
   $('vis-mode').addEventListener('mousedown', () => { if (state.visualizerMode) toggleVisualizerMode(); });
   $('karaoke-close').addEventListener('click', () => closeKaraoke());
   document.querySelector('#hint b').addEventListener('click', () => panels.showShortcuts()); // ? ALL KEYS, clicked
+  showKeyHint();
   disc.onEjectPeak = () => nextTrack();
   disc.canGrab = () => !!engine.deck && !state.trayBusy;
   $('disc').addEventListener('contextmenu', async (e) => {
@@ -2433,7 +2434,19 @@ function onKeyDown(e) {
     '/': () => panels.showSearch(app), u: toggleMute, p: shareCard, b: () => disc.flip(), '?': () => panels.showShortcuts(), ' ': toggle, k: toggle, j: previousTrack, l: userNext, f: toggleFullscreen, c: toggleCdView, v: toggleVisualizerMode, y: toggleKaraoke, e: toggleTray, s: toggleShelf,
     d: discSkip, 1: () => playSlot(0), 2: () => playSlot(1), 3: () => playSlot(2), 4: () => playSlot(3), 5: () => playSlot(4), // changer mode only
   };
-  if (actions[key]) { e.preventDefault(); if (!e.repeat || key.startsWith('Arrow')) actions[key](); }
+  if (actions[key]) { e.preventDefault(); if (!e.repeat || key.startsWith('Arrow')) { actions[key](); if (!e.repeat) noteKeyUsed(); } }
+}
+// The keys along the bottom: there until a few of them have been used — then only ? ALL KEYS, the rest are known.
+// (Counted in this window's storage: it's only what the hint shows.)
+const KEYS_LEARNT = 5;
+let keysUsed = 0;
+try { keysUsed = Number(localStorage.getItem('keysUsed')) || 0; } catch { /* no storage: shown */ }
+function showKeyHint() { document.body.classList.toggle('keys-learnt', keysUsed >= KEYS_LEARNT); }
+function noteKeyUsed() {
+  if (keysUsed >= KEYS_LEARNT) return;
+  keysUsed++;
+  try { localStorage.setItem('keysUsed', String(keysUsed)); } catch { /* counted for this run */ }
+  showKeyHint();
 }
 function onMouseActivity(e) {
   state.lastActivity = Date.now();

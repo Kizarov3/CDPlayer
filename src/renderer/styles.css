@@ -918,6 +918,7 @@ kbd {
 }
 .help-pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
 #hint b { color: rgb(var(--accent2)); cursor: pointer; }
+body.keys-learnt #hint-keys { display: none; } /* the keys used a few times: just ? ALL KEYS */
 #karaoke-close { position: absolute; top: 18px; right: 24px; z-index: 2; }
 
 /* LIBRARY CHECK (panels.js): groups that open into rows — what, where, and the buttons to fix or show it. */
