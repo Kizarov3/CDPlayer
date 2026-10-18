@@ -46,7 +46,11 @@
         <div id="track-artist" class="fit" hidden></div>
         <div id="source-row"><span id="hidden-badge" hidden data-i18n>HIDDEN</span><span id="quality-badge" hidden></span><span id="soundcheck-badge" hidden></span><div id="track-source" data-i18n>YOUR MUSIC LIBRARY</div></div>
         <div id="progress-row"></div>
-        <div id="times"><span id="elapsed">0:00</span><span id="length" title="Click: the time left in the song, or its length" data-i18n-title>0:00</span></div>
+        <div id="deck-display">
+          <div class="vfd-track"><span class="vfd-label" data-i18n>TRACK</span><div class="vfd-digits"><canvas id="vfd-track" data-h="26"></canvas><span id="vfd-of"></span></div></div>
+          <div class="vfd-flags"><span class="vfd-flag" data-flag="play" data-i18n>PLAY|display</span><span class="vfd-flag" data-flag="pause" data-i18n>PAUSE|display</span><span class="vfd-flag" data-flag="shuffle" data-i18n>SHUFFLE|display</span><span class="vfd-flag" data-flag="repeat" data-i18n>REPEAT|display</span><span class="vfd-flag" data-flag="one">1</span></div>
+          <div class="vfd-time" id="vfd-time-button" title="Click: the time left in the song, or how far in it is" data-i18n-title><span id="vfd-total" class="vfd-label"><span data-i18n>TOTAL|display</span><span> --:--</span></span><canvas id="vfd-time" data-h="26"></canvas></div>
+        </div>
         <div id="controls"><div id="transport"></div></div>
         <div id="volume-row" class="slider-row">
           <span class="row-label" data-i18n>VOLUME</span>

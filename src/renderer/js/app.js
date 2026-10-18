@@ -15,6 +15,7 @@ import { jogSeconds } from './jog.js';
 import * as changer from './changer.js';
 import { insertNext, pinnedNext, afterRemove } from './play-next.js';
 import { discEndsAfter } from './sleep-end.js';
+import { DeckDisplay } from './deck-display.js';
 import { createChangerView } from './changer-view.js';
 import { pointAtDrawn } from './tour-view.js';
 import { dockIcon } from './dock-disc.js';
@@ -85,6 +86,14 @@ const state = {
   rev: Date.now(),        // the music's version for the phone (+1 at each queue or changer change; never the same after a reload)
 };
 const engine = new AudioEngine();
+// The display's time: how far into the song — or, clicked, what's left of it counting down, like a CD deck's TIME
+// button. Which one stays chosen (in this window's storage: it's only how the clock reads).
+let showRemaining = false;
+try { showRemaining = localStorage.getItem('timeRemaining') === '1'; } catch { /* no storage: how far in */ }
+const deckDisplay = new DeckDisplay({
+  track: $('vfd-track'), time: $('vfd-time'), of: $('vfd-of'), total: $('vfd-total'), flags: [...document.querySelectorAll('.vfd-flag')],
+});
+deckDisplay.left = showRemaining;
 // Settings → SOUND CHECK (sound-check.js): every song at the same loudness — not Spotify's (it does its own) nor a live CD's.
 const soundCheck = createSoundCheck({
   details: (p) => cdp.details(p, { withCover: false }).catch(() => null),
@@ -275,6 +284,7 @@ function renderQueue() {
   remoteSoon();
   updateDiscData();
   showChangerSlots();
+  showDeckTrack();
   if (undoClear && state.queue.length) { clearTimeout(undoClear.timer); undoClear = null; } // new music since: keep it
   const clearButton = $('clear-queue-button');
   clearButton.textContent = undoClear ? t('UNDO CLEAR') : t('CLEAR');
@@ -594,7 +604,7 @@ function resetToIdle(message) {
   setTrackTitle(t('Pick a track to get started.'), null);
   $('track-source').textContent = t('YOUR MUSIC LIBRARY');
   document.title = 'CDPlayer';
-  $('elapsed').textContent = $('length').textContent = '0:00';
+  deckDisplay.setTime(0, 0);
   progress.setValue(0); progress.setWaveform(null);
   setCover(null); disc.lookingUp = false;
   disc.discPresent = false;
@@ -720,7 +730,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   setPlaying(autoPlay);
   if (fade) setStatus(t('CROSSFADING'));
   else if (!autoPlay) setStatus(t('TRACK LOADED'));
-  $('length').textContent = lengthText();
+  deckDisplay.setTime(engine.position, engine.duration);
   updateProgressUi(true);
   renderQueue(); saveQueueSoon();
 
@@ -1023,6 +1033,7 @@ function refreshDockSoon() {
 const HEARD_SECONDS = 8;
 let recordedFor = -1, heardTimer = null;
 function setPlaying(playing) {
+  queueMicrotask(showDeckFlags); // (once engine.playing says so)
   if (playing && state.loadedPath && recordedFor !== state.loadToken) {
     const token = state.loadToken, path = state.loadedPath;
     recordedFor = token;
@@ -1193,8 +1204,7 @@ function turnJog(radians, ms) {
   const now = performance.now();
   if (now - jog.sentAt < (jog.audible ? JOG_SEEK_MS : JOG_SPOTIFY_SEEK_MS)) {
     progress.setValue(dur ? Math.round((jog.target * 1000) / dur) : 0);
-    setText($('elapsed'), formatTime(jog.target));
-    if (showRemaining) setText($('length'), lengthText(jog.target));
+    deckDisplay.setTime(jog.target, engine.duration);
     return;
   }
   jog.sentAt = now; jog.unsent = false;
@@ -1343,7 +1353,7 @@ async function loadSpotify(path, token, { autoPlay, startAt }) {
   if (token !== state.loadToken) return;
   setPlaying(autoPlay && engine.playing);
   if (!autoPlay) setStatus(t('TRACK LOADED'));
-  $('length').textContent = lengthText();
+  deckDisplay.setTime(engine.position, engine.duration);
   updateProgressUi(true);
   renderQueue(); saveQueueSoon();
   panels.refreshSettingsIfOpen(app);
@@ -2239,6 +2249,7 @@ const playButton = roundButton('PLAY', 68, { primary: true, title: t('Play/Pause
 const SHUFFLES = { QUEUE: ['OFF', 'ALL'], CHANGER: ['OFF', 'DISC', 'ALL'] }, REPEATS = { QUEUE: ['OFF', 'ALL', 'TRACK'], CHANGER: ['OFF', 'ALL', 'DISC', 'TRACK'] }; // REPEAT: all first, the one song last, as on most players
 const modeKey = () => (state.changerMode ? 'CHANGER' : 'QUEUE');
 function showModes() {
+  showDeckFlags();
   shuffleButton.setOn(state.shuffle !== 'OFF');
   shuffleButton.setBadge(state.shuffle === 'DISC' ? '◉' : null); // one character fits the badge; the info line says it in words
   shuffleButton.title = state.changerMode ? { OFF: t('Shuffle'), DISC: t('Shuffle: this disc'), ALL: t('Shuffle: all discs') }[state.shuffle] : t('Shuffle');
@@ -2304,7 +2315,7 @@ const repeatButton = modeButton('REPEAT', t('Repeat'), cycleRepeat);
 let seeking = false;
 const progress = new Slider({
   min: 0, max: 1000, waveform: true,
-  onInput: (v) => { seeking = true; $('elapsed').textContent = formatTime((engine.duration * v) / 1000); if (showRemaining) $('length').textContent = lengthText((engine.duration * v) / 1000); },
+  onInput: (v) => { seeking = true; deckDisplay.setTime((engine.duration * v) / 1000, engine.duration); },
   onChange: (v) => { seeking = false; seekTo((engine.duration * v) / 1000); },
 }).mount($('progress-row'));
 const volumeSlider = new Slider({ min: 0, max: 100, value: 100, onInput: (v) => { state.volumeBeforeMute = -1; setVolume(v, { fromSlider: true }); } }).mount($('volume-slider'));
@@ -2320,7 +2331,7 @@ function buildStaticUi() {
     repeatButton);
 
   $('load-button').addEventListener('click', choose);
-  $('length').addEventListener('click', toggleRemaining);
+  $('vfd-time-button').addEventListener('click', toggleRemaining);
   $('save-playlist-button').addEventListener('click', savePlaylist);
   $('load-playlist-button').addEventListener('click', loadPlaylist);
   $('search-button').addEventListener('click', () => panels.showSearch(app));
@@ -2478,20 +2489,21 @@ function updateProgressUi(force = false) {
   const dur = engine.duration, pos = engine.position;
   const v = dur ? Math.round((pos * 1000) / dur) : 0;
   progress.setValue(v);
-  setText($('elapsed'), formatTime(pos));
-  if (showRemaining) setText($('length'), lengthText(pos));
-}
-// The time on the right: the song's length — or, clicked, what's left of it counting down, like a CD deck's TIME
-// button. Which one stays chosen (in this window's storage: it's only how the clock reads).
-let showRemaining = false;
-try { showRemaining = localStorage.getItem('timeRemaining') === '1'; } catch { /* no storage: the length */ }
-function lengthText(pos = engine.position) {
-  return showRemaining && engine.duration ? `−${formatTime(Math.max(0, engine.duration - pos))}` : formatTime(engine.duration);
+  deckDisplay.setTime(pos, dur);
 }
 function toggleRemaining() {
   showRemaining = !showRemaining;
   try { localStorage.setItem('timeRemaining', showRemaining ? '1' : '0'); } catch { /* kept for this run only */ }
-  $('length').textContent = lengthText(seeking || jog ? undefined : engine.position);
+  deckDisplay.setTime(jog ? jog.target : engine.position, engine.duration, showRemaining);
+}
+// The display's track number: its place on the disc in the changer, in the queue otherwise; and the lit words.
+function showDeckTrack() {
+  const here = state.changerMode && changer.slotOf(ch(), state.index);
+  if (here) { const d = state.changer.slots[here.slot]; deckDisplay.setTrack(here.offset + 1, d.end - d.start); }
+  else deckDisplay.setTrack(state.queue.length && state.index >= 0 ? state.index + 1 : 0, state.queue.length);
+}
+function showDeckFlags() {
+  deckDisplay.setFlags({ playing: engine.playing, paused: !!engine.deck && !engine.playing, shuffle: state.shuffle !== 'OFF', repeat: state.repeat !== 'OFF', repeatOne: state.repeat === 'TRACK' });
 }
 // Writing a label's text, even the same text, makes the page restyle and repaint it — every frame, for the clock.
 function setText(node, text) { if (node.textContent !== text) node.textContent = text; }
@@ -2558,6 +2570,7 @@ function frame(now) {
   watchForShake(now);
   stepDiscMorph(now);
   const discBounds = disc.frame(now, dt);
+  deckDisplay.tick(); // (drawn again only when the theme's colour has moved)
   // Where the theme's particles mustn't go (the disc, open panels) — measured only for a theme that has them.
   if (particles.mode !== 'NONE') {
     const exclusions = [];

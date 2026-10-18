@@ -129,11 +129,28 @@ body.cd-view #cd-info { display: block !important; }
 .fade-in { animation: fadeIn 260ms var(--ease-out); }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-#progress-row { margin-top: 28px; height: 20px; }
-#times { display: flex; justify-content: space-between; font-size: 11px; font-weight: normal; color: rgb(var(--muted)); height: 16px; font-variant-numeric: tabular-nums; }
-#length { cursor: pointer; } /* clicked: the time left */
+#progress-row { margin-top: 24px; height: 20px; }
+/* The deck's display (deck-display.js): a window sunk into the panel, its glass faintly ruled like a VFD's mesh; what's
+   on it glows in the theme's colour, what's off is there faintly. */
+#deck-display {
+  margin-top: 12px; height: 60px; padding: 0 18px; border-radius: 8px;
+  display: flex; align-items: center; gap: 18px;
+  background: repeating-linear-gradient(0deg, rgba(255, 255, 255, .022) 0 1px, transparent 1px 3px), linear-gradient(rgba(0, 0, 0, .66), rgba(0, 0, 0, .52));
+  box-shadow: inset 0 2px 7px rgba(0, 0, 0, .75), inset 0 0 0 1px rgba(0, 0, 0, .6), 0 1px 0 rgba(255, 255, 255, .07);
+}
+.vfd-label { font-size: 8px; letter-spacing: .14em; color: rgba(var(--accent), .5); white-space: nowrap; }
+.vfd-track { display: flex; flex-direction: column; gap: 5px; }
+.vfd-digits { display: flex; align-items: flex-end; gap: 7px; height: 26px; }
+#vfd-track, #vfd-time { display: block; flex: none; }
+#vfd-of { font-size: 10px; color: rgba(var(--accent), .55); font-variant-numeric: tabular-nums; }
+.vfd-flags { flex: 1; min-width: 0; display: flex; gap: 12px; justify-content: center; align-items: center; font-size: 9px; letter-spacing: .12em; overflow: hidden; }
+.vfd-flag { color: rgba(var(--accent), .13); transition: color 160ms ease, text-shadow 160ms ease; }
+.vfd-flag.lit { color: rgb(var(--accent)); text-shadow: 0 0 6px rgba(var(--accent), .8); }
+.vfd-flag[data-flag="one"] { margin-left: -8px; }
+.vfd-time { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; cursor: pointer; }
+#vfd-total { font-variant-numeric: tabular-nums; }
 /* One row: shuffle · skip back · previous · PLAY · next · skip forward · repeat, centered in the column. */
-#controls { margin-top: 20px; display: flex; justify-content: center; align-items: center; min-height: 68px; }
+#controls { margin-top: 16px; display: flex; justify-content: center; align-items: center; min-height: 68px; }
 #transport { display: flex; align-items: center; }
 .slider-row { display: flex; align-items: center; height: 20px; }
 #volume-row { margin-top: 16px; height: 30px; }
