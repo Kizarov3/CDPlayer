@@ -105,6 +105,8 @@ contextBridge.exposeInMainWorld('cdp', {
   onLibraryCheck: on('library-check'),
   showFile: invoke('shell:showFile'),
   pickMusicFolder: invoke('dialog:pickMusicFolder'),
+  musicFolders: invoke('music:folders'),
+  removeMusicFolder: invoke('music:removeFolder'),
   listAudioCds: invoke('cd:list'),
   ejectAudioCd: invoke('cd:eject'),
   startRip: invoke('rip:start'),

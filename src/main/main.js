@@ -454,19 +454,19 @@ handle('library:collect', async (items) => { // as the albums play: by folder, d
   return library.inAlbumOrder(files, await shelf.trackNumbers(files));
 });
 handle('library:scan', async () => {
-  const folder = store.readLastPath();
-  if (!folder || !store.isDir(folder)) return { folder: null, files: [] };
-  const result = await library.scanLibrary(folder);
+  const folders = store.musicFolders();
+  if (!folders.length) return { folder: null, files: [] };
+  const result = await library.scanLibrary(folders);
   // What the shelf last read of each file's tags, so a search finds a song by its artist, album or title, not only
   // by its filename, and shows it as "Artist · Title".
   // (Never read yet: the shelf starts reading them now, in the background — this search has filenames, the next tags.)
-  if (!shelf.readCache(folder)) shelf.scanAlbums().catch(() => null);
-  const read = shelf.readCache(folder) || {}, tags = {};
+  if (!shelf.cacheHas(folders)) shelf.scanAlbums().catch(() => null);
+  const read = shelf.readCache(folders) || {}, tags = {};
   for (const p of result.files) {
     const i = read[p] && read[p].info;
     if (i && i.title) tags[p] = { words: [i.artist, i.albumArtist, i.album, i.title, i.year].filter(Boolean).join(' '), shown: i.artist ? `${i.artist} · ${i.title}` : i.title };
   }
-  return { folder, name: path.basename(folder), ...result, tags };
+  return { folder: folders[0], name: shelf.folderNames(folders), ...result, tags };
 });
 
 // Tags: what's in the file, what MusicBrainz says, and writing changes (and found covers and lyrics) into it.
@@ -481,12 +481,12 @@ handle('tags:write', async (p, changes) => {
   if (result.ok) { metadata.forget(p); shelf.forget(p); }
   return result;
 });
-// The music folder, watched so an open shelf keeps up with it (library-watch.js); it follows the folder the shelf reads.
+// The music folders, watched so an open shelf keeps up with them (library-watch.js); they follow the folders the shelf reads.
 const libraryWatch = require('./library-watch').createLibraryWatch({ onChange: () => {
   phoneShelf = null; // the phone remote's list is read again when it's next asked for
   if (win && !win.isDestroyed()) win.webContents.send('library-changed');
 } });
-const watchMusicFolder = () => { if (!smokeDir) { const f = store.readLastPath(); libraryWatch.start(f && store.isDir(f) ? f : null); } };
+const watchMusicFolder = () => { if (!smokeDir) libraryWatch.start(store.musicFolders()); };
 // The shelf's albums with plays, dust, notes and shrink-wrap added; the handler and the phone remote both read it.
 async function shelfListing() {
   watchMusicFolder();
@@ -571,7 +571,7 @@ handle('library:check', async () => {
   const send = (done, total) => { if (win) win.webContents.send('library-check', { done, total }); };
   const scanned = await shelf.scanAlbums(send);
   if (!scanned.folder) return null;
-  const cached = shelf.readCache(scanned.folder) || {};
+  const cached = shelf.readCache(scanned.folders) || {};
   const issues = require('./library-check').libraryIssues(Object.entries(cached).map(([p, e]) => ({ path: p, info: e.info })));
   const noCover = [];
   let done = 0;
@@ -589,12 +589,21 @@ handle('shelf:cover', (firstTrack, opts) => shelf.albumCover(firstTrack, { onlin
 handle('shelf:colors', () => store.readShelfColors());
 handle('shelf:saveColors', (colors) => { if (colors && typeof colors === 'object') store.writeShelfColors(colors); });
 handle('shelf:coverFull', (firstTrack) => shelf.albumCoverFull(firstTrack));
-handle('dialog:pickMusicFolder', async () => {
-  const r = await dialog.showOpenDialog(win, { title: t('Your Music Folder'), defaultPath: dialogDefaultPath(), properties: ['openDirectory'] });
+// The shelf's FOLDER…: the folders it reads. `add`: one more (an external drive, say) — one inside a folder already
+// read changes nothing, and the folders inside a new one become part of it; otherwise the one picked replaces them.
+handle('dialog:pickMusicFolder', async (mode) => {
+  const adding = mode === 'add';
+  const r = await dialog.showOpenDialog(win, { title: adding ? t('Add a Music Folder') : t('Your Music Folder'), defaultPath: dialogDefaultPath(), properties: ['openDirectory'] });
   if (r.canceled || !r.filePaths.length) return null;
-  store.writeLastPath(r.filePaths[0]);
-  return r.filePaths[0];
+  const dir = r.filePaths[0], within = (p, d) => p === d || p.startsWith(d.endsWith(path.sep) ? d : d + path.sep);
+  const now = store.readMusicFolders();
+  if (!adding) store.writeMusicFolders([dir]);
+  else if (!now.some((f) => within(dir, f))) store.writeMusicFolders([...now.filter((f) => !within(f, dir)), dir]);
+  store.writeLastPath(dir);
+  return dir;
 });
+handle('music:folders', () => store.readMusicFolders().map((f) => ({ path: f, name: path.basename(f) || f, there: store.isDir(f) })));
+handle('music:removeFolder', (dir) => { store.writeMusicFolders(store.readMusicFolders().filter((f) => f !== dir)); });
 
 function dialogDefaultPath() {
   const last = store.readLastPath();
@@ -609,8 +618,9 @@ handle('dialog:openTracks', async () => {
   if (process.platform === 'darwin') properties.push('openDirectory');
   const r = await dialog.showOpenDialog(win, { title: t('Load a Track'), defaultPath: dialogDefaultPath(), properties, filters: [audioFilter()] });
   if (r.canceled || !r.filePaths.length) return [];
-  const first = r.filePaths[0];
-  store.writeLastPath(store.isDir(first) && r.filePaths.length === 1 ? first : path.dirname(first));
+  const first = r.filePaths[0], dir = store.isDir(first) && r.filePaths.length === 1 ? first : path.dirname(first);
+  store.writeLastPath(dir);
+  if (!store.readMusicFolders().length) store.writeMusicFolders([dir]); // no music folder yet: the shelf starts with this one
   return r.filePaths;
 });
 handle('dialog:savePlaylist', async (entries) => {
@@ -797,7 +807,7 @@ function phonesChanged(list) {
 // The shelf as the phone sees it: read as the desktop shelf reads it, then kept while it's the same music folder and
 // nothing in it has changed (another folder picked: read again, so a key never plays the old folder's songs).
 function phoneShelfData() {
-  const folder = store.readLastPath();
+  const folder = store.musicFolders().join('\n');
   const kept = remoteWiring.shelfCacheFor(phoneShelf, folder);
   if (kept) return kept;
   const reading = shelfListing().then((r) => ({ albums: r.albums, byKey: remoteShelf.byKey(r.albums) }));
@@ -1072,11 +1082,12 @@ handle('rip:start', async (mount) => {
   const entry = discs.get(mount);
   if (!entry || ripping) return { ok: false, reason: 'busy' };
   if (entry.naming) return { ok: false, reason: 'naming' }; // (the button waits for this too)
-  let musicFolder = store.readLastPath();
-  if (!musicFolder || !store.isDir(musicFolder)) {
+  let musicFolder = store.musicFolders()[0]; // (several: into the first)
+  if (!musicFolder) {
     const r = await dialog.showOpenDialog(win, { title: t('Your Music Folder'), defaultPath: dialogDefaultPath(), properties: ['openDirectory', 'createDirectory'] });
     if (r.canceled || !r.filePaths.length) return { ok: false, reason: 'cancelled' };
     musicFolder = r.filePaths[0];
+    store.writeMusicFolders([musicFolder, ...store.readMusicFolders()]);
     store.writeLastPath(musicFolder);
   }
   const { disc, named } = entry;
@@ -1148,7 +1159,7 @@ app.whenReady().then(() => {
   cleanUpTaskbarIds();
   buildMenu();
   createWindow();
-  watchMusicFolder();
+  watchMusicFolder(); // (also, the first time, makes the old music folder the list — before any dialog can move it)
   if (remoteConf.on && !smokeDir && gotLock) remoteDo(turnRemoteOn); // (a second launch, handing over to the first, never)
   if (!smokeDir && (process.platform === 'darwin' || process.platform === 'linux' || process.platform === 'win32' || process.env.CDPLAYER_CD_ROOT)) {
     setTimeout(pollDiscs, 1500);

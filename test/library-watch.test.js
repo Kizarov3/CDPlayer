@@ -78,3 +78,16 @@ test('stop() drops a change that was waiting for quiet', () => {
   lw.start('/music'); made[0].fire('a.flac'); lw.stop(); timers.advance(5000);
   assert.strictEqual(changes, 0);
 });
+
+test('several folders: each watched, one dropped from the list stops, one that errors stops alone', () => {
+  const { watch, made } = fakeWatch();
+  const lw = createLibraryWatch({ watch, timers: fakeTimers(), onChange() {} });
+  lw.start(['/music', '/drive']);
+  assert.strictEqual(made.length, 2);
+  lw.start(['/music', '/drive']);
+  assert.strictEqual(made.length, 2, 'the same ones keep their watches');
+  made[1].emit('error', new Error('unplugged'));
+  assert.deepStrictEqual([made[0].closed, made[1].closed, lw.folder], [false, true, '/music']);
+  lw.start(['/drive']);
+  assert.deepStrictEqual([made[0].closed, made.length, lw.folder], [true, 3, '/drive']);
+});

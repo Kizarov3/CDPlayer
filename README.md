@@ -89,7 +89,7 @@ When a new version is out, an **AVAILABLE** button appears in the player's top-l
 More answers are in the app: **Settings → HELP**.
 
 **How do I choose my music folder?**<br>
-Open the SHELF and click FOLDER…. Songs outside it still play — drop them on the window.
+Open the SHELF and click FOLDER…. To have more than one (say, an external drive too), click FOLDER… → ADD ANOTHER FOLDER…. Opening a song or saving a playlist somewhere else never changes the shelf. Songs outside the folders still play — drop them on the window.
 
 **Where is my data kept?**<br>
 In `~/.cdplayer` on Mac and Linux, `%LOCALAPPDATA%\CDPlayer` on Windows. Your music files are never changed unless you save tags or found art into them.

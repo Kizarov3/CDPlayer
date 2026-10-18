@@ -142,7 +142,7 @@ export function escapeShelf() {
 export function setupShelf(app) {
   shelf.app = app;
   $('shelf-close').addEventListener('click', closeShelf);
-  $('shelf-folder').addEventListener('click', pickFolder);
+  $('shelf-folder').addEventListener('click', folderMenu);
   $('shelf-pull').addEventListener('click', pullOne);
   $('shelf-here').addEventListener('click', goToPlayer);
   $('shelf-check').addEventListener('click', () => shelf.app.libraryCheck());
@@ -177,9 +177,22 @@ export function setupShelf(app) {
   app.cdp.onShelfProgress(({ done, total }) => { if (shelf.loading && !shelf.quietLoad) $('shelf-count').textContent = t('READING YOUR MUSIC · {done} / {total}', { done, total }); });
 }
 
-async function pickFolder() {
-  const folder = await shelf.app.cdp.pickMusicFolder();
+async function pickFolder(mode = 'replace') {
+  const folder = await shelf.app.cdp.pickMusicFolder(mode);
   if (folder) await load();
+}
+// FOLDER…: the folders the shelf reads (a click shows one in Finder / Explorer), another one added — an external
+// drive, say — the one there is swapped for another, or one of several taken off the shelf (its files stay as they are).
+async function folderMenu() {
+  const folders = await shelf.app.cdp.musicFolders().catch(() => []);
+  if (!folders.length) { pickFolder(); return; }
+  shelf.app.menu($('shelf-folder'), [
+    ...folders.map((f) => ({ label: f.there ? f.name : t('{name} · NOT CONNECTED', { name: f.name }), current: folders.length > 1 && f.there, pick: () => { if (f.there) shelf.app.cdp.showFile(f.path); } })),
+    { divider: true },
+    { label: t('ADD ANOTHER FOLDER…'), pick: () => pickFolder('add') },
+    ...(folders.length === 1 ? [{ label: t('CHOOSE ANOTHER FOLDER…'), pick: () => pickFolder() }]
+      : folders.map((f) => ({ label: t('TAKE {name} OFF THE SHELF', { name: f.name }), pick: async () => { await shelf.app.cdp.removeMusicFolder(f.path); await load(); } }))),
+  ]);
 }
 
 async function load({ quiet = false } = {}) {

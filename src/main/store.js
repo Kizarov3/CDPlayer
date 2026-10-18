@@ -28,7 +28,7 @@ function dataDir() {
 
 const file = (name) => path.join(dataDir(), name);
 const FILES = {
-  queue: 'queue.txt', onboarded: 'onboarded', lastVersion: 'lastversion.txt', lastPath: 'lastpath.txt',
+  queue: 'queue.txt', onboarded: 'onboarded', lastVersion: 'lastversion.txt', lastPath: 'lastpath.txt', musicFolders: 'music-folders.txt',
   settings: 'settings.txt', eqPresets: 'eq-presets.txt', history: 'history.txt', spotify: 'spotify.txt',
   miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt', firstPlayed: 'firstplayed.txt', shelfColors: 'shelf-colors.json', changer: 'changer.txt', changerQueue: 'changer-queue.txt', remote: 'remote.json',
 };
@@ -312,6 +312,24 @@ function readLastPath() {
 }
 function writeLastPath(dir) { if (dir && safePath(dir)) writeText(FILES.lastPath, dir); }
 
+// The folders the shelf, the search and the phone read, one path a line — their own list, so a song opened from
+// Downloads or a playlist saved on the Desktop (which only move where the next dialog opens) never change the shelf.
+// Before there was a list, the music folder was the last folder a dialog had opened in: that one, kept as the list
+// the first time it's asked for.
+function readMusicFolders() {
+  const text = readText(FILES.musicFolders);
+  if (text !== null) return text.split('\n').map((l) => l.trim()).filter(Boolean);
+  const last = readLastPath();
+  writeMusicFolders(last ? [last] : []);
+  return last ? [last] : [];
+}
+function writeMusicFolders(dirs) {
+  const list = [...new Set(dirs.filter((d) => d && safePath(d)))];
+  return writeText(FILES.musicFolders, list.length ? `${list.join('\n')}\n` : '');
+}
+/** The music folders that are there now (an external drive unplugged stays on the list, and is read once it's back). */
+const musicFolders = () => readMusicFolders().filter(isDir);
+
 const isOnboarded = () => isFile(file(FILES.onboarded));
 const markOnboarded = () => writeText(FILES.onboarded, '');
 const readLastVersion = () => { const t = readText(FILES.lastVersion); return t && t.trim() ? t.trim() : null; };
@@ -321,5 +339,5 @@ module.exports = {
   dataDir, file, FILES, readText, writeText, isFile, isDir,
   readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, readChangerQueue, writeQueue, readHistory, writeHistory, HISTORY_LIMIT,
   readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readFirstPlayed, writeFirstPlayed, readDust, writeDust, readNotes, writeNotes, readHiddenMissing, writeHiddenMissing, readWrap, writeWrap, readShelfColors, writeShelfColors,
-  readEqPresets, writeEqPresets, readLastPath, writeLastPath, isOnboarded, markOnboarded, readLastVersion, writeLastVersion,
+  readEqPresets, writeEqPresets, readLastPath, writeLastPath, readMusicFolders, writeMusicFolders, musicFolders, isOnboarded, markOnboarded, readLastVersion, writeLastVersion,
 };
