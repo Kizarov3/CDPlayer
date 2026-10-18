@@ -903,6 +903,9 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 .faq-q:hover { color: rgb(var(--accent2)); }
 .faq-a { padding: 0 2px 12px 24px; font-size: 12px; line-height: 1.45; color: rgba(var(--text), .82); font-weight: normal; }
 .shortcut-list { max-height: min(440px, 62vh); }
+.changelog-list { max-height: min(440px, 62vh); padding-right: 6px; }
+.changelog-number { margin: 4px 0 8px; font-size: 11px; color: rgb(var(--accent)); font-variant-numeric: tabular-nums; }
+.changelog-version + .changelog-version { margin-top: 14px; }
 .shortcut { display: flex; gap: 14px; align-items: baseline; padding: 6px 2px; border-bottom: 1px solid rgba(var(--text), .08); font-size: 12px; }
 .shortcut .keys { flex: 0 0 150px; color: rgba(var(--text), .7); }
 .shortcut .what { flex: 1; font-weight: normal; color: rgb(var(--text)); }

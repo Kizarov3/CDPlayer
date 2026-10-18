@@ -275,6 +275,7 @@ function buildSettings(app) {
     onChange: (v) => app.armSleepTimer(v),
   });
   sleep.canvas.title = t('Pause playback after a set time (0 = off, up to 120 minutes)');
+  const sleepAtEnd = toggle(s.sleepAtEnd, () => { app.armSleepAtEnd(!s.sleepAtEnd); refreshSettingsIfOpen(app); });
 
   const offsetText = (ms) => (ms ? t('{n} MS', { n: `${ms > 0 ? '+' : '−'}${Math.abs(ms)}` }) : t('0 MS'));
   const offsetValue = el('span', { class: 'row-value' }, offsetText(s.lyricsOffset));
@@ -359,6 +360,8 @@ function buildSettings(app) {
     row(t('CD CHANGER'), changerMode),
     hint(t('Five discs in a carousel instead of the queue: albums go in as discs, with DISC SKIP (D) and 1–5. The queue and the changer each keep their own music.')),
     sliderRow(t('SLEEP TIMER'), sleep, sleepValue),
+    row(t('…OR AT THE END OF THE DISC'), sleepAtEnd),
+    hint(t('Stops once the album playing (a changer disc, or the folder it’s in) has ended, instead of going on into the next.')),
     sliderRow(t('LYRICS OFFSET'), lyricsOffset, offsetValue),
     hint(t('Karaoke and the lyrics already follow what you hear, Bluetooth included. Move them if a song’s lyrics are timed a little off.')),
     row(t('MINI MODE'), mini), gap(18),
@@ -378,6 +381,7 @@ function buildSettings(app) {
     section(t('HELP')),
     el('div', { class: 'help-pills' },
       pill(t('SHOW THE GUIDE'), () => { closePanel('settings'); startTour({ onFeatures: () => showFeatures(app) }); }, t('A look round the window: where everything is and how it works')),
+      pill(t("WHAT'S NEW"), () => showWhatsNew(app), t('What changed in each version, the newest first')),
       pill(t('WHAT’S SPECIAL'), () => showFeatures(app), t('Dust, Discogs prices, missing albums, disc wear — what other players don’t have')),
       pill(t('FAQ'), () => showFaq(), t('Answers to what people ask the first time')),
       pill(t('KEYBOARD SHORTCUTS'), () => showShortcuts(), t('Every key, also with ?'))));
@@ -1390,6 +1394,15 @@ const CHANGELOG = [
     'Open audio files straight from Finder or Explorer with &ldquo;Open With &rarr; CDPlayer&rdquo;, or drop them onto the app icon',
   ] },
 ];
+/** Settings → WHAT'S NEW: every version's changes, the newest first, in the interface's language where they're written in it. */
+export function showWhatsNew(app) {
+  const changesOf = (c) => (c.changesIn && c.changesIn[locale]) || c.changes;
+  openPanel('changelog', () => [title(t("WHAT'S NEW")), el('div', { class: 'subtitle' }, `CDPlayer ${app.state.version}`), gap(14),
+    el('div', { class: 'scroll changelog-list' }, CHANGELOG.map((c) => el('div', { class: 'changelog-version' },
+      el('div', { class: 'changelog-number' }, c.version),
+      changesOf(c).map((b) => el('div', { class: 'tip-row' }, el('span', { class: 'dot' }, '●'), el('span', { class: 'tip', html: b })))))),
+    closeRow(() => closePanel('changelog'), t('CLOSE'))]);
+}
 export function showChangelogIfNeeded(app, lastVersion, existingInstall) {
   const version = app.state.version;
   if (lastVersion === version) return;
