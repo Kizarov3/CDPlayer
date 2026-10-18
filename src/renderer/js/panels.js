@@ -11,6 +11,8 @@ import { startTour } from './tour-view.js';
 import { outputName } from './output.js';
 import { levelName, LEVELS } from './quality.js';
 import { catSvg } from './glyphs.js';
+import { qrSvg } from './qr.js';
+import { phoneLine, addressWords, errorWords } from './remote-settings.js';
 import { isBookletOpen, closeBooklet } from './booklet.js';
 import { formatLyricsForDisplay } from './lyrics.js';
 
@@ -177,6 +179,38 @@ export function showSettings(app) {
 export function refreshSettingsIfOpen(app) { if (isOpen('settings')) refreshPanel('settings'); }
 
 const section = (text) => el('div', { class: 'settings-section' }, text);
+
+// Settings → PHONE REMOTE: the switch and, while it's on, the code to scan with the phone, its address in words, the
+// phones connected and NEW CODE. The status is main's (app.remoteInfo()); a change comes back through app.remoteHeard.
+function phoneRemoteRows(app) {
+  const info = app.remoteInfo();
+  if (!info) app.cdp.remoteStatus().then(app.remoteHeard).catch(() => {}); // not heard yet: drawn again when it is
+  const on = !!(info && info.on);
+  const switcher = toggle(on, () => { app.cdp.remoteSet(!on).then(app.remoteHeard).catch(() => {}); });
+  const rows = [row(t('CONTROL FROM A PHONE'), switcher)];
+  if (on) {
+    const shown = [];
+    if (info.error) shown.push(el('div', { class: 'phone-error' }, errorWords(info.error)));
+    else if (info.url) {
+      const qr = el('div', { class: 'phone-qr' });
+      qr.innerHTML = qrSvg(info.url); // (the SVG is the encoder's own markup)
+      shown.push(qr, el('div', { class: 'phone-address' }, addressWords(info)));
+    }
+    if (info.addresses.length > 1) {
+      const current = info.addresses.find((a) => a.address === info.address);
+      const choose = pill(current ? `${current.name} · ${current.address}` : t('CHOOSE'), () => showMenu(choose, info.addresses.map((a) => ({
+        label: `${a.name} · ${a.address}`, current: a.address === info.address,
+        pick: () => app.cdp.remoteAddress(a.address).then(app.remoteHeard).catch(() => {}),
+      }))), t('The network the phone is on — scan the code again after changing it'));
+      shown.push(choose);
+    }
+    for (const phone of info.phones) shown.push(el('div', { class: 'phone-line' }, phoneLine(phone)));
+    shown.push(pill(t('NEW CODE'), () => app.cdp.remoteNewCode().then(app.remoteHeard).catch(() => {}), t('Signs every phone out: each scans the new code again')));
+    rows.push(el('div', { class: 'phone-remote' }, shown));
+  }
+  rows.push(hint(t('Same Wi-Fi, not a guest network. On Windows, allow CDPlayer through the firewall on a Private network — it asks again after each update.')));
+  return rows;
+}
 // The preset the current EQ gains match (built-in or saved), or CUSTOM once a band has been moved off every preset.
 function presetName(app) {
   const gains = app.state.eq, same = (p) => p.gains.every((g, i) => Math.round(g) === Math.round(gains[i]));
@@ -321,6 +355,8 @@ function buildSettings(app) {
     sliderRow(t('LYRICS OFFSET'), lyricsOffset, offsetValue),
     hint(t('Karaoke and the lyrics already follow what you hear, Bluetooth included. Move them if a song’s lyrics are timed a little off.')),
     row(t('MINI MODE'), mini), gap(18),
+    section(t('PHONE REMOTE')),
+    ...phoneRemoteRows(app), gap(18),
     section(t('LIBRARY')),
     row(t('SAVE FOUND ART & LYRICS'), saveFound),
     hint(t('Covers and lyrics found online are written into the song’s file (once it’s finished playing), so they’re there offline and in other players too.')), gap(18),

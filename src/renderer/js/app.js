@@ -27,6 +27,7 @@ import { targetRate, albumRate, badgeLabel, badgeText, badgeExact, levelName, LE
 import { createSoundCheck, measureFile } from './sound-check.js';
 import { seamlessNext, PREPARE_SECONDS } from './gapless.js';
 import { pickOutput, outputName } from './output.js';
+import { phoneTagTitle, phoneJoined } from './remote-settings.js';
 import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
 import { SpotifySession, SpotifyTrackElement, isSpotifyUri, spotifyUpcoming, loadSpotifySdk } from './spotify-deck.js';
@@ -2206,6 +2207,7 @@ function buildStaticUi() {
   setupShelf(app);
   $('history-button').addEventListener('click', () => panels.showHistory(app));
   $('settings-button').addEventListener('click', () => panels.showSettings(app));
+  $('phone-tag').addEventListener('click', () => panels.showSettings(app));
   $('cd-view-button').addEventListener('click', toggleCdView);
   $('update-button').addEventListener('click', onUpdateClick);
   cdp.onUpdateProgress((fraction) => { if (updateState.phase === 'downloading') { updateState.progress = fraction; showUpdatePill(); } });
@@ -2420,6 +2422,7 @@ export const app = {
     else if (what === 'cdview') { disc.flip(false); if (!state.cdView) toggleCdView(); } // the disc itself, face up
     else if (what === 'karaoke') { if (!isKaraokeOpen()) toggleKaraoke(); }
   },
+  remoteInfo: () => remoteInfo, remoteHeard: onRemoteStatus,
   changerState: ch, changerMode: () => state.changerMode, setChangerMode, discLabel, loadDisc, playSlot, ejectSlot, discSkip, coverForPath,
   changerSlotOf: (i) => (changer.slotOf(ch(), i) || { slot: -1 }).slot,
   onFullChanger: (c) => panels.pickDiscToTakeOut(app, c),
@@ -2442,6 +2445,19 @@ export const app = {
 };
 
 // ---- Startup ---------------------------------------------------------------------------------------------------
+
+// The phone remote's status from main (Settings → PHONE REMOTE): the PHONE tag shows while a phone is connected, the
+// status line says PHONE CONNECTED when the first one comes, and an open Settings is drawn again.
+let remoteInfo = null;
+function onRemoteStatus(status) {
+  const before = remoteInfo ? remoteInfo.phones.length : null, now = status.phones.length;
+  remoteInfo = status;
+  const tag = $('phone-tag');
+  tag.hidden = now === 0;
+  tag.title = phoneTagTitle(status.phones);
+  if (phoneJoined(before, now)) setStatus(t('PHONE CONNECTED'));
+  panels.refreshSettingsIfOpen(app);
+}
 
 // A newer release on GitHub shows a pill in the header. Clicking it downloads the release (the pill counts the
 // percent), and clicking again restarts into the new version — or, where this copy can't be replaced in place, opens
@@ -2536,6 +2552,7 @@ async function start() {
   cdp.onMiniCommand(onMiniCommand);
   cdp.onRemoteCommand(onRemoteCommand);
   cdp.onRemoteListening(onRemoteListening);
+  cdp.onRemoteStatus(onRemoteStatus);
   onColorsChanged(() => { drawDivider(); pushMini(true); });
   window.addEventListener('resize', () => { drawDivider(); if (state.titleText) setTrackTitle(state.titleText, state.artistText); });
 
@@ -2581,6 +2598,7 @@ async function start() {
   renderQueue();
   requestAnimationFrame(frame);
   setInterval(playbackTick, 40);
+  cdp.remoteStatus().then(onRemoteStatus).catch(() => {});
   checkForUpdate();
   setInterval(checkForUpdate, UPDATE_RECHECK_MS);
   cdp.listAudioCds().then((list) => { if (list.length) { state.audioCd = list[0]; showAudioCd(); } }).catch(() => {});
