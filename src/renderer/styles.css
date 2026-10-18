@@ -77,8 +77,8 @@ button { font-family: inherit; outline: none; }
 #update-button { color: rgb(var(--accent)); font-variant-numeric: tabular-nums; }
 #status-pill {
   justify-self: center;
-  padding: 6px 16px; border-radius: 2px;
-  background: rgba(0, 0, 0, .35); border: 1px solid rgba(255, 255, 255, .12);
+  padding: 7px 16px; border-radius: 999px; /* a pill like the buttons beside it, but sunk in: it's a display, not a button */
+  background: rgba(0, 0, 0, .4); border: 1px solid rgba(255, 255, 255, .08); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .5);
   white-space: nowrap;
 }
 #status { color: rgb(var(--accent)); font-size: 11px; }
@@ -157,7 +157,7 @@ body.cd-view #cd-info { display: block !important; }
 .queue-row {
   display: flex; align-items: center; gap: 8px;
   height: 26px; margin-bottom: 2px; padding: 0 8px; border-radius: 4px;
-  font-size: 10.5px; color: rgb(var(--muted));
+  font-size: 11.5px; font-weight: normal; color: rgb(var(--muted)); /* light, so the song playing (bold) stands out */
   cursor: pointer; border-top: 1px solid transparent; border-bottom: 1px solid transparent;
 }
 .queue-row .num { flex: 0 0 20px; text-align: right; opacity: .7; }
@@ -171,7 +171,7 @@ body.cd-view #cd-info { display: block !important; }
 .queue-row.ghost { padding-left: 36px; font-style: italic; opacity: .7; cursor: default; } /* a hidden track, under its song */
 .queue-row.ghost.found { cursor: pointer; }
 .queue-row:hover { color: rgb(var(--text)); }
-.queue-row.active { color: rgb(var(--accent)); background: rgba(var(--accent), .10); }
+.queue-row.active { color: rgb(var(--accent)); background: rgba(var(--accent), .10); font-weight: bold; }
 .queue-row.active .duration { color: rgb(var(--accent2)); }
 .queue-row.dragging { border-top-color: rgb(var(--accent)); border-bottom-color: rgb(var(--accent)); }
 
@@ -228,11 +228,14 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 }
 .round:hover { background: rgba(255, 255, 255, .086); }
 .round svg { display: block; overflow: visible; }
-.round.primary {
-  color: rgb(var(--bg)); box-shadow: none;
-  background: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent2)));
+.round.primary { /* one colour (two blended went muddy: red into green on SNOW), lit along its top edge like a real key */
+  color: rgb(var(--bg));
+  background: rgb(var(--accent));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), inset 0 -2px 6px rgba(0, 0, 0, .18), 0 6px 18px rgba(var(--accent), .25);
+  transition: transform 90ms ease, box-shadow 90ms ease, filter var(--hover) ease;
 }
-.round.primary:active { filter: brightness(.7); }
+.round.primary:hover { background: rgb(var(--accent)); filter: brightness(1.08); }
+.round.primary:active { transform: translateY(1px); filter: brightness(.85); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .35), 0 2px 8px rgba(var(--accent), .2); }
 .round.mode::before {
   content: ""; position: absolute; inset: 0; border-radius: 50%;
   background: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent2)));
@@ -336,7 +339,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 .github-link svg { width: 15px; height: 15px; }
 
 .list-row { display: flex; align-items: center; gap: 8px; min-height: 34px; margin-bottom: 4px; font-size: 11px; color: rgb(var(--text)); cursor: pointer; }
-.list-row .entry { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-row .entry { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; font-weight: normal; }
 .list-row.plain { cursor: default; color: rgb(var(--muted)); min-height: 20px; }
 .list-row .when { flex: none; width: 40px; color: rgb(var(--muted)); font-weight: normal; font-variant-numeric: tabular-nums; }
 .history-day { margin: 12px 0 6px; font-size: 9px; color: rgb(var(--accent2)); }

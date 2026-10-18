@@ -592,9 +592,15 @@ export class Disc {
     let drawArt = null;
     if (!mini) {
       const cs = side + 60, caseX = cx - cs / 2, caseY = cy - cs / 2;
-      g.fillStyle = 'rgba(255,255,255,0.055)';
+      // The jewel case: a pane lit from above, a fine light edge and a dark one inside it — a thing the disc sits in,
+      // not a coloured outline (that read as "selected").
+      const pane = g.createLinearGradient(0, caseY, 0, caseY + cs);
+      pane.addColorStop(0, 'rgba(255,255,255,0.075)'); pane.addColorStop(1, 'rgba(255,255,255,0.035)');
+      g.fillStyle = pane;
       g.beginPath(); g.roundRect(caseX, caseY, cs, cs, 6); g.fill();
-      g.strokeStyle = rgb(colors.accent, 0.37); g.lineWidth = 1.6; g.stroke();
+      g.strokeStyle = 'rgba(255,255,255,0.13)'; g.lineWidth = 1; g.stroke();
+      g.strokeStyle = 'rgba(0,0,0,0.35)';
+      g.beginPath(); g.roundRect(caseX + 1.5, caseY + 1.5, cs - 3, cs - 3, 5); g.stroke();
       g.strokeStyle = 'rgba(255,255,255,0.1)'; g.lineWidth = 1;
       g.beginPath();
       g.moveTo(caseX + 10, caseY + 10.5); g.lineTo(caseX + cs - 10, caseY + 10.5);
