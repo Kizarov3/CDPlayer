@@ -1227,6 +1227,19 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.16.0', changes: [
+    '<b>A phone remote</b>: Settings &rarr; PHONE REMOTE, scan the code with your phone&rsquo;s camera &mdash; play, pause, skip, volume, the shelf and the queue from the phone&rsquo;s browser, on the same Wi-Fi, nothing to install',
+    '<b>Hidden tracks</b>: a song hidden after minutes of silence at the end of an album is found &mdash; the silence counts down, the song is named when it starts and written into the booklet',
+    '<b>Lighter on a computer without graphics acceleration</b> (a virtual machine): about half the processor, and on Windows the CD helper runs only while there&rsquo;s a disc in a drive',
+    '<b>AUTO&rsquo;s colour from the whole cover</b>: In Rainbows no longer turns the player blue',
+    '<b>YOUTUBE MUSIC</b> on a missing album&rsquo;s case, and the player&rsquo;s window comes back by itself if its page crashes',
+  ], changesIn: { ru: [
+    '<b>Пульт с телефона</b>: Настройки &rarr; ПУЛЬТ-ТЕЛЕФОН, отсканируй код камерой телефона &mdash; пауза, переключение, громкость, полка и очередь из браузера телефона, в той же сети Wi-Fi, ничего не устанавливая',
+    '<b>Скрытые треки</b>: песня, спрятанная после минут тишины в конце альбома, находится &mdash; тишина отсчитывается, песня называется, когда начинается, и вписывается в буклет',
+    '<b>Легче на компьютере без ускорения графики</b> (в виртуальной машине): примерно вдвое меньше нагрузки, а в Windows помощник для CD работает, только пока в приводе есть диск',
+    '<b>Цвет AUTO по всей обложке</b>: In Rainbows больше не красит плеер в синий',
+    '<b>YOUTUBE MUSIC</b> на коробке недостающего альбома, а окно плеера само возвращается, если его страница упала',
+  ] } },
   { version: '2.15.1', changes: [
     '<b>The guide&rsquo;s buttons work with the mouse</b>: NEXT, BACK, SKIP and SHOW THEM took no clicks &mdash; only the keys moved the guide on',
     '<b>No gap inside an album of mixed sample rates</b>: under HI-RES LOSSLESS, an album with 44.1 and 96 kHz songs plays through at 96 instead of stopping between them',
