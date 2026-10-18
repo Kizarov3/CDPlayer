@@ -463,8 +463,26 @@ function showIndex(targets) {
   index.hidden = targets.length < 2;
   index.replaceChildren(...targets.map(({ label, short }) => el('button', { title: label, class: [...short].length > 3 ? 'long' : null, onClick: () => {
     const card = $('shelf-body').querySelector(`[data-section="${CSS.escape(label)}"]`);
-    if (card) card.scrollIntoView({ block: 'start', behavior: anim.enabled ? 'smooth' : 'auto' });
+    if (!card) return;
+    card.scrollIntoView({ block: 'start', behavior: anim.enabled ? 'smooth' : 'auto' });
+    pointOut(card);
   } }, short)));
+}
+// A section jumped to answers, whether or not the shelf had to move (a shelf that fits on the screen doesn't): its card
+// stands up, lit, and its albums lift one after another.
+function pointOut(card) {
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+  const lit = `0 0 0 2px rgb(${accent}), 0 0 18px rgba(${accent}, .55)`;
+  if (!anim.enabled) { card.animate([{ boxShadow: lit }, { boxShadow: lit }], { duration: 900 }); return; }
+  const delay = 250; // (after a scroll has got there)
+  card.animate([{ transform: 'none', boxShadow: 'none' }, { transform: 'translateY(-14px)', boxShadow: lit, offset: 0.35 }, { transform: 'translateY(-14px)', boxShadow: lit, offset: 0.7 }, { transform: 'none', boxShadow: 'none' }],
+    { duration: 900, delay, easing: 'ease-in-out' });
+  let k = 0;
+  for (let n = card.nextElementSibling; n && !n.dataset.section && k < 40; n = n.nextElementSibling) {
+    if (!n.classList.contains('spine')) continue;
+    n.animate([{ transform: 'none' }, { transform: 'translateY(-10px)' }, { transform: 'none' }], { duration: 420, delay: delay + 150 + k * 35, easing: 'ease-in-out' });
+    k++;
+  }
 }
 // ⌖ IN THE PLAYER: shown while the album whose disc is in is on the shelf as it stands; goes to it, and it waves.
 function showHere() {
