@@ -148,3 +148,19 @@ test('Windows: a check that fails (the helper busy or restarting) is not an ejec
     delete process.env.CDPLAYER_WIN_CD_HELPER;
   }
 });
+
+test('macOS: mount is run again only when /Volumes changes, or after half a minute', async () => {
+  let volumes = ['Macintosh HD'], runs = 0;
+  const out = '/dev/disk4 on /Volumes/Audio CD (cddafs, local, nodev, nosuid, read-only, noowners)\n';
+  const ask = (now) => cd._macCdMounts({ now, readVolumes: async () => volumes, runMount: async () => { runs++; return volumes.includes('Audio CD') ? out : ''; } });
+  assert.deepStrictEqual(await ask(0), []);
+  assert.deepStrictEqual(await ask(3000), []);
+  assert.strictEqual(runs, 1, 'nothing new in /Volumes: the last answer');
+  volumes = ['Macintosh HD', 'Audio CD'];
+  assert.deepStrictEqual(await ask(6000), ['/Volumes/Audio CD']);
+  assert.strictEqual(runs, 2, 'a disc mounted: asked again');
+  await ask(9000);
+  assert.strictEqual(runs, 2);
+  await ask(40000);
+  assert.strictEqual(runs, 3, 'half a minute on: asked again anyway');
+});

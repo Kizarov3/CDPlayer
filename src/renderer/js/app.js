@@ -2537,7 +2537,7 @@ let last = performance.now(), idleCheck = 0;
 // Drawn without the graphics card, it's 30 always (render-budget.js).
 function frame(now) {
   const watched = document.hasFocus() || state.cdView || state.visualizerMode || isKaraokeOpen();
-  const gap = frameGap({ watched, software: state.softwareRendering });
+  const gap = frameGap({ watched, software: state.softwareRendering, playing: engine.playing || !!jog });
   if (gap && now - last < gap - 2) { requestAnimationFrame(frame); return; }
   const dt = Math.min(100, now - last); last = now;
   if (engine.deck && engine.playing && !jog) { // turning the disc, the seek bar shows where it has got to (turnJog)

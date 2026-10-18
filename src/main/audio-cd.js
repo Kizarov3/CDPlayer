@@ -117,8 +117,17 @@ const trackNumber = (name) => { const m = /(\d+)/.exec(name); return m ? parseIn
 // macOS: the mount points of audio CDs, which `mount` lists with the cddafs filesystem. Only these are ever looked
 // inside — reading other removable drives would have macOS ask the user for permission for no reason.
 const cddaMounts = (mountOutput) => String(mountOutput).split('\n').map((l) => /^\S+ on (.+) \(cddafs[,)]/.exec(l)).filter(Boolean).map((m) => m[1]);
-function macCdMounts() {
-  return new Promise((resolve) => execFile('/sbin/mount', (err, out) => resolve(err ? [] : cddaMounts(out))));
+// `mount` is a program to start, asked every few seconds: it runs again only when what's in /Volumes has changed (a disc
+// mounting adds its folder there) or half a minute has gone by — otherwise its last answer stands, for a directory read.
+const MOUNT_FRESH_MS = 30000;
+let macLast = null; // { volumes, mounts, at }
+async function macCdMounts({ now = Date.now(), readVolumes = () => fsp.readdir('/Volumes'), runMount = () => new Promise((resolve) => execFile('/sbin/mount', (err, out) => resolve(err ? null : out))) } = {}) {
+  const volumes = await readVolumes().then((names) => names.slice().sort().join('\n')).catch(() => null);
+  if (volumes !== null && macLast && macLast.volumes === volumes && now - macLast.at < MOUNT_FRESH_MS) return macLast.mounts;
+  const out = await runMount();
+  const mounts = out === null ? [] : cddaMounts(out);
+  macLast = volumes === null || out === null ? null : { volumes, mounts, at: now };
+  return mounts;
 }
 // The candidate mount points right now. CDPLAYER_CD_ROOT stands in for /Volumes (tests, and trying it without a drive).
 async function candidateMounts() {
@@ -254,4 +263,4 @@ async function nameDisc(disc, { fetchMb, fetchCover, isCurrent = () => true }) {
 }
 function forgetDisc(disc) { for (const p of disc.tracks) names.delete(p); }
 
-module.exports = { cddaMounts, discId, tocParam, parsePlist, tocFromPlist, tocFromSectors, findDiscs, nameDisc, forgetDisc, detailsFor, releaseFor, _findWinDiscs: findWinDiscs };
+module.exports = { cddaMounts, discId, tocParam, parsePlist, tocFromPlist, tocFromSectors, findDiscs, nameDisc, forgetDisc, detailsFor, releaseFor, _findWinDiscs: findWinDiscs, _macCdMounts: macCdMounts };
