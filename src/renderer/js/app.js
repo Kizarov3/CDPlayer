@@ -40,7 +40,7 @@ const $ = (id) => document.getElementById(id);
 const STATUS_DOT = '●  ';
 const IDLE_SECONDS_UNTIL_VISUALIZER = 180;
 const CD_VIEW_CURSOR_IDLE_SECONDS = 5;
-const HISTORY_LIMIT = 50;
+const HISTORY_LIMIT = 200;
 const UNDO_CLEAR_SECONDS = 8;
 const SKIP_SECONDS = 5; // ←/→, the round skip buttons and the system media controls' seek back/forward
 // The player can stay open for days, so it asks GitHub about the newest release again every 15 minutes (as well as at

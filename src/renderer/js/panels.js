@@ -4,6 +4,7 @@
 import { THEMES, draftFrom } from './theme.js';
 import { buildThemeEditor } from './theme-editor.js';
 import { t, locale } from './i18n.js';
+import { historyDays } from './history-days.js';
 import { EQ_FREQUENCIES } from './audio.js';
 import { el, pill, toggle, setToggle, Slider, anim } from './widgets.js';
 import { FAQ, SHORTCUTS, FEATURES } from './help.js';
@@ -724,25 +725,44 @@ function buildTags(app) {
 
 // ---- History -----------------------------------------------------------------------------------------------------
 
-export function showHistory(app) { openPanel('history', () => buildHistory(app), { width: 600 }); }
-export function refreshHistoryIfOpen(app) { if (isOpen('history')) refreshPanel('history'); }
-function trackRow(app, path, label, onPlay) {
+// When each song in HISTORY was last played, for its day and time (asked for as the panel opens and as songs play;
+// null until the answer: the plain list till then).
+let historyTimes = null;
+function askHistoryTimes(app) {
+  const h = app.state.history.slice();
+  app.cdp.playTimes(h).then(({ last }) => {
+    historyTimes = Object.fromEntries(h.map((p, i) => [p, last[i]]));
+    if (isOpen('history')) refreshPanel('history');
+  }).catch(() => {});
+}
+export function showHistory(app) { historyTimes = null; openPanel('history', () => buildHistory(app), { width: 600 }); askHistoryTimes(app); }
+export function refreshHistoryIfOpen(app) { if (isOpen('history')) { refreshPanel('history'); askHistoryTimes(app); } }
+function trackRow(app, path, label, onPlay, when = null) {
   const now = pill(t('PLAY'), (e) => { e.stopPropagation(); onPlay(); }, t('Play it now'));
   // Done, said on the button itself: the status line is under this panel.
   const done = (b, label) => { b.textContent = t('✓ DONE'); b.disabled = true; setTimeout(() => { b.textContent = label; b.disabled = false; }, 1500); };
   const next = pill(t('NEXT'), (e) => { e.stopPropagation(); app.playNext([path], { sorted: true }); done(e.currentTarget, t('NEXT')); }, app.changerMode() ? t('Into the changer, to play after the disc playing') : t('Play it next, after the song playing'));
   const add = pill(t('ADD'), (e) => { e.stopPropagation(); app.addToQueue([path], { sorted: true }); done(e.currentTarget, t('ADD')); }, app.changerMode() ? t('Into the changer') : t('Add to queue'));
   for (const b of [now, next, add]) b.classList.add('small'); // the song's name gets the room
-  return el('div', { class: 'list-row', title: t('Play {song}', { song: label }), onClick: onPlay }, el('span', { class: 'entry' }, label), now, next, add);
+  return el('div', { class: 'list-row', title: t('Play {song}', { song: label }), onClick: onPlay }, when ? el('span', { class: 'when' }, when) : null, el('span', { class: 'entry' }, label), now, next, add);
 }
+const dayName = (day) => (day === 'TODAY' ? t('TODAY') : day === 'YESTERDAY' ? t('YESTERDAY') : day === null ? t('EARLIER')
+  : new Date(day).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase());
+const clockOf = (at) => (at ? new Date(at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) : '');
 function buildHistory(app) {
   const h = app.state.history;
-  const body = h.length
-    ? el('div', { class: 'scroll' }, h.map((p) => { app.ensureDetails(p); return p; }).map((p) => trackRow(app, p, app.queueDisplay(p), async () => {
+  const row = (p, at) => {
+    app.ensureDetails(p);
+    return trackRow(app, p, app.queueDisplay(p), async () => {
       if (!(await app.cdp.exists(p))) { app.setStatus(t('FILE NO LONGER FOUND')); await app.loadHistoryFromDisk(); refreshPanel('history'); return; }
       app.appendAndPlay(p); closePanel('history');
-    })))
-    : el('div', { class: 'empty-note' }, t('NOTHING PLAYED YET'));
+    }, historyTimes ? clockOf(at) || '—' : null);
+  };
+  // By day once it's known when each was played: TODAY, YESTERDAY, then each day before.
+  const rows = historyTimes
+    ? historyDays(h, historyTimes).flatMap((g) => [el('div', { class: 'history-day' }, dayName(g.day)), ...g.items.map((i) => row(i.path, i.at))])
+    : h.map((p) => row(p, null));
+  const body = h.length ? el('div', { class: 'scroll' }, rows) : el('div', { class: 'empty-note' }, t('NOTHING PLAYED YET'));
   if (h.length) { body.style.height = '380px'; body.style.marginTop = '16px'; }
   else body.style.marginTop = '16px';
   return [title(t('HISTORY')), body, closeRow(() => closePanel('history'))];

@@ -281,7 +281,7 @@ function readShelfColors() {
 }
 const writeShelfColors = (colors) => writeText(FILES.shelfColors, JSON.stringify({ version: 1, colors }));
 
-const HISTORY_LIMIT = 50;
+const HISTORY_LIMIT = 200;
 function readHistory() {
   return lines(readText(FILES.history)).map((p) => p.trim()).filter((p) => p && entryExists(p)).slice(0, HISTORY_LIMIT);
 }
