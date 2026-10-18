@@ -151,6 +151,11 @@ body.cd-view #cd-info { display: block !important; }
 .vfd-time { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; cursor: pointer; }
 .vfd-time:hover .vfd-label { color: rgb(var(--accent)); } /* it's a button: TIME */
 #vfd-total { font-variant-numeric: tabular-nums; }
+/* Settings → DISPLAY → CLASSIC: just the times under the seek bar, as before the deck's display. */
+#times { display: none; justify-content: space-between; font-size: 11px; font-weight: normal; color: rgb(var(--muted)); height: 16px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+#length { cursor: pointer; } /* clicked: the time left */
+body.classic-display #times { display: flex; }
+body.classic-display #deck-display { display: none; }
 /* One row: shuffle · skip back · previous · PLAY · next · skip forward · repeat, centered in the column. */
 #controls { margin-top: 16px; display: flex; justify-content: center; align-items: center; min-height: 68px; }
 #transport { display: flex; align-items: center; }

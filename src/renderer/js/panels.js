@@ -259,6 +259,10 @@ function buildSettings(app) {
     pick: () => app.setQuality(level).then(() => refreshSettingsIfOpen(app)),
   }))), t('How the sound leaves CDPlayer'));
   const SOUND_CHECK_NAMES = { OFF: t('OFF'), ALBUM: t('ALBUM'), TRACK: t('TRACK') };
+  const DISPLAY_NAMES = { DECK: t('DECK|display'), CLASSIC: t('CLASSIC|display') };
+  const displayButton = pill(DISPLAY_NAMES[s.display] || DISPLAY_NAMES.DECK, () => showMenu(displayButton, ['DECK', 'CLASSIC'].map((kind) => ({
+    label: DISPLAY_NAMES[kind], current: kind === s.display, pick: () => { app.setDisplay(kind); refreshSettingsIfOpen(app); },
+  }))), t('What’s under the seek bar'));
   const soundCheckButton = pill(SOUND_CHECK_NAMES[s.soundCheck] || t('OFF'), () => showMenu(soundCheckButton, ['OFF', 'ALBUM', 'TRACK'].map((mode) => ({
     label: SOUND_CHECK_NAMES[mode], current: mode === s.soundCheck,
     pick: () => app.setSoundCheck(mode).then(() => refreshSettingsIfOpen(app)),
@@ -345,6 +349,8 @@ function buildSettings(app) {
     section(t('LOOK')),
     row(t('THEME'), themeButton),
     row(t('LANGUAGE'), languageButton), languageNote,
+    row(t('DISPLAY'), displayButton),
+    hint(t('DECK: a glowing panel like a CD player’s — the track number and the time in segment digits. CLASSIC: just the times.')),
     row(t('WAVEFORM'), waveform),
     row(t('AMBIENT BACKGROUND'), ambient),
     app.shownTheme().image ? hint(t('The theme’s own image is the background while it’s on.')) : null,

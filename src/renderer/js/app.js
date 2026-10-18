@@ -79,6 +79,7 @@ const state = {
   language: 'AUTO', // Settings → LANGUAGE (applies after a restart)
   loadedPath: null, details: null, detailsPath: null, lyrics: null, cover: null, loadToken: 0, deckToken: 0, crossfadeStarted: false,
   cdView: false, visualizerMode: false, fullscreen: false,
+  display: 'DECK', // Settings → DISPLAY: the deck's display under the seek bar, or CLASSIC (the plain times)
   sleepRemaining: 0, sleepMinutes: 0, sleepAtEnd: false, // sleepAtEnd: the sleep timer's END OF DISC
   lastActivity: Date.now(), lastCdMouse: Date.now(), cursorHidden: false, visualizerEnteredAt: 0,
   lastPath: null, version: '', platform: '',
@@ -92,6 +93,7 @@ let showRemaining = false;
 try { showRemaining = localStorage.getItem('timeRemaining') === '1'; } catch { /* no storage: how far in */ }
 const deckDisplay = new DeckDisplay({
   track: $('vfd-track'), time: $('vfd-time'), of: $('vfd-of'), total: $('vfd-total'), flags: [...document.querySelectorAll('.vfd-flag')],
+  elapsed: $('elapsed'), length: $('length'),
 });
 deckDisplay.left = showRemaining;
 // Settings → SOUND CHECK (sound-check.js): every song at the same loudness — not Spotify's (it does its own) nor a live CD's.
@@ -2213,7 +2215,7 @@ const appendAndPlay = (p) => addToQueue([p], { sorted: true, play: true });
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, changer: state.changerMode, playModes: { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } } };
+  return { volume: state.volume, crossfade: state.crossfade, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, changer: state.changerMode, playModes: { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } }, display: state.display };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -2332,6 +2334,7 @@ function buildStaticUi() {
 
   $('load-button').addEventListener('click', choose);
   $('vfd-time-button').addEventListener('click', toggleRemaining);
+  $('length').addEventListener('click', toggleRemaining);
   $('save-playlist-button').addEventListener('click', savePlaylist);
   $('load-playlist-button').addEventListener('click', loadPlaylist);
   $('search-button').addEventListener('click', () => panels.showSearch(app));
@@ -2502,6 +2505,11 @@ function showDeckTrack() {
   if (here) { const d = state.changer.slots[here.slot]; deckDisplay.setTrack(here.offset + 1, d.end - d.start); }
   else deckDisplay.setTrack(state.queue.length && state.index >= 0 ? state.index + 1 : 0, state.queue.length);
 }
+function setDisplay(kind, { save = true } = {}) {
+  state.display = kind === 'CLASSIC' ? 'CLASSIC' : 'DECK';
+  document.body.classList.toggle('classic-display', state.display === 'CLASSIC');
+  if (save) saveSettingsSoon();
+}
 function showDeckFlags() {
   deckDisplay.setFlags({ playing: engine.playing, paused: !!engine.deck && !engine.playing, shuffle: state.shuffle !== 'OFF', repeat: state.repeat !== 'OFF', repeatOne: state.repeat === 'TRACK' });
 }
@@ -2613,7 +2621,7 @@ export const app = {
   onFullChanger: (c) => panels.pickDiscToTakeOut(app, c),
   coverSource: () => state.coverFrom || null,
   switchTheme, previewTheme, restoreTheme, shownTheme: () => shownTheme, saveTheme, importTheme, pasteThemeCode, exportTheme, copyThemeCode, deleteTheme,
-  setQuality, setSoundCheck, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, armSleepAtEnd, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setTaskbarDisc, setOutput, listOutputs, currentOutputName,
+  setQuality, setSoundCheck, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, armSleepAtEnd, setDisplay, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setTaskbarDisc, setOutput, listOutputs, currentOutputName,
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
   menu: (anchor, items, opts) => panels.menu(anchor, items, opts),
@@ -2769,6 +2777,7 @@ async function start() {
   setDiscNoise(!!s.discNoise);
   state.discWear = s.discWear !== false;
   state.discShine = s.discShine !== false; disc.setShine(state.discShine);
+  setDisplay(s.display, { save: false });
   state.taskbarDisc = !!s.taskbarDisc; // its default is the system's (main/store.js)
   state.output = s.output || null;
   applyOutput(false);

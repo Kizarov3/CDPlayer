@@ -1,7 +1,7 @@
 // The deck's display, under the seek bar: a dark window like a CD player's front panel — the track number and the time
 // in seven-segment digits that glow in the theme's colour, the segments not lit faintly there behind them (88:88), and
 // PLAY / PAUSE / SHUFFLE / REPEAT lit or dark beside them. Clicked, the time counts down what's left (a deck's TIME
-// button). The digits are drawn here (no font to load); a canvas is only drawn again when what it shows has changed.
+// button). Settings → DISPLAY → CLASSIC shows the plain times instead (`elapsed`, `length`), kept up to date here too. The digits are drawn here (no font to load); a canvas is only drawn again when what it shows has changed.
 import { colors } from './theme.js';
 
 // The segments lit for each character: a top, b top right, c bottom right, d bottom, e bottom left, f top left, g middle.
@@ -18,6 +18,10 @@ export function timeCells(seconds, { left = false } = {}) {
 }
 /** A track number as two cells: 3 → '03'; none → '--'. */
 export const trackCells = (n) => (n > 0 ? String(Math.min(99, n)).padStart(2, '0') : '--');
+/** A time as CLASSIC shows it: 187 → '3:07'. */
+export const clock = (seconds) => { const s = Math.max(0, Math.floor(seconds || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+// Writing a label's text, even the same text, makes the page restyle and repaint it — every frame, for the clock.
+const setText = (node, text) => { if (node && node.textContent !== text) node.textContent = text; };
 
 const SLANT = 0.07; // the digits lean a little, as on the panel
 
@@ -55,8 +59,8 @@ function drawCells(g, text, h, lit, ghost) {
 const cellsWidth = (text, h) => [...text].reduce((sum, ch) => sum + (ch === ':' ? h * 0.32 : h * 0.72), 0) - (text.endsWith(':') ? 0 : h * 0.16) + h * SLANT;
 
 export class DeckDisplay {
-  constructor({ track, time, of, total, flags }) {
-    Object.assign(this, { trackCanvas: track, timeCanvas: time, ofNode: of, totalNode: total, flags });
+  constructor({ track, time, of, total, flags, elapsed = null, length = null }) {
+    Object.assign(this, { trackCanvas: track, timeCanvas: time, ofNode: of, totalNode: total, flags, elapsedNode: elapsed, lengthNode: length });
     this.shown = { track: null, time: null, color: null };
     this.track = '--'; this.time = timeCells(0); this.left = false;
   }
@@ -72,6 +76,8 @@ export class DeckDisplay {
     this.time = left && duration > 0 ? timeCells(duration - position, { left: true }) : timeCells(duration > 0 || position > 0 ? position : 0);
     const total = duration > 0 ? timeCells(duration).trim() : '';
     if (this.totalNode.dataset.time !== total) { this.totalNode.dataset.time = total; this.totalNode.lastChild.textContent = total ? ` ${total}` : ' --:--'; }
+    setText(this.elapsedNode, clock(position));
+    setText(this.lengthNode, left && duration > 0 ? `−${clock(duration - position)}` : clock(duration));
     this.draw();
   }
   setFlags({ playing, paused, shuffle, repeat, repeatOne }) {
