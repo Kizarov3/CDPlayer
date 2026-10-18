@@ -14,7 +14,7 @@ const albums = [
 const titles = (rows) => rows.map((r) => (r.divider ? `[${r.divider}]` : r.album.title));
 
 test('the phone sorts the shelf four of the desktop’s ways — no PRICE, no COLOR — round and round', () => {
-  assert.deepStrictEqual(PHONE_SORTS, ['ARTIST', 'NEW', 'PLAYED', 'YEAR']);
+  assert.deepStrictEqual(PHONE_SORTS, ['ARTIST', 'NEW', 'PLAYED', 'RECENT', 'YEAR']);
   assert.strictEqual(nextSort('ARTIST'), 'NEW');
   assert.strictEqual(nextSort('YEAR'), 'ARTIST');
   assert.strictEqual(nextSort('COLOR'), 'ARTIST'); // anything else starts over

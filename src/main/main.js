@@ -497,6 +497,8 @@ async function shelfListing() {
   // …and when each was last played or wiped, for its dust.
   const touch = { ...dust(), lastPlayed: playedAt() };
   for (const a of result.albums) a.touched = shelf.touchedAt(a, touch);
+  // …and when a song of it was last played, for LAST PLAYED.
+  for (const a of result.albums) a.lastPlayed = a.tracks.reduce((m, t) => Math.max(m, touch.lastPlayed.get(t.path) || 0), 0) || null;
   const notes = store.readNotes();
   for (const a of result.albums) a.note = notes.get(a.id) || null;
   // …and which came in shrink-wrap (new since wrapping began, not played yet, not unwrapped by hand).

@@ -7,7 +7,7 @@ const album = (artist, title, extra = {}) => ({ id: `${artist}/${title}`, artist
 const show = (items) => items.map((x) => (x.divider ? `[${x.divider}]` : x.title));
 
 test('the ways to sort, in the order the button goes round', () => {
-  assert.deepStrictEqual(SORTS, ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR', 'PRICE']);
+  assert.deepStrictEqual(SORTS, ['ARTIST', 'NEW', 'PLAYED', 'RECENT', 'YEAR', 'COLOR', 'PRICE']);
 });
 
 test('by artist: the order the shelf already has, a letter card where the letter changes, "The" ignored, digits under #', () => {
@@ -27,6 +27,12 @@ test('most played: by plays, ties by artist; one card before the albums not play
   const albums = [album('A', 'Twice', { plays: 2 }), album('B', 'Never'), album('C', 'Most', { plays: 40 }), album('D', 'Also twice', { plays: 2 })];
   assert.deepStrictEqual(show(arrange(albums, 'PLAYED')), ['Most', 'Twice', 'Also twice', '[NOT PLAYED YET]', 'Never']);
   assert.deepStrictEqual(show(arrange([album('A', 'X', { plays: 1 })], 'PLAYED')), ['X']);
+});
+
+test('last played: the latest first, a card for each month; the albums not played yet at the end', () => {
+  const oct = Date.UTC(2026, 9, 18), sep = Date.UTC(2026, 8, 2);
+  const albums = [album('A', 'Last month', { lastPlayed: sep }), album('B', 'Never'), album('C', 'Today', { lastPlayed: oct }), album('D', 'Earlier today', { lastPlayed: oct - 3600e3 })];
+  assert.deepStrictEqual(show(arrange(albums, 'RECENT')), ['[OCT 2026]', 'Today', 'Earlier today', '[SEP 2026]', 'Last month', '[NOT PLAYED YET]', 'Never']);
 });
 
 test('year: oldest first, a card for each decade, no year at the end', () => {
@@ -68,7 +74,7 @@ test('SORT: COLOR stands the shelf in rainbow order, a card for each colour, bla
     album('G', 'No cover', { color: null }),
   ];
   assert.deepStrictEqual(show(arrange(list, 'COLOR')), ['[RED]', 'Crimson', 'Red', '[GREEN]', 'Green', '[BLUE]', 'Blue', '[B&W]', 'White', 'No cover', 'Black']);
-  assert.deepStrictEqual(SORTS, ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR', 'PRICE']);
+  assert.deepStrictEqual(SORTS, ['ARTIST', 'NEW', 'PLAYED', 'RECENT', 'YEAR', 'COLOR', 'PRICE']);
 });
 
 test('the sections to jump to: the divider cards in order, short names shortened', () => {

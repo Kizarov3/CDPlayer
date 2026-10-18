@@ -7,12 +7,12 @@ import { dustLevel } from './shelf-dust.js';
 
 // The desktop's SORTS without PRICE (Discogs isn't on the phone) and COLOR (only spines drawn on the desktop have one).
 // The phone's choice is its own: it never changes the desktop's.
-export const PHONE_SORTS = ['ARTIST', 'NEW', 'PLAYED', 'YEAR'];
+export const PHONE_SORTS = ['ARTIST', 'NEW', 'PLAYED', 'RECENT', 'YEAR'];
 export const nextSort = (sort) => PHONE_SORTS[(PHONE_SORTS.indexOf(sort) + 1) % PHONE_SORTS.length];
-export const sortLabel = (sort) => ({ ARTIST: t('ARTIST'), NEW: t('NEW|sort'), PLAYED: t('MOST PLAYED'), YEAR: t('YEAR') })[sort] || sort;
+export const sortLabel = (sort) => ({ ARTIST: t('ARTIST'), NEW: t('NEW|sort'), PLAYED: t('MOST PLAYED'), RECENT: t('LAST PLAYED'), YEAR: t('YEAR') })[sort] || sort;
 
 /**
- * The phone's albums ({ id, title, artist, year, n, added, plays, touched, wrapped, color }) → the rows of its list:
+ * The phone's albums ({ id, title, artist, year, n, added, plays, lastPlayed, touched, wrapped, color }) → the rows of its list:
  * { divider } cards as the desktop arranges them under `sort`, and { album, dusty, isNew } — only those the search
  * finds, as the desktop's filter finds them.
  */

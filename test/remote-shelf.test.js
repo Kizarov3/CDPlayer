@@ -7,7 +7,7 @@ const { albumKey, phoneAlbums, phoneAlbum, byKey } = require('../src/main/remote
 
 const album = (id, over) => ({
   id, title: 'Album', artist: 'Artist', year: '1999', folder: `/music/${id}`, note: 'private note',
-  added: 1700000000000, plays: 3, touched: 1710000000000, wrapped: false,
+  added: 1700000000000, plays: 3, lastPlayed: 1705000000000, touched: 1710000000000, wrapped: false,
   tracks: [
     { path: `/music/${id}/01.flac`, title: 'One', artist: 'Artist', duration: 61, track: 1, disc: 1 },
     { path: `/music/${id}/02.flac`, title: 'Two', artist: 'Artist', duration: 62, track: 2, disc: 1 },
@@ -34,7 +34,7 @@ test('keys are stable, 16 hex characters, and differ for same-titled albums in d
 test('the listing carries counts and times, and the spine colour when the cache has one', () => {
   const a = album('/m/a'), b = album('/m/b');
   const [pa, pb] = phoneAlbums([a, b], { '/m/a': { spine: [1, 2, 3], main: [9, 9, 9] } });
-  assert.deepStrictEqual(pa, { id: albumKey('/m/a'), title: 'Album', artist: 'Artist', year: '1999', n: 2, added: 1700000000000, plays: 3, touched: 1710000000000, wrapped: false, color: [1, 2, 3] });
+  assert.deepStrictEqual(pa, { id: albumKey('/m/a'), title: 'Album', artist: 'Artist', year: '1999', n: 2, added: 1700000000000, plays: 3, lastPlayed: 1705000000000, touched: 1710000000000, wrapped: false, color: [1, 2, 3] });
   assert.strictEqual(pb.color, null);
   assert.strictEqual(phoneAlbums([a], null)[0].color, null);
 });
