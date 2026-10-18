@@ -622,7 +622,7 @@ handle('dialog:openTracks', async () => {
   if (r.canceled || !r.filePaths.length) return [];
   const first = r.filePaths[0], dir = store.isDir(first) && r.filePaths.length === 1 ? first : path.dirname(first);
   store.writeLastPath(dir);
-  if (!store.readMusicFolders().length) store.writeMusicFolders([dir]); // no music folder yet: the shelf starts with this one
+  if (store.noMusicFolderYet()) store.writeMusicFolders([dir]); // no music folder yet: the shelf starts with this one
   return r.filePaths;
 });
 handle('dialog:savePlaylist', async (entries) => {

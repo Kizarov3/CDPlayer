@@ -296,4 +296,30 @@ test('the shelf reads every music folder; a folder just added isn\'t all NEW, a 
   assert.ok(added(fresh) >= before, 'turned up in a folder read before: just added');
   assert.strictEqual(added(other), old.getTime(), 'a folder just added: its files\' own dates');
   assert.ok(shelf.cacheHas([a, b]) && !shelf.cacheHas([a, '/elsewhere']));
+
+  // b unplugged: the shelf read without it keeps what it read in b, for when it's back.
+  fs.renameSync(b, `${b}-away`);
+  await shelf.scanAlbums();
+  fs.renameSync(`${b}-away`, b);
+  const kept = JSON.parse(fs.readFileSync(path.join(home, 'shelf-cache.json'), 'utf8'));
+  assert.deepStrictEqual(kept.folders, [a, b]);
+  assert.ok(kept.tracks[other], 'an unplugged drive\'s tracks aren\'t read again when it comes back');
+  // A folder added round one already read: what was read in it is used.
+  assert.ok(shelf.readCache([path.dirname(a)]), 'the parent of a folder read');
+  assert.ok(!shelf.cacheHas([path.dirname(a)]), '…but the rest of the parent hasn\'t been read');
+});
+
+test('a list of music folders that can\'t be read for a moment isn\'t started over from the last dialog\'s folder', { skip: process.platform === 'win32' }, () => {
+  const store = require('../src/main/store');
+  const music = fs.mkdtempSync(path.join(home, 'music-'));
+  store.writeMusicFolders([music]);
+  assert.deepStrictEqual(store.readMusicFolders(), [music]);
+  store.writeLastPath(path.join(home, 'Downloads'));
+  const list = path.join(home, 'music-folders.txt');
+  fs.chmodSync(list, 0o000); // (another program has it open)
+  try {
+    assert.deepStrictEqual(store.readMusicFolders(), [music]);
+    assert.strictEqual(store.noMusicFolderYet(), false);
+  } finally { fs.chmodSync(list, 0o644); }
+  assert.deepStrictEqual(store.readMusicFolders(), [music]);
 });

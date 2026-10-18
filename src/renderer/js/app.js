@@ -1127,7 +1127,7 @@ function continuesCurrent(p, { atBoundary = true } = {}) {
 // starts the moment this one ends. Re-done when what comes next changes; dropped by any other load.
 async function prepareNext() {
   if (state.deckToken !== state.loadToken) return; // a track is still loading: what's playing is on its way out
-  if (sleepsAfterThis()) return; // END OF DISC: nothing follows this one
+  if (sleepsAfterThis()) { if (preparedNext || engine.prepared) dropPrepared(); return; } // END OF DISC: nothing follows this one
   const next = upcomingIndex(), path = next >= 0 ? state.queue[next] : null;
   if (preparedNext && preparedNext.path === path && preparedNext.index === next) return;
   if (preparedNext || engine.prepared) dropPrepared();
@@ -2616,7 +2616,7 @@ export const app = {
   setQuality, setSoundCheck, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, armSleepAtEnd, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setTaskbarDisc, setOutput, listOutputs, currentOutputName,
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
-  menu: (anchor, items) => panels.menu(anchor, items),
+  menu: (anchor, items, opts) => panels.menu(anchor, items, opts),
   choosePressingFor: (album, anchor, onChosen) => choosePressing(album, anchor, null, onChosen),
   shelfAlbumIds, discogsCurrencyChanged,
   setLanguage: (code) => { state.language = code; cdp.saveSettings(settingsSnapshot()); },

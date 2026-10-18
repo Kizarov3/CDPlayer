@@ -5,10 +5,11 @@ import { SEGMENTS, timeCells, trackCells } from '../src/renderer/js/deck-display
 test('the display\'s time keeps its width: no leading zero, a sign cell for the time left', () => {
   assert.strictEqual(timeCells(0), '  0:00');
   assert.strictEqual(timeCells(187), '  3:07');
-  assert.strictEqual(timeCells(187, { left: true }), '- 3:07');
+  assert.strictEqual(timeCells(187, { left: true }), ' -3:07', 'the minus right before the minutes');
   assert.strictEqual(timeCells(754), ' 12:34');
+  assert.strictEqual(timeCells(754, { left: true }), '-12:34');
   assert.strictEqual(timeCells(-5), '  0:00');
-  assert.strictEqual(timeCells(6000), ' 100:00', 'over 99 minutes: a third cell');
+  assert.strictEqual(timeCells(6000), '100:00', 'over 99 minutes: the sign cell holds the third digit');
 });
 
 test('the track number: two cells, -- for none', () => {

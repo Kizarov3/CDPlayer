@@ -18,6 +18,7 @@ test('END OF DISC: the same song again or the queue starting over ends it; shuff
   assert.strictEqual(at('/m/A/01.flac', '/m/A/02.flac', { repeatTrack: true }), true);
   assert.strictEqual(discEndsAfter({ current: '/m/A/10.flac', next: '/m/A/01.flac', currentIndex: 9, nextIndex: 0 }), true, 'REPEAT ALL wrapping round');
   assert.strictEqual(discEndsAfter({ current: '/m/A/10.flac', next: '/m/A/01.flac', currentIndex: 9, nextIndex: 0, shuffled: true }), false);
+  assert.strictEqual(at('/m/A/03.flac', '/m/B/07.flac', { shuffled: true }), false, 'a shuffled queue is one disc: it plays to its end');
 });
 
 test('END OF DISC in the changer: the disc is its slot', () => {

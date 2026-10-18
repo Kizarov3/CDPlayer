@@ -316,9 +316,11 @@ function writeLastPath(dir) { if (dir && safePath(dir)) writeText(FILES.lastPath
 // Downloads or a playlist saved on the Desktop (which only move where the next dialog opens) never change the shelf.
 // Before there was a list, the music folder was the last folder a dialog had opened in: that one, kept as the list
 // the first time it's asked for.
+let knownFolders = null; // the list as last read: for a moment the file can't be (another program has it open)
 function readMusicFolders() {
   const text = readText(FILES.musicFolders);
-  if (text !== null) return text.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (text !== null) return (knownFolders = text.split('\n').map((l) => l.trim()).filter(Boolean));
+  if (isFile(file(FILES.musicFolders))) return knownFolders || []; // there, but unreadable just now: never started over
   const last = readLastPath();
   writeMusicFolders(last ? [last] : []);
   return last ? [last] : [];
@@ -327,6 +329,8 @@ function writeMusicFolders(dirs) {
   const list = [...new Set(dirs.filter((d) => d && safePath(d)))];
   return writeText(FILES.musicFolders, list.length ? `${list.join('\n')}\n` : '');
 }
+/** No music folder chosen yet (the list read, and empty) — not merely a list that couldn't be read. */
+const noMusicFolderYet = () => readMusicFolders().length === 0 && readText(FILES.musicFolders) !== null;
 /** The music folders that are there now (an external drive unplugged stays on the list, and is read once it's back). */
 const musicFolders = () => readMusicFolders().filter(isDir);
 
@@ -339,5 +343,5 @@ module.exports = {
   dataDir, file, FILES, readText, writeText, isFile, isDir,
   readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, readChangerQueue, writeQueue, readHistory, writeHistory, HISTORY_LIMIT,
   readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readFirstPlayed, writeFirstPlayed, readDust, writeDust, readNotes, writeNotes, readHiddenMissing, writeHiddenMissing, readWrap, writeWrap, readShelfColors, writeShelfColors,
-  readEqPresets, writeEqPresets, readLastPath, writeLastPath, readMusicFolders, writeMusicFolders, musicFolders, isOnboarded, markOnboarded, readLastVersion, writeLastVersion,
+  readEqPresets, writeEqPresets, readLastPath, writeLastPath, readMusicFolders, writeMusicFolders, musicFolders, noMusicFolderYet, isOnboarded, markOnboarded, readLastVersion, writeLastVersion,
 };

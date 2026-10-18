@@ -8,12 +8,13 @@ import { colors } from './theme.js';
 export const SEGMENTS = { 0: 'abcdef', 1: 'bc', 2: 'abdeg', 3: 'abcdg', 4: 'bcfg', 5: 'acdfg', 6: 'acdefg', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg', '-': 'g', ' ': '' };
 
 /**
- * A time as the display's cells: a sign (− for the time left), the minutes in two cells or more (no leading zero), a
- * colon, the seconds — always as wide, so the digits never move. 187 s → ' 3:07', left → '-3:07'.
+ * A time as the display's cells: the minutes in two cells or more (no leading zero) with a cell before them for the
+ * sign (− right before the minutes, for the time left), a colon, the seconds — always as wide, so the digits never
+ * move. 187 s → '  3:07', left → ' -3:07'.
  */
 export function timeCells(seconds, { left = false } = {}) {
-  const s = Math.max(0, Math.floor(seconds || 0)), m = String(Math.floor(s / 60));
-  return `${left ? '-' : ' '}${m.padStart(2, ' ')}:${String(s % 60).padStart(2, '0')}`;
+  const s = Math.max(0, Math.floor(seconds || 0)), m = `${left ? '-' : ''}${Math.floor(s / 60)}`;
+  return `${m.padStart(3, ' ')}:${String(s % 60).padStart(2, '0')}`;
 }
 /** A track number as two cells: 3 → '03'; none → '--'. */
 export const trackCells = (n) => (n > 0 ? String(Math.min(99, n)).padStart(2, '0') : '--');
@@ -50,7 +51,8 @@ function drawCells(g, text, h, lit, ghost) {
     x += step;
   }
 }
-const cellsWidth = (text, h) => [...text].reduce((sum, ch) => sum + (ch === ':' ? h * 0.32 : h * 0.72), 0) + h * SLANT;
+// (the last digit's gap after it isn't part of it: the time lines up with what's above it)
+const cellsWidth = (text, h) => [...text].reduce((sum, ch) => sum + (ch === ':' ? h * 0.32 : h * 0.72), 0) - (text.endsWith(':') ? 0 : h * 0.16) + h * SLANT;
 
 export class DeckDisplay {
   constructor({ track, time, of, total, flags }) {
@@ -79,12 +81,13 @@ export class DeckDisplay {
   // The theme's colour moved (a theme change fades): drawn again in it.
   tick() { this.draw(); }
   draw() {
-    const color = colors.accent.join(',');
+    const color = `${colors.accent.join(',')}@${window.devicePixelRatio || 1}`; // (moved to a sharper screen: drawn again)
     if (this.shown.color !== color) { this.shown = { track: null, time: null, color }; }
     if (this.shown.track !== this.track) { this.paint(this.trackCanvas, this.track, color); this.shown.track = this.track; }
     if (this.shown.time !== this.time) { this.paint(this.timeCanvas, this.time, color); this.shown.time = this.time; }
   }
-  paint(canvas, text, color) {
+  paint(canvas, text, key) {
+    const color = key.split('@')[0];
     // (the digits' height is the canvas's data-h; it's drawn bigger by the glow all round, which overhangs its place)
     const h = Number(canvas.dataset.h) || 30, dpr = window.devicePixelRatio || 1, glow = Math.round(h * 0.28);
     const w = Math.ceil(cellsWidth(text, h) + glow * 2);
@@ -99,9 +102,10 @@ export class DeckDisplay {
     // The dark segments first, then the lit ones twice: once blurred for the glow, once sharp.
     g.shadowBlur = 0;
     drawCells(g, text.replace(/[^:]/g, '8'), h, `rgba(${color},0.07)`, `rgba(${color},0.07)`);
-    g.shadowColor = `rgba(${color},0.85)`; g.shadowBlur = glow;
-    drawCells(g, text, h, `rgb(${color})`, 'rgba(0,0,0,0)');
+    // (a little under full strength: PLAY stays the brightest thing in the theme's colour)
+    g.shadowColor = `rgba(${color},0.7)`; g.shadowBlur = glow;
+    drawCells(g, text, h, `rgba(${color},0.9)`, 'rgba(0,0,0,0)');
     g.shadowBlur = 0;
-    drawCells(g, text, h, `rgb(${color})`, 'rgba(0,0,0,0)');
+    drawCells(g, text, h, `rgba(${color},0.9)`, 'rgba(0,0,0,0)');
   }
 }

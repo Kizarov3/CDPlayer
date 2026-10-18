@@ -111,16 +111,18 @@ function readCacheFile() {
 // otherwise the whole shelf would look newly added.
 function readCache(folders) {
   const c = readCacheFile(), wanted = [].concat(folders || []);
-  if (!c || !wanted.some((f) => c.folders.includes(f))) return null;
+  if (!c || !wanted.some((f) => c.folders.some((cf) => overlaps(f, cf)))) return null;
   if (c.version === CACHE_VERSION) return c.tracks;
   return Object.fromEntries(Object.entries(c.tracks).map(([p, e]) => [p, { ...e, stamp: null }]));
 }
 /** Whether the cache has read every one of `folders` (a folder just added: not yet). */
 function cacheHas(folders) {
   const c = readCacheFile();
-  return !!c && folders.every((f) => c.folders.includes(f));
+  return !!c && folders.every((f) => c.folders.some((cf) => f === cf || isUnder(f, cf)));
 }
 const isUnder = (p, dir) => p.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep);
+// One folder the same as the other, or inside it (a folder added that holds one already read, or the other way round).
+const overlaps = (a, b) => a === b || isUnder(a, b) || isUnder(b, a);
 /** The music folders as one name: "Music", or "Music · Jazz Drive". */
 const folderNames = (folders) => folders.map((f) => path.basename(f) || f).join(' · ');
 async function statOf(p) {
@@ -191,7 +193,10 @@ function scanAlbums(onProgress) {
       }
     }
     await Promise.all(Array.from({ length: CONCURRENCY }, worker));
-    store.writeText(CACHE_FILE, JSON.stringify({ version: CACHE_VERSION, folders, tracks: fresh }));
+    // A folder on the list but not there now (a drive unplugged): what was read in it is kept for when it's back.
+    const away = store.readMusicFolders().filter((f) => !folders.includes(f) && before.some((b) => overlaps(b, f)));
+    for (const [p, e] of Object.entries(cached)) if (!fresh[p] && away.some((f) => isUnder(p, f))) fresh[p] = e;
+    store.writeText(CACHE_FILE, JSON.stringify({ version: CACHE_VERSION, folders: [...folders, ...away], tracks: fresh }));
     const albums = groupAlbums(tracks);
     onShelf = byTrack(albums);
     return { folder: folders[0], folders, name: folderNames(folders), albums };

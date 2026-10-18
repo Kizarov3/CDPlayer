@@ -687,7 +687,7 @@ export class Disc {
       const cs = side + 60, r = 11, bx = cx + cs / 2 - 22, by = cy + cs / 2 - 22;
       this.flipRect = { x: bx, y: by, r };
       g.save();
-      g.fillStyle = 'rgba(0,0,0,0.45)'; g.strokeStyle = rgb(colors.accent, 0.6); g.lineWidth = 1.2;
+      g.fillStyle = 'rgba(0,0,0,0.45)'; g.strokeStyle = 'rgba(255,255,255,0.22)'; g.lineWidth = 1.2;
       g.beginPath(); g.arc(bx, by, r, 0, Math.PI * 2); g.fill(); g.stroke();
       g.fillStyle = rgb(colors.accent2); g.font = `bold 13px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillText('⟲', bx, by + 1);

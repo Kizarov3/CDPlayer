@@ -362,7 +362,7 @@ function buildSettings(app) {
     hint(t('Five discs in a carousel instead of the queue: albums go in as discs, with DISC SKIP (D) and 1–5. The queue and the changer each keep their own music.')),
     sliderRow(t('SLEEP TIMER'), sleep, sleepValue),
     row(t('…OR AT THE END OF THE DISC'), sleepAtEnd),
-    hint(t('Stops once the album playing (a changer disc, or the folder it’s in) has ended, instead of going on into the next.')),
+    hint(t('Stops once the album playing has ended (a changer disc, or the folder its songs are in) instead of going on into the next. A shuffled queue plays to its end.')),
     sliderRow(t('LYRICS OFFSET'), lyricsOffset, offsetValue),
     hint(t('Karaoke and the lyrics already follow what you hear, Bluetooth included. Move them if a song’s lyrics are timed a little off.')),
     row(t('MINI MODE'), mini), gap(18),
@@ -400,7 +400,7 @@ let menuLayer = null;
  * A small menu under `anchor` (an element, or where one was); items are { label, swatch (CSS background, optional),
  * current, pick, more (optional: ✎ and right-click, given where the item is) } or { divider: true }.
  */
-function showMenu(anchor, items) {
+function showMenu(anchor, items, { alignEnd = false } = {}) {
   const box = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;
   closeMenu();
   const menu = el('div', { class: 'theme-menu' }, items.map((item) => {
@@ -417,12 +417,13 @@ function showMenu(anchor, items) {
   const layerNode = el('div', { class: 'theme-menu-layer', onMousedown: (e) => { if (e.target === layerNode) closeMenu(); } }, menu);
   layer().append(layerNode);
   const m = { width: menu.offsetWidth, height: menu.offsetHeight }; // (its laid-out size: the opening animation scales it)
-  menu.style.left = `${Math.max(4, Math.min(box.left, window.innerWidth - m.width - 4))}px`;
+  menu.style.left = `${Math.max(4, Math.min(alignEnd ? box.right - m.width : box.left, window.innerWidth - m.width - 4))}px`;
+  if (alignEnd) menu.style.transformOrigin = 'top right';
   menu.style.top = `${Math.max(4, Math.min(box.bottom + 6, window.innerHeight - m.height - 4))}px`;
   menuLayer = layerNode;
 }
 /** A list to pick from under `anchor`: the shelf's SORT, and its Discogs pressings (OTHER PRESSING… and CHOOSE PRESSING…). */
-export function menu(anchor, items) { showMenu(anchor, items); }
+export function menu(anchor, items, opts) { showMenu(anchor, items, opts); }
 export function closeMenu() {
   if (menuLayer) { menuLayer.remove(); menuLayer = null; }
   if (settingsStale) { settingsStale = false; if (isOpen('settings')) refreshPanel('settings'); }

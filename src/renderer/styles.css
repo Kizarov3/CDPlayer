@@ -138,16 +138,18 @@ body.cd-view #cd-info { display: block !important; }
   background: repeating-linear-gradient(0deg, rgba(255, 255, 255, .022) 0 1px, transparent 1px 3px), linear-gradient(rgba(0, 0, 0, .66), rgba(0, 0, 0, .52));
   box-shadow: inset 0 2px 7px rgba(0, 0, 0, .75), inset 0 0 0 1px rgba(0, 0, 0, .6), 0 1px 0 rgba(255, 255, 255, .07);
 }
-.vfd-label { font-size: 8px; letter-spacing: .14em; color: rgba(var(--accent), .5); white-space: nowrap; }
+.vfd-label { font-size: 10px; line-height: 12px; letter-spacing: .12em; color: rgba(var(--accent), .72); white-space: nowrap; }
 .vfd-track { display: flex; flex-direction: column; gap: 5px; }
 .vfd-digits { display: flex; align-items: flex-end; gap: 7px; height: 26px; }
 #vfd-track, #vfd-time { display: block; flex: none; }
-#vfd-of { font-size: 10px; color: rgba(var(--accent), .55); font-variant-numeric: tabular-nums; }
-.vfd-flags { flex: 1; min-width: 0; display: flex; gap: 12px; justify-content: center; align-items: center; font-size: 9px; letter-spacing: .12em; overflow: hidden; }
-.vfd-flag { color: rgba(var(--accent), .13); transition: color 160ms ease, text-shadow 160ms ease; }
+#vfd-of { font-size: 11px; color: rgba(var(--accent), .7); font-variant-numeric: tabular-nums; }
+/* (on the digits' line: below as much as the labels above them take) */
+.vfd-flags { flex: 1; min-width: 0; align-self: stretch; padding-top: 17px; display: flex; gap: 12px; justify-content: center; align-items: center; font-size: 10px; letter-spacing: .1em; overflow: hidden; }
+.vfd-flag { color: rgba(var(--accent), .22); transition: color 160ms ease, text-shadow 160ms ease; }
 .vfd-flag.lit { color: rgb(var(--accent)); text-shadow: 0 0 6px rgba(var(--accent), .8); }
 .vfd-flag[data-flag="one"] { margin-left: -8px; }
 .vfd-time { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; cursor: pointer; }
+.vfd-time:hover .vfd-label { color: rgb(var(--accent)); } /* it's a button: TIME */
 #vfd-total { font-variant-numeric: tabular-nums; }
 /* One row: shuffle · skip back · previous · PLAY · next · skip forward · repeat, centered in the column. */
 #controls { margin-top: 16px; display: flex; justify-content: center; align-items: center; min-height: 68px; }
@@ -413,14 +415,15 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 /* ---- Theme picker menu ---- */
 .theme-menu-layer { position: absolute; inset: 0; pointer-events: auto; }
 .theme-menu {
-  position: absolute; background: rgb(var(--card)); border: 1px solid rgba(255, 255, 255, .118);
-  display: flex; flex-direction: column; padding: 2px 0; max-height: calc(100vh - 16px); overflow-y: auto;
+  position: absolute; background: rgb(var(--card)); border: 1px solid rgba(255, 255, 255, .118); border-radius: 10px;
+  display: flex; flex-direction: column; padding: 4px; max-height: calc(100vh - 16px); overflow-y: auto;
 }
 .theme-menu { transform-origin: top left; animation: menuIn 180ms var(--ease-out); } /* opens out of what was clicked */
 @keyframes menuIn { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
-.theme-item { display: flex; align-items: center; gap: 10px; padding: 8px 16px 8px 12px; font-size: 11px; color: rgb(var(--text)); cursor: pointer; }
+.theme-item { display: flex; align-items: center; gap: 10px; padding: 8px 16px 8px 12px; border-radius: 6px; font-size: 11px; color: rgb(var(--text)); cursor: pointer; }
 .theme-item:hover { background: rgba(255, 255, 255, .06); }
 .theme-item.current { color: rgb(var(--accent)); }
+.theme-item.current .grow::after { content: "  ✓"; }
 .menu-divider { height: 1px; margin: 4px 0; background: rgba(255, 255, 255, .118); }
 .menu-more { opacity: 0; padding: 0 2px 0 10px; color: rgb(var(--muted)); }
 .theme-item:hover .menu-more { opacity: 1; }
@@ -522,7 +525,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 #shelf-title { font-size: 16px; color: rgb(var(--accent)); white-space: nowrap; }
 #shelf-count { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 10px; color: rgb(var(--muted)); white-space: nowrap; }
 /* A narrow window: the count and the search field give way, so the buttons (CLOSE last) always fit. */
-#shelf-filter { flex: 0 12 220px; width: 220px; min-width: 80px; } /* gives way first: the count (the shelf's worth) last */
+#shelf-filter { flex: 0 12 220px; width: 220px; min-width: 80px; border-radius: 8px; } /* gives way first: the count (the shelf's worth) last */
 #shelf-head .pill { flex: none; }
 #shelf-here { padding: 4px 12px; font-size: 15px; line-height: 1; } /* ⌖ alone: the room goes to the shelf's count */
 #shelf-body { flex: 1 1 auto; min-height: 0; padding: 18px 6px 40px; }
