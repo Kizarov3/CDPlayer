@@ -80,6 +80,7 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
     $req = ConvertFrom-Json $line
     switch ($req.op) {
       'drives' { Send ([ordered]@{ id = $req.id; ok = $true; drives = @(Get-Drives) }) $null }
+      'optical' { Send ([ordered]@{ id = $req.id; ok = $true; drives = @([IO.DriveInfo]::GetDrives() | Where-Object { $_.DriveType -eq 'CDRom' } | ForEach-Object { $_.Name.TrimEnd('\') }) }) $null }
       'toc' { Send ([ordered]@{ id = $req.id; ok = $true }) ([CdIo]::Toc($req.drive)) }
       'read' { Send ([ordered]@{ id = $req.id; ok = $true }) ([CdIo]::Read($req.drive, [long]$req.lba, [int]$req.count)) }
       'eject' { [CdIo]::Eject($req.drive); Send ([ordered]@{ id = $req.id; ok = $true }) $null }

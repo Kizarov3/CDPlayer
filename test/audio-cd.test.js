@@ -103,6 +103,7 @@ test('Windows: the disc in a drive, read through the CD helper, with its cdda://
   process.env.CDPLAYER_WIN_CD_HELPER = JSON.stringify([process.execPath, path.join(__dirname, 'fixtures', 'fake-cd-helper.js')]);
   try {
     const winCd = require('../src/main/win-cd');
+    winCd.mediaIn = async (d) => d === 'F:'; // a disc in F: (the stand-in helper's drives are D: and F:)
     const { findDiscs } = require('../src/main/audio-cd');
     const [disc, ...others] = await findDiscs();
     assert.strictEqual(others.length, 0);
@@ -128,6 +129,7 @@ test('Windows: a check that fails (the helper busy or restarting) is not an ejec
   process.env.CDPLAYER_WIN_CD_HELPER = JSON.stringify([process.execPath, path.join(__dirname, 'fixtures', 'fake-cd-helper.js')]);
   const winCd = require('../src/main/win-cd');
   const { drives, readToc } = winCd;
+  winCd.mediaIn = async (d) => d === 'F:';
   try {
     const { findDiscs } = require('../src/main/audio-cd');
     winCd.drives = async () => ['F:']; winCd.readToc = readToc;

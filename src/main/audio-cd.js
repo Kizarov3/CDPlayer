@@ -156,7 +156,19 @@ async function readDisc({ kind, mount, name }) {
 // disc is gone is forgotten, so its tracks stop playing. Only an answer that leaves a drive out means its disc is
 // gone: a check that fails (the helper busy with a slow read, or restarting) keeps the discs as they were.
 let winDiscs = []; // what the last check found
-async function findWinDiscs() {
+// Which drives are CD drives is asked of the PowerShell helper now and then (a USB drive plugged in later turns up);
+// whether one has a disc in, Node checks itself every time — so with no disc anywhere the helper isn't kept running.
+const OPTICAL_RECHECK_MS = 5 * 60 * 1000;
+let optical = null, opticalAt = 0;
+async function findWinDiscs({ now = Date.now(), mediaIn = winCd.mediaIn } = {}) {
+  if (!optical || now - opticalAt >= OPTICAL_RECHECK_MS) {
+    try { optical = await winCd.opticalDrives(); opticalAt = now; } catch { optical = null; } // (no list: asked as before, below)
+  }
+  if (optical) {
+    const loaded = [];
+    for (const drive of optical) if (await mediaIn(drive)) loaded.push(drive);
+    if (!loaded.length) { winCd.keepOnly(new Set()); winDiscs = []; winCd.release(); return winDiscs; }
+  }
   let drives;
   try { drives = await winCd.drives(); } catch { return winDiscs; }
   const discs = [], seen = new Set();
@@ -242,4 +254,4 @@ async function nameDisc(disc, { fetchMb, fetchCover, isCurrent = () => true }) {
 }
 function forgetDisc(disc) { for (const p of disc.tracks) names.delete(p); }
 
-module.exports = { cddaMounts, discId, tocParam, parsePlist, tocFromPlist, tocFromSectors, findDiscs, nameDisc, forgetDisc, detailsFor, releaseFor };
+module.exports = { cddaMounts, discId, tocParam, parsePlist, tocFromPlist, tocFromSectors, findDiscs, nameDisc, forgetDisc, detailsFor, releaseFor, _findWinDiscs: findWinDiscs };

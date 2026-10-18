@@ -176,9 +176,24 @@ const setTimeoutMs = (ms) => { timeoutMs = ms; }; // (tests)
 const driveList = (d) => [].concat(d == null ? [] : d).flat(Infinity).filter((x) => typeof x === 'string');
 /** The CD drives with a disc in them right now: ['F:'…]. */
 async function drives() { return driveList((await send('drives')).header.drives); }
+/** Every CD drive, a disc in it or not: ['D:', 'F:'…]. */
+async function opticalDrives() { return driveList((await send('optical')).header.drives); }
+const running = () => !!helper;
+// Lets the helper go while nothing's asked of it (no disc in any drive): PowerShell is ~125 MB kept for nothing. Not a
+// death — the next request starts it again.
+function release() {
+  const child = helper;
+  if (!child || pending.size) return;
+  helper = null;
+  child.stdin.end();
+  setTimeout(() => { if (child.exitCode === null) child.kill(); }, 2000).unref();
+}
+// Whether a drive has anything in it, without the helper: an empty CD drive's root answers "not ready" at once (Node
+// keeps Windows from asking to insert a disc), a drive with a disc — audio (its .cda tracks) or data — answers.
+const mediaIn = (drive, stat = require('fs').promises.stat) => stat(`${drive}\\`).then(() => true, () => false);
 async function readToc(drive) { return parseToc((await send('toc', { drive })).payload); }
 /** `count` raw sectors from `lba`: count × 2352 bytes (a sector that won't read comes back silent). */
 async function readSectors(drive, lba, count) { return (await send('read', { drive, lba, count })).payload; }
 async function eject(drive) { await send('eject', { drive }); }
 
-module.exports = { SECTOR, HEADER, parseToc, FrameParser, trackPath, parseTrackPath, remember, keepOnly, trackInfo, wavHeader, sectorSpan, driveList, drives, readToc, readSectors, eject, available, _send: send, _setTimeout: setTimeoutMs };
+module.exports = { SECTOR, HEADER, parseToc, FrameParser, trackPath, parseTrackPath, remember, keepOnly, trackInfo, wavHeader, sectorSpan, driveList, drives, opticalDrives, running, release, mediaIn, readToc, readSectors, eject, available, _send: send, _setTimeout: setTimeoutMs };
