@@ -306,6 +306,19 @@ test('a phone that keeps reading is never dropped, however much it is sent', asy
   s.close();
 });
 
+test('a phone that keeps reading stays when one state is bigger than the limit (a queue of thousands of songs)', async (t) => {
+  const { remote, port } = await serve(t);
+  const s = await events(port);
+  await s.waitFor(1);
+  const huge = { rev: 3, pad: 'x'.repeat(400 * 1024) };
+  for (let k = 0; k < 3; k++) {
+    remote.broadcast(huge);
+    await until(() => s.list.length >= k + 2 || s.ended || !remote.phones().length);
+    assert.strictEqual(remote.phones().length, 1, `dropped at state ${k + 1}`);
+  }
+  s.close();
+});
+
 test('a browser that is neither iPhone nor Android is named Browser', async (t) => {
   const { remote, port } = await serve(t);
   const s = await events(port, { 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Firefox/131.0' });

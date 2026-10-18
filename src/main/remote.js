@@ -130,17 +130,16 @@ function createRemote({ address, port, token, files = {}, snapshot, command, alb
     phonesChanged();
   }
 
-  // `text` to every open stream; one with more than BACKLOG_LIMIT still waiting to go is dropped (and gone at once).
+  // `text` to every open stream; one with more than BACKLOG_LIMIT still waiting to go from before is dropped (and
+  // gone at once) — measured before this write, so one big state (a queue of thousands of songs) isn't taken for it.
   function toStreams(text) {
     let dropped = false;
     for (const [id, c] of clients) {
-      c.res.write(text);
-      if (c.res.writableLength > BACKLOG_LIMIT) {
-        clients.delete(id);
-        c.res.destroy();
-        dropped = true;
-        log(`phone remote: a phone (${c.name}) stopped reading; dropped`);
-      }
+      if (c.res.writableLength <= BACKLOG_LIMIT) { c.res.write(text); continue; }
+      clients.delete(id);
+      c.res.destroy();
+      dropped = true;
+      log(`phone remote: a phone (${c.name}) stopped reading; dropped`);
     }
     if (dropped) phonesChanged();
   }
