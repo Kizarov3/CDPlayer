@@ -719,7 +719,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   setPlaying(autoPlay);
   if (fade) setStatus(t('CROSSFADING'));
   else if (!autoPlay) setStatus(t('TRACK LOADED'));
-  $('length').textContent = formatTime(engine.duration);
+  $('length').textContent = lengthText();
   updateProgressUi(true);
   renderQueue(); saveQueueSoon();
 
@@ -1190,6 +1190,7 @@ function turnJog(radians, ms) {
   if (now - jog.sentAt < (jog.audible ? JOG_SEEK_MS : JOG_SPOTIFY_SEEK_MS)) {
     progress.setValue(dur ? Math.round((jog.target * 1000) / dur) : 0);
     setText($('elapsed'), formatTime(jog.target));
+    if (showRemaining) setText($('length'), lengthText(jog.target));
     return;
   }
   jog.sentAt = now; jog.unsent = false;
@@ -1338,7 +1339,7 @@ async function loadSpotify(path, token, { autoPlay, startAt }) {
   if (token !== state.loadToken) return;
   setPlaying(autoPlay && engine.playing);
   if (!autoPlay) setStatus(t('TRACK LOADED'));
-  $('length').textContent = formatTime(engine.duration);
+  $('length').textContent = lengthText();
   updateProgressUi(true);
   renderQueue(); saveQueueSoon();
   panels.refreshSettingsIfOpen(app);
@@ -2279,7 +2280,7 @@ const repeatButton = modeButton('REPEAT', t('Repeat'), cycleRepeat);
 let seeking = false;
 const progress = new Slider({
   min: 0, max: 1000, waveform: true,
-  onInput: (v) => { seeking = true; $('elapsed').textContent = formatTime((engine.duration * v) / 1000); },
+  onInput: (v) => { seeking = true; $('elapsed').textContent = formatTime((engine.duration * v) / 1000); if (showRemaining) $('length').textContent = lengthText((engine.duration * v) / 1000); },
   onChange: (v) => { seeking = false; seekTo((engine.duration * v) / 1000); },
 }).mount($('progress-row'));
 const volumeSlider = new Slider({ min: 0, max: 100, value: 100, onInput: (v) => { state.volumeBeforeMute = -1; setVolume(v, { fromSlider: true }); } }).mount($('volume-slider'));
@@ -2295,6 +2296,7 @@ function buildStaticUi() {
     repeatButton);
 
   $('load-button').addEventListener('click', choose);
+  $('length').addEventListener('click', toggleRemaining);
   $('save-playlist-button').addEventListener('click', savePlaylist);
   $('load-playlist-button').addEventListener('click', loadPlaylist);
   $('search-button').addEventListener('click', () => panels.showSearch(app));
@@ -2390,6 +2392,11 @@ function onKeyDown(e) {
     e.preventDefault(); if (undoClear) undoClearQueue(); else undoEjectSlot(); return;
   }
   if (state.changerMode && (e.metaKey || e.ctrlKey) && e.code === 'KeyZ' && !e.shiftKey && !isTyping(e)) { e.preventDefault(); setStatus(t('NOTHING TO BRING BACK')); return; }
+  // ⌘/Ctrl+O opens songs, ⌘/Ctrl+, the settings: a desktop app's own keys (no menu bar has them; Windows and Linux
+  // have no menu bar at all).
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.code === 'KeyO' || e.code === 'Comma') && !anyOverlayOpen()) {
+    e.preventDefault(); if (!e.repeat) $(e.code === 'KeyO' ? 'load-button' : 'settings-button').click(); return;
+  }
   if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return;
   const key = shortcutKey(e);
   if (key === 'm') { e.preventDefault(); setMiniMode(!state.miniMode); return; }
@@ -2435,6 +2442,19 @@ function updateProgressUi(force = false) {
   const v = dur ? Math.round((pos * 1000) / dur) : 0;
   progress.setValue(v);
   setText($('elapsed'), formatTime(pos));
+  if (showRemaining) setText($('length'), lengthText(pos));
+}
+// The time on the right: the song's length — or, clicked, what's left of it counting down, like a CD deck's TIME
+// button. Which one stays chosen (in this window's storage: it's only how the clock reads).
+let showRemaining = false;
+try { showRemaining = localStorage.getItem('timeRemaining') === '1'; } catch { /* no storage: the length */ }
+function lengthText(pos = engine.position) {
+  return showRemaining && engine.duration ? `−${formatTime(Math.max(0, engine.duration - pos))}` : formatTime(engine.duration);
+}
+function toggleRemaining() {
+  showRemaining = !showRemaining;
+  try { localStorage.setItem('timeRemaining', showRemaining ? '1' : '0'); } catch { /* kept for this run only */ }
+  $('length').textContent = lengthText(seeking || jog ? undefined : engine.position);
 }
 // Writing a label's text, even the same text, makes the page restyle and repaint it — every frame, for the clock.
 function setText(node, text) { if (node.textContent !== text) node.textContent = text; }
@@ -2546,7 +2566,7 @@ export const app = {
   setQuality, setSoundCheck, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setAnimations, setCrossfade, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setTaskbarDisc, setOutput, listOutputs, currentOutputName,
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
-  pressingMenu: (anchor, items) => panels.pressingMenu(anchor, items),
+  menu: (anchor, items) => panels.menu(anchor, items),
   choosePressingFor: (album, anchor, onChosen) => choosePressing(album, anchor, null, onChosen),
   shelfAlbumIds, discogsCurrencyChanged,
   setLanguage: (code) => { state.language = code; cdp.saveSettings(settingsSnapshot()); },

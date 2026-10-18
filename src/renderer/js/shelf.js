@@ -147,14 +147,17 @@ export function setupShelf(app) {
   $('shelf-here').addEventListener('click', goToPlayer);
   $('shelf-check').addEventListener('click', () => shelf.app.libraryCheck());
   $('shelf-filter').addEventListener('input', render);
-  $('shelf-sort').addEventListener('click', () => {
-    const { state } = shelf.app;
-    shelf.app.setShelfSort(SORTS[(SORTS.indexOf(state.shelfSort) + 1) % SORTS.length]);
+  // SORT: every way at once, in a list under the button — one click to any of them, the current one marked.
+  const sortBy = (sort) => {
+    shelf.app.setShelfSort(sort);
     // (Prices to sort by: the shelf is appraised for them — unless the user stopped an appraisal; then by what's known.)
-    if (state.shelfSort === 'PRICE' && !shelf.appraised && !shelf.appraisalStopped && !(shelf.appraising && !shelf.appraising.finished)) appraise();
+    if (sort === 'PRICE' && !shelf.appraised && !shelf.appraisalStopped && !(shelf.appraising && !shelf.appraising.finished)) appraise();
     render();
     $('shelf-body').scrollTop = 0;
-  });
+  };
+  $('shelf-sort').addEventListener('click', () => shelf.app.menu($('shelf-sort'), SORTS.map((sort) => ({
+    label: SORT_LABELS[sort], current: sort === shelf.app.state.shelfSort, pick: () => { if (sort !== shelf.app.state.shelfSort) sortBy(sort); },
+  }))));
   app.cdp.onDiscography(({ key, state, groups }) => {
     shelf.discogs.set(key, { state, groups });
     if (shelf.open && shelf.app.state.shelfSort === 'ARTIST') redraw.request();
@@ -919,7 +922,7 @@ export async function choosePressing(a, anchor, masterId, onChosen = () => {}) {
     if (anchor.isConnected && !anchor.dataset.label) { anchor.dataset.label = anchor.textContent; anchor.textContent = why; setTimeout(() => { anchor.textContent = anchor.dataset.label; delete anchor.dataset.label; }, 3000); }
     return;
   }
-  shelf.app.pressingMenu(box, list.map((v) => ({
+  shelf.app.menu(box, list.map((v) => ({
     label: [masterId ? null : v.title, v.label, v.catno, v.country, v.year, v.format].filter(Boolean).join(' · '),
     pick: async () => {
       const entry = await shelf.app.cdp.discogsChoose(albumQuery(a), v.id);

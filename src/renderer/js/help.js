@@ -88,4 +88,6 @@ export const SHORTCUTS = [
   ['`?`', t('These keyboard shortcuts')],
   ['`Esc`', t('Close whatever\'s open, or leave fullscreen / CD view / Visualizer Mode / Mini Mode')],
   ['`⌘Z` / `Ctrl+Z`', t('Bring back what CLEAR or EJECT just took out')],
+  ['`⌘O` / `Ctrl+O`', t('Open songs to play (LOAD A TRACK)')],
+  ['`⌘,` / `Ctrl+,`', t('Settings')],
 ];

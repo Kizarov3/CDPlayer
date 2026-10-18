@@ -416,8 +416,8 @@ function showMenu(anchor, items) {
   menu.style.top = `${Math.max(4, Math.min(box.bottom + 6, window.innerHeight - m.height - 4))}px`;
   menuLayer = layerNode;
 }
-/** A list of Discogs pressings to pick from (the shelf's OTHER PRESSING… and CHOOSE PRESSING…), under `anchor`. */
-export function pressingMenu(anchor, items) { showMenu(anchor, items); }
+/** A list to pick from under `anchor`: the shelf's SORT, and its Discogs pressings (OTHER PRESSING… and CHOOSE PRESSING…). */
+export function menu(anchor, items) { showMenu(anchor, items); }
 export function closeMenu() {
   if (menuLayer) { menuLayer.remove(); menuLayer = null; }
   if (settingsStale) { settingsStale = false; if (isOpen('settings')) refreshPanel('settings'); }

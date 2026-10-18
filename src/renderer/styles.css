@@ -130,7 +130,8 @@ body.cd-view #cd-info { display: block !important; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 #progress-row { margin-top: 28px; height: 20px; }
-#times { display: flex; justify-content: space-between; font-size: 11px; font-weight: normal; color: rgb(var(--muted)); height: 16px; }
+#times { display: flex; justify-content: space-between; font-size: 11px; font-weight: normal; color: rgb(var(--muted)); height: 16px; font-variant-numeric: tabular-nums; }
+#length { cursor: pointer; } /* clicked: the time left */
 /* One row: shuffle · skip back · previous · PLAY · next · skip forward · repeat, centered in the column. */
 #controls { margin-top: 20px; display: flex; justify-content: center; align-items: center; min-height: 68px; }
 #transport { display: flex; align-items: center; }
@@ -164,6 +165,7 @@ body.cd-view #cd-info { display: block !important; }
 .queue-row .next-tag { flex: 0 0 auto; padding: 1px 5px; border-radius: 3px; font-size: 8px; letter-spacing: .06em; color: rgb(var(--accent2)); border: 1px solid rgba(var(--accent2), .5); }
 .queue-row .east { flex: 0 0 auto; min-width: 54px; text-align: right; padding-right: 6px; position: relative; }
 .queue-row .glyph-x { display: none; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
+.queue-row .duration { font-variant-numeric: tabular-nums; }
 .queue-row:hover .duration { visibility: hidden; }
 .queue-row:hover .glyph-x { display: inline-block; }
 .queue-row.ghost { padding-left: 36px; font-style: italic; opacity: .7; cursor: default; } /* a hidden track, under its song */

@@ -81,6 +81,8 @@ When a new version is out, an **AVAILABLE** button appears in the player's top-l
 | `?` | These keyboard shortcuts |
 | `Esc` | Close whatever's open, or leave fullscreen / CD view / Visualizer Mode / Mini Mode |
 | `⌘Z` / `Ctrl+Z` | Bring back what CLEAR or EJECT just took out |
+| `⌘O` / `Ctrl+O` | Open songs to play (LOAD A TRACK) |
+| `⌘,` / `Ctrl+,` | Settings |
 
 ## FAQ
 
