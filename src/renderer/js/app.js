@@ -24,6 +24,7 @@ import { wearFor } from './disc-wear.js';
 import { targetRate, albumRate, badgeLabel, badgeText, badgeExact, levelName, LEVELS } from './quality.js';
 import { createSoundCheck, measureFile } from './sound-check.js';
 import { seamlessNext, PREPARE_SECONDS } from './gapless.js';
+import { frameGap, glowSize } from './render-budget.js';
 import { detectHidden, hiddenPhase, countdown, hiddenName, displayTitle, shownTitle, splitTitle } from './hidden-track.js';
 import { pickOutput, outputName } from './output.js';
 import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged } from './shelf.js';
@@ -58,6 +59,7 @@ const state = {
   changer: { slots: Array(changer.SLOTS).fill(null), nextDisc: null }, // the slots over queue and index (changer.js)
   changerMode: false,  // Settings → CHANGER: the five-disc changer instead of the queue (each keeps its own music)
   hidden: null, hiddenPhase: null, // the playing file's hidden track and where the position is in it (hidden-track.js)
+  softwareRendering: false, // the window put together without the graphics card (gpu-status.js, render-budget.js)
   nextUp: null,        // the queue's { start, end }: the run put to PLAY NEXT (play-next.js)
   volume: 100, volumeBeforeMute: -1, crossfade: 0, mono: false, spatial: false, spatialAmount: 50, waveform: true, ambient: true, miniMode: false, discord: true, discNoise: false, discWear: true, discShine: true, taskbarDisc: true,
   trayBusy: false, // the tray is moving or the disc is being read: transport presses wait
@@ -1642,17 +1644,20 @@ function applyThemeModes(theme) {
   panels.updateThemeButton(app, theme.name);
 }
 let shownTheme = THEMES[0]; // the theme on screen: the one chosen, or the one being made in the editor
-let glowFade = 0;
+let glowFade = 0, glowResize = 0;
+const glowSmall = Object.assign(document.createElement('canvas'), { width: 48, height: 48 }); // the glow, before stretching
 function paintCoverGlow() {
   const backdrop = $('backdrop'), art = $('backdrop-art');
   if (!shownTheme.image && state.ambient && state.cover) {
-    // A 48×48 center crop, stretched to fill the window — the browser's bilinear upscale makes it a soft glow.
-    // The glow there before (another album's) fades into this one, rather than the background jumping.
-    const had = backdrop.classList.contains('has-art') && art.width === 48;
+    // A 48×48 center crop, stretched to fill the window — the browser's bilinear upscale makes it a soft glow. Drawn
+    // without the graphics card, it's stretched here once instead (render-budget.js), as the upscale would be redone on
+    // every frame. The glow there before (another album's) fades into this one, rather than the background jumping.
+    const had = backdrop.classList.contains('has-art');
     const before = had && anim.enabled ? Object.assign(document.createElement('canvas'), { width: 48, height: 48 }) : null;
-    if (before) before.getContext('2d').drawImage(art, 0, 0);
-    art.width = art.height = 48;
-    const g = art.getContext('2d');
+    if (before) before.getContext('2d').drawImage(glowSmall, 0, 0);
+    const size = glowSize({ software: state.softwareRendering, width: innerWidth, height: innerHeight, dpr: window.devicePixelRatio || 1 });
+    if (art.width !== size.width || art.height !== size.height) { art.width = size.width; art.height = size.height; }
+    const g = glowSmall.getContext('2d'), out = art.getContext('2d');
     const cover = state.cover, iw = cover.naturalWidth, ih = cover.naturalHeight, s = Math.min(iw, ih);
     const draw = (f) => {
       g.globalAlpha = 1;
@@ -1660,6 +1665,8 @@ function paintCoverGlow() {
       g.globalAlpha = before ? f : 1;
       g.drawImage(cover, (iw - s) / 2, (ih - s) / 2, s, s, 0, 0, 48, 48);
       g.globalAlpha = 1;
+      out.imageSmoothingEnabled = true; out.imageSmoothingQuality = 'high';
+      out.drawImage(glowSmall, 0, 0, art.width, art.height);
     };
     cancelAnimationFrame(glowFade);
     if (before) {
@@ -1671,6 +1678,8 @@ function paintCoverGlow() {
     backdrop.classList.add('has-art');
   } else backdrop.classList.remove('has-art');
 }
+// The window resized while the glow is stretched here: stretched again once it has settled (not on every step).
+function paintCoverGlowSoon() { clearTimeout(glowResize); glowResize = setTimeout(paintCoverGlow, 200); }
 // A theme's own image is the background while it's on, in place of the cover's glow.
 function applyBackdrop(theme) {
   const backdrop = $('backdrop'), img = $('backdrop-theme');
@@ -2285,10 +2294,11 @@ let last = performance.now(), idleCheck = 0;
 // While you're in another app, the window only needs to look alive: drawing it at 30 frames a second instead of 60
 // roughly halves what the spinning disc and visualizer cost. Watched — CDPlayer in front, or CD View, Visualizer Mode
 // or Karaoke on screen — it stays at full rate.
-const BACKGROUND_FRAME_MS = 1000 / 30;
+// Drawn without the graphics card, it's 30 always (render-budget.js).
 function frame(now) {
   const watched = document.hasFocus() || state.cdView || state.visualizerMode || isKaraokeOpen();
-  if (!watched && now - last < BACKGROUND_FRAME_MS - 2) { requestAnimationFrame(frame); return; }
+  const gap = frameGap({ watched, software: state.softwareRendering });
+  if (gap && now - last < gap - 2) { requestAnimationFrame(frame); return; }
   const dt = Math.min(100, now - last); last = now;
   if (engine.deck && engine.playing && !jog) { // turning the disc, the seek bar shows where it has got to (turnJog)
     updateProgressUi();
@@ -2456,6 +2466,11 @@ async function start() {
   window.addEventListener('beforeunload', saveEverythingNow);
   cdp.onAppClosing(saveEverythingNow);
   cdp.onFullscreenChanged((fs) => { state.fullscreen = fs; particles.w = 0; });
+  // Drawn without the graphics card (a VM's screen): fewer frames, the glow stretched once (render-budget.js).
+  const setSoftware = (on) => { if (state.softwareRendering !== !!on) { state.softwareRendering = !!on; paintCoverGlow(); } };
+  cdp.gpuSoftware().then(setSoftware).catch(() => {});
+  cdp.onGpuSoftware(setSoftware);
+  window.addEventListener('resize', () => { if (state.softwareRendering) paintCoverGlowSoon(); });
   cdp.onOpenFiles((files) => addToQueue(files));
   cdp.onMiniCommand(onMiniCommand);
   onColorsChanged(() => { drawDivider(); pushMini(true); });

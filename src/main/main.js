@@ -721,6 +721,11 @@ ipcMain.on('mini:command', (_e, c) => { if (win) win.webContents.send('mini-comm
 ipcMain.on('discord:track', (_e, track) => { if (!smokeDir) discord.setTrack(track); });
 handle('win:toggleFullscreen', () => { if (win && !miniMode) win.setFullScreen(!win.isFullScreen()); });
 handle('win:isFullscreen', () => !!(win && win.isFullScreen()));
+// Whether the window is put together without the graphics card (gpu-status.js) — asked once, and told again whenever
+// Chromium's view of the card changes (the graphics process falling back to software after crashes, say).
+const softwareRendering = () => require('./gpu-status').softwareCompositing(app.getGPUFeatureStatus());
+handle('gpu:software', () => softwareRendering());
+app.on('gpu-info-update', () => { if (win && !win.isDestroyed()) win.webContents.send('gpu-software', softwareRendering()); });
 // The newest release the last check found (with this system's file), and its download once one has started.
 let latestUpdate = null;
 let updateDownload = null; // { version, plan, promise → file }

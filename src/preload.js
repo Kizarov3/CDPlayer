@@ -121,6 +121,8 @@ contextBridge.exposeInMainWorld('cdp', {
   setMiniMode: invoke('win:setMiniMode'),
   toggleFullscreen: invoke('win:toggleFullscreen'),
   isFullscreen: invoke('win:isFullscreen'),
+  gpuSoftware: invoke('gpu:software'),
+  onGpuSoftware: on('gpu-software'),
   openGitHub: invoke('shell:openGitHub'),
   copyText: invoke('clipboard:write'),
   themes: {
