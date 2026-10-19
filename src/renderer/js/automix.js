@@ -113,11 +113,24 @@ export function mixPlan(out, inc) {
 /**
  * How the queue's next song follows, gapless.js having found it can follow at all → { mix, startAt }: mixed in
  * (mixPlan), or (mix null) a gapless seam at the end — from startAt, past its leading silence when that's known.
- * Plain gapless, from 0, with AUTOMIX off, for a cue track, or when the album runs on.
+ * Plain gapless, from 0, with AUTOMIX off or for a cue track; when the album runs on, albumSeam.
  */
 export function nextPlan({ automix, albumRunsOn, segment, out, inc }) {
-  if (!automix || segment || albumRunsOn) return { mix: null, startAt: 0 };
+  if (!automix || segment) return { mix: null, startAt: 0 };
+  if (albumRunsOn) return albumSeam(out, inc);
   return { mix: out ? mixPlan(out, inc || null) : null, startAt: inc ? inc.start : 0 };
+}
+
+/**
+ * An album played in order isn't mixed: its songs follow at the seam — but the silence between them (ALBUM_GAP or
+ * more, this one's end and the next one's start together) is cut, both ends of it. Songs that run into each other go
+ * on as they are. → { mix (overlap 0: the seam at the end of this one's sound) | null, startAt }.
+ */
+export const ALBUM_GAP = 0.5;
+function albumSeam(out, inc) {
+  const tail = out ? Math.max(0, out.duration - out.end) : 0, head = inc ? inc.start : 0;
+  if (tail + head < ALBUM_GAP) return { mix: null, startAt: 0 };
+  return { mix: out ? { at: out.end, overlap: 0, startAt: head, fadeIn: 0, fadeFrom: 0, fadeOut: false } : null, startAt: head };
 }
 
 /** How long before its end the playing song's next one has to be ready: the earliest a mix can start, plus `lead`. */

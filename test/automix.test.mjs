@@ -141,7 +141,7 @@ test('nextPlan: mixed only under AUTOMIX, between files, when the album doesn\'t
   const out = e(0, 200, { fadeStart: 190, settle: 194 }), inc = e(1.5, 180);
   const on = { automix: true, albumRunsOn: false, segment: null, out, inc };
   assert.deepStrictEqual(nextPlan(on), { mix: mixPlan(out, inc), startAt: 1.5 });
-  for (const change of [{ automix: false }, { albumRunsOn: true }, { segment: { start: 0, end: 60 } }]) {
+  for (const change of [{ automix: false }, { segment: { start: 0, end: 60 } }]) {
     assert.deepStrictEqual(nextPlan({ ...on, ...change }), { mix: null, startAt: 0 }, JSON.stringify(change));
   }
   // this song's edges not known (yet): a gapless seam at its end, but still past the next one's leading silence
@@ -149,6 +149,21 @@ test('nextPlan: mixed only under AUTOMIX, between files, when the album doesn\'t
   // the next one's not known: mixed, from its start
   assert.strictEqual(nextPlan({ ...on, inc: null }).startAt, 0);
   assert.ok(nextPlan({ ...on, inc: null }).mix);
+});
+
+test('nextPlan: an album played in order isn\'t mixed — only the silence between its songs is cut', () => {
+  // The Bends: 3.3 s of silence after its sound, 0.05 s before High and Dry's.
+  const out = e(1.15, 242.9), inc = e(0.05, 254.2);
+  out.duration = 246.2;
+  const album = { automix: true, albumRunsOn: true, segment: null, out, inc };
+  assert.deepStrictEqual(nextPlan(album), { mix: { at: 242.9, overlap: 0, startAt: 0.05, fadeIn: 0, fadeFrom: 0, fadeOut: false }, startAt: 0.05 });
+  // Songs that run into each other (a moment of silence at most) go on as they are, gapless.
+  const flowing = { ...album, out: { ...out, end: 246, duration: 246.2 }, inc: e(0.1, 254.2) };
+  assert.deepStrictEqual(nextPlan(flowing), { mix: null, startAt: 0 });
+  // The silence mostly at the next one's start: both ends cut all the same.
+  assert.deepStrictEqual(nextPlan({ ...flowing, inc: e(1.2, 254.2) }), { mix: { at: 246, overlap: 0, startAt: 1.2, fadeIn: 0, fadeFrom: 0, fadeOut: false }, startAt: 1.2 });
+  // Edges not known: as before.
+  assert.deepStrictEqual(nextPlan({ ...album, out: undefined, inc: undefined }), { mix: null, startAt: 0 });
 });
 
 test('prepareWindow: the usual lead, or early enough for the earliest mix', () => {

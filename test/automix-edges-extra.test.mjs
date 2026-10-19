@@ -282,7 +282,13 @@ test('nextPlan: whenever it mixes, the plan starts the next song where nextPlan 
     const frozen = JSON.stringify(args);
     const { mix, startAt } = nextPlan(args);
     assert.strictEqual(JSON.stringify(args), frozen, 'inputs untouched');
-    if (!args.automix || args.segment || args.albumRunsOn) { assert.deepStrictEqual({ mix, startAt }, { mix: null, startAt: 0 }); continue; }
+    if (!args.automix || args.segment) { assert.deepStrictEqual({ mix, startAt }, { mix: null, startAt: 0 }); continue; }
+    if (args.albumRunsOn) {
+      // an album in order: never overlapped — at most its silence cut, and the standby placed where the seam expects it
+      if (mix) { assert.strictEqual(mix.overlap, 0); assert.strictEqual(mix.startAt, startAt); assert.ok(out); }
+      assert.ok(startAt === 0 || startAt === inc.start);
+      continue;
+    }
     assert.strictEqual(startAt, inc ? inc.start : 0);
     if (!out) assert.strictEqual(mix, null);
     else { assert.ok(mix); assert.strictEqual(mix.startAt, startAt, 'the standby is placed where the mix expects it'); }
