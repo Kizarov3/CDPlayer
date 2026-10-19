@@ -1272,7 +1272,7 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
-  { version: '2.17.0', changes: [
+  { version: '2.17.1', changes: [
     '<b>A display like a CD deck&rsquo;s</b> under the seek bar: the track and time in glowing digits, PLAY / PAUSE / SHUFFLE / REPEAT lit; a click on the time counts down what&rsquo;s left (Settings &rarr; LOOK &rarr; DISPLAY: CLASSIC brings the old times back)',
     '<b>Several music folders</b>: FOLDER&hellip; &rarr; ADD ANOTHER FOLDER&hellip; puts an external drive on the shelf too; opening a song from Downloads no longer swaps the shelf',
     '<b>Shelf SORT &rarr; LAST PLAYED</b>, a list of every way to sort; <b>HISTORY by day</b>, 200 songs',
