@@ -1241,6 +1241,15 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.16.1', changes: [
+    '<b>AUTOMIX</b>: Settings &rarr; TRANSITION &rarr; AUTOMIX (off unless you pick it) &mdash; when the queue moves on to a song that isn&rsquo;t its album&rsquo;s next (shuffle, another album, the changer&rsquo;s next disc), it comes in where this one winds down instead of after its silence; an album played in order stays gapless',
+    '<b>TRANSITION</b>: OFF, AUTOMIX or CROSSFADE from one menu; CROSSFADE&rsquo;s length shows only with it',
+    '<b>No clipping while two songs overlap</b> under AUTOMIX or CROSSFADE',
+  ], changesIn: { ru: [
+    '<b>АВТОМИКС</b>: Настройки &rarr; ПЕРЕХОД &rarr; АВТОМИКС (выключен, пока не выберешь) &mdash; когда очередь переходит к песне, которая не следующая в своём альбоме (перемешивание, другой альбом, следующий диск чейнджера), она вступает там, где эта затихает, а не после её тишины; альбом по порядку по-прежнему играет без пауз',
+    '<b>ПЕРЕХОД</b>: ВЫКЛ, АВТОМИКС или КРОССФЕЙД в одном меню; длина КРОССФЕЙДА видна только с ним',
+    '<b>Без перегрузки, пока две песни звучат вместе</b> в АВТОМИКСЕ и КРОССФЕЙДЕ',
+  ] } },
   { version: '2.16.0', changes: [
     '<b>A phone remote</b>: Settings &rarr; PHONE REMOTE, scan the code with your phone&rsquo;s camera &mdash; play, pause, skip, volume, the shelf and the queue from the phone&rsquo;s browser, on the same Wi-Fi, nothing to install',
     '<b>Hidden tracks</b>: a song hidden after minutes of silence at the end of an album is found &mdash; the silence counts down, the song is named when it starts and written into the booklet',
