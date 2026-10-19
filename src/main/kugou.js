@@ -80,8 +80,12 @@ function lineStarts(lrc) {
 
 /**
  * How far `lrc`'s lines start from `reference`'s (seconds, + = later): the median over the lines that begin with the
- * same two words within a few seconds of each other. null when too few lines can be matched to tell.
+ * same two words within a few seconds of each other. null when too few lines can be matched to tell; DRIFTS when they
+ * aren't one distance apart all through — another performance or tempo, which no single move puts right.
  */
+// Seconds the gaps (but the furthest tenth either way) may spread over: Kugou's timing of the same recording stays
+// within about one; Nirvana's About A Girl, live at MTV Unplugged, runs from 2 s late to 1 s early against Bleach's.
+const DRIFT = 2, DRIFTS = 'drifts';
 function offsetFrom(lrc, reference) {
   const mine = lineStarts(lrc), theirs = lineStarts(reference), gaps = [];
   for (const line of mine) {
@@ -90,6 +94,7 @@ function offsetFrom(lrc, reference) {
   }
   if (!gaps.length || gaps.length < Math.min(3, mine.length)) return null;
   gaps.sort((a, b) => a - b);
+  if (gaps[Math.ceil(gaps.length * 0.9) - 1] - gaps[Math.floor(gaps.length * 0.1)] > DRIFT) return DRIFTS;
   return gaps[gaps.length >> 1];
 }
 
@@ -138,8 +143,9 @@ async function kugouLyrics({ artist, title, duration, reference }) {
     }));
   } catch (e) { return e && e.status ? null : UNREACHABLE; }
   versions = versions.map((lrc, i) => ({ lrc, near: apart(hits[i]) <= LENGTH_SLACK })).filter((v) => v.lrc);
-  const checked = versions.map((v) => ({ ...v, off: offsetFrom(v.lrc, reference) })).filter((v) => v.off !== null);
-  if (!checked.length) return versions.length && versions[0].near ? versions[0].lrc : null;
+  const offsets = versions.map((v) => ({ ...v, off: offsetFrom(v.lrc, reference) }));
+  const checked = offsets.filter((v) => v.off !== null && v.off !== DRIFTS);
+  if (!checked.length) return versions.length && versions[0].near && offsets[0].off !== DRIFTS ? versions[0].lrc : null;
   const best = checked.sort((a, b) => Math.abs(a.off) - Math.abs(b.off))[0];
   return Math.abs(best.off) > CLOSE_ENOUGH ? shiftLrc(best.lrc, -best.off) : best.lrc;
 }

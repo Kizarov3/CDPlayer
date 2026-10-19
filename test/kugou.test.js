@@ -114,6 +114,17 @@ test('a version a few more seconds longer (another master, a longer fade) is use
   assert.strictEqual(await kugouLyrics({ artist: 'Sevendust', title: 'Denial', duration: 254.9, reference: '[00:10.00]Something else entirely\n[00:20.00]And more of it\n[00:30.00]Still other words' }), null);
 });
 
+test('a version whose lines drift from the song\'s (another performance, another tempo) isn\'t used, even as long as the file', async () => {
+  // Nirvana – About A Girl: Kugou's versions are 2 s late at the start and early by the end (the Unplugged one), or
+  // slip from 1 s to 6 s early — the file's own line timing is better than either.
+  const LINES = [[15, 'i need an easy friend'], [18.3, 'i do with an ear to lend'], [21.9, 'i do think you fit this shoe'], [25.7, 'i do but you have a clue'],
+    [31.2, 'ill take advantage while'], [34.7, 'you hang me out to dry'], [37.5, 'but i cant see you every night'], [41, 'free of charge']];
+  const reference = LINES.map(([t, words]) => `[00:${t.toFixed(2).padStart(5, '0')}]${words}`).join('\n');
+  const drifting = LINES.map(([t, words], i) => `[${Math.round((t + 2 - i * 0.45) * 1000)},900]` + words.split(' ').map((w, j) => `<${j * 200},200,0>${w} `).join('')).join('\n');
+  answer({ candidates: [hit(1, 'About A Girl', 'Nirvana', 172)], content: pack(drifting) });
+  assert.strictEqual(await kugouLyrics({ artist: 'Nirvana', title: 'About A Girl', duration: 168.6, reference }), null);
+});
+
 test('Kugou unreachable: reported, so it is not asked again', async () => {
   answer({ fail: true });
   assert.strictEqual(await kugouLyrics({ artist: 'Sevendust', title: 'Denial', duration: 257.27 }), kugouLyrics.UNREACHABLE);
