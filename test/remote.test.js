@@ -82,7 +82,7 @@ function events(port, headers = {}) {
   });
 }
 
-test('pairing with the right k sets an HttpOnly, SameSite=Strict cookie and redirects 303 to /', async (t) => {
+test('pairing with the right k sets an HttpOnly, SameSite=Lax cookie and redirects 303 to /', async (t) => {
   const { port } = await serve(t);
   const r = await request(port, { path: `/pair?k=${TOKEN}` });
   assert.strictEqual(r.status, 303);
@@ -91,7 +91,9 @@ test('pairing with the right k sets an HttpOnly, SameSite=Strict cookie and redi
   assert.strictEqual(set.length, 1);
   assert.match(set[0], new RegExp(`^cdp=${cookieValue(TOKEN)};`));
   assert.match(set[0], /HttpOnly/);
-  assert.match(set[0], /SameSite=Strict/);
+  // Lax, not Strict: the QR is opened by the camera app, and a Strict cookie isn't sent on a navigation another app
+  // started — nor on its redirect to / (the phone stayed unpaired). Commands still need the exact Origin.
+  assert.match(set[0], /SameSite=Lax/);
   const page = await request(port, { path: '/', headers: { cookie: set[0].split(';')[0] } });
   assert.strictEqual(page.status, 200);
 });

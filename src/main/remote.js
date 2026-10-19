@@ -110,7 +110,7 @@ function createRemote({ address, port, token, files = {}, snapshot, command, alb
     res.writeHead(303, {
       ...PAGE_HEADERS,
       'Cache-Control': 'no-store',
-      'Set-Cookie': `cdp=${cookieValue(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${COOKIE_AGE}`,
+      'Set-Cookie': `cdp=${cookieValue(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${COOKIE_AGE}`,
       Location: '/',
       'Content-Length': 0,
     });
