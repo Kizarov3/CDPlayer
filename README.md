@@ -3,8 +3,8 @@
 A desktop music player that feels like a real CD player — for your local music, your CDs, and (with Spotify Premium) your Spotify albums. No account, nothing else to install: MP3, M4A/ALAC, FLAC, WAV, AIFF, AU, OGG and Opus all play out of the box on macOS, Windows and Linux.
 
 <p align="center">
-  <img src="docs/screenshots/main-changer.jpg" width="49%" alt="CDPlayer main window in CD changer mode: KID A MNESIA playing, five discs in the carousel and the disc's tracklist beside it">
-  <img src="docs/screenshots/main-snow.jpg" width="49%" alt="CDPlayer main window, SNOW theme with falling snow, OK Computer in the queue and a phone connected">
+  <img src="docs/screenshots/main-changer.jpg" width="49%" alt="CDPlayer main window in CD changer mode: Linkin Park's Hybrid Theory playing, the deck's glowing display under the seek bar, five discs in the carousel and the disc's tracklist beside it">
+  <img src="docs/screenshots/main-snow.jpg" width="49%" alt="CDPlayer main window, SNOW theme with falling snow, the Sonic Adventure 2 soundtrack in the queue">
 </p>
 
 ## Download
@@ -31,16 +31,18 @@ When a new version is out, an **AVAILABLE** button appears in the player's top-l
 ## Features
 
 - **The disc** — spins in its jewel case with your cover printed on it, catches the light as you move the mouse (**DISC SHINE** turns it off), wears scratches as you play it, turns over (`B`) to show a ring for each track, can be turned by hand like a DJ's jog wheel, and shows on the Dock or taskbar icon (**DISC ICON**)
-- **The CD shelf** (`S`) — every album in your music folder spine-out, kept up to date as you add, rip or remove albums, sorted by artist, year, most played or colour. Unplayed albums gather dust (wipe it off with the mouse), new ones come shrink-wrapped, sticky notes on cases, and the studio albums you're missing stand as see-through places
+- **The CD shelf** (`S`) — every album in your music folder spine-out, kept up to date as you add, rip or remove albums, sorted by artist, year, most played, last played (a divider for each month) or colour. Several music folders can share it — an external drive too, kept on the list while it's unplugged. Unplayed albums gather dust (wipe it off with the mouse), new ones come shrink-wrapped, sticky notes on cases, and the studio albums you're missing stand as see-through places
 - **The booklet** — the album's tracklist, lyrics and credits, marked in pen as you play: tally marks per song, your favourite circled
 - **Discogs** — each album's exact pressing and market price, on its case, sticker and receipt; **APPRAISE** values your whole shelf
 - **Audio CDs** — play a real CD, named from MusicBrainz, or **RIP** it to verified, tagged FLAC in one click
 - **Lyrics & Karaoke** (`Y`) — lyrics found online, highlighted word by word as they're sung
 - **Spotify** (Premium) — your saved albums and playlists play as discs, with lyrics and karaoke
 - **CD changer** — a mode (Settings → CD CHANGER): five discs in a carousel instead of the queue, each keeping its own music; albums, folders, `.m3u` playlists, Spotify and real CDs go in as discs; SHUFFLE and REPEAT for this disc or all of them (each mode keeps its own, across restarts), DISC SKIP (`D`) and `1`–`5` to play a slot
+- **The deck's display** — under the seek bar, a dark window like a CD player's front panel: the track number and the time in glowing seven-segment digits, TOTAL above, PLAY / PAUSE / SHUFFLE / REPEAT lit between; click the time to count down what's left. In CD view it sits under the album's name (Settings → DISPLAY → CLASSIC brings back the plain times)
+- **History** — the songs you've played under TODAY, YESTERDAY and each day before, with the time each was last played
 - **Hidden tracks** — a song hidden after minutes of silence at the end of a disc's last track (*Nevermind*'s "Endless, Nameless") is found: the silence plays as on the CD with a countdown to it, and the song is named when it begins and written into the booklet
 - **Phone remote** — turn it on in Settings → PHONE REMOTE and scan the QR code with your phone's camera: a remote opens in the phone's browser on the same Wi-Fi, with nothing to install and no account, and nothing goes over the internet. Play and pause, skip, volume, seek, SHUFFLE and REPEAT, pick albums from the shelf, rearrange the queue, and use the changer's discs
-- **Playback** — gapless playback (an album's tracks run into each other, as on the CD), the queue (drag to reorder, PLAY NEXT), AUTOMIX (the next song comes in where this one winds down) or crossfade, 10-band EQ with presets, output device picker, sleep timer, `.m3u` playlists, media keys
+- **Playback** — gapless playback (an album's tracks run into each other, as on the CD), the queue (drag to reorder, PLAY NEXT), AUTOMIX (the next song comes in where this one winds down) or crossfade, 10-band EQ with presets, output device picker, sleep timer (in minutes or at the end of the disc), `.m3u` playlists, media keys
 - **Spatial audio** — for headphones: any song — a file, a CD or a rip — heard from two speakers in front of you instead of from inside your head; **SPACE** sets how much
 - **Quality** — as in Apple Music: LOSSLESS and HI-RES LOSSLESS play each song at its own sample rate (up to 192 kHz), with your headphones' or DAC's rate switched to match on macOS and Windows and put back when CDPlayer closes; a ◈ LOSSLESS badge says what reaches the output
 - **Sound Check** — every song at the same loudness (−18 LUFS), from its ReplayGain tags or measured once; **ALBUM** keeps an album's quiet and loud songs as they were made
