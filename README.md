@@ -3,8 +3,8 @@
 A desktop music player that feels like a real CD player — for your local music, your CDs, and (with Spotify Premium) your Spotify albums. No account, nothing else to install: MP3, M4A/ALAC, FLAC, WAV, AIFF, AU, OGG and Opus all play out of the box on macOS, Windows and Linux.
 
 <p align="center">
-  <img src="docs/screenshots/main-red.jpg" width="49%" alt="CDPlayer main window, RED theme, playing a ripped OK Computer">
-  <img src="docs/screenshots/main-snow.jpg" width="49%" alt="CDPlayer main window, SNOW theme with falling snow">
+  <img src="docs/screenshots/main-changer.jpg" width="49%" alt="CDPlayer main window in CD changer mode: KID A MNESIA playing, five discs in the carousel and the disc's tracklist beside it">
+  <img src="docs/screenshots/main-snow.jpg" width="49%" alt="CDPlayer main window, SNOW theme with falling snow, OK Computer in the queue and a phone connected">
 </p>
 
 ## Download
@@ -17,7 +17,9 @@ Grab the file for your system from [**Releases**](https://github.com/Kizarov3/CD
 | **Windows** 10 / 11 | `CDPlayer-x.y.z-windows.exe` | Double-click — no installation |
 | **Linux** | `CDPlayer-x.y.z-linux.AppImage` | `chmod +x`, then double-click |
 
-The builds aren't signed with a paid certificate, so the first launch asks once: on macOS right-click the app → **Open** → **Open**; on Windows **More info** → **Run anyway**. ### Updating
+The builds aren't signed with a paid certificate, so the first launch asks once: on macOS right-click the app → **Open** → **Open**; on Windows **More info** → **Run anyway**.
+
+### Updating
 
 When a new version is out, an **AVAILABLE** button appears in the player's top-left corner: click it to download the update (checked against the release's SHA-256), then **RESTART TO UPDATE** — CDPlayer puts the new version in place of the one you run and opens it, your queue kept. This works from 2.13.0 on.
 
@@ -55,6 +57,10 @@ When a new version is out, an **AVAILABLE** button appears in the player's top-l
 <p align="center">
   <img src="docs/screenshots/disc-wear.jpg" width="49%" alt="A much-played disc in CD view: scratches, scuffs and a thumbprint over its cover art">
   <img src="docs/screenshots/karaoke.jpg" width="49%" alt="Karaoke Mode: the line being sung, filling in word by word, a duet's singers on either side">
+</p>
+<p align="center">
+  <img src="docs/screenshots/remote-playing.jpg" width="24%" alt="The phone remote in the phone's browser: the spinning disc, the song, seek bar, play controls and volume">
+  <img src="docs/screenshots/remote-changer.jpg" width="24%" alt="The phone remote's CHANGER tab: the five discs, DISC SKIP and the playing disc's tracklist">
 </p>
 
 ## Keyboard shortcuts
