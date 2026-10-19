@@ -1272,6 +1272,19 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.17.2', changes: [
+    '<b>The phone remote pairs</b> when the code is opened from the camera (it showed THIS PHONE ISN&rsquo;T PAIRED)',
+    '<b>AUTOMIX cuts the silence between an album&rsquo;s songs</b> played in order; songs that run into each other still do',
+    '<b>The player shows the album&rsquo;s cover</b>, the one on the shelf, for a song with none in its file &mdash; not a single&rsquo;s found by its name',
+    '<b>A remaster&rsquo;s songs take their places</b> in the album&rsquo;s whole tracklist, among the grey ones',
+    '<b>Lyrics in time</b>: word-timed lyrics of another performance (a live one, another tempo) are no longer used',
+  ], changesIn: { ru: [
+    '<b>Пульт-телефон подключается</b>, когда код открыт из камеры (писал ЭТОТ ТЕЛЕФОН НЕ ПОДКЛЮЧЁН)',
+    '<b>АВТОМИКС срезает тишину между песнями альбома</b>, играющего по порядку; песни, перетекающие друг в друга, перетекают по-прежнему',
+    '<b>Плеер показывает обложку альбома</b>, как на полке, для песни без обложки в файле &mdash; а не сингла, найденного по названию',
+    '<b>Песни ремастера встают на свои места</b> в полном треклисте альбома, среди серых',
+    '<b>Текст в такт</b>: текст по словам от другого исполнения (концертного, в другом темпе) больше не берётся',
+  ] } },
   { version: '2.17.1', changes: [
     '<b>A display like a CD deck&rsquo;s</b> under the seek bar: the track and time in glowing digits, PLAY / PAUSE / SHUFFLE / REPEAT lit; a click on the time counts down what&rsquo;s left (Settings &rarr; LOOK &rarr; DISPLAY: CLASSIC brings the old times back)',
     '<b>Several music folders</b>: FOLDER&hellip; &rarr; ADD ANOTHER FOLDER&hellip; puts an external drive on the shelf too; opening a song from Downloads no longer swaps the shelf',
