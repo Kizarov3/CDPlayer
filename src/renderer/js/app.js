@@ -749,7 +749,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   updateQualityBadge();
   fadeInNowPlaying();
   const ext = details.quality || details.ext || extension(path);
-  const canLookUp = !details.cover && !!details.title && !details.unnamed;
+  const canLookUp = !details.cover && ((!!details.title && !details.unnamed) || !isAudioCdTrack(path)); // (lookUpCover: the album's cover, then by name)
   await setCover(details.cover);
   disc.lookingUp = canLookUp;
   const fromCd = isAudioCdTrack(path);
@@ -863,11 +863,29 @@ function useFoundName(details, path, name) {
 }
 
 async function lookUpCover(details, path, token) {
+  // The album's cover first, the one its case on the shelf has (a cover image beside the files, or the album found
+  // online) — a search by the song's name finds its single's. Still searched by name when the name was guessed.
+  const own = isAudioCdTrack(path) ? null : await cdp.shelfCoverFull(path).catch(() => null);
+  if (token !== state.loadToken || state.loadedPath !== path) return;
+  let found = false; // the album's cover is on: the name searched for only to put it right
+  if (own) {
+    const img = await decodeCover(own);
+    if (token !== state.loadToken) return;
+    if (img) {
+      applyCover(img);
+      state.coverFrom = t('The album’s cover');
+      state.details.cover = own;
+      updateMediaSession();
+      found = true;
+      if (!details.nameGuessed) { disc.lookingUp = false; return; }
+    }
+  }
+  if (!details.title || details.unnamed) { disc.lookingUp = false; return; }
   const result = await cdp.findCover({ ...lookupName(details), album: details.album }).catch(() => ({ cover: null, networkError: true }));
   if (token !== state.loadToken || state.loadedPath !== path) return;
   disc.lookingUp = false;
   useFoundName(details, path, result.name);
-  if (result.cover) {
+  if (result.cover && !found) {
     const img = await decodeCover(result.cover);
     if (token !== state.loadToken) return; // another track was picked while the picture decoded
     applyCover(img);

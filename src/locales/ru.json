@@ -375,6 +375,7 @@
   "Import an iTunes/Music \"Library.xml\", or a Spotify \"Liked Songs\" export (CSV or YourLibrary.json)": "Импорт «Library.xml» из iTunes/Музыки или выгрузки «Любимых треков» Spotify (CSV или YourLibrary.json)",
   "In the changer, slot {n}": "В чейнджере, гнездо {n}",
   "In the file": "В файле",
+  "The album’s cover": "Обложка альбома",
   "In ~/.cdplayer on Mac and Linux, %LOCALAPPDATA%\\CDPlayer on Windows: your queue and changer, history, settings, notes and play counts, as small text files. Your music itself is never changed unless you save tags or found art into it.": "В ~/.cdplayer на Mac и Linux, %LOCALAPPDATA%\\CDPlayer на Windows: очередь и чейнджер, история, настройки, заметки и счётчики прослушиваний — маленькими текстовыми файлами. Сама музыка не меняется, если только ты не сохраняешь в неё теги или найденные обложки.",
   "Install CDPlayer {version} and restart — your queue and changer are kept": "Установить CDPlayer {version} и перезапустить — очередь и чейнджер сохранятся",
   "Into the changer": "В чейнджер",
