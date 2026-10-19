@@ -156,6 +156,7 @@ body.cd-view #cd-info { display: block !important; }
 #length { cursor: pointer; } /* clicked: the time left */
 body.classic-display #times { display: flex; }
 body.classic-display #deck-display { display: none; }
+#cd-info #deck-display { width: 460px; max-width: 100%; margin: 14px auto 0; text-align: left; }
 /* One row: shuffle · skip back · previous · PLAY · next · skip forward · repeat, centered in the column. */
 #controls { margin-top: 16px; display: flex; justify-content: center; align-items: center; min-height: 68px; }
 #transport { display: flex; align-items: center; }

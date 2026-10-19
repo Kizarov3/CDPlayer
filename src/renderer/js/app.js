@@ -1951,6 +1951,8 @@ function sleepsAfterThis() {
 function applyCdViewState() {
   document.body.classList.toggle('cd-view', state.cdView);
   $('cd-info').hidden = !state.cdView;
+  // The deck's display comes along, under the album's name (and back under the seek bar after).
+  if (state.cdView) $('cd-artist').after($('deck-display')); else $('progress-row').after($('deck-display'));
   disc.setMode(state.cdView ? 'enlarged' : 'normal');
   $('cd-view-button').textContent = state.cdView ? t('EXIT CD VIEW') : t('CD VIEW');
   state.lastCdMouse = Date.now();
