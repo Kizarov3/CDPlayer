@@ -59,15 +59,17 @@ const safePath = (p) => typeof p === 'string' && !/[\r\n]/.test(p);
 
 // settings.txt — one value per line, in the Java app's order: volume, crossfade, mono, animations, theme, EQ
 // gains, waveform, mini mode, window bounds, ambient background, then Discord status, disc noise and saving found
-// art & lyrics into files, the lyrics offset in ms, how the shelf is sorted, disc wear, the audio output ("id<TAB>name") and the language (AUTO, en or a locale code), then the sound quality (HIGH, LOSSLESS or HIRES), spatial audio (1/0) and its amount (0–100), the disc's shine (1/0) and the disc on the app's icon (1/0; on unless turned off, but off on Windows unless turned on) and Sound Check (OFF, TRACK or ALBUM), then the CD changer mode (ON/OFF), then SHUFFLE and REPEAT for the queue and for the changer ("OFF ALL DISC TRACK") (CDPlayer 2 only). Missing trailing
+// art & lyrics into files, the lyrics offset in ms, how the shelf is sorted, disc wear, the audio output ("id<TAB>name") and the language (AUTO, en or a locale code), then the sound quality (HIGH, LOSSLESS or HIRES), spatial audio (1/0) and its amount (0–100), the disc's shine (1/0) and the disc on the app's icon (1/0; on unless turned off, but off on Windows unless turned on) and Sound Check (OFF, TRACK or ALBUM), then the CD changer mode (ON/OFF), then SHUFFLE and REPEAT for the queue and for the changer ("OFF ALL DISC TRACK"), then TRANSITION (OFF, AUTOMIX or CROSSFADE) and the crossfade's seconds, kept while another is picked
+// (CDPlayer 2 only; the second line still holds the crossfade's seconds while it's the one picked, else 0, as the Java app reads it). Missing trailing
 // lines keep their defaults.
 const DEFAULT_SETTINGS = {
-  volume: 100, crossfade: 0, mono: false, animations: true, theme: 'RED', eq: new Array(10).fill(0),
-  waveform: true, miniMode: false, bounds: null, ambient: true, discord: false, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false, playModes: defaultPlayModes(),
+  volume: 100, crossfade: 5, mono: false, animations: true, theme: 'RED', eq: new Array(10).fill(0),
+  waveform: true, miniMode: false, bounds: null, ambient: true, discord: false, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false, playModes: defaultPlayModes(), transition: 'OFF',
 };
 const SHELF_SORTS = ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR', 'PRICE'];
 const QUALITIES = ['HIGH', 'LOSSLESS', 'HIRES'];
 const SOUND_CHECKS = ['OFF', 'TRACK', 'ALBUM'];
+const TRANSITIONS = ['OFF', 'AUTOMIX', 'CROSSFADE'];
 // SHUFFLE and REPEAT: each mode keeps its own.
 const SHUFFLES = { QUEUE: ['OFF', 'ALL'], CHANGER: ['OFF', 'DISC', 'ALL'] }, REPEATS = { QUEUE: ['OFF', 'TRACK', 'ALL'], CHANGER: ['OFF', 'TRACK', 'DISC', 'ALL'] };
 function defaultPlayModes() { return { QUEUE: { shuffle: 'OFF', repeat: 'OFF' }, CHANGER: { shuffle: 'OFF', repeat: 'OFF' } }; }
@@ -84,7 +86,7 @@ function readSettings() {
   if (l.length < 3) return s;
   const int = (v, d) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : d; };
   s.volume = Math.max(0, Math.min(100, int(l[0], 100)));
-  s.crossfade = Math.max(0, Math.min(15, int(l[1], 0)));
+  const seconds = Math.max(0, Math.min(15, int(l[1], 0)));
   s.mono = l[2].trim() === '1';
   s.animations = l.length < 4 || l[3].trim() === '1';
   if (l.length >= 5 && l[4].trim()) s.theme = l[4].trim();
@@ -116,19 +118,25 @@ function readSettings() {
   s.soundCheck = l.length >= 24 && SOUND_CHECKS.includes(l[23].trim()) ? l[23].trim() : 'OFF';
   s.changer = l.length >= 25 && l[24].trim() === 'ON';
   s.playModes = readPlayModes(l[25]);
+  // A file without the line (older, or the Java app's): CROSSFADE if it had seconds, else OFF. ("1": AUTOMIX's first line.)
+  const [mode, kept] = String(l[26] || '').trim().split(/\s+/), keptSeconds = int(kept, 0);
+  s.transition = TRANSITIONS.includes(mode) ? mode : mode === '1' ? 'AUTOMIX' : seconds > 0 ? 'CROSSFADE' : 'OFF';
+  s.crossfade = keptSeconds >= 1 && keptSeconds <= 15 ? keptSeconds : seconds > 0 ? seconds : 5;
   return s;
 }
 function writeSettings(s) {
   const eq = s.eq.map((g) => (Number.isInteger(g) ? g.toFixed(1) : String(g))).join(',');
   const b = s.bounds ? `${s.bounds.x},${s.bounds.y},${s.bounds.width},${s.bounds.height}` : '';
-  const content = [s.volume, s.crossfade, s.mono ? 1 : 0, s.animations ? 1 : 0, s.theme, eq, s.waveform ? 1 : 0,
+  const transition = TRANSITIONS.includes(s.transition) ? s.transition : 'OFF';
+  const seconds = Math.max(1, Math.min(15, Math.round(Number(s.crossfade) || 5)));
+  const content = [s.volume, transition === 'CROSSFADE' ? seconds : 0, s.mono ? 1 : 0, s.animations ? 1 : 0, s.theme, eq, s.waveform ? 1 : 0,
     s.miniMode ? 1 : 0, b, s.ambient ? 1 : 0, s.discord === false ? 0 : 1, s.discNoise ? 1 : 0, s.saveFound ? 1 : 0, s.lyricsOffset || 0,
     SHELF_SORTS.includes(s.shelfSort) ? s.shelfSort : 'ARTIST', s.discWear === false ? 0 : 1,
     s.output && s.output.id ? `${s.output.id}\t${String(s.output.label || '').replace(/[\t\n]/g, ' ')}` : '',
     LANGUAGE.test(s.language || '') ? s.language : 'AUTO',
     QUALITIES.includes(s.quality) ? s.quality : 'HIGH', s.spatial ? 1 : 0,
     Math.max(0, Math.min(100, Math.round(Number.isFinite(s.spatialAmount) ? s.spatialAmount : 50))), s.discShine === false ? 0 : 1, s.taskbarDisc ? 1 : 0,
-    SOUND_CHECKS.includes(s.soundCheck) ? s.soundCheck : 'OFF', s.changer ? 'ON' : 'OFF', writePlayModes(s.playModes)].join('\n') + '\n';
+    SOUND_CHECKS.includes(s.soundCheck) ? s.soundCheck : 'OFF', s.changer ? 'ON' : 'OFF', writePlayModes(s.playModes), `${transition} ${seconds}`].join('\n') + '\n';
   return writeText(FILES.settings, content);
 }
 

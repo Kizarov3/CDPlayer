@@ -5,7 +5,7 @@ import { integratedLoudness, levelFromLoudness, albumLevel, trimFor, MAX_MEASURE
 
 // Chromium decodes a file at its own rate before resampling it to 16 kHz: a 15-minute 192 kHz file would be ~1.4 GB of
 // samples in the renderer. Files that would decode to more than this (as stereo floats) are left to their tags.
-const MAX_DECODE_BYTES = 400e6;
+export const MAX_DECODE_BYTES = 400e6;
 
 /** Decodes `url` at 16 kHz (as computeWaveform does at 8) and measures it → { loudness, peak, duration }. */
 export async function measureFile(url) {

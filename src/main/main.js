@@ -311,6 +311,15 @@ handle('hidden:get', (file) => {
 handle('hidden:put', (file, entry) => { if (typeof file === 'string' && (entry === null || hiddenEntry(entry))) hiddenCache.put(file, entry); });
 handle('hidden:name', (d) => (d && typeof d === 'object' ? online.findHiddenName({ artist: d.artist, title: d.title, duration: Number(d.duration) }) : { name: null }));
 handle('hidden:update', (file, fields) => { if (typeof file === 'string' && fields && typeof fields === 'object') hiddenCache.update(file, fields); });
+
+// AUTOMIX (automix.js): where songs measured before start, wind down and end, kept in automix.json.
+const automixCache = require('./automix-cache').createAutomixCache({
+  read: () => store.readText('automix.json'),
+  write: (s) => store.writeText('automix.json', s),
+  stat: (f) => { try { return fs.statSync(f); } catch { return null; } },
+});
+handle('automix:get', (files) => automixCache.get(Array.isArray(files) ? files.filter((f) => typeof f === 'string') : []));
+handle('automix:put', (file, edges) => { if (typeof file === 'string' && (edges === null || typeof edges === 'object')) automixCache.put(file, edges); });
 // The now-playing card (share-card.js), onto the clipboard as a picture.
 handle('clipboard:image', (png) => clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]));
 // …or saved as a picture, named after the song, in the Pictures folder to start with. → true once saved.

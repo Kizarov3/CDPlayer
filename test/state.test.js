@@ -21,8 +21,29 @@ test('reads a settings.txt written by the Java version', () => {
     volume: 70, crossfade: 5, mono: true, animations: false, theme: 'OCEAN', eq: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
     waveform: false, miniMode: false, bounds: { x: 10, y: 20, width: 1200, height: 900 }, ambient: false, discord: false,
     discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false,
-    playModes: { QUEUE: { shuffle: 'OFF', repeat: 'OFF' }, CHANGER: { shuffle: 'OFF', repeat: 'OFF' } },
+    playModes: { QUEUE: { shuffle: 'OFF', repeat: 'OFF' }, CHANGER: { shuffle: 'OFF', repeat: 'OFF' } }, transition: 'CROSSFADE',
   });
+});
+
+test('TRANSITION: OFF unless picked, or CROSSFADE for a file with crossfade seconds; the seconds kept while another is picked', () => {
+  const file = (crossfade) => fs.writeFileSync(path.join(home, 'settings.txt'), `70\n${crossfade}\n1\n0\nOCEAN\n0,0,0,0,0,0,0,0,0,0\n0\n0\n\n0\n1\n`);
+  file(0);
+  assert.deepStrictEqual([store.readSettings().transition, store.readSettings().crossfade], ['OFF', 5]);
+  file(7);
+  assert.deepStrictEqual([store.readSettings().transition, store.readSettings().crossfade], ['CROSSFADE', 7]);
+  store.writeSettings({ ...store.readSettings(), transition: 'AUTOMIX' });
+  assert.deepStrictEqual([store.readSettings().transition, store.readSettings().crossfade], ['AUTOMIX', 7]);
+  // the Java app reads the second line as the crossfade: 0 unless CROSSFADE is the one picked
+  assert.strictEqual(fs.readFileSync(path.join(home, 'settings.txt'), 'utf8').split('\n')[1], '0');
+  store.writeSettings({ ...store.readSettings(), transition: 'CROSSFADE' });
+  assert.strictEqual(fs.readFileSync(path.join(home, 'settings.txt'), 'utf8').split('\n')[1], '7');
+  store.writeSettings({ ...store.readSettings(), transition: 'LOUD' });
+  assert.strictEqual(store.readSettings().transition, 'OFF');
+  // AUTOMIX's first settings line ("1")
+  const lines = fs.readFileSync(path.join(home, 'settings.txt'), 'utf8').split('\n');
+  lines[26] = '1';
+  fs.writeFileSync(path.join(home, 'settings.txt'), lines.join('\n'));
+  assert.strictEqual(store.readSettings().transition, 'AUTOMIX');
 });
 
 test('SHUFFLE and REPEAT are kept for each mode, and nonsense reads as OFF', () => {
