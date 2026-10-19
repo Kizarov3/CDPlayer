@@ -117,6 +117,16 @@ test('the full tracklist: yours where they are, the ones you haven\'t in their p
   assert.strictEqual(fullTracklist(edition, owned)[1].length, 383);
 });
 
+test('a remaster\'s songs take their place in the original\'s tracklist', () => {
+  const edition = [tr('Them Bones'), tr('Dam That River'), tr('Rain When I Die'), tr('Would?')];
+  const owned = [{ path: '/a', title: 'Them Bones (2022 Remaster)' }, { path: '/b', title: 'Dam That River - Remastered 2022' }];
+  assert.deepStrictEqual(fullTracklist(edition, owned).map((r) => [r.no, r.have ? r.have.path : null]), [[1, '/a'], [2, '/b'], [3, null], [4, null]]);
+  assert.strictEqual(pickEdition([[tr('Angry Chair')], edition], owned.map((o) => o.title)), edition);
+  // The song exactly as named comes first: "Would? (Mono)" on an edition with both isn't taken for "Would?".
+  const both = [tr('Would?'), tr('Would? (Mono)')];
+  assert.deepStrictEqual(fullTracklist(both, [{ path: '/d', title: 'Would? (Mono)' }]).map((r) => r.have && r.have.path), [null, '/d']);
+});
+
 test('an album\'s release group, from its artist\'s discography', () => {
   const discogs = new Map([[sameName('Radiohead'), { state: 'found', groups: [g('ok', 'OK Computer'), g('ka', 'Kid A')] }]]);
   assert.strictEqual(groupOf(album('Radiohead', 'Ok Computer!'), discogs).id, 'ok');

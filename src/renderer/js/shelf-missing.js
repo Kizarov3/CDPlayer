@@ -108,12 +108,15 @@ export async function groupFor(album, discogs, fetch) {
   return groupOf(album, discogs);
 }
 
+// Songs are compared as albums are, without their edition's words: "Them Bones (2022 Remaster)" is Them Bones.
+const songKey = albumKey;
+
 /** Of an album's editions (tracklists), the one with the most of `owned` (song titles) on it; on a tie, the shortest. */
 export function pickEdition(editions, owned) {
-  const have = new Set(owned.map(sameName));
+  const have = new Set(owned.map(songKey));
   let best = null, bestHits = -1;
   for (const tracks of editions) {
-    const hits = new Set(tracks.map((t) => sameName(t.title)).filter((t) => have.has(t))).size; // each of yours once
+    const hits = new Set(tracks.map((t) => songKey(t.title)).filter((t) => have.has(t))).size; // each of yours once
     if (hits > bestHits || (hits === bestHits && tracks.length < best.length)) { best = tracks; bestHits = hits; }
   }
   return best;
@@ -125,11 +128,12 @@ export function pickEdition(editions, owned) {
  */
 export function fullTracklist(edition, owned) {
   const left = [...owned];
-  const rows = edition.map((t, i) => {
-    const at = left.findIndex((o) => sameName(o.title) === sameName(t.title));
-    const have = at >= 0 ? left.splice(at, 1)[0] : null;
-    return { no: i + 1, title: t.title, length: t.length, have };
-  });
+  const take = (t, key) => { const at = left.findIndex((o) => key(o.title) === key(t.title)); return at >= 0 ? left.splice(at, 1)[0] : null; };
+  // Each song as it's named first, so "Would? (Mono)" isn't taken for "Would?" when the edition has both; then a
+  // remaster's songs by their names without the edition's words.
+  const have = edition.map((t) => take(t, sameName));
+  edition.forEach((t, i) => { if (!have[i]) have[i] = take(t, songKey); });
+  const rows = edition.map((t, i) => ({ no: i + 1, title: t.title, length: t.length, have: have[i] }));
   return [...rows, ...left.map((o) => ({ no: null, title: o.title, length: o.duration || 0, have: o }))];
 }
 
