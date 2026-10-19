@@ -1272,11 +1272,19 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
-  { version: '2.16.1', changes: [
+  { version: '2.17.0', changes: [
+    '<b>A display like a CD deck&rsquo;s</b> under the seek bar: the track and time in glowing digits, PLAY / PAUSE / SHUFFLE / REPEAT lit; a click on the time counts down what&rsquo;s left (Settings &rarr; LOOK &rarr; DISPLAY: CLASSIC brings the old times back)',
+    '<b>Several music folders</b>: FOLDER&hellip; &rarr; ADD ANOTHER FOLDER&hellip; puts an external drive on the shelf too; opening a song from Downloads no longer swaps the shelf',
+    '<b>Shelf SORT &rarr; LAST PLAYED</b>, a list of every way to sort; <b>HISTORY by day</b>, 200 songs',
+    '<b>Sleep at the end of the disc</b>: the sleep timer can stop once the album playing has ended',
     '<b>AUTOMIX</b>: Settings &rarr; TRANSITION &rarr; AUTOMIX (off unless you pick it) &mdash; when the queue moves on to a song that isn&rsquo;t its album&rsquo;s next (shuffle, another album, the changer&rsquo;s next disc), it comes in where this one winds down instead of after its silence; an album played in order stays gapless',
     '<b>TRANSITION</b>: OFF, AUTOMIX or CROSSFADE from one menu; CROSSFADE&rsquo;s length shows only with it',
     '<b>No clipping while two songs overlap</b> under AUTOMIX or CROSSFADE',
   ], changesIn: { ru: [
+    '<b>Дисплей как у CD-деки</b> под полосой перемотки: трек и время светящимися цифрами, PLAY / PAUSE / SHUFFLE / REPEAT горят; нажатие на время показывает, сколько осталось (Настройки &rarr; ВИД &rarr; ДИСПЛЕЙ: ОБЫЧНЫЙ возвращает прежнее время)',
+    '<b>Несколько папок с музыкой</b>: ПАПКА&hellip; &rarr; ДОБАВИТЬ ЕЩЁ ПАПКУ&hellip; ставит на полку и внешний диск; песня, открытая из Загрузок, больше не подменяет полку',
+    '<b>Сортировка полки &rarr; НЕДАВНО ИГРАЛИ</b>, список всех способов сортировки; <b>ИСТОРИЯ по дням</b>, 200 песен',
+    '<b>Сон в конце диска</b>: таймер сна может остановить музыку, когда альбом доиграл',
     '<b>АВТОМИКС</b>: Настройки &rarr; ПЕРЕХОД &rarr; АВТОМИКС (выключен, пока не выберешь) &mdash; когда очередь переходит к песне, которая не следующая в своём альбоме (перемешивание, другой альбом, следующий диск чейнджера), она вступает там, где эта затихает, а не после её тишины; альбом по порядку по-прежнему играет без пауз',
     '<b>ПЕРЕХОД</b>: ВЫКЛ, АВТОМИКС или КРОССФЕЙД в одном меню; длина КРОССФЕЙДА видна только с ним',
     '<b>Без перегрузки, пока две песни звучат вместе</b> в АВТОМИКСЕ и КРОССФЕЙДЕ',
