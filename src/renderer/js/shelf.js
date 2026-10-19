@@ -38,7 +38,7 @@ const redraw = renderGate({ render: () => { if (shelf.open) render(); }, busy: (
 // The album whose disc is in the player (a track of it loaded, playing or paused) stands a little proud of the others,
 // lit in the theme's colour.
 const IN_PLAYER = t('IN THE PLAYER');
-const SORT_LABELS = { ARTIST: t('ARTIST'), NEW: t('NEW|sort'), PLAYED: t('MOST PLAYED'), YEAR: t('YEAR'), COLOR: t('COLOR'), PRICE: t('PRICE') };
+const SORT_LABELS = { ARTIST: t('ARTIST'), NEW: t('NEW|sort'), PLAYED: t('MOST PLAYED'), RECENT: t('LAST PLAYED'), YEAR: t('YEAR'), COLOR: t('COLOR'), PRICE: t('PRICE') };
 const holds = (a, path) => !!path && a.tracks.some((t) => t.path === path);
 const spineTitle = (a) => [a.artist, a.title, a.year, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ') + (a.note ? `\n\n${a.note}` : '');
 /** The track now in the player (null: none), so its album's spine can show it. */
@@ -142,19 +142,22 @@ export function escapeShelf() {
 export function setupShelf(app) {
   shelf.app = app;
   $('shelf-close').addEventListener('click', closeShelf);
-  $('shelf-folder').addEventListener('click', pickFolder);
+  $('shelf-folder').addEventListener('click', folderMenu);
   $('shelf-pull').addEventListener('click', pullOne);
   $('shelf-here').addEventListener('click', goToPlayer);
   $('shelf-check').addEventListener('click', () => shelf.app.libraryCheck());
   $('shelf-filter').addEventListener('input', render);
-  $('shelf-sort').addEventListener('click', () => {
-    const { state } = shelf.app;
-    shelf.app.setShelfSort(SORTS[(SORTS.indexOf(state.shelfSort) + 1) % SORTS.length]);
+  // SORT: every way at once, in a list under the button — one click to any of them, the current one marked.
+  const sortBy = (sort) => {
+    shelf.app.setShelfSort(sort);
     // (Prices to sort by: the shelf is appraised for them — unless the user stopped an appraisal; then by what's known.)
-    if (state.shelfSort === 'PRICE' && !shelf.appraised && !shelf.appraisalStopped && !(shelf.appraising && !shelf.appraising.finished)) appraise();
+    if (sort === 'PRICE' && !shelf.appraised && !shelf.appraisalStopped && !(shelf.appraising && !shelf.appraising.finished)) appraise();
     render();
     $('shelf-body').scrollTop = 0;
-  });
+  };
+  $('shelf-sort').addEventListener('click', () => shelf.app.menu($('shelf-sort'), SORTS.map((sort) => ({
+    label: SORT_LABELS[sort], current: sort === shelf.app.state.shelfSort, pick: () => { if (sort !== shelf.app.state.shelfSort) sortBy(sort); },
+  }))));
   app.cdp.onDiscography(({ key, state, groups }) => {
     shelf.discogs.set(key, { state, groups });
     if (shelf.open && shelf.app.state.shelfSort === 'ARTIST') redraw.request();
@@ -174,9 +177,22 @@ export function setupShelf(app) {
   app.cdp.onShelfProgress(({ done, total }) => { if (shelf.loading && !shelf.quietLoad) $('shelf-count').textContent = t('READING YOUR MUSIC · {done} / {total}', { done, total }); });
 }
 
-async function pickFolder() {
-  const folder = await shelf.app.cdp.pickMusicFolder();
+async function pickFolder(mode = 'replace') {
+  const folder = await shelf.app.cdp.pickMusicFolder(mode);
   if (folder) await load();
+}
+// FOLDER…: the folders the shelf reads (a click shows one in Finder / Explorer), another one added — an external
+// drive, say — the one there is swapped for another, or one of several taken off the shelf (its files stay as they are).
+async function folderMenu() {
+  const folders = await shelf.app.cdp.musicFolders().catch(() => []);
+  if (!folders.length) { pickFolder(); return; }
+  shelf.app.menu($('shelf-folder'), [
+    ...folders.map((f) => ({ label: f.there ? `“${f.name}”` : t('“{name}” · NOT CONNECTED', { name: f.name }), current: folders.length > 1 && f.there, pick: () => { if (f.there) shelf.app.cdp.showFile(f.path); } })),
+    { divider: true },
+    { label: t('ADD ANOTHER FOLDER…'), pick: () => pickFolder('add') },
+    ...(folders.length === 1 ? [{ label: t('CHOOSE ANOTHER FOLDER…'), pick: () => pickFolder() }]
+      : folders.map((f) => ({ label: t('TAKE “{name}” OFF THE SHELF · ITS FILES STAY', { name: f.name }), pick: async () => { await shelf.app.cdp.removeMusicFolder(f.path); await load(); } }))),
+  ], { alignEnd: true });
 }
 
 async function load({ quiet = false } = {}) {
@@ -447,8 +463,26 @@ function showIndex(targets) {
   index.hidden = targets.length < 2;
   index.replaceChildren(...targets.map(({ label, short }) => el('button', { title: label, class: [...short].length > 3 ? 'long' : null, onClick: () => {
     const card = $('shelf-body').querySelector(`[data-section="${CSS.escape(label)}"]`);
-    if (card) card.scrollIntoView({ block: 'start', behavior: anim.enabled ? 'smooth' : 'auto' });
+    if (!card) return;
+    card.scrollIntoView({ block: 'start', behavior: anim.enabled ? 'smooth' : 'auto' });
+    pointOut(card);
   } }, short)));
+}
+// A section jumped to answers, whether or not the shelf had to move (a shelf that fits on the screen doesn't): its card
+// stands up, lit, and its albums lift one after another.
+function pointOut(card) {
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+  const lit = `0 0 0 2px rgb(${accent}), 0 0 18px rgba(${accent}, .55)`;
+  if (!anim.enabled) { card.animate([{ boxShadow: lit }, { boxShadow: lit }], { duration: 900 }); return; }
+  const delay = 250; // (after a scroll has got there)
+  card.animate([{ transform: 'none', boxShadow: 'none' }, { transform: 'translateY(-14px)', boxShadow: lit, offset: 0.35 }, { transform: 'translateY(-14px)', boxShadow: lit, offset: 0.7 }, { transform: 'none', boxShadow: 'none' }],
+    { duration: 900, delay, easing: 'ease-in-out' });
+  let k = 0;
+  for (let n = card.nextElementSibling; n && !n.dataset.section && k < 40; n = n.nextElementSibling) {
+    if (!n.classList.contains('spine')) continue;
+    n.animate([{ transform: 'none' }, { transform: 'translateY(-10px)' }, { transform: 'none' }], { duration: 420, delay: delay + 150 + k * 35, easing: 'ease-in-out' });
+    k++;
+  }
 }
 // ⌖ IN THE PLAYER: shown while the album whose disc is in is on the shelf as it stands; goes to it, and it waves.
 function showHere() {
@@ -919,7 +953,7 @@ export async function choosePressing(a, anchor, masterId, onChosen = () => {}) {
     if (anchor.isConnected && !anchor.dataset.label) { anchor.dataset.label = anchor.textContent; anchor.textContent = why; setTimeout(() => { anchor.textContent = anchor.dataset.label; delete anchor.dataset.label; }, 3000); }
     return;
   }
-  shelf.app.pressingMenu(box, list.map((v) => ({
+  shelf.app.menu(box, list.map((v) => ({
     label: [masterId ? null : v.title, v.label, v.catno, v.country, v.year, v.format].filter(Boolean).join(' · '),
     pick: async () => {
       const entry = await shelf.app.cdp.discogsChoose(albumQuery(a), v.id);

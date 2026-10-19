@@ -14,6 +14,8 @@ import { shortcutKey } from './keys.js';
 import { jogSeconds } from './jog.js';
 import * as changer from './changer.js';
 import { insertNext, pinnedNext, afterRemove } from './play-next.js';
+import { discEndsAfter } from './sleep-end.js';
+import { DeckDisplay } from './deck-display.js';
 import { createChangerView } from './changer-view.js';
 import { pointAtDrawn } from './tour-view.js';
 import { dockIcon } from './dock-disc.js';
@@ -41,7 +43,7 @@ const $ = (id) => document.getElementById(id);
 const STATUS_DOT = '●  ';
 const IDLE_SECONDS_UNTIL_VISUALIZER = 180;
 const CD_VIEW_CURSOR_IDLE_SECONDS = 5;
-const HISTORY_LIMIT = 50;
+const HISTORY_LIMIT = 200;
 const UNDO_CLEAR_SECONDS = 8;
 const SKIP_SECONDS = 5; // ←/→, the round skip buttons and the system media controls' seek back/forward
 // The player can stay open for days, so it asks GitHub about the newest release again every 15 minutes (as well as at
@@ -79,13 +81,23 @@ const state = {
   language: 'AUTO', // Settings → LANGUAGE (applies after a restart)
   loadedPath: null, details: null, detailsPath: null, lyrics: null, cover: null, loadToken: 0, deckToken: 0, crossfadeStarted: false,
   cdView: false, visualizerMode: false, fullscreen: false,
-  sleepRemaining: 0, sleepMinutes: 0,
+  display: 'DECK', // Settings → DISPLAY: the deck's display under the seek bar, or CLASSIC (the plain times)
+  sleepRemaining: 0, sleepMinutes: 0, sleepAtEnd: false, // sleepAtEnd: the sleep timer's END OF DISC
   lastActivity: Date.now(), lastCdMouse: Date.now(), cursorHidden: false, visualizerEnteredAt: 0,
   lastPath: null, version: '', platform: '',
   remoteListening: false, // a phone remote is connected (main says so): the state is sent to it as it changes
   rev: Date.now(),        // the music's version for the phone (+1 at each queue or changer change; never the same after a reload)
 };
 const engine = new AudioEngine();
+// The display's time: how far into the song — or, clicked, what's left of it counting down, like a CD deck's TIME
+// button. Which one stays chosen (in this window's storage: it's only how the clock reads).
+let showRemaining = false;
+try { showRemaining = localStorage.getItem('timeRemaining') === '1'; } catch { /* no storage: how far in */ }
+const deckDisplay = new DeckDisplay({
+  track: $('vfd-track'), time: $('vfd-time'), of: $('vfd-of'), total: $('vfd-total'), flags: [...document.querySelectorAll('.vfd-flag')],
+  elapsed: $('elapsed'), length: $('length'),
+});
+deckDisplay.left = showRemaining;
 // Settings → SOUND CHECK (sound-check.js): every song at the same loudness — not Spotify's (it does its own) nor a live CD's.
 const soundCheck = createSoundCheck({
   details: (p) => cdp.details(p, { withCover: false }).catch(() => null),
@@ -277,6 +289,7 @@ function renderQueue() {
   remoteSoon();
   updateDiscData();
   showChangerSlots();
+  showDeckTrack();
   if (undoClear && state.queue.length) { clearTimeout(undoClear.timer); undoClear = null; } // new music since: keep it
   const clearButton = $('clear-queue-button');
   clearButton.textContent = undoClear ? t('UNDO CLEAR') : t('CLEAR');
@@ -596,7 +609,7 @@ function resetToIdle(message) {
   setTrackTitle(t('Pick a track to get started.'), null);
   $('track-source').textContent = t('YOUR MUSIC LIBRARY');
   document.title = 'CDPlayer';
-  $('elapsed').textContent = $('length').textContent = '0:00';
+  deckDisplay.setTime(0, 0);
   progress.setValue(0); progress.setWaveform(null);
   setCover(null); disc.lookingUp = false;
   disc.discPresent = false;
@@ -723,7 +736,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   if (fade) setStatus(t('CROSSFADING'));
   else if (seamless && engine.crossfading) setStatus(t('AUTOMIX')); // mixing in: the last song still winding down under it
   else if (!autoPlay) setStatus(t('TRACK LOADED'));
-  $('length').textContent = formatTime(engine.duration);
+  deckDisplay.setTime(engine.position, engine.duration);
   updateProgressUi(true);
   renderQueue(); saveQueueSoon();
 
@@ -1026,6 +1039,7 @@ function refreshDockSoon() {
 const HEARD_SECONDS = 8;
 let recordedFor = -1, heardTimer = null;
 function setPlaying(playing) {
+  queueMicrotask(showDeckFlags); // (once engine.playing says so)
   if (playing && state.loadedPath && recordedFor !== state.loadToken) {
     const token = state.loadToken, path = state.loadedPath;
     recordedFor = token;
@@ -1120,6 +1134,7 @@ function continuesCurrent(p, { atBoundary = true } = {}) {
 async function prepareNext() {
   if (state.deckToken !== state.loadToken) return; // a track is still loading: what's playing is on its way out
   if (engine.seaming) return; // the prepared one is starting this moment
+  if (sleepsAfterThis()) { if (preparedNext || engine.prepared) dropPrepared(); return; } // END OF DISC: nothing follows this one
   const next = upcomingIndex(), path = next >= 0 ? state.queue[next] : null;
   const same = preparedNext && preparedNext.path === path && preparedNext.index === next;
   if (same && preparedNext.seen === edgesSeen(path)) return;
@@ -1189,6 +1204,7 @@ const edgesSeen = (path) => `${edgesKnown(state.loadedPath)}|${edgesKnown(path)}
 function automixSkipSilence() {
   // (Not while a song is loading: the deck playing is still the last one, the edges already the new one's.)
   if (state.deckToken !== state.loadToken || state.automixSkipped === state.loadToken) return;
+  if (sleepsAfterThis()) return; // END OF DISC: it plays out, and the player sleeps
   const next = upcomingIndex();
   if (!skipSilence({
     automix: automixOn(), out: edgesOf(state.loadedPath), fileTime: engine.deck.el.currentTime, timeLeft: engine.timeLeft(),
@@ -1213,7 +1229,9 @@ function setTransition(mode) {
 }
 function trackFinished(deck) {
   if (deck !== engine.deck) return;
+  const sleeps = sleepsAfterThis();
   notePlayed();
+  if (sleeps) { engine.pause(); setPlaying(false); armSleepAtEnd(false); setStatus(t('END OF DISC · SLEEP WELL')); panels.refreshSettingsIfOpen(app); return; }
   if (state.repeat === 'TRACK') { engine.seek(0); engine.play(); setPlaying(true); return; }
   const next = upcomingIndex();
   // A cue sheet track ends mid-file: unless the next track carries straight on from here, stop the file right now
@@ -1266,7 +1284,7 @@ function turnJog(radians, ms) {
   const now = performance.now();
   if (now - jog.sentAt < (jog.audible ? JOG_SEEK_MS : JOG_SPOTIFY_SEEK_MS)) {
     progress.setValue(dur ? Math.round((jog.target * 1000) / dur) : 0);
-    setText($('elapsed'), formatTime(jog.target));
+    deckDisplay.setTime(jog.target, engine.duration);
     return;
   }
   jog.sentAt = now; jog.unsent = false;
@@ -1415,7 +1433,7 @@ async function loadSpotify(path, token, { autoPlay, startAt }) {
   if (token !== state.loadToken) return;
   setPlaying(autoPlay && engine.playing);
   if (!autoPlay) setStatus(t('TRACK LOADED'));
-  $('length').textContent = formatTime(engine.duration);
+  deckDisplay.setTime(engine.position, engine.duration);
   updateProgressUi(true);
   renderQueue(); saveQueueSoon();
   panels.refreshSettingsIfOpen(app);
@@ -1888,6 +1906,7 @@ function setEq(gains) { state.eq = gains.slice(); engine.setEq(state.eq); update
 let sleepTimer = null;
 function armSleepTimer(minutes) {
   clearInterval(sleepTimer); sleepTimer = null;
+  if (minutes > 0 && state.sleepAtEnd) armSleepAtEnd(false); // (one or the other)
   state.sleepMinutes = minutes;
   state.sleepRemaining = Math.max(0, minutes) * 60;
   if (state.sleepRemaining > 0) {
@@ -1905,7 +1924,26 @@ function armSleepTimer(minutes) {
 }
 function updateSleepIndicator() {
   const s = state.sleepRemaining;
-  $('sleep-indicator').textContent = s > 0 ? t('SLEEP {time}', { time: `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }) : '';
+  $('sleep-indicator').textContent = state.sleepAtEnd ? t('SLEEP · END OF DISC')
+    : s > 0 ? t('SLEEP {time}', { time: `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }) : '';
+}
+// The sleep timer's END OF DISC: playback stops once the disc playing has ended — what follows isn't readied to run on
+// into it (gapless, crossfade).
+function armSleepAtEnd(on) {
+  if (on && state.sleepRemaining > 0) armSleepTimer(0);
+  state.sleepAtEnd = !!on;
+  if (on) dropPrepared();
+  updateSleepIndicator();
+}
+// Whether the song playing is the last before END OF DISC stops playback (sleep-end.js).
+function sleepsAfterThis() {
+  if (!state.sleepAtEnd || state.index < 0) return false;
+  const next = upcomingIndex();
+  const slot = (i) => { const h = state.changerMode && i >= 0 && changer.slotOf(ch(), i); return h ? h.slot : null; };
+  return discEndsAfter({
+    current: state.queue[state.index], next: next >= 0 ? state.queue[next] : null, currentIndex: state.index, nextIndex: next,
+    currentSlot: slot(state.index), nextSlot: slot(next), repeatTrack: state.repeat === 'TRACK', shuffled: state.shuffle !== 'OFF',
+  });
 }
 
 // ---- View modes --------------------------------------------------------------------------------------------------
@@ -2255,7 +2293,7 @@ const appendAndPlay = (p) => addToQueue([p], { sorted: true, play: true });
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, transition: state.transition, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, changer: state.changerMode, playModes: { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } } };
+  return { volume: state.volume, crossfade: state.crossfade, transition: state.transition, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, changer: state.changerMode, playModes: { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } }, display: state.display };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -2291,6 +2329,7 @@ const playButton = roundButton('PLAY', 68, { primary: true, title: t('Play/Pause
 const SHUFFLES = { QUEUE: ['OFF', 'ALL'], CHANGER: ['OFF', 'DISC', 'ALL'] }, REPEATS = { QUEUE: ['OFF', 'ALL', 'TRACK'], CHANGER: ['OFF', 'ALL', 'DISC', 'TRACK'] }; // REPEAT: all first, the one song last, as on most players
 const modeKey = () => (state.changerMode ? 'CHANGER' : 'QUEUE');
 function showModes() {
+  showDeckFlags();
   shuffleButton.setOn(state.shuffle !== 'OFF');
   shuffleButton.setBadge(state.shuffle === 'DISC' ? '◉' : null); // one character fits the badge; the info line says it in words
   shuffleButton.title = state.changerMode ? { OFF: t('Shuffle'), DISC: t('Shuffle: this disc'), ALL: t('Shuffle: all discs') }[state.shuffle] : t('Shuffle');
@@ -2356,7 +2395,7 @@ const repeatButton = modeButton('REPEAT', t('Repeat'), cycleRepeat);
 let seeking = false;
 const progress = new Slider({
   min: 0, max: 1000, waveform: true,
-  onInput: (v) => { seeking = true; $('elapsed').textContent = formatTime((engine.duration * v) / 1000); },
+  onInput: (v) => { seeking = true; deckDisplay.setTime((engine.duration * v) / 1000, engine.duration); },
   onChange: (v) => { seeking = false; seekTo((engine.duration * v) / 1000); },
 }).mount($('progress-row'));
 const volumeSlider = new Slider({ min: 0, max: 100, value: 100, onInput: (v) => { state.volumeBeforeMute = -1; setVolume(v, { fromSlider: true }); } }).mount($('volume-slider'));
@@ -2372,6 +2411,8 @@ function buildStaticUi() {
     repeatButton);
 
   $('load-button').addEventListener('click', choose);
+  $('vfd-time-button').addEventListener('click', toggleRemaining);
+  $('length').addEventListener('click', toggleRemaining);
   $('save-playlist-button').addEventListener('click', savePlaylist);
   $('load-playlist-button').addEventListener('click', loadPlaylist);
   $('search-button').addEventListener('click', () => panels.showSearch(app));
@@ -2402,10 +2443,11 @@ function buildStaticUi() {
   $('cd-view-button').addEventListener('click', toggleCdView);
   $('update-button').addEventListener('click', onUpdateClick);
   cdp.onUpdateProgress((fraction) => { if (updateState.phase === 'downloading') { updateState.progress = fraction; showUpdatePill(); } });
-  $('sleep-indicator').addEventListener('click', () => { armSleepTimer(0); panels.refreshSettingsIfOpen(app); });
+  $('sleep-indicator').addEventListener('click', () => { armSleepTimer(0); armSleepAtEnd(false); panels.refreshSettingsIfOpen(app); });
   $('vis-mode').addEventListener('mousedown', () => { if (state.visualizerMode) toggleVisualizerMode(); });
   $('karaoke-close').addEventListener('click', () => closeKaraoke());
   document.querySelector('#hint b').addEventListener('click', () => panels.showShortcuts()); // ? ALL KEYS, clicked
+  showKeyHint();
   disc.onEjectPeak = () => nextTrack();
   disc.canGrab = () => !!engine.deck && !state.trayBusy;
   $('disc').addEventListener('contextmenu', async (e) => {
@@ -2467,6 +2509,11 @@ function onKeyDown(e) {
     e.preventDefault(); if (undoClear) undoClearQueue(); else undoEjectSlot(); return;
   }
   if (state.changerMode && (e.metaKey || e.ctrlKey) && e.code === 'KeyZ' && !e.shiftKey && !isTyping(e)) { e.preventDefault(); setStatus(t('NOTHING TO BRING BACK')); return; }
+  // ⌘/Ctrl+O opens songs, ⌘/Ctrl+, the settings: a desktop app's own keys (no menu bar has them; Windows and Linux
+  // have no menu bar at all).
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.code === 'KeyO' || e.code === 'Comma') && !anyOverlayOpen()) {
+    e.preventDefault(); if (!e.repeat) $(e.code === 'KeyO' ? 'load-button' : 'settings-button').click(); return;
+  }
   if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return;
   const key = shortcutKey(e);
   if (key === 'm') { e.preventDefault(); setMiniMode(!state.miniMode); return; }
@@ -2479,7 +2526,19 @@ function onKeyDown(e) {
     '/': () => panels.showSearch(app), u: toggleMute, p: shareCard, b: () => disc.flip(), '?': () => panels.showShortcuts(), ' ': toggle, k: toggle, j: previousTrack, l: userNext, f: toggleFullscreen, c: toggleCdView, v: toggleVisualizerMode, y: toggleKaraoke, e: toggleTray, s: toggleShelf,
     d: discSkip, 1: () => playSlot(0), 2: () => playSlot(1), 3: () => playSlot(2), 4: () => playSlot(3), 5: () => playSlot(4), // changer mode only
   };
-  if (actions[key]) { e.preventDefault(); if (!e.repeat || key.startsWith('Arrow')) actions[key](); }
+  if (actions[key]) { e.preventDefault(); if (!e.repeat || key.startsWith('Arrow')) { actions[key](); if (!e.repeat) noteKeyUsed(); } }
+}
+// The keys along the bottom: there until a few of them have been used — then only ? ALL KEYS, the rest are known.
+// (Counted in this window's storage: it's only what the hint shows.)
+const KEYS_LEARNT = 5;
+let keysUsed = 0;
+try { keysUsed = Number(localStorage.getItem('keysUsed')) || 0; } catch { /* no storage: shown */ }
+function showKeyHint() { document.body.classList.toggle('keys-learnt', keysUsed >= KEYS_LEARNT); }
+function noteKeyUsed() {
+  if (keysUsed >= KEYS_LEARNT) return;
+  keysUsed++;
+  try { localStorage.setItem('keysUsed', String(keysUsed)); } catch { /* counted for this run */ }
+  showKeyHint();
 }
 function onMouseActivity(e) {
   state.lastActivity = Date.now();
@@ -2511,7 +2570,26 @@ function updateProgressUi(force = false) {
   const dur = engine.duration, pos = engine.position;
   const v = dur ? Math.round((pos * 1000) / dur) : 0;
   progress.setValue(v);
-  setText($('elapsed'), formatTime(pos));
+  deckDisplay.setTime(pos, dur);
+}
+function toggleRemaining() {
+  showRemaining = !showRemaining;
+  try { localStorage.setItem('timeRemaining', showRemaining ? '1' : '0'); } catch { /* kept for this run only */ }
+  deckDisplay.setTime(jog ? jog.target : engine.position, engine.duration, showRemaining);
+}
+// The display's track number: its place on the disc in the changer, in the queue otherwise; and the lit words.
+function showDeckTrack() {
+  const here = state.changerMode && changer.slotOf(ch(), state.index);
+  if (here) { const d = state.changer.slots[here.slot]; deckDisplay.setTrack(here.offset + 1, d.end - d.start); }
+  else deckDisplay.setTrack(state.queue.length && state.index >= 0 ? state.index + 1 : 0, state.queue.length);
+}
+function setDisplay(kind, { save = true } = {}) {
+  state.display = kind === 'CLASSIC' ? 'CLASSIC' : 'DECK';
+  document.body.classList.toggle('classic-display', state.display === 'CLASSIC');
+  if (save) saveSettingsSoon();
+}
+function showDeckFlags() {
+  deckDisplay.setFlags({ playing: engine.playing, paused: !!engine.deck && !engine.playing, shuffle: state.shuffle !== 'OFF', repeat: state.repeat !== 'OFF', repeatOne: state.repeat === 'TRACK' });
 }
 // Writing a label's text, even the same text, makes the page restyle and repaint it — every frame, for the clock.
 function setText(node, text) { if (node.textContent !== text) node.textContent = text; }
@@ -2535,7 +2613,7 @@ function playbackTick() {
   // Crossfade into the next track once we're within the crossfade window of the end — except between cue sheet
   // tracks that run into each other in the same file, which play on through, as on the album.
   const dur = engine.duration, pos = engine.position;
-  if (!state.crossfadeStarted && crossfadeSeconds() > 0 && !spotifyActive() && dur > 0 && dur - pos <= crossfadeSeconds()) {
+  if (!state.crossfadeStarted && crossfadeSeconds() > 0 && !spotifyActive() && dur > 0 && dur - pos <= crossfadeSeconds() && !sleepsAfterThis()) {
     state.crossfadeStarted = true;
     if (state.repeat === 'TRACK' && state.loadedPath) load(state.loadedPath, { allowCrossfade: true });
     else {
@@ -2560,7 +2638,7 @@ let last = performance.now(), idleCheck = 0;
 // Drawn without the graphics card, it's 30 always (render-budget.js).
 function frame(now) {
   const watched = document.hasFocus() || state.cdView || state.visualizerMode || isKaraokeOpen();
-  const gap = frameGap({ watched, software: state.softwareRendering });
+  const gap = frameGap({ watched, software: state.softwareRendering, playing: engine.playing || !!jog });
   if (gap && now - last < gap - 2) { requestAnimationFrame(frame); return; }
   const dt = Math.min(100, now - last); last = now;
   if (engine.deck && engine.playing && !jog) { // turning the disc, the seek bar shows where it has got to (turnJog)
@@ -2581,6 +2659,7 @@ function frame(now) {
   watchForShake(now);
   stepDiscMorph(now);
   const discBounds = disc.frame(now, dt);
+  deckDisplay.tick(); // (drawn again only when the theme's colour has moved)
   // Where the theme's particles mustn't go (the disc, open panels) — measured only for a theme that has them.
   if (particles.mode !== 'NONE') {
     const exclusions = [];
@@ -2623,10 +2702,10 @@ export const app = {
   onFullChanger: (c) => panels.pickDiscToTakeOut(app, c),
   coverSource: () => state.coverFrom || null,
   switchTheme, previewTheme, restoreTheme, shownTheme: () => shownTheme, saveTheme, importTheme, pasteThemeCode, exportTheme, copyThemeCode, deleteTheme,
-  setQuality, setSoundCheck, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setAnimations, setCrossfade, setTransition, setEq, armSleepTimer, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setTaskbarDisc, setOutput, listOutputs, currentOutputName,
+  setQuality, setSoundCheck, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setAnimations, setCrossfade, setTransition, setEq, armSleepTimer, armSleepAtEnd, setDisplay, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setTaskbarDisc, setOutput, listOutputs, currentOutputName,
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
-  pressingMenu: (anchor, items) => panels.pressingMenu(anchor, items),
+  menu: (anchor, items, opts) => panels.menu(anchor, items, opts),
   choosePressingFor: (album, anchor, onChosen) => choosePressing(album, anchor, null, onChosen),
   shelfAlbumIds, discogsCurrencyChanged,
   setLanguage: (code) => { state.language = code; cdp.saveSettings(settingsSnapshot()); },
@@ -2780,6 +2859,7 @@ async function start() {
   setDiscNoise(!!s.discNoise);
   state.discWear = s.discWear !== false;
   state.discShine = s.discShine !== false; disc.setShine(state.discShine);
+  setDisplay(s.display, { save: false });
   state.taskbarDisc = !!s.taskbarDisc; // its default is the system's (main/store.js)
   state.output = s.output || null;
   applyOutput(false);

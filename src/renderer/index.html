@@ -46,7 +46,12 @@
         <div id="track-artist" class="fit" hidden></div>
         <div id="source-row"><span id="hidden-badge" hidden data-i18n>HIDDEN</span><span id="quality-badge" hidden></span><span id="soundcheck-badge" hidden></span><div id="track-source" data-i18n>YOUR MUSIC LIBRARY</div></div>
         <div id="progress-row"></div>
-        <div id="times"><span id="elapsed">0:00</span><span id="length">0:00</span></div>
+        <div id="deck-display">
+          <div class="vfd-track"><span class="vfd-label" data-i18n>TRACK</span><div class="vfd-digits"><canvas id="vfd-track" data-h="26"></canvas><span id="vfd-of"></span></div></div>
+          <div class="vfd-flags"><span class="vfd-flag" data-flag="play" data-i18n>PLAY|display</span><span class="vfd-flag" data-flag="pause" data-i18n>PAUSE|display</span><span class="vfd-flag" data-flag="shuffle" data-i18n>SHUFFLE|display</span><span class="vfd-flag" data-flag="repeat" data-i18n>REPEAT|display</span><span class="vfd-flag" data-flag="one">1</span></div>
+          <div class="vfd-time" id="vfd-time-button" title="Click: the time left in the song, or how far in it is" data-i18n-title><span id="vfd-total" class="vfd-label"><span data-i18n>TOTAL|display</span><span> --:--</span></span><canvas id="vfd-time" data-h="26"></canvas></div>
+        </div>
+        <div id="times"><span id="elapsed">0:00</span><span id="length" title="Click: the time left in the song, or its length" data-i18n-title>0:00</span></div>
         <div id="controls"><div id="transport"></div></div>
         <div id="volume-row" class="slider-row">
           <span class="row-label" data-i18n>VOLUME</span>
@@ -83,7 +88,7 @@
     </div>
 
     <footer id="south">
-      <div id="hint"><span data-i18n>SPACE PLAY · J/L PREV/NEXT TRACK · S SHELF · E TRAY · B TURN OVER · C CD VIEW · Y KARAOKE</span> · <b data-i18n>? ALL KEYS</b></div>
+      <div id="hint"><span id="hint-keys"><span data-i18n>SPACE PLAY · J/L PREV/NEXT TRACK · S SHELF · E TRAY · B TURN OVER · C CD VIEW · Y KARAOKE</span> · </span><b data-i18n>? ALL KEYS</b></div>
       <div id="cd-info" hidden>
         <div id="cd-title" class="fit"></div>
         <div id="cd-artist" class="fit" hidden></div>
@@ -113,8 +118,8 @@
       <button class="pill small" id="shelf-check" title="Look for problems in your music folder: missing tags and covers, duplicates, gaps" data-i18n-title data-i18n>CHECK</button>
       <button class="pill small" id="shelf-pull" title="Take an album off the shelf at random — the dustier, the likelier" data-i18n-title data-i18n>PULL ONE</button>
       <button class="pill small" id="shelf-appraise" title="What your albums are worth on Discogs: the lowest price of each" data-i18n-title data-i18n>APPRAISE</button>
-      <button class="pill small" id="shelf-sort" title="How the shelf is sorted — click for the next way" data-i18n-title data-i18n>SORT: ARTIST</button>
-      <button class="pill small" id="shelf-folder" title="Choose the folder your music is in" data-i18n-title data-i18n>FOLDER…</button>
+      <button class="pill small" id="shelf-sort" title="How the shelf is sorted — click to pick another way" data-i18n-title data-i18n>SORT: ARTIST</button>
+      <button class="pill small" id="shelf-folder" title="The folders your music is in — add another (an external drive, say) or choose a different one" data-i18n-title data-i18n>FOLDER…</button>
       <button class="pill small" id="shelf-close" data-i18n>CLOSE</button>
     </div>
     <div id="shelf-body" class="scroll"></div>

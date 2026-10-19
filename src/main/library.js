@@ -65,10 +65,10 @@ async function collectAudio(items, labels = null) {
   return out.filter((p) => !covered.has(p)).concat(tracks);
 }
 
-/** Search-panel index: every audio file (and cue track) under the last-used folder, sorted by filename. */
-async function scanLibrary(folder) {
+/** Search-panel index: every audio file (and cue track) under the music folder(s), sorted by filename. */
+async function scanLibrary(folders) {
   const labels = {};
-  const files = await collectAudio([folder], labels);
+  const files = await collectAudio([].concat(folders), labels);
   files.sort(byName);
   return { files, labels };
 }

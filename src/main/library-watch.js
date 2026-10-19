@@ -1,10 +1,10 @@
 'use strict';
 /**
- * The music folder, watched (recursively) so the CD shelf keeps up with it by itself: an album ripped, copied in,
+ * The music folders, each watched (recursively) so the CD shelf keeps up with it by itself: an album ripped, copied in,
  * retagged or deleted. Only names that can change the shelf count — audio, cue sheets, covers; never hidden files,
  * which are also what the rip and the tag writer write before their final rename. A burst of changes is one, once the
- * folder has been quiet for `quietMs`. Watching that isn't possible (a network drive, Linux out of inotify watches)
- * just stops: the shelf still reads the folder each time it's opened.
+ * folders have been quiet for `quietMs`. Watching that isn't possible (a network drive, Linux out of inotify watches,
+ * a drive unplugged) just stops for that folder: the shelf still reads it each time it's opened.
  */
 const fs = require('fs');
 const path = require('path');
@@ -23,27 +23,34 @@ function relevant(filename) {
 }
 
 function createLibraryWatch({ watch = fs.watch, quietMs = 3000, onChange, timers = { setTimeout, clearTimeout } }) {
-  let watcher = null, folder = null, timer = null;
+  const watchers = new Map(); // folder → its watcher
+  let timer = null;
+  const close = (w) => { try { w.close(); } catch { /* already closed */ } };
   function stop() {
     if (timer) { timers.clearTimeout(timer); timer = null; }
-    if (watcher) { try { watcher.close(); } catch { /* already closed */ } watcher = null; }
-    folder = null;
+    for (const w of watchers.values()) close(w);
+    watchers.clear();
   }
-  function start(dir) {
-    if (dir && dir === folder && watcher) return;
-    stop();
-    if (!dir) return;
-    try {
-      watcher = watch(dir, { recursive: true }, (_event, filename) => {
-        if (!relevant(filename && filename.toString())) return;
-        if (timer) timers.clearTimeout(timer);
-        timer = timers.setTimeout(() => { timer = null; onChange(); }, quietMs);
-      });
-      folder = dir;
-      watcher.on('error', () => stop());
-    } catch { stop(); }
+  /** Watches `dirs` (one folder, or a list), and only them; the same ones again keep their watches. */
+  function start(dirs) {
+    const wanted = [].concat(dirs || []).filter(Boolean);
+    for (const [dir, w] of watchers) if (!wanted.includes(dir)) { close(w); watchers.delete(dir); }
+    if (!wanted.length) { stop(); return; }
+    for (const dir of wanted) {
+      if (watchers.has(dir)) continue;
+      try {
+        const w = watch(dir, { recursive: true }, (_event, filename) => {
+          if (!relevant(filename && filename.toString())) return;
+          if (timer) timers.clearTimeout(timer);
+          timer = timers.setTimeout(() => { timer = null; onChange(); }, quietMs);
+        });
+        watchers.set(dir, w);
+        w.on('error', () => { close(w); if (watchers.get(dir) === w) watchers.delete(dir); });
+      } catch { /* not watchable: read when the shelf opens */ }
+    }
   }
-  return { start, stop, get folder() { return folder; } };
+  // (the folders watched, as one: a single folder's own path; null for none)
+  return { start, stop, get folder() { return watchers.size ? [...watchers.keys()].join('\n') : null; } };
 }
 
 module.exports = { createLibraryWatch, relevant };

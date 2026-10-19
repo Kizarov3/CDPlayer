@@ -142,7 +142,7 @@ test('an album was added when its newest track was', () => {
 test('the tracks of the shelf album a song is on, from the shelf\'s cache; a song not on the shelf has none', () => {
   const store = require('../src/main/store');
   const music = fs.mkdtempSync(path.join(home, 'music-'));
-  store.writeLastPath(music);
+  store.writeMusicFolders([music]);
   const info = (album, disc) => ({ title: 't', artist: 'Korn', album, albumArtist: 'Korn', year: '1998', track: 1, disc, duration: 60 });
   const tracks = {
     [`${music}/Korn/FtL/CD1/01.flac`]: { stamp: 'x', info: info('Follow the Leader', 1), added: 1 },
@@ -186,7 +186,7 @@ test('sameName: how the shelf compares names', () => {
 test('an older shelf cache is read again, but when each track first turned up is kept', () => {
   const store = require('../src/main/store');
   const music = fs.mkdtempSync(path.join(home, 'music-'));
-  store.writeLastPath(music);
+  store.writeMusicFolders([music]);
   const p = `${music}/Korn/Issues/01.flac`;
   fs.writeFileSync(path.join(home, 'shelf-cache.json'), JSON.stringify({ version: 1, folder: music, tracks: { [p]: { stamp: '10:20', info: { title: 'x' }, added: 12345 } } }));
   delete require.cache[require.resolve('../src/main/shelf')];
@@ -201,7 +201,7 @@ test('an older shelf cache is read again, but when each track first turned up is
 test('a track\'s shelf album: its id (the same for every song of it, whoever each credits) and its tracks; forgotten after a tag edit', () => {
   const store = require('../src/main/store');
   const music = fs.mkdtempSync(path.join(home, 'music-'));
-  store.writeLastPath(music);
+  store.writeMusicFolders([music]);
   const info = (artist) => ({ title: 't', artist, album: 'Collab Album', albumArtist: null, year: '2001', track: 1, disc: 1, duration: 60 });
   const a = `${music}/X/Collab Album/01.flac`, b = `${music}/X/Collab Album/02.flac`;
   const write = (tracks) => fs.writeFileSync(path.join(home, 'shelf-cache.json'), JSON.stringify({ version: 2, folder: music, tracks }));
@@ -257,4 +257,69 @@ test('cachedOnly (the phone remote\'s covers): a cover found online before is gi
   assert.strictEqual(find.calls.length, 0, 'not searched');
   assert.strictEqual(await onlineCover(q, { find }), 'data:image/jpeg;base64,CCCC', 'nothing was remembered as "no cover": a real search still runs');
   assert.strictEqual(await onlineCover(q, { find: counting(null), cachedOnly: true }), 'data:image/jpeg;base64,CCCC');
+});
+
+test('the music folders are their own list: the old music folder starts it, and a dialog opened elsewhere never changes it', () => {
+  const store = require('../src/main/store');
+  const music = fs.mkdtempSync(path.join(home, 'music-'));
+  fs.rmSync(path.join(home, 'music-folders.txt'), { force: true });
+  store.writeLastPath(music);
+  assert.deepStrictEqual(store.readMusicFolders(), [music]);
+  store.writeLastPath(path.join(home, 'Downloads')); // a song opened from Downloads
+  assert.deepStrictEqual(store.readMusicFolders(), [music]);
+  store.writeMusicFolders([music, music, path.join(home, 'unplugged')]);
+  assert.deepStrictEqual(store.readMusicFolders(), [music, path.join(home, 'unplugged')]);
+  assert.deepStrictEqual(store.musicFolders(), [music], 'one not there now stays on the list, but isn\'t read');
+});
+
+test('the shelf reads every music folder; a folder just added isn\'t all NEW, a song new in one read before is', async () => {
+  const store = require('../src/main/store');
+  const a = fs.mkdtempSync(path.join(home, 'a-')), b = fs.mkdtempSync(path.join(home, 'b-'));
+  const old = new Date(Date.UTC(2020, 0, 1));
+  const song = (dir, name) => {
+    const p = path.join(dir, name, '01.mp3');
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, '');
+    fs.utimesSync(p, old, old);
+    return p;
+  };
+  const known = song(a, 'Known'), fresh = song(a, 'Fresh'), other = song(b, 'Other');
+  fs.writeFileSync(path.join(home, 'shelf-cache.json'), JSON.stringify({ version: 2, folder: a, tracks: { [known]: { stamp: 'x', info: { title: 'k' }, added: 111 } } }));
+  store.writeMusicFolders([a, b]);
+  delete require.cache[require.resolve('../src/main/shelf')];
+  const shelf = require('../src/main/shelf');
+  const before = Date.now();
+  const r = await shelf.scanAlbums();
+  assert.deepStrictEqual([r.folder, r.folders, r.name], [a, [a, b], `${path.basename(a)} · ${path.basename(b)}`]);
+  const added = (p) => r.albums.find((x) => x.tracks.some((tr) => tr.path === p)).added;
+  assert.strictEqual(added(known), 111);
+  assert.ok(added(fresh) >= before, 'turned up in a folder read before: just added');
+  assert.strictEqual(added(other), old.getTime(), 'a folder just added: its files\' own dates');
+  assert.ok(shelf.cacheHas([a, b]) && !shelf.cacheHas([a, '/elsewhere']));
+
+  // b unplugged: the shelf read without it keeps what it read in b, for when it's back.
+  fs.renameSync(b, `${b}-away`);
+  await shelf.scanAlbums();
+  fs.renameSync(`${b}-away`, b);
+  const kept = JSON.parse(fs.readFileSync(path.join(home, 'shelf-cache.json'), 'utf8'));
+  assert.deepStrictEqual(kept.folders, [a, b]);
+  assert.ok(kept.tracks[other], 'an unplugged drive\'s tracks aren\'t read again when it comes back');
+  // A folder added round one already read: what was read in it is used.
+  assert.ok(shelf.readCache([path.dirname(a)]), 'the parent of a folder read');
+  assert.ok(!shelf.cacheHas([path.dirname(a)]), '…but the rest of the parent hasn\'t been read');
+});
+
+test('a list of music folders that can\'t be read for a moment isn\'t started over from the last dialog\'s folder', { skip: process.platform === 'win32' }, () => {
+  const store = require('../src/main/store');
+  const music = fs.mkdtempSync(path.join(home, 'music-'));
+  store.writeMusicFolders([music]);
+  assert.deepStrictEqual(store.readMusicFolders(), [music]);
+  store.writeLastPath(path.join(home, 'Downloads'));
+  const list = path.join(home, 'music-folders.txt');
+  fs.chmodSync(list, 0o000); // (another program has it open)
+  try {
+    assert.deepStrictEqual(store.readMusicFolders(), [music]);
+    assert.strictEqual(store.noMusicFolderYet(), false);
+  } finally { fs.chmodSync(list, 0o644); }
+  assert.deepStrictEqual(store.readMusicFolders(), [music]);
 });

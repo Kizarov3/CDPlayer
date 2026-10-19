@@ -28,7 +28,7 @@ function dataDir() {
 
 const file = (name) => path.join(dataDir(), name);
 const FILES = {
-  queue: 'queue.txt', onboarded: 'onboarded', lastVersion: 'lastversion.txt', lastPath: 'lastpath.txt',
+  queue: 'queue.txt', onboarded: 'onboarded', lastVersion: 'lastversion.txt', lastPath: 'lastpath.txt', musicFolders: 'music-folders.txt',
   settings: 'settings.txt', eqPresets: 'eq-presets.txt', history: 'history.txt', spotify: 'spotify.txt',
   miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt', firstPlayed: 'firstplayed.txt', shelfColors: 'shelf-colors.json', changer: 'changer.txt', changerQueue: 'changer-queue.txt', remote: 'remote.json',
 };
@@ -59,17 +59,18 @@ const safePath = (p) => typeof p === 'string' && !/[\r\n]/.test(p);
 
 // settings.txt — one value per line, in the Java app's order: volume, crossfade, mono, animations, theme, EQ
 // gains, waveform, mini mode, window bounds, ambient background, then Discord status, disc noise and saving found
-// art & lyrics into files, the lyrics offset in ms, how the shelf is sorted, disc wear, the audio output ("id<TAB>name") and the language (AUTO, en or a locale code), then the sound quality (HIGH, LOSSLESS or HIRES), spatial audio (1/0) and its amount (0–100), the disc's shine (1/0) and the disc on the app's icon (1/0; on unless turned off, but off on Windows unless turned on) and Sound Check (OFF, TRACK or ALBUM), then the CD changer mode (ON/OFF), then SHUFFLE and REPEAT for the queue and for the changer ("OFF ALL DISC TRACK"), then TRANSITION (OFF, AUTOMIX or CROSSFADE) and the crossfade's seconds, kept while another is picked
+// art & lyrics into files, the lyrics offset in ms, how the shelf is sorted, disc wear, the audio output ("id<TAB>name") and the language (AUTO, en or a locale code), then the sound quality (HIGH, LOSSLESS or HIRES), spatial audio (1/0) and its amount (0–100), the disc's shine (1/0) and the disc on the app's icon (1/0; on unless turned off, but off on Windows unless turned on) and Sound Check (OFF, TRACK or ALBUM), then the CD changer mode (ON/OFF), then SHUFFLE and REPEAT for the queue and for the changer ("OFF ALL DISC TRACK"), then the display under the seek bar (DECK or CLASSIC), then TRANSITION (OFF, AUTOMIX or CROSSFADE) and the crossfade's seconds, kept while another is picked
 // (CDPlayer 2 only; the second line still holds the crossfade's seconds while it's the one picked, else 0, as the Java app reads it). Missing trailing
 // lines keep their defaults.
 const DEFAULT_SETTINGS = {
   volume: 100, crossfade: 5, mono: false, animations: true, theme: 'RED', eq: new Array(10).fill(0),
-  waveform: true, miniMode: false, bounds: null, ambient: true, discord: false, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false, playModes: defaultPlayModes(), transition: 'OFF',
+  waveform: true, miniMode: false, bounds: null, ambient: true, discord: false, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false, playModes: defaultPlayModes(), display: 'DECK', transition: 'OFF',
 };
-const SHELF_SORTS = ['ARTIST', 'NEW', 'PLAYED', 'YEAR', 'COLOR', 'PRICE'];
+const SHELF_SORTS = ['ARTIST', 'NEW', 'PLAYED', 'RECENT', 'YEAR', 'COLOR', 'PRICE'];
 const QUALITIES = ['HIGH', 'LOSSLESS', 'HIRES'];
 const SOUND_CHECKS = ['OFF', 'TRACK', 'ALBUM'];
 const TRANSITIONS = ['OFF', 'AUTOMIX', 'CROSSFADE'];
+const DISPLAYS = ['DECK', 'CLASSIC'];
 // SHUFFLE and REPEAT: each mode keeps its own.
 const SHUFFLES = { QUEUE: ['OFF', 'ALL'], CHANGER: ['OFF', 'DISC', 'ALL'] }, REPEATS = { QUEUE: ['OFF', 'TRACK', 'ALL'], CHANGER: ['OFF', 'TRACK', 'DISC', 'ALL'] };
 function defaultPlayModes() { return { QUEUE: { shuffle: 'OFF', repeat: 'OFF' }, CHANGER: { shuffle: 'OFF', repeat: 'OFF' } }; }
@@ -118,8 +119,9 @@ function readSettings() {
   s.soundCheck = l.length >= 24 && SOUND_CHECKS.includes(l[23].trim()) ? l[23].trim() : 'OFF';
   s.changer = l.length >= 25 && l[24].trim() === 'ON';
   s.playModes = readPlayModes(l[25]);
+  s.display = l.length >= 27 && DISPLAYS.includes(l[26].trim()) ? l[26].trim() : 'DECK';
   // A file without the line (older, or the Java app's): CROSSFADE if it had seconds, else OFF. ("1": AUTOMIX's first line.)
-  const [mode, kept] = String(l[26] || '').trim().split(/\s+/), keptSeconds = int(kept, 0);
+  const [mode, kept] = String(l[27] || '').trim().split(/\s+/), keptSeconds = int(kept, 0);
   s.transition = TRANSITIONS.includes(mode) ? mode : mode === '1' ? 'AUTOMIX' : seconds > 0 ? 'CROSSFADE' : 'OFF';
   s.crossfade = keptSeconds >= 1 && keptSeconds <= 15 ? keptSeconds : seconds > 0 ? seconds : 5;
   return s;
@@ -136,7 +138,8 @@ function writeSettings(s) {
     LANGUAGE.test(s.language || '') ? s.language : 'AUTO',
     QUALITIES.includes(s.quality) ? s.quality : 'HIGH', s.spatial ? 1 : 0,
     Math.max(0, Math.min(100, Math.round(Number.isFinite(s.spatialAmount) ? s.spatialAmount : 50))), s.discShine === false ? 0 : 1, s.taskbarDisc ? 1 : 0,
-    SOUND_CHECKS.includes(s.soundCheck) ? s.soundCheck : 'OFF', s.changer ? 'ON' : 'OFF', writePlayModes(s.playModes), `${transition} ${seconds}`].join('\n') + '\n';
+    SOUND_CHECKS.includes(s.soundCheck) ? s.soundCheck : 'OFF', s.changer ? 'ON' : 'OFF', writePlayModes(s.playModes),
+    DISPLAYS.includes(s.display) ? s.display : 'DECK', `${transition} ${seconds}`].join('\n') + '\n';
   return writeText(FILES.settings, content);
 }
 
@@ -289,7 +292,7 @@ function readShelfColors() {
 }
 const writeShelfColors = (colors) => writeText(FILES.shelfColors, JSON.stringify({ version: 1, colors }));
 
-const HISTORY_LIMIT = 50;
+const HISTORY_LIMIT = 200;
 function readHistory() {
   return lines(readText(FILES.history)).map((p) => p.trim()).filter((p) => p && entryExists(p)).slice(0, HISTORY_LIMIT);
 }
@@ -320,6 +323,28 @@ function readLastPath() {
 }
 function writeLastPath(dir) { if (dir && safePath(dir)) writeText(FILES.lastPath, dir); }
 
+// The folders the shelf, the search and the phone read, one path a line — their own list, so a song opened from
+// Downloads or a playlist saved on the Desktop (which only move where the next dialog opens) never change the shelf.
+// Before there was a list, the music folder was the last folder a dialog had opened in: that one, kept as the list
+// the first time it's asked for.
+let knownFolders = null; // the list as last read: for a moment the file can't be (another program has it open)
+function readMusicFolders() {
+  const text = readText(FILES.musicFolders);
+  if (text !== null) return (knownFolders = text.split('\n').map((l) => l.trim()).filter(Boolean));
+  if (isFile(file(FILES.musicFolders))) return knownFolders || []; // there, but unreadable just now: never started over
+  const last = readLastPath();
+  writeMusicFolders(last ? [last] : []);
+  return last ? [last] : [];
+}
+function writeMusicFolders(dirs) {
+  const list = [...new Set(dirs.filter((d) => d && safePath(d)))];
+  return writeText(FILES.musicFolders, list.length ? `${list.join('\n')}\n` : '');
+}
+/** No music folder chosen yet (the list read, and empty) — not merely a list that couldn't be read. */
+const noMusicFolderYet = () => readMusicFolders().length === 0 && readText(FILES.musicFolders) !== null;
+/** The music folders that are there now (an external drive unplugged stays on the list, and is read once it's back). */
+const musicFolders = () => readMusicFolders().filter(isDir);
+
 const isOnboarded = () => isFile(file(FILES.onboarded));
 const markOnboarded = () => writeText(FILES.onboarded, '');
 const readLastVersion = () => { const t = readText(FILES.lastVersion); return t && t.trim() ? t.trim() : null; };
@@ -329,5 +354,5 @@ module.exports = {
   dataDir, file, FILES, readText, writeText, isFile, isDir,
   readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, readChangerQueue, writeQueue, readHistory, writeHistory, HISTORY_LIMIT,
   readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readFirstPlayed, writeFirstPlayed, readDust, writeDust, readNotes, writeNotes, readHiddenMissing, writeHiddenMissing, readWrap, writeWrap, readShelfColors, writeShelfColors,
-  readEqPresets, writeEqPresets, readLastPath, writeLastPath, isOnboarded, markOnboarded, readLastVersion, writeLastVersion,
+  readEqPresets, writeEqPresets, readLastPath, writeLastPath, readMusicFolders, writeMusicFolders, musicFolders, noMusicFolderYet, isOnboarded, markOnboarded, readLastVersion, writeLastVersion,
 };

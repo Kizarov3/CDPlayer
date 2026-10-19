@@ -4,6 +4,7 @@
 import { THEMES, draftFrom } from './theme.js';
 import { buildThemeEditor } from './theme-editor.js';
 import { t, locale } from './i18n.js';
+import { historyDays } from './history-days.js';
 import { EQ_FREQUENCIES } from './audio.js';
 import { el, pill, toggle, setToggle, Slider, anim } from './widgets.js';
 import { FAQ, SHORTCUTS, FEATURES } from './help.js';
@@ -258,6 +259,10 @@ function buildSettings(app) {
     pick: () => app.setQuality(level).then(() => refreshSettingsIfOpen(app)),
   }))), t('How the sound leaves CDPlayer'));
   const SOUND_CHECK_NAMES = { OFF: t('OFF'), ALBUM: t('ALBUM'), TRACK: t('TRACK') };
+  const DISPLAY_NAMES = { DECK: t('DECK|display'), CLASSIC: t('CLASSIC|display') };
+  const displayButton = pill(DISPLAY_NAMES[s.display] || DISPLAY_NAMES.DECK, () => showMenu(displayButton, ['DECK', 'CLASSIC'].map((kind) => ({
+    label: DISPLAY_NAMES[kind], current: kind === s.display, pick: () => { app.setDisplay(kind); refreshSettingsIfOpen(app); },
+  }))), t('What’s under the seek bar'));
   const soundCheckButton = pill(SOUND_CHECK_NAMES[s.soundCheck] || t('OFF'), () => showMenu(soundCheckButton, ['OFF', 'ALBUM', 'TRACK'].map((mode) => ({
     label: SOUND_CHECK_NAMES[mode], current: mode === s.soundCheck,
     pick: () => app.setSoundCheck(mode).then(() => refreshSettingsIfOpen(app)),
@@ -287,6 +292,7 @@ function buildSettings(app) {
     onChange: (v) => app.armSleepTimer(v),
   });
   sleep.canvas.title = t('Pause playback after a set time (0 = off, up to 120 minutes)');
+  const sleepAtEnd = toggle(s.sleepAtEnd, () => { app.armSleepAtEnd(!s.sleepAtEnd); refreshSettingsIfOpen(app); });
 
   const offsetText = (ms) => (ms ? t('{n} MS', { n: `${ms > 0 ? '+' : '−'}${Math.abs(ms)}` }) : t('0 MS'));
   const offsetValue = el('span', { class: 'row-value' }, offsetText(s.lyricsOffset));
@@ -357,6 +363,8 @@ function buildSettings(app) {
     section(t('LOOK')),
     row(t('THEME'), themeButton),
     row(t('LANGUAGE'), languageButton), languageNote,
+    row(t('DISPLAY'), displayButton),
+    hint(t('DECK: a glowing panel like a CD player’s — the track number and the time in segment digits. CLASSIC: just the times.')),
     row(t('WAVEFORM'), waveform),
     row(t('AMBIENT BACKGROUND'), ambient),
     app.shownTheme().image ? hint(t('The theme’s own image is the background while it’s on.')) : null,
@@ -373,6 +381,8 @@ function buildSettings(app) {
     row(t('CD CHANGER'), changerMode),
     hint(t('Five discs in a carousel instead of the queue: albums go in as discs, with DISC SKIP (D) and 1–5. The queue and the changer each keep their own music.')),
     sliderRow(t('SLEEP TIMER'), sleep, sleepValue),
+    row(t('…OR AT THE END OF THE DISC'), sleepAtEnd),
+    hint(t('Stops once the album playing has ended (a changer disc, or the folder its songs are in) instead of going on into the next. A shuffled queue plays to its end.')),
     sliderRow(t('LYRICS OFFSET'), lyricsOffset, offsetValue),
     hint(t('Karaoke and the lyrics already follow what you hear, Bluetooth included. Move them if a song’s lyrics are timed a little off.')),
     row(t('MINI MODE'), mini), gap(18),
@@ -392,6 +402,7 @@ function buildSettings(app) {
     section(t('HELP')),
     el('div', { class: 'help-pills' },
       pill(t('SHOW THE GUIDE'), () => { closePanel('settings'); startTour({ onFeatures: () => showFeatures(app) }); }, t('A look round the window: where everything is and how it works')),
+      pill(t("WHAT'S NEW"), () => showWhatsNew(app), t('What changed in each version, the newest first')),
       pill(t('WHAT’S SPECIAL'), () => showFeatures(app), t('Dust, Discogs prices, missing albums, disc wear — what other players don’t have')),
       pill(t('FAQ'), () => showFaq(), t('Answers to what people ask the first time')),
       pill(t('KEYBOARD SHORTCUTS'), () => showShortcuts(), t('Every key, also with ?'))));
@@ -409,7 +420,7 @@ let menuLayer = null;
  * A small menu under `anchor` (an element, or where one was); items are { label, swatch (CSS background, optional),
  * current, pick, more (optional: ✎ and right-click, given where the item is) } or { divider: true }.
  */
-function showMenu(anchor, items) {
+function showMenu(anchor, items, { alignEnd = false } = {}) {
   const box = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;
   closeMenu();
   const menu = el('div', { class: 'theme-menu' }, items.map((item) => {
@@ -426,12 +437,13 @@ function showMenu(anchor, items) {
   const layerNode = el('div', { class: 'theme-menu-layer', onMousedown: (e) => { if (e.target === layerNode) closeMenu(); } }, menu);
   layer().append(layerNode);
   const m = { width: menu.offsetWidth, height: menu.offsetHeight }; // (its laid-out size: the opening animation scales it)
-  menu.style.left = `${Math.max(4, Math.min(box.left, window.innerWidth - m.width - 4))}px`;
+  menu.style.left = `${Math.max(4, Math.min(alignEnd ? box.right - m.width : box.left, window.innerWidth - m.width - 4))}px`;
+  if (alignEnd) menu.style.transformOrigin = 'top right';
   menu.style.top = `${Math.max(4, Math.min(box.bottom + 6, window.innerHeight - m.height - 4))}px`;
   menuLayer = layerNode;
 }
-/** A list of Discogs pressings to pick from (the shelf's OTHER PRESSING… and CHOOSE PRESSING…), under `anchor`. */
-export function pressingMenu(anchor, items) { showMenu(anchor, items); }
+/** A list to pick from under `anchor`: the shelf's SORT, and its Discogs pressings (OTHER PRESSING… and CHOOSE PRESSING…). */
+export function menu(anchor, items, opts) { showMenu(anchor, items, opts); }
 export function closeMenu() {
   if (menuLayer) { menuLayer.remove(); menuLayer = null; }
   if (settingsStale) { settingsStale = false; if (isOpen('settings')) refreshPanel('settings'); }
@@ -734,25 +746,44 @@ function buildTags(app) {
 
 // ---- History -----------------------------------------------------------------------------------------------------
 
-export function showHistory(app) { openPanel('history', () => buildHistory(app), { width: 600 }); }
-export function refreshHistoryIfOpen(app) { if (isOpen('history')) refreshPanel('history'); }
-function trackRow(app, path, label, onPlay) {
+// When each song in HISTORY was last played, for its day and time (asked for as the panel opens and as songs play;
+// null until the answer: the plain list till then).
+let historyTimes = null;
+function askHistoryTimes(app) {
+  const h = app.state.history.slice();
+  app.cdp.playTimes(h).then(({ last }) => {
+    historyTimes = Object.fromEntries(h.map((p, i) => [p, last[i]]));
+    if (isOpen('history')) refreshPanel('history');
+  }).catch(() => {});
+}
+export function showHistory(app) { historyTimes = null; openPanel('history', () => buildHistory(app), { width: 600 }); askHistoryTimes(app); }
+export function refreshHistoryIfOpen(app) { if (isOpen('history')) { refreshPanel('history'); askHistoryTimes(app); } }
+function trackRow(app, path, label, onPlay, when = null) {
   const now = pill(t('PLAY'), (e) => { e.stopPropagation(); onPlay(); }, t('Play it now'));
   // Done, said on the button itself: the status line is under this panel.
   const done = (b, label) => { b.textContent = t('✓ DONE'); b.disabled = true; setTimeout(() => { b.textContent = label; b.disabled = false; }, 1500); };
   const next = pill(t('NEXT'), (e) => { e.stopPropagation(); app.playNext([path], { sorted: true }); done(e.currentTarget, t('NEXT')); }, app.changerMode() ? t('Into the changer, to play after the disc playing') : t('Play it next, after the song playing'));
   const add = pill(t('ADD'), (e) => { e.stopPropagation(); app.addToQueue([path], { sorted: true }); done(e.currentTarget, t('ADD')); }, app.changerMode() ? t('Into the changer') : t('Add to queue'));
   for (const b of [now, next, add]) b.classList.add('small'); // the song's name gets the room
-  return el('div', { class: 'list-row', title: t('Play {song}', { song: label }), onClick: onPlay }, el('span', { class: 'entry' }, label), now, next, add);
+  return el('div', { class: 'list-row', title: t('Play {song}', { song: label }), onClick: onPlay }, when ? el('span', { class: 'when' }, when) : null, el('span', { class: 'entry' }, label), now, next, add);
 }
+const dayName = (day) => (day === 'TODAY' ? t('TODAY') : day === 'YESTERDAY' ? t('YESTERDAY') : day === null ? t('EARLIER')
+  : new Date(day).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase());
+const clockOf = (at) => (at ? new Date(at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) : '');
 function buildHistory(app) {
   const h = app.state.history;
-  const body = h.length
-    ? el('div', { class: 'scroll' }, h.map((p) => { app.ensureDetails(p); return p; }).map((p) => trackRow(app, p, app.queueDisplay(p), async () => {
+  const row = (p, at) => {
+    app.ensureDetails(p);
+    return trackRow(app, p, app.queueDisplay(p), async () => {
       if (!(await app.cdp.exists(p))) { app.setStatus(t('FILE NO LONGER FOUND')); await app.loadHistoryFromDisk(); refreshPanel('history'); return; }
       app.appendAndPlay(p); closePanel('history');
-    })))
-    : el('div', { class: 'empty-note' }, t('NOTHING PLAYED YET'));
+    }, historyTimes ? clockOf(at) || '—' : null);
+  };
+  // By day once it's known when each was played: TODAY, YESTERDAY, then each day before.
+  const rows = historyTimes
+    ? historyDays(h, historyTimes).flatMap((g) => [el('div', { class: 'history-day' }, dayName(g.day)), ...g.items.map((i) => row(i.path, i.at))])
+    : h.map((p) => row(p, null));
+  const body = h.length ? el('div', { class: 'scroll' }, rows) : el('div', { class: 'empty-note' }, t('NOTHING PLAYED YET'));
   if (h.length) { body.style.height = '380px'; body.style.marginTop = '16px'; }
   else body.style.marginTop = '16px';
   return [title(t('HISTORY')), body, closeRow(() => closePanel('history'))];
@@ -1413,6 +1444,15 @@ const CHANGELOG = [
     'Open audio files straight from Finder or Explorer with &ldquo;Open With &rarr; CDPlayer&rdquo;, or drop them onto the app icon',
   ] },
 ];
+/** Settings → WHAT'S NEW: every version's changes, the newest first, in the interface's language where they're written in it. */
+export function showWhatsNew(app) {
+  const changesOf = (c) => (c.changesIn && c.changesIn[locale]) || c.changes;
+  openPanel('changelog', () => [title(t("WHAT'S NEW")), el('div', { class: 'subtitle' }, `CDPlayer ${app.state.version}`), gap(14),
+    el('div', { class: 'scroll changelog-list' }, CHANGELOG.map((c) => el('div', { class: 'changelog-version' },
+      el('div', { class: 'changelog-number' }, c.version),
+      changesOf(c).map((b) => el('div', { class: 'tip-row' }, el('span', { class: 'dot' }, '●'), el('span', { class: 'tip', html: b })))))),
+    closeRow(() => closePanel('changelog'), t('CLOSE'))]);
+}
 export function showChangelogIfNeeded(app, lastVersion, existingInstall) {
   const version = app.state.version;
   if (lastVersion === version) return;

@@ -10,6 +10,13 @@ test('full frame rate only when watched and drawn by the graphics card', () => {
   assert.strictEqual(BACKGROUND_FRAME_MS, 1000 / 30);
 });
 
+test('behind other windows with the music paused: 10 frames a second; watched, paused changes nothing', () => {
+  assert.strictEqual(frameGap({ watched: false, software: false, playing: false }), 100);
+  assert.strictEqual(frameGap({ watched: false, software: true, playing: false }), 100);
+  assert.strictEqual(frameGap({ watched: true, software: false, playing: false }), 0);
+  assert.strictEqual(frameGap({ watched: false, software: false, playing: true }), BACKGROUND_FRAME_MS);
+});
+
 test('the cover glow stays 48 px for the graphics card to stretch, and is stretched once to the window without one', () => {
   assert.deepStrictEqual(glowSize({ software: false, width: 1280, height: 800, dpr: 2 }), { width: 48, height: 48 });
   assert.deepStrictEqual(glowSize({ software: true, width: 1280, height: 800, dpr: 1 }), { width: 1280, height: 800 });

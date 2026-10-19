@@ -15,7 +15,7 @@ function phoneAlbums(albums, colors) {
     const c = cache[a.id];
     return {
       id: albumKey(a.id), title: a.title, artist: a.artist, year: a.year, n: a.tracks.length,
-      added: a.added, plays: a.plays, touched: a.touched, wrapped: a.wrapped,
+      added: a.added, plays: a.plays, lastPlayed: a.lastPlayed, touched: a.touched, wrapped: a.wrapped,
       color: c && Array.isArray(c.spine) ? c.spine : null,
     };
   });

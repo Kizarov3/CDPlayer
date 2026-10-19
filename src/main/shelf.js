@@ -98,17 +98,33 @@ function groupAlbums(tracks) {
     || String(a.year || '').localeCompare(String(b.year || '')) || sortName(a.title).localeCompare(sortName(b.title), undefined, { numeric: true }));
 }
 
-// The shelf's cache for `folder`. One from an older CDPlayer that read tags differently: every track's tags are read
-// again (no stamp matches), but when it first turned up is kept — otherwise the whole shelf would look newly added.
-function readCache(folder) {
+// The cache file as it is, with the folders it was read from (one `folder` in a cache from before there could be more).
+function readCacheFile() {
   try {
     const c = JSON.parse(store.readText(CACHE_FILE) || '');
-    if (!c || c.folder !== folder || !c.tracks) return null;
-    if (c.version === CACHE_VERSION) return c.tracks;
-    return Object.fromEntries(Object.entries(c.tracks).map(([p, e]) => [p, { ...e, stamp: null }]));
+    if (c && c.tracks) return { ...c, folders: Array.isArray(c.folders) ? c.folders : c.folder ? [c.folder] : [] };
   } catch { /* none yet, or unreadable: start over */ }
   return null;
 }
+// The shelf's cache, when it was read from `folders` (one, or a list: any of them). One from an older CDPlayer that
+// read tags differently: every track's tags are read again (no stamp matches), but when it first turned up is kept —
+// otherwise the whole shelf would look newly added.
+function readCache(folders) {
+  const c = readCacheFile(), wanted = [].concat(folders || []);
+  if (!c || !wanted.some((f) => c.folders.some((cf) => overlaps(f, cf)))) return null;
+  if (c.version === CACHE_VERSION) return c.tracks;
+  return Object.fromEntries(Object.entries(c.tracks).map(([p, e]) => [p, { ...e, stamp: null }]));
+}
+/** Whether the cache has read every one of `folders` (a folder just added: not yet). */
+function cacheHas(folders) {
+  const c = readCacheFile();
+  return !!c && folders.every((f) => c.folders.some((cf) => f === cf || isUnder(f, cf)));
+}
+const isUnder = (p, dir) => p.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep);
+// One folder the same as the other, or inside it (a folder added that holds one already read, or the other way round).
+const overlaps = (a, b) => a === b || isUnder(a, b) || isUnder(b, a);
+/** The music folders as one name: "Music", or "Music · Jazz Drive". */
+const folderNames = (folders) => folders.map((f) => path.basename(f) || f).join(' · ');
 async function statOf(p) {
   try { return await fsp.stat(sourceOf(p)); } catch { return null; }
 }
@@ -130,7 +146,7 @@ function addedAt(prev, st, cacheFound, now) {
  * the shelf's cache, the rest read from their tags — unless there are too many to read quickly (then name order).
  */
 async function trackNumbers(files, { readUpTo = 400 } = {}) {
-  const folder = store.readLastPath(), cached = (folder && readCache(folder)) || {};
+  const cached = readCache(store.musicFolders()) || {};
   const out = new Map(), missing = [];
   for (const p of files) { const e = cached[p]; if (e && e.info) out.set(p, { disc: e.info.disc, track: e.info.track }); else missing.push(p); }
   if (missing.length > readUpTo) return out;
@@ -146,14 +162,21 @@ async function trackNumbers(files, { readUpTo = 400 } = {}) {
 }
 
 let running = null;
-/** Every album in the music folder. onProgress(done, total) while tags are being read. → { folder, name, albums } */
+/**
+ * Every album in the music folders. onProgress(done, total) while tags are being read.
+ * → { folder (the first), folders, name, albums }
+ */
 function scanAlbums(onProgress) {
   if (running) return running;
   running = (async () => {
-    const folder = store.readLastPath();
-    if (!folder || !store.isDir(folder)) return { folder: null, albums: [] };
-    const files = await library.collectAudio([folder]);
-    const found = readCache(folder), cached = found || {}, fresh = {}, now = Date.now();
+    const folders = store.musicFolders();
+    if (!folders.length) return { folder: null, folders: [], albums: [] };
+    const files = await library.collectAudio(folders);
+    const found = readCache(folders), cached = found || {}, fresh = {}, now = Date.now();
+    // A folder the cache has read before: a file in it it hasn't seen has just turned up. One just added: its files are
+    // as new as their own dates, so the whole of it isn't NEW at once.
+    const before = found ? readCacheFile().folders : [];
+    const seen = (p) => before.some((f) => isUnder(p, f));
     const tracks = new Array(files.length);
     let next = 0, done = 0;
     async function worker() {
@@ -161,7 +184,7 @@ function scanAlbums(onProgress) {
         const i = next++, p = files[i];
         const st = await statOf(p);
         const stamp = st ? `${st.size}:${Math.round(st.mtimeMs)}` : null;
-        const added = addedAt(cached[p], st, !!found, now);
+        const added = addedAt(cached[p], st, seen(p), now);
         let info = cached[p] && cached[p].stamp === stamp ? cached[p].info : null;
         if (!info) { try { info = await trackInfo(p); } catch { info = { title: path.basename(p), artist: null, album: null, albumArtist: null, year: null, track: null, disc: 1, duration: 0 }; } }
         fresh[p] = { stamp, info, added };
@@ -170,10 +193,13 @@ function scanAlbums(onProgress) {
       }
     }
     await Promise.all(Array.from({ length: CONCURRENCY }, worker));
-    store.writeText(CACHE_FILE, JSON.stringify({ version: CACHE_VERSION, folder, tracks: fresh }));
+    // A folder on the list but not there now (a drive unplugged): what was read in it is kept for when it's back.
+    const away = store.readMusicFolders().filter((f) => !folders.includes(f) && before.some((b) => overlaps(b, f)));
+    for (const [p, e] of Object.entries(cached)) if (!fresh[p] && away.some((f) => isUnder(p, f))) fresh[p] = e;
+    store.writeText(CACHE_FILE, JSON.stringify({ version: CACHE_VERSION, folders: [...folders, ...away], tracks: fresh }));
     const albums = groupAlbums(tracks);
     onShelf = byTrack(albums);
-    return { folder, name: path.basename(folder), albums };
+    return { folder: folders[0], folders, name: folderNames(folders), albums };
   })().finally(() => { running = null; });
   return running;
 }
@@ -207,7 +233,7 @@ function isWrapped(album, { since, torn }) {
 /** The shelf album `p` is on — { id, paths: its tracks, `p` included } — or null when it isn't on the shelf. */
 function albumOf(p) {
   if (!onShelf) {
-    const folder = store.readLastPath(), cached = folder ? readCache(folder) : null;
+    const cached = readCache(store.musicFolders());
     onShelf = byTrack(cached ? groupAlbums(Object.entries(cached).map(([tp, e]) => ({ path: tp, info: e.info, added: e.added }))) : []);
   }
   return onShelf.get(p) || null;
@@ -319,4 +345,4 @@ async function albumCoverFull(firstTrack) {
 /** A file's tags changed: its album's cover thumbnail is made again next time. */
 function forget(filePath) { thumbs.delete(filePath); fromWeb.delete(filePath); onShelf = null; } // its tags changed: it may be on another album now
 
-module.exports = { COVER_FILE, scanAlbums, trackNumbers, albumOf, albumTracks, isLastOfDisc, touchedAt, isWrapped, readCache, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };
+module.exports = { COVER_FILE, scanAlbums, trackNumbers, albumOf, albumTracks, isLastOfDisc, touchedAt, isWrapped, readCache, cacheHas, folderNames, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };
