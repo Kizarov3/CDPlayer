@@ -1272,6 +1272,11 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.17.3', changes: [
+    '<b>The square video&rsquo;s lyrics</b> start below the song&rsquo;s name: a long title on two lines no longer runs the album line into them',
+  ], changesIn: { ru: [
+    '<b>Текст песни в квадратном видео</b> начинается ниже названия: длинное название в две строки больше не наезжает строкой альбома на текст',
+  ] } },
   { version: '2.17.2', changes: [
     '<b>The phone remote pairs</b> when the code is opened from the camera (it showed THIS PHONE ISN&rsquo;T PAIRED)',
     '<b>AUTOMIX cuts the silence between an album&rsquo;s songs</b> played in order; songs that run into each other still do',
