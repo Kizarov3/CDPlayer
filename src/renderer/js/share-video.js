@@ -120,8 +120,10 @@ function drawFrame(g, L, back, s, at) {
   g.font = `${Math.round(big * 0.6)}px ${FONT}`; g.fillStyle = rgb(s.colors.accent2);
   if (s.artist) { g.fillText(wrap(g, s.artist, n.w, 1)[0], n.x, y + 6); y += big * 0.75; }
   g.font = `${Math.round(big * 0.45)}px ${FONT}`; g.fillStyle = rgb(s.colors.muted);
-  if (s.subtitle) g.fillText(wrap(g, s.subtitle, n.w, 1)[0], n.x, y + 10);
-  drawLyrics(g, L.lyrics, s, lyricsAt(s.timed, s.position()), L.w === L.h ? 44 : 64);
+  if (s.subtitle) { g.fillText(wrap(g, s.subtitle, n.w, 1)[0], n.x, y + 10); y += big * 0.45 + 10; }
+  // A name on two lines runs past where the lyrics start (in the square video): they start below it instead.
+  const top = Math.max(L.lyrics.y, Math.round(y + 30));
+  drawLyrics(g, { ...L.lyrics, y: top, h: L.lyrics.h - (top - L.lyrics.y) }, s, lyricsAt(s.timed, s.position()), L.w === L.h ? 44 : 64);
   g.font = `bold 22px ${FONT}`; g.fillStyle = rgb(s.colors.muted); g.textAlign = 'right'; g.textBaseline = 'alphabetic';
   g.fillText('CDPlayer', L.w - 40, L.h - 40);
 }
