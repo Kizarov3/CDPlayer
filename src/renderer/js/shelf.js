@@ -336,7 +336,8 @@ function movedNotice() {
   };
   return el('div', { class: 'shelf-moved', role: 'status' },
     el('div', { class: 'shelf-moved-text', title: `${g.from || '/'} → ${g.to || '/'}` },
-      t('{n} songs you’ve played have moved from {from} to {to}. Their plays, dust and history stayed behind.', { n: g.count, from: shortPath(g.from), to: shortPath(g.to) })),
+      g.count === 1 ? t('A song you’ve played has moved from {from} to {to}. Its plays, dust and history stayed behind.', { from: shortPath(g.from), to: shortPath(g.to) })
+        : t('{n} songs you’ve played have moved from {from} to {to}. Their plays, dust and history stayed behind.', { n: g.count, from: shortPath(g.from), to: shortPath(g.to) })),
     el('div', { class: 'row-pills' },
       pill(t('BRING THEIR HISTORY'), () => act(async (key) => {
         const n = await shelf.app.cdp.applyMove(key);

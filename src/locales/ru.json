@@ -1101,6 +1101,7 @@
   "…OR AT THE END OF THE DISC": "…ИЛИ В КОНЦЕ ДИСКА",
   "★ RARE": "★ РЕДКОСТЬ",
   "✓ DONE": "✓ ГОТОВО",
+  "A song you’ve played has moved from {from} to {to}. Its plays, dust and history stayed behind.": "Сыгранная песня переехала из {from} в {to}. Её прослушивания, пыль и история остались на старом месте.",
   "{n} songs you’ve played have moved from {from} to {to}. Their plays, dust and history stayed behind.": {
     "one": "{n} сыгранная песня переехала из {from} в {to}. Её прослушивания, пыль и история остались на старом месте.",
     "few": "{n} сыгранные песни переехали из {from} в {to}. Их прослушивания, пыль и история остались на старом месте.",
