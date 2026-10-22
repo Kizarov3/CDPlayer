@@ -17,12 +17,13 @@ import { stickyNote, noteLook } from './shelf-notes.js';
 import { receiptFor } from './shelf-receipt.js';
 import { withMissing, boxLabel, sameName, boxesFor, renderGate, groupFor, pickEdition, fullTracklist } from './shelf-missing.js';
 import { dustLevel, pickOne, Wiper } from './shelf-dust.js';
+import { showsAlbum, showChoices } from './shelf-show.js';
 import { slotOfAlbum } from './changer.js';
 import { t } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 const shelf = { open: false, albums: [], loading: false, covers: new Map(), colors: new Map(), observer: null, caseOpen: null, app: null, generation: 0, inPlayer: null,
-  discogs: new Map(), openBoxes: new Set(), pressings: new Map(), appraising: null, appraisalNote: null, countBase: '', settings: null, noCover: new Set(), colorCache: {}, hidden: new Set(), moves: [], boxObserver: null, wantTimer: null, onScreen: new Set() };
+  discogs: new Map(), openBoxes: new Set(), pressings: new Map(), appraising: null, appraisalNote: null, countBase: '', settings: null, noCover: new Set(), colorCache: {}, hidden: new Set(), moves: [], show: 'ALL', showLabel: null, boxObserver: null, wantTimer: null, onScreen: new Set() };
 
 export const isShelfOpen = () => shelf.open;
 // Discographies arriving redraw the shelf — once for a burst, and not while a case is out, a spine is carried or one
@@ -158,6 +159,7 @@ export function setupShelf(app) {
     render();
     $('shelf-body').scrollTop = 0;
   };
+  $('shelf-show').addEventListener('click', showMenu);
   $('shelf-sort').addEventListener('click', () => shelf.app.menu($('shelf-sort'), SORTS.map((sort) => ({
     label: SORT_LABELS[sort], current: sort === shelf.app.state.shelfSort, pick: () => { if (sort !== shelf.app.state.shelfSort) sortBy(sort); },
   }))));
@@ -247,13 +249,18 @@ function render() {
     return;
   }
   const query = $('shelf-filter').value, filtering = !!query.trim();
-  const shown = shelf.albums.filter((a) => matchesFilter(a, query, (stickersFor(a).obi || {}).catalog)); // the number on its obi too
+  const showing = shelf.show !== 'ALL', nowShow = Date.now();
+  const shown = shelf.albums.filter((a) => matchesFilter(a, query, (stickersFor(a).obi || {}).catalog) // the number on its obi too
+    && showsAlbum(a, shelf.show, nowShow));
+  $('shelf-show').textContent = showing ? `${t('SHOW|shelf')}: ${shelf.showLabel}` : t('SHOW: ALL');
+  $('shelf-show').classList.toggle('on', showing);
   const n = shelf.albums.length;
   // (The folder's name is the count's tooltip: the line keeps its room for the albums and what the shelf is worth.)
-  shelf.countBase = [n === 1 ? t('1 ALBUM') : t('{n} ALBUMS', { n }), filtering ? t('{n} SHOWN', { n: shown.length }) : null].filter(Boolean).join(' · ');
+  shelf.countBase = [n === 1 ? t('1 ALBUM') : t('{n} ALBUMS', { n }), filtering || showing ? t('{n} SHOWN', { n: shown.length }) : null].filter(Boolean).join(' · ');
   $('shelf-count').title = shelf.folderName ? t('Your music folder: {name}', { name: shelf.folderName }) : '';
   renderCount();
   if (!n) { body.replaceChildren(el('div', { class: 'shelf-empty' }, el('div', {}, t('No music in this folder yet.')), pill(t('CHOOSE ANOTHER FOLDER…'), pickFolder))); return; }
+  if (!shown.length && showing && !filtering) { body.replaceChildren(el('div', { class: 'shelf-empty' }, el('div', {}, t('No albums like that on the shelf.')), pill(t('SHOW ALL'), () => setShow('ALL')))); showIndex([]); return; }
   if (!shown.length) { body.replaceChildren(el('div', { class: 'shelf-empty' }, el('div', {}, t('Nothing on the shelf for “{query}”.', { query: query.trim() })), pill(t('CLEAR THE SEARCH'), () => { $('shelf-filter').value = ''; render(); }))); showIndex([]); return; }
   shelf.observer = new IntersectionObserver((entries) => {
     for (const e of entries) if (e.isIntersecting) { shelf.observer.unobserve(e.target); loadCover(e.target.album, e.target); }
@@ -265,7 +272,7 @@ function render() {
   if (shelf.boxObserver) shelf.boxObserver.disconnect();
   shelf.onScreen.clear();
   if (sort !== 'ARTIST') stopLookups();
-  const boxes = sort === 'ARTIST' ? boxesFor({ albums: shelf.albums, shown, discogs: shelf.discogs, hidden: shelf.hidden, open: shelf.openBoxes, query }) : new Map();
+  const boxes = sort === 'ARTIST' && !showing ? boxesFor({ albums: shelf.albums, shown, discogs: shelf.discogs, hidden: shelf.hidden, open: shelf.openBoxes, query }) : new Map();
   const arranged = arrange(shown, sort, { currency: (shelf.settings && shelf.settings.currency) || 'USD' });
   showIndex(jumpTargets(arranged));
   showHere();
@@ -297,6 +304,25 @@ function render() {
 
 // Songs played before their folder moved (a new drive, a new computer): their plays, dust and history are still kept
 // under the old paths. The folder with the most of them is offered, to bring them along or be told they're other songs.
+// SHOW: which albums stand on the shelf (shelf-show.js) — the kinds there are, then decades and genres, each with how
+// many. Picking one again, or ALL, stands them all back.
+function setShow(show, label = null) {
+  shelf.show = show; shelf.showLabel = label;
+  render();
+  $('shelf-body').scrollTop = 0;
+}
+const SHOW_LABELS = { DUSTY: t('DUSTY'), WRAPPED: t('STILL WRAPPED'), LEFT: t('LEFT PART-WAY'), NOTE: t('WITH A NOTE'), UNPLAYED: t('NEVER PLAYED') };
+function showMenu() {
+  const c = showChoices(shelf.albums);
+  const item = (show, label, count) => ({ label: `${label} · ${count}`, current: shelf.show === show, pick: () => setShow(shelf.show === show ? 'ALL' : show, label) });
+  shelf.app.menu($('shelf-show'), [
+    { label: t('ALL · {n}', { n: shelf.albums.length }), current: shelf.show === 'ALL', pick: () => setShow('ALL') },
+    ...c.kinds.map((k) => item(k.show, SHOW_LABELS[k.show], k.count)),
+    ...(c.decades.length > 1 ? [{ divider: true }, ...c.decades.map((d) => item(d.show, t('{decade}s', { decade: d.decade }), d.count))] : []),
+    ...(c.genres.length > 1 ? [{ divider: true }, ...c.genres.map((g) => item(g.show, g.label.toUpperCase(), g.count))] : []),
+  ], { alignEnd: true });
+}
+
 // A folder by the end of its path ("…/Volumes/Music"), the whole of it in the tooltip.
 const shortPath = (p) => { const ps = String(p || '/').split(/[\\/]+/).filter(Boolean); return ps.length > 2 ? `…/${ps.slice(-2).join('/')}` : (p || '/'); };
 function movedNotice() {

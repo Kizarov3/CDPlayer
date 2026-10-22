@@ -1128,5 +1128,17 @@
   "The tags this file had before CDPlayer first changed them ({when})": "Теги, которые были у файла до первой правки в CDPlayer ({when})",
   "Left at track {n} · {song}": "Остановились на треке {n} · {song}",
   "CONTINUE · TRACK {n}": "ПРОДОЛЖИТЬ · ТРЕК {n}",
-  "start to end ×{n}": "целиком ×{n}"
+  "start to end ×{n}": "целиком ×{n}",
+  "SHOW: ALL": "ПОКАЗ: ВСЕ",
+  "SHOW|shelf": "ПОКАЗ",
+  "SHOW ALL": "ПОКАЗАТЬ ВСЕ",
+  "ALL · {n}": "ВСЕ · {n}",
+  "DUSTY": "ПЫЛЬНЫЕ",
+  "STILL WRAPPED": "В ПЛЁНКЕ",
+  "LEFT PART-WAY": "НЕДОСЛУШАННЫЕ",
+  "WITH A NOTE": "СО СТИКЕРОМ",
+  "NEVER PLAYED": "НИ РАЗУ НЕ ИГРАЛИ",
+  "No albums like that on the shelf.": "Таких альбомов на полке нет.",
+  "Which albums stand on the shelf — all, or only some: dusty, still wrapped, left part-way, a decade, a genre…": "Какие альбомы стоят на полке: все или только пыльные, в плёнке, недослушанные, одного десятилетия или жанра…",
+  "{decade}s": "{decade}-е"
 }

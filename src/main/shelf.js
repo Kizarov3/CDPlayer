@@ -16,7 +16,7 @@ const cue = require('./cue');
 const { sameName } = require('./same-name');
 
 const CACHE_FILE = 'shelf-cache.json';
-const CACHE_VERSION = 3; // bump when trackInfo() reads files differently, so old entries are read again (3: the pressing's tags)
+const CACHE_VERSION = 4; // bump when trackInfo() reads files differently, so old entries are read again (3: the pressing's tags, 4: genre)
 const CONCURRENCY = 6;
 const COVER_FILE = /^(cover|folder|front|album|albumart|albumartlarge)\.(jpe?g|png|webp)$/i;
 const DISC_FOLDER = /^(cd|disc|disk)\s*\d+$/i;
@@ -47,6 +47,7 @@ async function trackInfo(p) {
     year: year ? year[0] : null, track: ref ? ref.number : (c.track && c.track.no) || null,
     disc: (c.disc && c.disc.no) || discFromFolder(p) || 1, duration: d.duration || 0, artistMbid: c.albumArtistMbid || null,
     albumMbid: c.albumMbid || null, barcode: c.barcode || null, catalog: c.catalog || null, label: c.label || null, // its pressing, for Discogs
+    genre: c.genre || null, // for SHOW
   };
 }
 
@@ -86,6 +87,7 @@ function groupAlbums(tracks) {
       year: years[0] || null,
       artistMbid: g.items.map((t) => t.info.artistMbid).find(Boolean) || null,
       mbReleaseId: most('albumMbid'), barcode: most('barcode'), catalog: most('catalog'), label: most('label'), // the pressing its tracks' tags name most
+      genre: most('genre'),
       discs: Math.max(1, ...g.items.map((t) => t.info.disc || 1)),
       duration: g.items.reduce((s, t) => s + (t.info.duration || 0), 0),
       added: g.items.reduce((m, t) => (t.added && (m === null || t.added > m) ? t.added : m), null), // its newest track (a NEW sticker)
