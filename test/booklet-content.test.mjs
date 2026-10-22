@@ -124,3 +124,9 @@ test('a found hidden song is written in under its track, and isn\'t listed as mi
   ]);
   assert.deepStrictEqual(penHidden(rows, [null, null]), rows);
 });
+
+test('the back cover says how many times the album was played through, a single aside', () => {
+  const m = ownerMarks({ plays: [1, 1], first: [null, null], last: [null, null], through: 3 });
+  assert.ok(m.notes.includes('start to end ×3'));
+  assert.ok(!ownerMarks({ plays: [4], first: [null], last: [null], through: 4 }).notes.some((n) => n.includes('×')));
+});

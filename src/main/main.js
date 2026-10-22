@@ -28,6 +28,7 @@ const cue = require('./cue');
 const shelf = require('./shelf');
 const { recordPlay } = require('./plays');
 const relocate = require('./relocate');
+const albumRuns = require('./album-runs');
 const tagWriter = require('./tag-writer');
 const audioCd = require('./audio-cd');
 const rip = require('./rip');
@@ -260,8 +261,12 @@ const plays = () => (playCounts = playCounts || store.readPlayCounts());
 let lastPlayed = null, firstPlayed = null;
 const playedAt = () => (lastPlayed = lastPlayed || store.readLastPlayed());
 const firstPlayedAt = () => (firstPlayed = firstPlayed || store.readFirstPlayed());
+// Albums heard from start to end, and where one was left (album-runs.js).
+let runs = null, runsChanged = false;
+const runsState = () => (runs = runs || albumRuns.parse(store.readText('album-runs.json')));
 function writePlays() {
   playsTimer = null;
+  if (runsChanged) { runsChanged = false; store.writeText('album-runs.json', JSON.stringify(runs)); }
   store.writePlayCounts(playCounts);
   if (lastPlayed) store.writeLastPlayed(lastPlayed);
   if (firstPlayed) store.writeFirstPlayed(firstPlayed);
@@ -271,6 +276,7 @@ handle('plays:add', (p) => {
   clearTimeout(playsTimer); playsTimer = setTimeout(writePlays, 1000);
   // Played, its album is out of its shrink-wrap for good (not only while its play count is kept).
   const album = shelf.albumOf(p), w = album && wrap();
+  if (album) { albumRuns.heard(runsState(), album.id, album.paths.indexOf(p), album.paths.length); runsChanged = true; }
   if (w && !w.torn.has(album.id)) { w.torn.add(album.id); store.writeWrap(w); }
   phoneShelf = null; // the phone's shelf counts it (and shows the album unwrapped) when it's next read
   return n;
@@ -279,7 +285,8 @@ handle('plays:count', (p) => plays().get(p) || 0);
 // When each of `paths` was first and last played (ms, or null), for the booklet's pen marks.
 handle('plays:times', (paths) => {
   const list = Array.isArray(paths) ? paths : [], first = firstPlayedAt(), last = playedAt();
-  return { first: list.map((p) => first.get(p) || null), last: list.map((p) => last.get(p) || null) };
+  const album = list.length ? shelf.albumOf(list[0]) : null; // and how many times their album was played through
+  return { first: list.map((p) => first.get(p) || null), last: list.map((p) => last.get(p) || null), through: album ? albumRuns.throughCount(runsState(), album.id) : 0 };
 });
 // Plays of the whole album a track is on (as the shelf groups it), or of the track alone when it isn't on the shelf,
 // and what names that disc (its shelf album, or the track) — the same for every song on it.
@@ -529,6 +536,9 @@ async function shelfListing() {
   // …and which came in shrink-wrap (new since wrapping began, not played yet, not unwrapped by hand).
   const w = wrap();
   for (const a of result.albums) a.wrapped = shelf.isWrapped(a, w);
+  // …and where one was left part-way through (a bookmark), and how many times each was played through.
+  const r = runsState();
+  for (const a of result.albums) { a.bookmark = albumRuns.bookmark(r, a.id, a.tracks.length); a.through = albumRuns.throughCount(r, a.id); }
   result.hiddenMissing = [...store.readHiddenMissing()];
   result.moves = movedSongs(result.albums);
   return result;
@@ -557,6 +567,7 @@ handle('moves:apply', (key) => {
   store.writeNotes(new Map([...store.readNotes()].map(([id, text]) => [moveId(id), text])));
   const d = dust(); d.wiped = new Map([...d.wiped].map(([id, t]) => [moveId(id), t])); store.writeDust(d);
   const w = wrap(); w.torn = new Set([...w.torn].map(moveId)); store.writeWrap(w);
+  runs = albumRuns.moveIds(runsState(), moveId); store.writeText('album-runs.json', JSON.stringify(runs));
   movesFound = null;
   phoneShelf = null;
   return moves.size;

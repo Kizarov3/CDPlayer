@@ -302,7 +302,7 @@ export async function albumBooklet(app, album, cover, { play, onClose = () => {}
   // The hidden songs heard on it (hidden-track.js): written in under their track.
   const hidden = await Promise.all(album.tracks.map((tr, i) => app.cdp.hidden.get(tr.path)
     .then((g) => (g && g.entry && g.entry.found ? hiddenName(g.entry, details[i] || { title: tr.title }) || t('Hidden track') : null)).catch(() => null)));
-  const marks = ownerMarks({ plays, first: album.tracks.map((t, i) => times.first[i] || null), last: album.tracks.map((t, i) => times.last[i] || null) });
+  const marks = ownerMarks({ plays, first: album.tracks.map((t, i) => times.first[i] || null), last: album.tracks.map((t, i) => times.last[i] || null), through: times.through || 0 });
   const small = albumSmallPrint(details);
   const playing = () => album.tracks.findIndex((t) => t.path === app.state.loadedPath);
   const found = album.tracks.map((t, i) => (details[i] && details[i].lyrics) || null);

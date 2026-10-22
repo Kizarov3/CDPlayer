@@ -654,6 +654,12 @@ body.cursor-hidden #cd-exit { opacity: 0; }
   position: absolute; right: -9px; top: 16%; width: 12px; height: 40px; border-radius: 0 3px 3px 0;
   background: linear-gradient(to right, rgb(196, 32, 38), rgb(232, 60, 60)); box-shadow: 1px 1px 3px rgba(0, 0, 0, .4);
 }
+/* A ribbon bookmark hanging out of the top of an album left part-way through (album-runs.js). */
+.spine-bookmark {
+  position: absolute; top: -12px; right: 5px; width: 6px; height: 24px; z-index: 3; pointer-events: none;
+  background: linear-gradient(to right, rgb(var(--accent)), rgba(var(--accent), .75)); box-shadow: 0 1px 2px rgba(0, 0, 0, .45);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 82%, 0 100%);
+}
 /* The corner of a sticky note (shelf-notes.js) poking up above a spine. */
 .note-tab {
   position: absolute; top: -9px; left: 50%; width: 22px; height: 16px; margin-left: -11px; z-index: 3; pointer-events: none;

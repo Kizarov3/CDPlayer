@@ -40,7 +40,10 @@ const redraw = renderGate({ render: () => { if (shelf.open) render(); }, busy: (
 const IN_PLAYER = t('IN THE PLAYER');
 const SORT_LABELS = { ARTIST: t('ARTIST'), NEW: t('NEW|sort'), PLAYED: t('MOST PLAYED'), RECENT: t('LAST PLAYED'), YEAR: t('YEAR'), COLOR: t('COLOR'), PRICE: t('PRICE') };
 const holds = (a, path) => !!path && a.tracks.some((t) => t.path === path);
-const spineTitle = (a) => [a.artist, a.title, a.year, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ') + (a.note ? `\n\n${a.note}` : '');
+const spineTitle = (a) => [a.artist, a.title, a.year, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ')
+  + (a.bookmark ? `\n${leftAt(a)}` : '') + (a.note ? `\n\n${a.note}` : '');
+// Where an album played from its start was left (album-runs.js): its bookmark's words.
+const leftAt = (a) => t('Left at track {n} · {song}', { n: a.bookmark.track + 1, song: (a.tracks[a.bookmark.track] || {}).title || '' });
 /** The track now in the player (null: none), so its album's spine can show it. */
 // A shelf album as a changer disc: the shelf's own album id, so loading it again is ALREADY IN SLOT n.
 const discOfAlbum = (a) => ({ id: a.id, kind: 'album', title: a.title, artist: a.artist });
@@ -275,7 +278,8 @@ function render() {
       el('span', { class: 'spine-text' }, a.artist ? el('b', {}, a.artist) : null, a.artist ? ' · ' : null, a.title),
       st.obi ? el('span', { class: 'obi-cat' }, st.obi.catalog) : null,
       st.isNew ? el('span', { class: 'sticker-new' }, t('NEW')) : null,
-      a.wrapped ? el('span', { class: 'spine-film' }) : null);
+      a.wrapped ? el('span', { class: 'spine-film' }) : null,
+      a.bookmark ? el('span', { class: 'spine-bookmark' }) : null);
     spine.album = a;
     markSlot(spine);
     showNoteTab(spine);
@@ -863,6 +867,7 @@ async function openCase(a, spine) {
         pill(t('PLAY NEXT'), unwrapped(() => putIn({ next: true })), app.changerMode() ? t('Into the changer, to play after the disc playing') : t('Play the album next, after the song playing')),
         app.changerMode() ? pill(t('INTO THE CHANGER'), unwrapped(() => putIn()), t('Load the album into the changer: a free slot, or one you pick'))
           : pill(t('ADD TO QUEUE'), unwrapped(() => putIn()), t('Add every track to the end of the queue')),
+        a.bookmark ? pill(t('CONTINUE · TRACK {n}', { n: a.bookmark.track + 1 }), () => play(a, a.bookmark.track), leftAt(a)) : null,
         el('button', { class: 'pill on', onClick: unwrapped(() => play(a, 0)) }, t('PLAY')))));
   showCase(card, spine, from, shelf.colors.get(a.id) || hashColor(a.title + a.artist));
 }

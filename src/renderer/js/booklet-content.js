@@ -94,9 +94,10 @@ export function penHidden(rows, hidden) {
 /**
  * An album's songs' plays, and when each was first and last played (ms, or null) → the owner's pen marks: tally marks
  * beside each song ({ fives, ones }, or { times: '×47' } past twenty; null for none), the favourite (the most played,
- * three plays or more; -1 for none) to circle, and notes for the back cover ('1st spin: 12 Mar 2024', 'last: today').
+ * three plays or more; -1 for none) to circle, and notes for the back cover ('1st spin: 12 Mar 2024', 'last: today',
+ * 'start to end ×3' — `through`: the times the whole album was played through, in order).
  */
-export function ownerMarks({ plays, first, last, now = Date.now() }) {
+export function ownerMarks({ plays, first, last, through = 0, now = Date.now() }) {
   const tallies = plays.map((n) => (!n ? null : n > 20 ? { times: `×${n}` } : { fives: Math.floor(n / 5), ones: n % 5 }));
   let favorite = -1;
   plays.forEach((n, i) => { if (n >= 3 && (favorite < 0 || n > plays[favorite])) favorite = i; });
@@ -104,6 +105,7 @@ export function ownerMarks({ plays, first, last, now = Date.now() }) {
   const notes = [];
   if (known(first).length) { const d = new Date(Math.min(...known(first))); notes.push(t('1st spin: {date}', { date: `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}` })); }
   if (known(last).length) notes.push(t('last: {when}', { when: ago(Math.max(...known(last)), now) }));
+  if (through > 0 && plays.length > 1) notes.push(t('start to end ×{n}', { n: through })); // the album heard as an album
   return { tallies, favorite, notes };
 }
 

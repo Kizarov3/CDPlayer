@@ -1125,5 +1125,8 @@
   "For a new computer, or after reinstalling: everything that’s yours in CDPlayer, but not your music, nor Spotify and Discogs sign-ins.": "Для нового компьютера или после переустановки: всё ваше в CDPlayer, кроме самой музыки и входа в Spotify и Discogs.",
   "PUT BACK THE ORIGINAL": "ВЕРНУТЬ ИСХОДНЫЕ",
   "ORIGINAL TAGS PUT BACK": "ИСХОДНЫЕ ТЕГИ ВОЗВРАЩЕНЫ",
-  "The tags this file had before CDPlayer first changed them ({when})": "Теги, которые были у файла до первой правки в CDPlayer ({when})"
+  "The tags this file had before CDPlayer first changed them ({when})": "Теги, которые были у файла до первой правки в CDPlayer ({when})",
+  "Left at track {n} · {song}": "Остановились на треке {n} · {song}",
+  "CONTINUE · TRACK {n}": "ПРОДОЛЖИТЬ · ТРЕК {n}",
+  "start to end ×{n}": "целиком ×{n}"
 }
