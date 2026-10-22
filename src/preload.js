@@ -97,6 +97,8 @@ contextBridge.exposeInMainWorld('cdp', {
   shelfAlbums: invoke('shelf:albums'),
   applyMove: invoke('moves:apply'),
   declineMove: invoke('moves:decline'),
+  saveBackup: invoke('backup:save'),
+  restoreBackup: invoke('backup:restore'),
   shelfCover: invoke('shelf:cover'),
   shelfCoverFull: invoke('shelf:coverFull'),
   soundCheck: { get: invoke('soundcheck:get'), put: invoke('soundcheck:put'), album: invoke('soundcheck:album') },

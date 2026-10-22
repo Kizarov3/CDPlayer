@@ -546,6 +546,39 @@ handle('moves:apply', (key) => {
   phoneShelf = null;
   return moves.size;
 });
+// BACKUP (backup.js): what's yours in CDPlayer saved to a .cdbackup file, and put back from one — CDPlayer then starts
+// again with it.
+const backup = require('./backup');
+const BACKUP_FILTER = () => [{ name: t('CDPlayer backup'), extensions: ['cdbackup'] }];
+handle('backup:save', async () => {
+  if (playsTimer) { clearTimeout(playsTimer); writePlays(); }
+  const day = new Date().toISOString().slice(0, 10);
+  const r = await dialog.showSaveDialog(win, { defaultPath: path.join(app.getPath('documents'), `CDPlayer ${day}.cdbackup`), filters: BACKUP_FILTER() });
+  if (r.canceled || !r.filePath) return null;
+  const target = /\.cdbackup$/i.test(r.filePath) ? r.filePath : `${r.filePath}.cdbackup`;
+  try { fs.writeFileSync(target, backup.make(store.dataDir(), { version: APP_VERSION })); return { ok: true }; } catch { return { error: true }; }
+});
+handle('backup:restore', async () => {
+  const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: BACKUP_FILTER() });
+  const p = !r.canceled && r.filePaths && r.filePaths[0];
+  if (!p) return null;
+  let b = null;
+  try { if (fs.statSync(p).size < 400 * 1024 * 1024) b = backup.read(fs.readFileSync(p, 'utf8')); } catch { /* unreadable */ }
+  if (!b) return { error: 'NOT A BACKUP' };
+  const when = b.made ? new Date(b.made).toLocaleString(i18n.current().code) : '?';
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'question', buttons: [t('Restore and restart'), t('Cancel')], defaultId: 1, cancelId: 1,
+    message: t('Put back the backup from {when}?', { when }),
+    detail: t('Your queue, history, plays, notes, themes and settings become the ones it kept. What’s there now is copied into the before-restore folder first. Spotify and Discogs stay signed in.'),
+  });
+  if (response !== 0) return null;
+  if (playsTimer) { clearTimeout(playsTimer); writePlays(); }
+  store.freeze(); // the queue, the window and the plays aren't saved on the way out over what's put back
+  try { backup.restore(store.dataDir(), b); } catch { store.freeze(false); return { error: 'UNKNOWN ERROR' }; }
+  app.relaunch();
+  app.quit();
+  return { ok: true };
+});
 handle('moves:decline', (key) => {
   if (typeof key !== 'string' || !key.includes('\n')) return;
   const declined = store.readMovesDeclined(); declined.add(key); store.writeMovesDeclined(declined);

@@ -36,7 +36,11 @@ const FILES = {
 function readText(name) {
   try { return fs.readFileSync(file(name), 'utf8'); } catch { return null; }
 }
+// Frozen while a backup is put back (backup.js): nothing written on the way out over what it brought.
+let frozen = false;
+const freeze = (on = true) => { frozen = on; };
 function writeText(name, content) {
+  if (frozen) return false;
   try {
     fs.mkdirSync(dataDir(), { recursive: true });
     // Write-then-rename so a crash mid-write can never leave a half-written state file behind.
@@ -191,7 +195,7 @@ function writeQueue({ paths, index, positionMicros, changer, mode = 'QUEUE' }) {
 }
 
 // plays.txt — "count<TAB>path" per line: how many times each track was played (for the booklet). CDPlayer 2 only.
-const PLAYS_LIMIT = 5000;
+const PLAYS_LIMIT = 100000; // every song of a large library (a line each, written a moment after a play)
 function readPlayCounts() {
   const counts = new Map();
   for (const line of lines(readText(FILES.plays))) {
@@ -376,7 +380,7 @@ const readLastVersion = () => { const t = readText(FILES.lastVersion); return t 
 const writeLastVersion = (v) => writeText(FILES.lastVersion, v);
 
 module.exports = {
-  dataDir, file, FILES, readText, writeText, isFile, isDir,
+  dataDir, file, FILES, readText, writeText, freeze, isFile, isDir,
   readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, readChangerQueue, writeQueue, readHistory, writeHistory, readHistoryAll, writeHistoryAll, readMovesDeclined, writeMovesDeclined, HISTORY_LIMIT,
   readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readFirstPlayed, writeFirstPlayed, readDust, writeDust, readNotes, writeNotes, readHiddenMissing, writeHiddenMissing, readWrap, writeWrap, readShelfColors, writeShelfColors,
   readEqPresets, writeEqPresets, readLastPath, writeLastPath, readMusicFolders, writeMusicFolders, musicFolders, noMusicFolderYet, isOnboarded, markOnboarded, readLastVersion, writeLastVersion,

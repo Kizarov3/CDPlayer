@@ -100,7 +100,7 @@ More answers are in the app: **Settings → HELP**.
 Open the SHELF and click FOLDER…. To have more than one (say, an external drive too), click FOLDER… → ADD ANOTHER FOLDER…. Opening a song or saving a playlist somewhere else never changes the shelf. Songs outside the folders still play — drop them on the window.
 
 **Where is my data kept?**<br>
-In `~/.cdplayer` on Mac and Linux, `%LOCALAPPDATA%\CDPlayer` on Windows. Your music files are never changed unless you save tags or found art into them.
+In `~/.cdplayer` on Mac and Linux, `%LOCALAPPDATA%\CDPlayer` on Windows. Your music files are never changed unless you save tags or found art into them. To take it to another computer, use Settings → LIBRARY → BACKUP: **SAVE…** puts your queue, history, plays, notes, themes and settings in one `.cdbackup` file, **RESTORE…** puts them back. Moved your music to another folder or drive? The shelf notices and offers to bring the songs' plays and history along.
 
 **I switched QUALITY to HI-RES and hear no difference — is it working?**<br>
 Point at the ◈ badge under the title: it says what reaches your output. MP3 and AAC files have no badge — QUALITY only plays lossless files (FLAC, ALAC, WAV, AIFF, CDs) at their own rate — and over Bluetooth the wireless codec decides. Even when it works, the difference is subtle; for a change you'll hear at once on headphones, turn on **SPATIAL AUDIO**.

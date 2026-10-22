@@ -1111,5 +1111,16 @@
   "NOT THE SAME SONGS": "ЭТО ДРУГИЕ ПЕСНИ",
   "HISTORY MOVED": "ИСТОРИЯ ПЕРЕНЕСЕНА",
   "Their plays, dust and history go with them to where they are now": "Прослушивания, пыль и история переедут вместе с песнями",
-  "Don’t ask about this folder again": "Больше не спрашивать про эту папку"
+  "Don’t ask about this folder again": "Больше не спрашивать про эту папку",
+  "BACKUP": "РЕЗЕРВНАЯ КОПИЯ",
+  "RESTORE…": "ВОССТАНОВИТЬ…",
+  "BACKUP SAVED": "КОПИЯ СОХРАНЕНА",
+  "NOT A CDPLAYER BACKUP": "ЭТО НЕ КОПИЯ CDPLAYER",
+  "CDPlayer backup": "Резервная копия CDPlayer",
+  "Restore and restart": "Восстановить и перезапустить",
+  "Put back the backup from {when}?": "Восстановить копию от {when}?",
+  "Your queue, history, plays, notes, themes and settings become the ones it kept. What’s there now is copied into the before-restore folder first. Spotify and Discogs stay signed in.": "Очередь, история, прослушивания, заметки, темы и настройки станут такими, как в копии. Нынешние сначала будут скопированы в папку before-restore. Вход в Spotify и Discogs сохранится.",
+  "Save your queue, history, plays, notes, themes and settings to one file": "Сохранить очередь, историю, прослушивания, заметки, темы и настройки в один файл",
+  "Put back what a backup kept: CDPlayer then starts again": "Вернуть всё из резервной копии — CDPlayer перезапустится",
+  "For a new computer, or after reinstalling: everything that’s yours in CDPlayer, but not your music, nor Spotify and Discogs sign-ins.": "Для нового компьютера или после переустановки: всё ваше в CDPlayer, кроме самой музыки и входа в Spotify и Discogs."
 }
