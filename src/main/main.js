@@ -486,10 +486,25 @@ handle('tags:read', (p) => {
 });
 handle('tags:lookup', (details) => online.lookupTags(details));
 handle('tags:coverFromUrl', (url) => online.coverFromUrl(url));
+// The tags a file had before they were first written over (tags-before.js), for PUT BACK THE ORIGINAL.
+const tagsBefore = require('./tags-before');
+const TAGS_BEFORE = 'tags-before.json';
 handle('tags:write', async (p, changes) => {
+  let now = null;
+  try { if (tagWriter.canWrite(p) && changes && typeof changes === 'object') now = tagWriter.readTags(p); } catch { /* written or not, as before */ }
   const result = await tagWriter.writeTags(p, changes);
-  if (result.ok) { metadata.forget(p); shelf.forget(p); }
+  if (result.ok) {
+    metadata.forget(p); shelf.forget(p);
+    if (now) store.writeText(TAGS_BEFORE, JSON.stringify(tagsBefore.remember(tagsBefore.parse(store.readText(TAGS_BEFORE)), p, now, changes)));
+  }
   return result;
+});
+handle('tags:original', (p) => {
+  try { return tagWriter.canWrite(p) ? tagsBefore.original(tagsBefore.parse(store.readText(TAGS_BEFORE)), p, tagWriter.readTags(p)) : null; } catch { return null; }
+});
+handle('tags:forgetOriginal', (p) => {
+  const r = tagsBefore.parse(store.readText(TAGS_BEFORE));
+  if (r[p]) { delete r[p]; store.writeText(TAGS_BEFORE, JSON.stringify(r)); }
 });
 // The music folders, watched so an open shelf keeps up with them (library-watch.js); they follow the folders the shelf reads.
 const libraryWatch = require('./library-watch').createLibraryWatch({ onChange: () => {

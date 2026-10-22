@@ -70,6 +70,8 @@ contextBridge.exposeInMainWorld('cdp', {
   lookupTags: invoke('tags:lookup'),
   coverFromUrl: invoke('tags:coverFromUrl'),
   writeTags: invoke('tags:write'),
+  originalTags: invoke('tags:original'),
+  forgetOriginalTags: invoke('tags:forgetOriginal'),
   classifySpotifyLink: invoke('spotify:classify'),
   resolveSpotifyLink: invoke('spotify:resolve'),
   spotifySignIn: invoke('spotify:signIn'),

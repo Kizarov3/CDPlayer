@@ -630,6 +630,9 @@ async function loadTags(app, view) {
   if (!tagsCurrent(view)) return;
   view.canWrite = r.canWrite;
   view.current = r.tags || {};
+  // What the file had before CDPlayer first wrote over it, to put back.
+  view.original = r.canWrite ? await app.cdp.originalTags(view.path).catch(() => null) : null;
+  if (!tagsCurrent(view)) return;
   for (const [, ...keys] of TAG_ROWS) for (const k of keys) view.values[k] = view.current[k] ?? '';
   if (!r.canWrite) { view.status = t('TAGS CAN’T BE WRITTEN TO THIS FILE (A CUE SHEET TRACK, OR A FORMAT WITHOUT TAGS)'); view.busy = false; refreshPanel('tags'); return; }
   // Lyrics found online (not the file's own) are offered too.
@@ -739,12 +742,22 @@ function buildTags(app) {
   if (all) all.disabled = !waiting.length;
   const again = pill(t('LOOK UP AGAIN'), () => { if (!v.busy && v.canWrite) { v.status = t('LOOKING THE SONG UP ON MUSICBRAINZ…'); refreshPanel('tags'); lookUpTags(app, v); } }, t('Ask MusicBrainz again'));
   again.disabled = v.busy || !v.canWrite;
+  const putBack = v.original ? pill(t('PUT BACK THE ORIGINAL'), async () => {
+    if (v.busy) return;
+    v.busy = true; v.status = t('WRITING…'); refreshPanel('tags');
+    const r = await app.saveTags(v.path, v.original.changes).catch(() => ({ ok: false }));
+    if (r.ok) await app.cdp.forgetOriginalTags(v.path).catch(() => {});
+    if (!tagsCurrent(v)) return;
+    if (r.ok) { closePanel('tags'); app.setStatus(t('ORIGINAL TAGS PUT BACK')); return; }
+    v.busy = false; v.status = t('COULDN’T SAVE · {why}', { why: r.error || t('UNKNOWN ERROR') }); refreshPanel('tags');
+  }, t('The tags this file had before CDPlayer first changed them ({when})', { when: new Date(v.original.at).toLocaleDateString() })) : null;
+  if (putBack) putBack.disabled = v.busy;
   return [
     title(t('TAGS')), el('div', { class: 'subtitle' }, app.queueDisplay(v.path) || v.name),
     el('div', { class: `tag-status${v.busy ? ' busy' : ''}` }, v.status),
     el('div', { class: 'tag-head' }, el('span', {}, ''), el('span', {}, t('IN THE FILE')), el('span', {}, t('SAVE AS')), el('span', { class: 'tag-write', title: t('Ticked: written into the file') }, t('WRITE'))),
     el('div', { class: 'scroll tag-rows' }, rows),
-    el('div', { class: 'close-row split' }, el('div', { class: 'row-pills' }, again, all), el('div', { class: 'row-pills' }, pill(t('CLOSE'), () => closePanel('tags')), save)),
+    el('div', { class: 'close-row split' }, el('div', { class: 'row-pills' }, again, all, putBack), el('div', { class: 'row-pills' }, pill(t('CLOSE'), () => closePanel('tags')), save)),
   ];
 }
 

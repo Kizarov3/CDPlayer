@@ -15,7 +15,7 @@ const FORMAT = 'cdplayer-backup';
 const FILES = [
   'queue.txt', 'changer.txt', 'changer-queue.txt', 'settings.txt', 'eq-presets.txt', 'history.txt', 'plays.txt',
   'lastplayed.txt', 'firstplayed.txt', 'dust.txt', 'notes.txt', 'missing-hidden.txt', 'wrap.txt', 'music-folders.txt',
-  'lastpath.txt', 'onboarded', 'lastversion.txt', 'mini-position.txt', 'moves-declined.txt',
+  'lastpath.txt', 'onboarded', 'lastversion.txt', 'mini-position.txt', 'moves-declined.txt', 'tags-before.json',
 ];
 const THEMES = 'themes', THEME_FILE = /^[0-9a-f]{16}\.cdtheme$/;
 const BEFORE = 'before-restore';
