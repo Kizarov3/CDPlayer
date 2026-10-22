@@ -27,6 +27,7 @@ const discord = require('./discord');
 const cue = require('./cue');
 const shelf = require('./shelf');
 const { recordPlay } = require('./plays');
+const relocate = require('./relocate');
 const tagWriter = require('./tag-writer');
 const audioCd = require('./audio-cd');
 const rip = require('./rip');
@@ -228,7 +229,7 @@ handle('state:load', () => ({
   settings,
   queue: store.readQueue(),
   changerQueue: store.readChangerQueue(),
-  history: store.readHistory(),
+  history: relocate.newestFirst(store.readHistory(), playedAt()), // a song back from an unplugged drive in its place
   eqPresets: store.readEqPresets(),
   lastPath: store.readLastPath(),
   onboarded: store.isOnboarded(),
@@ -514,9 +515,41 @@ async function shelfListing() {
   const w = wrap();
   for (const a of result.albums) a.wrapped = shelf.isWrapped(a, w);
   result.hiddenMissing = [...store.readHiddenMissing()];
+  result.moves = movedSongs(result.albums);
   return result;
 }
 handle('shelf:albums', () => shelfListing());
+// Songs moved (relocate.js): what's kept by their old paths — plays, HISTORY — found again on the shelf, a folder at a
+// time, for the shelf to offer to bring along. Nothing moves until it's asked to.
+let movesFound = null;
+function movedSongs(albums) {
+  const present = new Set(albums.flatMap((a) => a.tracks.map((t) => t.path)));
+  const known = new Set([...plays().keys(), ...playedAt().keys(), ...firstPlayedAt().keys(), ...store.readHistoryAll()]);
+  movesFound = relocate.findMoves([...known].filter((p) => !present.has(p) && !cue.entryExists(p)), present);
+  const declined = store.readMovesDeclined();
+  return movesFound.groups.filter((g) => !declined.has(g.key));
+}
+handle('moves:apply', (key) => {
+  const group = movesFound && movesFound.groups.find((g) => g.key === key);
+  if (!group) return 0;
+  const moves = relocate.movesOf(movesFound, key);
+  clearTimeout(playsTimer);
+  ({ counts: playCounts, last: lastPlayed, first: firstPlayed } = relocate.movePlays({ counts: plays(), last: playedAt(), first: firstPlayedAt() }, moves));
+  writePlays();
+  store.writeHistoryAll(relocate.newestFirst(relocate.moveHistory(store.readHistoryAll(), moves), lastPlayed));
+  // An album known by its folder (no tags to know it by) takes its sticky note, its dust and its wrapping along.
+  const moveId = (id) => relocate.moveAlbumId(id, group.from, group.to);
+  store.writeNotes(new Map([...store.readNotes()].map(([id, text]) => [moveId(id), text])));
+  const d = dust(); d.wiped = new Map([...d.wiped].map(([id, t]) => [moveId(id), t])); store.writeDust(d);
+  const w = wrap(); w.torn = new Set([...w.torn].map(moveId)); store.writeWrap(w);
+  movesFound = null;
+  phoneShelf = null;
+  return moves.size;
+});
+handle('moves:decline', (key) => {
+  if (typeof key !== 'string' || !key.includes('\n')) return;
+  const declined = store.readMovesDeclined(); declined.add(key); store.writeMovesDeclined(declined);
+});
 // Missing albums (discography.js): each artist's official releases from MusicBrainz, for the artists on screen.
 const discography = require('./discography').createDiscography({
   mbFetch: (q) => require('./online').mbFetch(q),

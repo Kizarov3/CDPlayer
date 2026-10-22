@@ -1100,5 +1100,16 @@
   "“{name}” · NOT CONNECTED": "«{name}» · НЕ ПОДКЛЮЧЕНА",
   "…OR AT THE END OF THE DISC": "…ИЛИ В КОНЦЕ ДИСКА",
   "★ RARE": "★ РЕДКОСТЬ",
-  "✓ DONE": "✓ ГОТОВО"
+  "✓ DONE": "✓ ГОТОВО",
+  "{n} songs you’ve played have moved from {from} to {to}. Their plays, dust and history stayed behind.": {
+    "one": "{n} сыгранная песня переехала из {from} в {to}. Её прослушивания, пыль и история остались на старом месте.",
+    "few": "{n} сыгранные песни переехали из {from} в {to}. Их прослушивания, пыль и история остались на старом месте.",
+    "many": "{n} сыгранных песен переехали из {from} в {to}. Их прослушивания, пыль и история остались на старом месте.",
+    "other": "{n} сыгранной песни переехали из {from} в {to}. Их прослушивания, пыль и история остались на старом месте."
+  },
+  "BRING THEIR HISTORY": "ПЕРЕНЕСТИ ИСТОРИЮ",
+  "NOT THE SAME SONGS": "ЭТО ДРУГИЕ ПЕСНИ",
+  "HISTORY MOVED": "ИСТОРИЯ ПЕРЕНЕСЕНА",
+  "Their plays, dust and history go with them to where they are now": "Прослушивания, пыль и история переедут вместе с песнями",
+  "Don’t ask about this folder again": "Больше не спрашивать про эту папку"
 }

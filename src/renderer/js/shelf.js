@@ -22,7 +22,7 @@ import { t } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 const shelf = { open: false, albums: [], loading: false, covers: new Map(), colors: new Map(), observer: null, caseOpen: null, app: null, generation: 0, inPlayer: null,
-  discogs: new Map(), openBoxes: new Set(), pressings: new Map(), appraising: null, appraisalNote: null, countBase: '', settings: null, noCover: new Set(), colorCache: {}, hidden: new Set(), boxObserver: null, wantTimer: null, onScreen: new Set() };
+  discogs: new Map(), openBoxes: new Set(), pressings: new Map(), appraising: null, appraisalNote: null, countBase: '', settings: null, noCover: new Set(), colorCache: {}, hidden: new Set(), moves: [], boxObserver: null, wantTimer: null, onScreen: new Set() };
 
 export const isShelfOpen = () => shelf.open;
 // Discographies arriving redraw the shelf — once for a burst, and not while a case is out, a spine is carried or one
@@ -227,6 +227,7 @@ async function load({ quiet = false } = {}) {
   shelf.settings = await shelf.app.cdp.discogsSettings().catch(() => null);
   shelf.appraisalNote = totalNote();
   shelf.hidden = new Set(result.hiddenMissing || []);
+  shelf.moves = result.moves || [];
   shelf.folderName = result.name || null;
   render();
   if (quiet) $('shelf-body').scrollTop = scroll;
@@ -286,7 +287,33 @@ function render() {
     shelf.observer.observe(spine);
     return spine;
   });
-  body.replaceChildren(el('div', { class: 'shelf-rows' }, items));
+  const moved = movedNotice();
+  body.replaceChildren(...(moved ? [moved] : []), el('div', { class: 'shelf-rows' }, items));
+}
+
+// Songs played before their folder moved (a new drive, a new computer): their plays, dust and history are still kept
+// under the old paths. The folder with the most of them is offered, to bring them along or be told they're other songs.
+// A folder by the end of its path ("…/Volumes/Music"), the whole of it in the tooltip.
+const shortPath = (p) => { const ps = String(p || '/').split(/[\\/]+/).filter(Boolean); return ps.length > 2 ? `…/${ps.slice(-2).join('/')}` : (p || '/'); };
+function movedNotice() {
+  const g = shelf.moves && shelf.moves[0];
+  if (!g) return null;
+  const act = async (fn) => {
+    shelf.moves = [];
+    render();
+    await fn(g.key).catch(() => {});
+    await load();
+  };
+  return el('div', { class: 'shelf-moved', role: 'status' },
+    el('div', { class: 'shelf-moved-text', title: `${g.from || '/'} → ${g.to || '/'}` },
+      t('{n} songs you’ve played have moved from {from} to {to}. Their plays, dust and history stayed behind.', { n: g.count, from: shortPath(g.from), to: shortPath(g.to) })),
+    el('div', { class: 'row-pills' },
+      pill(t('BRING THEIR HISTORY'), () => act(async (key) => {
+        const n = await shelf.app.cdp.applyMove(key);
+        await shelf.app.loadHistoryFromDisk();
+        if (n) shelf.app.setStatus(t('HISTORY MOVED'));
+      }), t('Their plays, dust and history go with them to where they are now')),
+      pill(t('NOT THE SAME SONGS'), () => act((key) => shelf.app.cdp.declineMove(key)), t('Don’t ask about this folder again'))));
 }
 
 // A spine before its cover has loaded gets a colour of its own from its name, so the shelf never looks blank.

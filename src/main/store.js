@@ -30,7 +30,7 @@ const file = (name) => path.join(dataDir(), name);
 const FILES = {
   queue: 'queue.txt', onboarded: 'onboarded', lastVersion: 'lastversion.txt', lastPath: 'lastpath.txt', musicFolders: 'music-folders.txt',
   settings: 'settings.txt', eqPresets: 'eq-presets.txt', history: 'history.txt', spotify: 'spotify.txt',
-  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt', firstPlayed: 'firstplayed.txt', shelfColors: 'shelf-colors.json', changer: 'changer.txt', changerQueue: 'changer-queue.txt', remote: 'remote.json',
+  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt', firstPlayed: 'firstplayed.txt', shelfColors: 'shelf-colors.json', changer: 'changer.txt', changerQueue: 'changer-queue.txt', remote: 'remote.json', movesDeclined: 'moves-declined.txt',
 };
 
 function readText(name) {
@@ -296,9 +296,34 @@ const HISTORY_LIMIT = 200;
 function readHistory() {
   return lines(readText(FILES.history)).map((p) => p.trim()).filter((p) => p && entryExists(p)).slice(0, HISTORY_LIMIT);
 }
+// Every path in history.txt, there or not: songs no longer where they were stay in it, unseen, after the others —
+// for a moved music folder to take along (relocate.js), or for an unplugged drive's songs to come back to.
+const readHistoryAll = () => lines(readText(FILES.history)).map((p) => p.trim()).filter(Boolean);
 function writeHistory(paths) {
-  const body = paths.filter(safePath).slice(0, HISTORY_LIMIT).join('\n');
+  const shown = paths.filter(safePath).slice(0, HISTORY_LIMIT), kept = new Set(shown);
+  const gone = readHistoryAll().filter((p) => !kept.has(p) && !entryExists(p)).slice(0, HISTORY_LIMIT);
+  const body = [...shown, ...gone].join('\n');
   return writeText(FILES.history, body ? `${body}\n` : '');
+}
+// Replaced as it is (a move's history, already in order).
+function writeHistoryAll(paths) {
+  const body = paths.filter(safePath).slice(0, 2 * HISTORY_LIMIT).join('\n');
+  return writeText(FILES.history, body ? `${body}\n` : '');
+}
+
+// moves-declined.txt — "from<TAB>to" (JSON each) per line: moved folders the user said weren't the same songs, so the
+// shelf doesn't ask about them again. CDPlayer 2 only.
+function readMovesDeclined() {
+  const out = new Set();
+  for (const line of lines(readText(FILES.movesDeclined))) {
+    const tab = line.indexOf('\t');
+    try { const from = JSON.parse(line.slice(0, tab)), to = JSON.parse(line.slice(tab + 1)); if (tab > 0) out.add(`${from}\n${to}`); } catch { /* a broken line */ }
+  }
+  return out;
+}
+function writeMovesDeclined(keys) {
+  const body = [...keys].map((k) => { const [from, to] = k.split('\n'); return `${JSON.stringify(from)}\t${JSON.stringify(to)}`; });
+  return writeText(FILES.movesDeclined, body.join('\n') + (body.length ? '\n' : ''));
 }
 
 function readEqPresets() {
@@ -352,7 +377,7 @@ const writeLastVersion = (v) => writeText(FILES.lastVersion, v);
 
 module.exports = {
   dataDir, file, FILES, readText, writeText, isFile, isDir,
-  readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, readChangerQueue, writeQueue, readHistory, writeHistory, HISTORY_LIMIT,
+  readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, readChangerQueue, writeQueue, readHistory, writeHistory, readHistoryAll, writeHistoryAll, readMovesDeclined, writeMovesDeclined, HISTORY_LIMIT,
   readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readFirstPlayed, writeFirstPlayed, readDust, writeDust, readNotes, writeNotes, readHiddenMissing, writeHiddenMissing, readWrap, writeWrap, readShelfColors, writeShelfColors,
   readEqPresets, writeEqPresets, readLastPath, writeLastPath, readMusicFolders, writeMusicFolders, musicFolders, noMusicFolderYet, isOnboarded, markOnboarded, readLastVersion, writeLastVersion,
 };
