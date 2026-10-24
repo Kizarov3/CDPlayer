@@ -1311,6 +1311,19 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.19.0', changes: [
+    '<b>Dividers of your own</b>: + DIVIDER in an album&rsquo;s case files it behind one (&ldquo;For the car&rdquo;, &ldquo;Sunday&rdquo;); SORT &rarr; MY DIVIDERS stands the shelf by them, SHOW shows one',
+    '<b>Editions stand together</b>: an album and its deluxe edition or remaster are one spine, the one you played last in front; its case switches between them',
+    '<b>SKIP a song</b> in its case &mdash; an intro, a skit: passed over as the music moves on, still played when you pick it',
+    '<b>FILL the changer</b> from the shelf with albums from the ones shown, or KEEP IT FULL: each finished disc makes room for another, so the music never runs out',
+    '<b>The search finds what to do</b>: type SHUFFLE, KARAOKE or a setting&rsquo;s name (or crossfeed, replaygain) after / or &#8984;K / Ctrl+K',
+  ], changesIn: { ru: [
+    '<b>Свои разделители</b>: + РАЗДЕЛИТЕЛЬ в коробке альбома ставит его за разделитель (&laquo;Для машины&raquo;, &laquo;Воскресенье&raquo;); СОРТИРОВКА &rarr; МОИ РАЗДЕЛИТЕЛИ расставляет полку по ним, ПОКАЗ показывает один',
+    '<b>Издания стоят вместе</b>: альбом и его делюкс или ремастер &mdash; один корешок, впереди тот, что слушали последним; в коробке переключатель между ними',
+    '<b>ПРОПУСК песни</b> в коробке &mdash; интро, скит: пропускается, когда музыка идёт дальше, но играет, если выбрать её саму',
+    '<b>ЗАПОЛНИТЬ чейнджер</b> с полки альбомами из показанных или ДЕРЖАТЬ ПОЛНЫМ: каждый доигранный диск уступает место новому, и музыка не кончается',
+    '<b>Поиск находит действия</b>: наберите ПЕРЕМЕШАТЬ, КАРАОКЕ или название настройки (или кроссфид, replaygain) после / или &#8984;K / Ctrl+K',
+  ] } },
   { version: '2.18.0', changes: [
     '<b>SHOW on the shelf</b>: all the albums, or only the dusty ones, still wrapped, left part-way, with a note, never played, one decade or one genre; PULL ONE pulls from what&rsquo;s shown',
     '<b>Albums heard as albums</b>: one played from its first song and left part-way has a ribbon bookmark on its spine and CONTINUE &middot; TRACK n in its case; played to the end, the booklet&rsquo;s back cover says &ldquo;start to end &times;n&rdquo;',
