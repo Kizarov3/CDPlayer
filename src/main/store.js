@@ -30,7 +30,7 @@ const file = (name) => path.join(dataDir(), name);
 const FILES = {
   queue: 'queue.txt', onboarded: 'onboarded', lastVersion: 'lastversion.txt', lastPath: 'lastpath.txt', musicFolders: 'music-folders.txt',
   settings: 'settings.txt', eqPresets: 'eq-presets.txt', history: 'history.txt', spotify: 'spotify.txt',
-  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt', firstPlayed: 'firstplayed.txt', shelfColors: 'shelf-colors.json', changer: 'changer.txt', changerQueue: 'changer-queue.txt', remote: 'remote.json', movesDeclined: 'moves-declined.txt',
+  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt', firstPlayed: 'firstplayed.txt', shelfColors: 'shelf-colors.json', changer: 'changer.txt', changerQueue: 'changer-queue.txt', remote: 'remote.json', movesDeclined: 'moves-declined.txt', skipped: 'skipped.txt',
 };
 
 function readText(name) {
@@ -266,6 +266,14 @@ function writeNotes(notes) {
 // missing-hidden.txt — a MusicBrainz release-group ID per line: missing albums the user said NOT INTERESTED to, so
 // they don't stand on the shelf again. CDPlayer 2 only.
 const GROUP_ID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+// skipped.txt — a path a line: the songs not to play as the music moves on (they still play when picked).
+function readSkipped() {
+  return new Set(lines(readText(FILES.skipped)).filter((l) => l.trim()));
+}
+function writeSkipped(paths) {
+  const body = [...paths].filter((p) => p && !/[\n\r]/.test(p));
+  return writeText(FILES.skipped, body.join('\n') + (body.length ? '\n' : ''));
+}
 function readHiddenMissing() {
   return new Set(lines(readText(FILES.hiddenMissing)).map((l) => l.trim()).filter((id) => GROUP_ID.test(id)));
 }
@@ -381,7 +389,7 @@ const writeLastVersion = (v) => writeText(FILES.lastVersion, v);
 
 module.exports = {
   dataDir, file, FILES, readText, writeText, freeze, isFile, isDir,
-  readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, readChangerQueue, writeQueue, readHistory, writeHistory, readHistoryAll, writeHistoryAll, readMovesDeclined, writeMovesDeclined, HISTORY_LIMIT,
+  readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, readChangerQueue, writeQueue, readHistory, writeHistory, readHistoryAll, writeHistoryAll, readMovesDeclined, writeMovesDeclined, readSkipped, writeSkipped, HISTORY_LIMIT,
   readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readFirstPlayed, writeFirstPlayed, readDust, writeDust, readNotes, writeNotes, readHiddenMissing, writeHiddenMissing, readWrap, writeWrap, readShelfColors, writeShelfColors,
   readEqPresets, writeEqPresets, readLastPath, writeLastPath, readMusicFolders, writeMusicFolders, musicFolders, noMusicFolderYet, isOnboarded, markOnboarded, readLastVersion, writeLastVersion,
 };

@@ -803,6 +803,15 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 .case-track.missing { cursor: default; color: rgb(var(--muted)); opacity: .55; }
 .case-track.missing:hover { background: none; }
 .case-track .time { color: rgb(var(--muted)); font-size: 10px; }
+/* SKIP: a small button that shows on the track under the mouse, and stays lit on one marked; that one struck through. */
+.case-skip {
+  flex: none; align-self: center; padding: 1px 6px; border: 1px solid rgba(var(--muted), .45); border-radius: 8px; background: none;
+  font: bold 8px/1.4 var(--font, inherit); letter-spacing: .06em; color: rgb(var(--muted)); cursor: pointer; visibility: hidden;
+}
+.case-track:hover .case-skip, .case-skip.on, .case-skip:focus-visible { visibility: visible; }
+.case-skip:hover { color: rgb(var(--text)); border-color: rgb(var(--text)); }
+.case-skip.on { color: rgb(var(--accent)); border-color: rgb(var(--accent)); }
+.case-track.skipped .name, .queue-row.skipped .entry { text-decoration: line-through; opacity: .55; }
 .case-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; align-items: center; } /* a row, or two when it can't fit */
 
 /* ---- Canvases layered over everything ---- */

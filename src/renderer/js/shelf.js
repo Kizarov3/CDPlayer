@@ -821,10 +821,19 @@ async function openCase(a, spine) {
   if (!shelf.open || shelf.caseOpen) return;
   if (!spine.isConnected) spine = spineFor(a) || spine; // the shelf was redrawn meanwhile
   const from = spine.getBoundingClientRect();
-  const trackRow = (track, i, no = track.track || i + 1) => el('div', { class: 'case-track', title: t('Play from here'), onClick: () => unwrapped(() => play(a, i))() },
-    el('span', { class: 'no' }, no ? String(no).padStart(2, '0') : ''),
-    el('span', { class: 'name' }, track.title, a.artist === 'Various Artists' && track.artist ? el('span', { class: 'by' }, ` · ${track.artist}`) : null),
-    el('span', { class: 'time' }, track.duration ? app.formatTime(track.duration) : ''));
+  // SKIP on a track: passed over as the music moves on (an intro, a skit), still played when picked — struck through.
+  const skipButton = (track, row) => {
+    const b = el('button', { class: `case-skip${app.isSkippedPath(track.path) ? ' on' : ''}`, title: t('SKIP: pass over this song as the music moves on — it still plays when you pick it'),
+      onClick: async (e) => { e.stopPropagation(); const on = await app.toggleSkip(track.path); b.classList.toggle('on', on); row.classList.toggle('skipped', on); } }, t('SKIP|track'));
+    return b;
+  };
+  const trackRow = (track, i, no = track.track || i + 1) => {
+    const row = el('div', { class: `case-track${app.isSkippedPath(track.path) ? ' skipped' : ''}`, title: t('Play from here'), onClick: () => unwrapped(() => play(a, i))() },
+      el('span', { class: 'no' }, no ? String(no).padStart(2, '0') : ''),
+      el('span', { class: 'name' }, track.title, a.artist === 'Various Artists' && track.artist ? el('span', { class: 'by' }, ` · ${track.artist}`) : null));
+    row.append(skipButton(track, row), el('span', { class: 'time' }, track.duration ? app.formatTime(track.duration) : ''));
+    return row;
+  };
   const tracks = a.tracks.map((t, i) => trackRow(t, i));
   const trackList = el('div', { class: 'case-tracks scroll' }, tracks);
   let wholeList = null; // the full tracklist once it's known, for the booklet too

@@ -341,3 +341,36 @@ test('FILL: an empty changer stands on the first disc put in; a full one is left
   const none = fillWith(full, [{ disc: disc('z'), tracks: ['z1'] }]);
   assert.deepStrictEqual([none.changer, none.loaded], [full, []]);
 });
+
+test('SKIP: songs marked not to play are passed over going on and going back; DISC SKIP lands on one to play', async () => {
+  const { nextIndex, previousIndex, discSkip } = await import('../src/renderer/js/changer.js');
+  let c = load(empty(), disc('a'), ['a1', 'a2', 'a3', 'a4']).changer;
+  c = load(c, disc('b'), ['b1', 'b2']).changer;
+  const off = new Set(['a2', 'a4', 'b1']), skip = (i) => off.has(c.queue[i]);
+  assert.strictEqual(nextIndex(c, { skip }), 2, 'a1 → a3');
+  assert.strictEqual(nextIndex({ ...c, index: 2 }, { skip }), 5, 'a3 → b2: a4 and b1 passed over');
+  assert.strictEqual(nextIndex({ ...c, index: 5 }, { skip }), -1, 'the end');
+  assert.strictEqual(nextIndex({ ...c, index: 5 }, { repeat: 'ALL', skip }), 0, 'round to a1');
+  assert.strictEqual(nextIndex({ ...c, index: 2 }, { repeat: 'DISC', skip }), 0, 'REPEAT DISC: back to its first one to play');
+  assert.strictEqual(previousIndex({ ...c, index: 5 }, skip), 2, 'b2 ← a3');
+  assert.strictEqual(previousIndex({ ...c, index: 0 }, skip), -1);
+  assert.strictEqual(discSkip(c, { skip }), 5, 'b1 passed over');
+  for (let r = 0; r < 1; r += 0.05) {
+    const n = nextIndex(c, { shuffle: 'ALL', skip }, () => r);
+    assert.ok([2, 5].includes(n), `shuffled: never one passed over (${n})`);
+  }
+});
+
+test('SKIP: a disc whose last songs are passed over is finished at the one before them; a disc all passed over is gone by', async () => {
+  const { nextIndex, markFinished } = await import('../src/renderer/js/changer.js');
+  let c = load(empty(), disc('a'), ['a1', 'a2', 'a3']).changer;
+  c = load(c, disc('b'), ['b1']).changer;
+  c = load(c, disc('c'), ['c1', 'c2']).changer;
+  const off = new Set(['a3', 'b1']), skip = (i) => off.has(c.queue[i]);
+  const done = markFinished(c, 1, { skip }, 7);
+  assert.deepStrictEqual([done.slots[0].done, done.slots[0].finishedAt], [true, 7], 'a2 was the last one to play');
+  assert.strictEqual(markFinished(c, 0, { skip }).slots[0].done, false);
+  assert.strictEqual(nextIndex({ ...c, index: 1 }, { skip }), 4, 'a2 → c1: all of disc b passed over');
+  const shuffled = markFinished(markFinished(c, 0, { shuffle: 'DISC', skip }), 1, { shuffle: 'DISC', skip });
+  assert.strictEqual(shuffled.slots[0].done, true, 'shuffled: every one to play has played');
+});

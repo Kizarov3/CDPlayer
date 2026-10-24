@@ -47,3 +47,30 @@ test('a single is played through at once; starting again restarts the run', () =
 test('a broken file reads as nothing heard', () => {
   assert.deepStrictEqual(runs.parse('nope'), runs.empty());
 });
+
+test('songs marked not to play are passed over: the run goes on past them and ends at the last one to play', () => {
+  const s = runs.empty(), skip = (i) => i === 0 || i === 2 || i === 4; // an intro, a skit, an outro
+  assert.strictEqual(runs.heard(s, 'A', 1, 5, 1, skip).through, false, 'the first one to play starts it');
+  assert.deepStrictEqual(runs.bookmark(s, 'A', 5, 1), null, 'one song is just a song');
+  assert.strictEqual(runs.heard(s, 'A', 3, 5, 3, skip).through, true, 'the skit and the outro passed over: played through');
+  assert.strictEqual(runs.throughCount(s, 'A'), 1);
+});
+
+test('a song passed over but played anyway keeps the run; the bookmark is at the song heard last', () => {
+  const s = runs.empty(), skip = (i) => i === 2;
+  runs.heard(s, 'A', 0, 6, 0, skip); runs.heard(s, 'A', 1, 6, 1, skip);
+  runs.heard(s, 'A', 2, 6, 2, skip); // picked by hand
+  runs.heard(s, 'A', 3, 6, 3, skip);
+  assert.deepStrictEqual(runs.bookmark(s, 'A', 6, 4), { track: 3, at: 3 });
+  runs.heard(s, 'A', 3, 6, 5, skip); // the same one again: no break
+  assert.deepStrictEqual(runs.bookmark(s, 'A', 6, 6), { track: 3, at: 3 });
+  runs.heard(s, 'A', 1, 6, 7, skip); // out of order
+  assert.strictEqual(runs.bookmark(s, 'A', 6, 8), null);
+});
+
+test('a run kept by 2.18.0 (only `next`) still gives its bookmark and goes on', () => {
+  const s = runs.parse(JSON.stringify({ through: {}, runs: { A: { next: 3, last: 1 } } }));
+  assert.deepStrictEqual(runs.bookmark(s, 'A', 5, 2), { track: 2, at: 1 });
+  runs.heard(s, 'A', 3, 5, 2);
+  assert.strictEqual(runs.heard(s, 'A', 4, 5, 3).through, true);
+});

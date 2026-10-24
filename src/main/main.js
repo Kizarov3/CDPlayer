@@ -276,12 +276,24 @@ handle('plays:add', (p) => {
   clearTimeout(playsTimer); playsTimer = setTimeout(writePlays, 1000);
   // Played, its album is out of its shrink-wrap for good (not only while its play count is kept).
   const album = shelf.albumOf(p), w = album && wrap();
-  if (album) { albumRuns.heard(runsState(), album.id, album.paths.indexOf(p), album.paths.length); runsChanged = true; }
+  if (album) { albumRuns.heard(runsState(), album.id, album.paths.indexOf(p), album.paths.length, Date.now(), (i) => skipped().has(album.paths[i])); runsChanged = true; }
   if (w && !w.torn.has(album.id)) { w.torn.add(album.id); store.writeWrap(w); }
   phoneShelf = null; // the phone's shelf counts it (and shows the album unwrapped) when it's next read
   return n;
 });
 handle('plays:count', (p) => plays().get(p) || 0);
+// Songs not to play as the music moves on (SKIP in the case): passed over, still played when picked; an album heard in
+// order goes on past them (album-runs.js).
+let skippedSongs = null;
+const skipped = () => (skippedSongs = skippedSongs || store.readSkipped());
+handle('skips:list', () => [...skipped()]);
+handle('skips:set', (p, on) => {
+  if (typeof p !== 'string' || !p) return [...skipped()];
+  const s = skipped();
+  if (on) s.add(p); else s.delete(p);
+  store.writeSkipped(s);
+  return [...s];
+});
 // When each of `paths` was first and last played (ms, or null), for the booklet's pen marks.
 handle('plays:times', (paths) => {
   const list = Array.isArray(paths) ? paths : [], first = firstPlayedAt(), last = playedAt();
@@ -572,6 +584,7 @@ handle('moves:apply', (key) => {
   const d = dust(); d.wiped = new Map([...d.wiped].map(([id, t]) => [moveId(id), t])); store.writeDust(d);
   const w = wrap(); w.torn = new Set([...w.torn].map(moveId)); store.writeWrap(w);
   runs = albumRuns.moveIds(runsState(), moveId); store.writeText('album-runs.json', JSON.stringify(runs));
+  skippedSongs = new Set([...skipped()].map((p) => moves.get(p) || p)); store.writeSkipped(skippedSongs);
   movesFound = null;
   phoneShelf = null;
   return moves.size;

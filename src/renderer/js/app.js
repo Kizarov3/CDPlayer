@@ -67,6 +67,7 @@ const state = {
   changerMode: false,  // Settings → CHANGER: the five-disc changer instead of the queue (each keeps its own music)
   hidden: null, hiddenPhase: null, // the playing file's hidden track and where the position is in it (hidden-track.js)
   softwareRendering: false, // the window put together without the graphics card (gpu-status.js, render-budget.js)
+  skipped: new Set(),  // songs (paths) marked SKIP in their case: passed over as the music moves on, still played when picked
   nextUp: null,        // the queue's { start, end }: the run put to PLAY NEXT (play-next.js)
   volume: 100, volumeBeforeMute: -1, transition: 'OFF', crossfade: 5, mono: false, spatial: false, spatialAmount: 50, waveform: true, ambient: true, miniMode: false, discord: true, discNoise: false, discWear: true, discShine: true, taskbarDisc: true,
   trayBusy: false, // the tray is moving or the disc is being read: transport presses wait
@@ -219,23 +220,30 @@ function apply(c) {
   state.queue = c.queue; state.index = c.index;
   upcomingCache = null;
 }
-const modes = () => ({ shuffle: state.shuffle, repeat: state.repeat });
+// A song in the queue marked not to play (SKIP): the changer's order and the queue's pass over it.
+const isSkipped = (i) => state.skipped.size > 0 && state.skipped.has(state.queue[i]);
+const modes = () => ({ shuffle: state.shuffle, repeat: state.repeat, skip: isSkipped });
 // The playing disc's end in the queue (Spotify is told the tracks up to it), or the queue's end.
 const discEnd = () => { const h = state.changerMode && changer.slotOf(ch(), state.index); return h ? state.changer.slots[h.slot].end : state.queue.length; };
 // The changer slot the song playing is on — never in queue mode.
 const playingSlot = () => (state.changerMode ? changer.slotOf(ch(), state.index) : null);
-// The queue's next song (2.14): PLAY NEXT's run first, then shuffled or in order, round again with REPEAT ALL.
+// The queue's next song (2.14): PLAY NEXT's run first, then shuffled or in order, round again with REPEAT ALL — the
+// songs marked SKIP passed over.
 function queueNextIndex() {
-  if (!state.queue.length) return -1;
-  const pinned = pinnedNext(state.index, state.nextUp, state.queue.length);
-  if (pinned >= 0) return pinned;
-  if (state.shuffle !== 'OFF' && state.queue.length > 1) {
-    let next;
-    do { next = Math.floor(Math.random() * state.queue.length); } while (next === state.index);
-    return next;
+  const n = state.queue.length;
+  if (!n) return -1;
+  for (let at = state.index, tries = 0; tries < n; tries++) {
+    const pinned = pinnedNext(at, state.nextUp, n);
+    if (pinned >= 0) { if (!isSkipped(pinned)) return pinned; at = pinned; continue; }
+    if (state.shuffle !== 'OFF' && n > 1) {
+      const choices = state.queue.map((_, i) => i).filter((i) => i !== state.index && !isSkipped(i));
+      return choices.length ? choices[Math.floor(Math.random() * choices.length)] : -1;
+    }
+    const next = at + 1 < n ? at + 1 : state.repeat === 'ALL' ? 0 : -1;
+    if (next < 0 || !isSkipped(next)) return next;
+    at = next;
   }
-  if (state.index + 1 < state.queue.length) return state.index + 1;
-  return state.repeat === 'ALL' ? 0 : -1;
+  return -1; // every one marked SKIP
 }
 
 let upcomingCache = null; // { index, size, value }: the shuffle's pick, the same until the music moves or changes
@@ -318,7 +326,7 @@ function renderQueue() {
   const tracks = changer.tracksOf(c, here.slot).map((p, k) => {
     ensureDetails(p);
     const det = detailsCache.get(p);
-    return { index: d.start + k, no: k + 1, title: queueDisplay(p), time: formatDuration(det ? det.duration : 0), duration: det ? det.duration : 0, current: d.start + k === state.index };
+    return { index: d.start + k, no: k + 1, title: queueDisplay(p), time: formatDuration(det ? det.duration : 0), duration: det ? det.duration : 0, current: d.start + k === state.index, skipped: state.skipped.has(p) };
   });
   const ghost = ghostRow(), at = tracks.findIndex((tr) => tr.current);
   if (ghost && at >= 0) tracks.splice(at + 1, 0, { ghost });
@@ -345,7 +353,7 @@ function renderQueueList() {
     const d = detailsCache.get(p);
     const remove = el('button', { class: 'glyph-x', title: t('Remove from queue'), onClick: (e) => { e.stopPropagation(); removeFromQueue(i); } }, '×');
     const next = !!state.nextUp && i > state.index && i >= state.nextUp.start && i < state.nextUp.end;
-    const row = el('div', { class: `queue-row${i === state.index ? ' active' : ''}${i === drag.index ? ' dragging' : ''}`, title: t('Play {song}', { song: queueDisplay(p) }) },
+    const row = el('div', { class: `queue-row${i === state.index ? ' active' : ''}${i === drag.index ? ' dragging' : ''}${isSkipped(i) ? ' skipped' : ''}`, title: isSkipped(i) ? `${t('Play {song}', { song: queueDisplay(p) })}\n${t('Marked SKIP: passed over as the music moves on')}` : t('Play {song}', { song: queueDisplay(p) }) },
       el('span', { class: 'num' }, `${i + 1}.`),
       el('span', { class: 'entry' }, queueDisplay(p)),
       next ? el('span', { class: 'next-tag', title: t('Plays next') }, t('NEXT')) : null,
@@ -504,6 +512,15 @@ async function loadDisc(item, tracks, { play = false, next = false, startPlaybac
   renderQueue(); saveQueueSoon(); spotifyResync();
   if (startPlayback && (play || !wasPlaying)) load(state.queue[state.index], { autoPlay: true }); // an idle player plays it, as before the changer
   return { slot: r.slot };
+}
+// SKIP (a song's in its case on the shelf): not played as the music moves on — still played when picked. What comes
+// next is worked out again, and the song waiting for a gapless start dropped.
+async function toggleSkip(p) {
+  const on = !state.skipped.has(p);
+  state.skipped = new Set(await cdp.skips.set(p, on).catch(() => [...state.skipped]));
+  upcomingCache = null; dropPrepared(); renderQueue();
+  setStatus(state.skipped.has(p) ? t('PASSED OVER FROM NOW ON') : t('PLAYED AGAIN AS THE MUSIC MOVES ON'));
+  return state.skipped.has(p);
 }
 // FILL on the shelf (changer mode): albums it picked, into every slot that's free or holds a finished disc; an idle
 // player starts on the first of them.
@@ -1108,7 +1125,7 @@ function goTo(index, opts, { back = false } = {}) {
   if (!state.changerMode) { state.index = index; upcomingCache = null; load(state.queue[index], opts); return; }
   const from = changer.slotOf(ch(), state.index), to = changer.slotOf(ch(), index);
   if (from && to && from.slot !== to.slot && anim.enabled) disc.spinning = false; // slows while the tray turns; load spins it up
-  apply(changer.moveTo(ch(), index));
+  apply(changer.moveTo(ch(), index, isSkipped));
   load(state.queue[state.index], opts);
 }
 function nextTrack() {
@@ -1128,7 +1145,7 @@ function previousTrack() {
       if (at >= 0 && at !== state.index) { goTo(at, undefined, { back: true }); return; }
     }
   }
-  const prev = changer.previousIndex(ch());
+  const prev = changer.previousIndex(ch(), isSkipped);
   if (prev >= 0) goTo(prev); else if (engine.deck) seekTo(0);
 }
 /** DISC SKIP (D): the next disc in the changer. */
@@ -2730,7 +2747,7 @@ export const app = {
     else if (what === 'karaoke') { if (!isKaraokeOpen()) toggleKaraoke(); }
   },
   remoteInfo: () => remoteInfo, remoteHeard: onRemoteStatus,
-  changerState: ch, changerMode: () => state.changerMode, setChangerMode, discLabel, loadDisc, fillChanger, playSlot, ejectSlot, discSkip, coverForPath,
+  changerState: ch, changerMode: () => state.changerMode, setChangerMode, discLabel, loadDisc, fillChanger, toggleSkip, isSkippedPath: (p) => state.skipped.has(p), playSlot, ejectSlot, discSkip, coverForPath,
   changerSlotOf: (i) => (changer.slotOf(ch(), i) || { slot: -1 }).slot,
   onFullChanger: (c) => panels.pickDiscToTakeOut(app, c),
   coverSource: () => state.coverFrom || null,
@@ -2869,6 +2886,7 @@ async function start() {
   window.addEventListener('resize', () => { drawDivider(); if (state.titleText) setTrackTitle(state.titleText, state.artistText); });
 
   const saved = await cdp.loadState();
+  state.skipped = new Set(await cdp.skips.list().catch(() => []));
   state.version = saved.version; state.platform = saved.platform;
   document.body.dataset.platform = saved.platform;
   state.history = saved.history;
