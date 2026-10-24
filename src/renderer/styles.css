@@ -513,7 +513,8 @@ body.cursor-hidden #cd-exit { opacity: 0; }
   background: linear-gradient(to bottom, rgb(24, 22, 22), rgb(12, 11, 11));
   display: flex; flex-direction: column; padding: 28px 44px 0;
 }
-#shelf-head { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; padding-bottom: 16px; }
+/* (A narrow window, or longer words in another language: the buttons go on a second line, to the right — none off the edge.) */
+#shelf-head { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px 12px; flex: 0 0 auto; padding-bottom: 16px; }
 /* The index down the shelf's right edge: a small button for each section of the shelf as it's sorted. */
 #shelf-index {
   position: absolute; right: 10px; top: 86px; bottom: 24px; width: 30px; z-index: 2;
@@ -530,7 +531,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 #shelf-heading { flex: 0 0 auto; max-width: 300px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 #shelf-title { font-size: 16px; color: rgb(var(--accent)); white-space: nowrap; }
 #shelf-count { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 10px; color: rgb(var(--muted)); white-space: nowrap; }
-/* A narrow window: the count and the search field give way, so the buttons (CLOSE last) always fit. */
+/* A narrow window: the count and the search field give way first, before any button goes on to a second line. */
 #shelf-filter { flex: 0 12 220px; width: 220px; min-width: 80px; border-radius: 8px; } /* gives way first: the count (the shelf's worth) last */
 #shelf-head .pill { flex: none; }
 #shelf-here { padding: 4px 12px; font-size: 15px; line-height: 1; } /* ⌖ alone: the room goes to the shelf's count */
