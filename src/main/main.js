@@ -276,12 +276,24 @@ handle('plays:add', (p) => {
   clearTimeout(playsTimer); playsTimer = setTimeout(writePlays, 1000);
   // Played, its album is out of its shrink-wrap for good (not only while its play count is kept).
   const album = shelf.albumOf(p), w = album && wrap();
-  if (album) { albumRuns.heard(runsState(), album.id, album.paths.indexOf(p), album.paths.length); runsChanged = true; }
+  if (album) { albumRuns.heard(runsState(), album.id, album.paths.indexOf(p), album.paths.length, Date.now(), (i) => skipped().has(album.paths[i])); runsChanged = true; }
   if (w && !w.torn.has(album.id)) { w.torn.add(album.id); store.writeWrap(w); }
   phoneShelf = null; // the phone's shelf counts it (and shows the album unwrapped) when it's next read
   return n;
 });
 handle('plays:count', (p) => plays().get(p) || 0);
+// Songs not to play as the music moves on (SKIP in the case): passed over, still played when picked; an album heard in
+// order goes on past them (album-runs.js).
+let skippedSongs = null;
+const skipped = () => (skippedSongs = skippedSongs || store.readSkipped());
+handle('skips:list', () => [...skipped()]);
+handle('skips:set', (p, on) => {
+  if (typeof p !== 'string' || !p) return [...skipped()];
+  const s = skipped();
+  if (on) s.add(p); else s.delete(p);
+  store.writeSkipped(s);
+  return [...s];
+});
 // When each of `paths` was first and last played (ms, or null), for the booklet's pen marks.
 handle('plays:times', (paths) => {
   const list = Array.isArray(paths) ? paths : [], first = firstPlayedAt(), last = playedAt();
@@ -533,6 +545,8 @@ async function shelfListing() {
   for (const a of result.albums) a.lastPlayed = a.tracks.reduce((m, t) => Math.max(m, touch.lastPlayed.get(t.path) || 0), 0) || null;
   const notes = store.readNotes();
   for (const a of result.albums) a.note = notes.get(a.id) || null;
+  const dividers = store.readDividers();
+  for (const a of result.albums) a.filedUnder = dividers.get(a.id) || null;
   // …and which came in shrink-wrap (new since wrapping began, not played yet, not unwrapped by hand).
   const w = wrap();
   for (const a of result.albums) a.wrapped = shelf.isWrapped(a, w);
@@ -550,7 +564,7 @@ let movesFound = null;
 let shelfIds = new Set(); // the albums on the shelf when the moves were found, by id
 function movedSongs(albums) {
   const present = new Set(albums.flatMap((a) => a.tracks.map((t) => t.path)));
-  const known = new Set([...plays().keys(), ...playedAt().keys(), ...firstPlayedAt().keys(), ...store.readHistoryAll()]);
+  const known = new Set([...plays().keys(), ...playedAt().keys(), ...firstPlayedAt().keys(), ...store.readHistoryAll(), ...skipped()]); // (a song marked SKIP may never have played)
   movesFound = relocate.findMoves([...known].filter((p) => !present.has(p) && !cue.entryExists(p)), present);
   shelfIds = new Set(albums.map((a) => a.id));
   const declined = store.readMovesDeclined();
@@ -569,9 +583,11 @@ handle('moves:apply', (key) => {
   // when one album of Rock's moved — and the others stayed.)
   const moveId = (id) => (shelfIds.has(id) ? id : relocate.moveAlbumId(id, group.from, group.to));
   store.writeNotes(new Map([...store.readNotes()].map(([id, text]) => [moveId(id), text])));
+  store.writeDividers(new Map([...store.readDividers()].map(([id, name]) => [moveId(id), name])));
   const d = dust(); d.wiped = new Map([...d.wiped].map(([id, t]) => [moveId(id), t])); store.writeDust(d);
   const w = wrap(); w.torn = new Set([...w.torn].map(moveId)); store.writeWrap(w);
   runs = albumRuns.moveIds(runsState(), moveId); store.writeText('album-runs.json', JSON.stringify(runs));
+  skippedSongs = new Set([...skipped()].map((p) => moves.get(p) || p)); store.writeSkipped(skippedSongs);
   movesFound = null;
   phoneShelf = null;
   return moves.size;
@@ -670,6 +686,13 @@ handle('notes:set', (id, text) => {
   const notes = store.readNotes();
   if (text) notes.set(id, text); else notes.delete(id);
   store.writeNotes(notes);
+});
+// An album filed behind one of the user's own dividers (MY DIVIDERS on the shelf); none takes it out from behind it.
+handle('dividers:set', (id, name) => {
+  const dividers = store.readDividers();
+  if (name) dividers.set(id, name); else dividers.delete(id);
+  store.writeDividers(dividers);
+  phoneShelf = null;
 });
 handle('dust:wipe', (id) => { const d = dust(), t = Date.now(); d.wiped.set(id, t); store.writeDust(d); return t; });
 // LIBRARY CHECK (the shelf): what's wrong in the music folder — from the tags already read (library-check.js), and

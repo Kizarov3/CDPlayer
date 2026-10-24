@@ -8,6 +8,7 @@ import { historyDays } from './history-days.js';
 import { EQ_FREQUENCIES } from './audio.js';
 import { el, pill, toggle, setToggle, Slider, anim } from './widgets.js';
 import { FAQ, SHORTCUTS, FEATURES } from './help.js';
+import { findCommands } from './search-commands.js';
 import { startTour } from './tour-view.js';
 import { outputName } from './output.js';
 import { levelName, LEVELS } from './quality.js';
@@ -887,7 +888,7 @@ export function showSearch(app) {
 function buildSearch(app) {
   search.status = el('div', { class: 'setting-row' });
   search.status.style.minHeight = '16px';
-  search.field = el('input', { class: 'text-input', type: 'text', placeholder: t('Artist, album or song — or paste a Spotify link') });
+  search.field = el('input', { class: 'text-input', type: 'text', placeholder: t('A song, an album, an artist, something to do or a setting — or a Spotify link') });
   search.field.style.width = '100%';
   search.field.addEventListener('input', () => onSearchInput(app));
   search.field.addEventListener('keydown', (e) => {
@@ -899,7 +900,7 @@ function buildSearch(app) {
   search.results = el('div', { class: 'scroll' });
   search.results.style.height = '340px';
   const importButton = pill(t('IMPORT LIBRARY…'), () => importLibrary(app), t('Import an iTunes/Music "Library.xml", or a Spotify "Liked Songs" export (CSV or YourLibrary.json)'));
-  const instructions = el('div', { class: 'tip' }, t('Type to search your library, or paste a Spotify track/playlist link to add the matching songs you already have'));
+  const instructions = el('div', { class: 'tip' }, t('Type to find a song in your library, something to do or a setting — or paste a Spotify track/playlist link to add the matching songs you already have'));
   Object.assign(instructions.style, { fontSize: '11px', fontWeight: 'bold', marginTop: '12px', lineHeight: '1.35' });
   const importRow = el('div', {}, importButton);
   importRow.style.margin = '10px 0';
@@ -911,9 +912,10 @@ function setSearchStatus(text) { if (search.status) search.status.textContent = 
 function refreshSearchResults(app) {
   if (!search.results || !isOpen('search')) return;
   const query = (search.field ? search.field.value : '').trim().toLowerCase();
+  const commands = findCommands(query, app.commands()).map((c) => commandRow(app, c));
   if (!search.folder && !search.scanning) {
     setSearchStatus(t('LOAD A TRACK FIRST TO SET A FOLDER TO SEARCH'));
-    search.results.replaceChildren();
+    search.results.replaceChildren(...commands);
     return;
   }
   const matches = [], words = query.split(/\s+/).filter(Boolean);
@@ -923,12 +925,32 @@ function refreshSearchResults(app) {
   setSearchStatus(search.scanning ? t('SCANNING YOUR MUSIC FOLDER…') : !words.length ? t('{n} SONGS IN {folder} · TYPE TO FIND ONE', { n: search.index.length, folder: search.folder })
     : matches.length >= SEARCH_LIMIT ? t('{n}+ MATCHES IN {folder}', { n: matches.length, folder: search.folder })
     : matches.length === 1 ? t('1 MATCH IN {folder}', { folder: search.folder }) : t('{n} MATCHES IN {folder}', { n: matches.length, folder: search.folder }));
-  search.results.replaceChildren(...(matches.length
+  search.results.replaceChildren(...commands, ...(matches.length
     ? matches.map((p) => trackRow(app, p, searchName(p), async () => {
       if (!(await app.cdp.exists(p))) { app.setStatus(t('FILE NO LONGER FOUND')); startLibraryScan(app); return; }
       app.appendAndPlay(p); closePanel('search');
     }))
-    : [el('div', { class: 'list-row plain' }, search.scanning ? t('SCANNING…') : t('NO MATCHES'))]));
+    : commands.length ? [] : [el('div', { class: 'list-row plain' }, search.scanning ? t('SCANNING…') : t('NO MATCHES'))]));
+}
+// An action or a setting the search found, above the songs: an action is done (the search closed first), a setting
+// shown — Settings opened at its row.
+function commandRow(app, c) {
+  const go = () => { closePanel('search'); if (c.kind === 'action') c.run(); else showSettingAt(app, c.row); };
+  return el('div', { class: 'list-row command-row', title: c.kind === 'action' ? t('Do it') : t('Open Settings at it'), onClick: go },
+    el('span', { class: 'command-kind' }, c.kind === 'action' ? '▸' : '⚙'),
+    el('span', { class: 'entry' }, c.label),
+    c.kind === 'action' ? (c.key ? el('kbd', {}, c.key === 'Space' ? t('Space|key') : c.key) : null) : el('span', { class: 'command-where' }, t('SETTINGS · {section}', { section: c.section })));
+}
+/** Settings, scrolled to the row called `label` (in English), lit up for a moment. */
+export function showSettingAt(app, label, tries = 20) {
+  if (!isOpen('settings')) showSettings(app);
+  const card = panels.get('settings') && panels.get('settings').card;
+  const row = card && [...card.querySelectorAll('.setting-row')].find((r) => r.firstElementChild && r.firstElementChild.textContent === t(label));
+  if (!row) { if (tries > 0) setTimeout(() => showSettingAt(app, label, tries - 1), 50); return; }
+  row.scrollIntoView({ block: 'center', behavior: anim.enabled ? 'smooth' : 'auto' });
+  row.classList.remove('found');
+  void row.offsetWidth; // (again, if it was just lit)
+  row.classList.add('found');
 }
 async function onSearchInput(app) {
   const text = search.field.value.trim();

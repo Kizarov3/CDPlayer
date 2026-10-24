@@ -214,6 +214,14 @@ test('dust.txt: since when dust has gathered, and when each album was wiped', ()
   assert.deepStrictEqual(store.readDust(), { since: 500, wiped: new Map([[id, 900]]) });
 });
 
+test('dividers.txt: the divider each album is filed behind; none takes it out', () => {
+  const id = 'tool\nlateralus\n';
+  store.writeDividers(new Map([[id, 'For the car'], ['korn\nissues\n', '']]));
+  assert.deepStrictEqual(store.readDividers(), new Map([[id, 'For the car']]));
+  store.writeDividers(new Map());
+  assert.deepStrictEqual(store.readDividers(), new Map());
+});
+
 test('notes.txt: a note per album, any text in it; an empty note takes it off', () => {
   const id = 'tool\nlateralus\n', other = 'korn\nissues\n';
   store.writeNotes(new Map([[id, 'For the long drive\n\tnorth — «ночью»'], [other, 'lend to Sam']]));

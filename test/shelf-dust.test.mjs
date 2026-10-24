@@ -47,3 +47,17 @@ test('jitter of a pixel or two, or a slow drift back later, is not a wipe', () =
   for (const [x, t] of [[0, 0], [20, 50], [0, 3000]]) strokes += slow.move(x, t);
   assert.strictEqual(strokes, 0);
 });
+
+test('pickSome: that many different albums, each picked as PULL ONE would from those left', async () => {
+  const { pickSome } = await import('../src/renderer/js/shelf-dust.js');
+  const albums = ['a', 'b', 'c', 'd'].map((id) => ({ id, touched: now }));
+  const seq = [0.99, 0.99, 0.99, 0.99];
+  const picked = pickSome(albums, 3, now, () => seq.shift());
+  assert.deepStrictEqual(picked.map((a) => a.id), ['d', 'c', 'b']);
+  assert.strictEqual(pickSome(albums, 9, now).length, 4, 'no more than there are');
+  assert.deepStrictEqual(pickSome([], 5, now), []);
+  const dusty = [{ id: 'clean', touched: now }, { id: 'dusty', touched: now - 400 * DAY }];
+  let first = 0;
+  for (let i = 0; i < 200; i++) if (pickSome(dusty, 1, now)[0].id === 'dusty') first++;
+  assert.ok(first > 150, 'the dusty one first, mostly');
+});

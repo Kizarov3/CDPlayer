@@ -30,7 +30,7 @@ const file = (name) => path.join(dataDir(), name);
 const FILES = {
   queue: 'queue.txt', onboarded: 'onboarded', lastVersion: 'lastversion.txt', lastPath: 'lastpath.txt', musicFolders: 'music-folders.txt',
   settings: 'settings.txt', eqPresets: 'eq-presets.txt', history: 'history.txt', spotify: 'spotify.txt',
-  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt', firstPlayed: 'firstplayed.txt', shelfColors: 'shelf-colors.json', changer: 'changer.txt', changerQueue: 'changer-queue.txt', remote: 'remote.json', movesDeclined: 'moves-declined.txt',
+  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt', firstPlayed: 'firstplayed.txt', shelfColors: 'shelf-colors.json', changer: 'changer.txt', changerQueue: 'changer-queue.txt', remote: 'remote.json', movesDeclined: 'moves-declined.txt', skipped: 'skipped.txt', dividers: 'dividers.txt',
 };
 
 function readText(name) {
@@ -70,7 +70,7 @@ const DEFAULT_SETTINGS = {
   volume: 100, crossfade: 5, mono: false, animations: true, theme: 'RED', eq: new Array(10).fill(0),
   waveform: true, miniMode: false, bounds: null, ambient: true, discord: false, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false, playModes: defaultPlayModes(), display: 'DECK', transition: 'OFF',
 };
-const SHELF_SORTS = ['ARTIST', 'NEW', 'PLAYED', 'RECENT', 'YEAR', 'COLOR', 'PRICE'];
+const SHELF_SORTS = ['ARTIST', 'NEW', 'PLAYED', 'RECENT', 'YEAR', 'COLOR', 'PRICE', 'MINE'];
 const QUALITIES = ['HIGH', 'LOSSLESS', 'HIRES'];
 const SOUND_CHECKS = ['OFF', 'TRACK', 'ALBUM'];
 const TRANSITIONS = ['OFF', 'AUTOMIX', 'CROSSFADE'];
@@ -247,25 +247,38 @@ function writeDust({ since, wiped }) {
 
 // notes.txt — "album id<TAB>note" per line, both as JSON (either can have line breaks in it): the sticky notes on
 // albums on the shelf. An empty note isn't kept. CDPlayer 2 only.
-function readNotes() {
-  const notes = new Map();
-  for (const line of lines(readText(FILES.notes))) {
+// dividers.txt — the same, "album id<TAB>divider": the user's own divider card each album is filed behind.
+function readTextsById(file) {
+  const texts = new Map();
+  for (const line of lines(readText(file))) {
     const tab = line.indexOf('\t');
     try {
       const id = JSON.parse(line.slice(0, tab)), text = JSON.parse(line.slice(tab + 1));
-      if (tab > 0 && typeof id === 'string' && typeof text === 'string' && text) notes.set(id, text);
+      if (tab > 0 && typeof id === 'string' && typeof text === 'string' && text) texts.set(id, text);
     } catch { /* a broken line */ }
   }
-  return notes;
+  return texts;
 }
-function writeNotes(notes) {
-  const body = [...notes].filter(([, text]) => text).map(([id, text]) => `${JSON.stringify(id)}\t${JSON.stringify(text)}`);
-  return writeText(FILES.notes, body.join('\n') + (body.length ? '\n' : ''));
+function writeTextsById(file, texts) {
+  const body = [...texts].filter(([, text]) => text).map(([id, text]) => `${JSON.stringify(id)}\t${JSON.stringify(text)}`);
+  return writeText(file, body.join('\n') + (body.length ? '\n' : ''));
 }
+const readNotes = () => readTextsById(FILES.notes);
+const writeNotes = (notes) => writeTextsById(FILES.notes, notes);
+const readDividers = () => readTextsById(FILES.dividers);
+const writeDividers = (dividers) => writeTextsById(FILES.dividers, dividers);
 
 // missing-hidden.txt — a MusicBrainz release-group ID per line: missing albums the user said NOT INTERESTED to, so
 // they don't stand on the shelf again. CDPlayer 2 only.
 const GROUP_ID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+// skipped.txt — a path a line: the songs not to play as the music moves on (they still play when picked).
+function readSkipped() {
+  return new Set(lines(readText(FILES.skipped)).filter((l) => l.trim()));
+}
+function writeSkipped(paths) {
+  const body = [...paths].filter((p) => p && !/[\n\r]/.test(p));
+  return writeText(FILES.skipped, body.join('\n') + (body.length ? '\n' : ''));
+}
 function readHiddenMissing() {
   return new Set(lines(readText(FILES.hiddenMissing)).map((l) => l.trim()).filter((id) => GROUP_ID.test(id)));
 }
@@ -381,7 +394,7 @@ const writeLastVersion = (v) => writeText(FILES.lastVersion, v);
 
 module.exports = {
   dataDir, file, FILES, readText, writeText, freeze, isFile, isDir,
-  readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, readChangerQueue, writeQueue, readHistory, writeHistory, readHistoryAll, writeHistoryAll, readMovesDeclined, writeMovesDeclined, HISTORY_LIMIT,
-  readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readFirstPlayed, writeFirstPlayed, readDust, writeDust, readNotes, writeNotes, readHiddenMissing, writeHiddenMissing, readWrap, writeWrap, readShelfColors, writeShelfColors,
+  readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, readChangerQueue, writeQueue, readHistory, writeHistory, readHistoryAll, writeHistoryAll, readMovesDeclined, writeMovesDeclined, readSkipped, writeSkipped, HISTORY_LIMIT,
+  readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readFirstPlayed, writeFirstPlayed, readDust, writeDust, readNotes, writeNotes, readDividers, writeDividers, readHiddenMissing, writeHiddenMissing, readWrap, writeWrap, readShelfColors, writeShelfColors,
   readEqPresets, writeEqPresets, readLastPath, writeLastPath, readMusicFolders, writeMusicFolders, musicFolders, noMusicFolderYet, isOnboarded, markOnboarded, readLastVersion, writeLastVersion,
 };

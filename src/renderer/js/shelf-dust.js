@@ -21,6 +21,13 @@ export function pickOne(albums, now = Date.now(), rnd = Math.random) {
   return albums[albums.length - 1];
 }
 
+/** `n` different albums picked one after another as by pickOne (the dustier, the likelier), fewer if there aren't as many. */
+export function pickSome(albums, n, now = Date.now(), rnd = Math.random) {
+  const left = albums.slice(), out = [];
+  while (out.length < n && left.length) { const a = pickOne(left, now, rnd); out.push(a); left.splice(left.indexOf(a), 1); }
+  return out;
+}
+
 const STROKE_PX = 6;   // a turn back after at least this far one way counts
 const STROKE_MS = 600; // …and only if it came quickly after the last movement the other way
 

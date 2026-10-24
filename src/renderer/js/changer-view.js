@@ -47,7 +47,7 @@ export function createChangerView(root, { tray, heading, list, onPlaySlot, onPla
     heading.textContent = view.heading;
     const scrollTop = list.scrollTop;
     // (A track's `ghost`: a hidden track's row under its song, made by the player as it is.)
-    list.replaceChildren(...view.tracks.map((tr) => tr.ghost || el('div', { class: `queue-row${tr.current ? ' active' : ''}`, title: t('Play {song}', { song: tr.title }), onClick: () => onPlayTrack(tr.index) },
+    list.replaceChildren(...view.tracks.map((tr) => tr.ghost || el('div', { class: `queue-row${tr.current ? ' active' : ''}${tr.skipped ? ' skipped' : ''}`, title: t('Play {song}', { song: tr.title }), onClick: () => onPlayTrack(tr.index) },
       el('span', { class: 'num' }, `${tr.no}.`), el('span', { class: 'entry' }, tr.title), el('span', { class: 'east' }, el('span', { class: 'duration' }, tr.time)))));
     list.scrollTop = scrollTop;
     // The song playing moved on (or another disc came up): the list goes to it.

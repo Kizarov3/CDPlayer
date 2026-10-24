@@ -365,6 +365,13 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 
 .list-row { display: flex; align-items: center; gap: 8px; min-height: 34px; margin-bottom: 4px; font-size: 11px; color: rgb(var(--text)); cursor: pointer; }
 .list-row .entry { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; font-weight: normal; }
+.command-row { border-bottom: 1px solid rgba(var(--text), .08); padding-bottom: 4px; }
+.command-row .command-kind { flex: none; width: 14px; text-align: center; color: rgb(var(--accent)); }
+.command-row .command-where { flex: none; color: rgb(var(--muted)); font-size: 10px; }
+.command-row kbd { flex: none; }
+.command-row:hover .entry { color: rgb(var(--accent)); }
+.setting-row.found { animation: setting-found 1.6s ease-out; border-radius: 6px; }
+@keyframes setting-found { 0%, 30% { background: rgba(var(--accent), .28); box-shadow: 0 0 0 6px rgba(var(--accent), .28); } 100% { background: transparent; box-shadow: 0 0 0 6px transparent; } }
 .list-row.plain { cursor: default; color: rgb(var(--muted)); min-height: 20px; }
 .list-row .when { flex: none; width: 40px; color: rgb(var(--muted)); font-weight: normal; font-variant-numeric: tabular-nums; }
 .history-day { margin: 12px 0 6px; font-size: 9px; color: rgb(var(--accent2)); }
@@ -662,6 +669,15 @@ body.cursor-hidden #cd-exit { opacity: 0; }
   background: linear-gradient(to right, rgb(var(--accent)), rgba(var(--accent), .75)); box-shadow: 0 1px 2px rgba(0, 0, 0, .45);
   clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 82%, 0 100%);
 }
+/* An album with other editions (shelf-editions.js): theirs stand right behind it, their tops showing above it. */
+.spine-editions {
+  position: absolute; top: -7px; left: 3px; right: -3px; height: 7px; pointer-events: none; border-radius: 3px 3px 0 0;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, .3) 0 1px, rgba(var(--spine), .85) 1px, rgba(var(--spine), .55));
+  box-shadow: 0 -1px 2px rgba(0, 0, 0, .35);
+}
+.spine-editions.more { box-shadow: 0 -1px 2px rgba(0, 0, 0, .35), 3px -5px 0 rgba(var(--spine), .6); }
+.case-editions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.case-editions .pill { font-size: 10px; padding: 4px 10px; }
 /* The corner of a sticky note (shelf-notes.js) poking up above a spine. */
 .note-tab {
   position: absolute; top: -9px; left: 50%; width: 22px; height: 16px; margin-left: -11px; z-index: 3; pointer-events: none;
@@ -803,6 +819,16 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 .case-track.missing { cursor: default; color: rgb(var(--muted)); opacity: .55; }
 .case-track.missing:hover { background: none; }
 .case-track .time { color: rgb(var(--muted)); font-size: 10px; }
+/* SKIP: a small button that shows on the track under the mouse, and stays lit on one marked; that one struck through. */
+.case-skip {
+  flex: none; align-self: center; padding: 1px 6px; border: 1px solid rgba(var(--muted), .45); border-radius: 8px; background: none;
+  font: bold 8px/1.4 var(--font, inherit); letter-spacing: .06em; color: rgb(var(--muted)); cursor: pointer; visibility: hidden;
+}
+.case-track:hover .case-skip, .case-skip.on, .case-skip:focus-visible { visibility: visible; }
+.case-skip:hover { color: rgb(var(--text)); border-color: rgb(var(--text)); }
+.case-skip.on { color: rgb(var(--accent)); border-color: rgb(var(--accent)); }
+.case-track.skipped .name, .queue-row.skipped .entry { text-decoration: line-through; opacity: .55; }
+.case-actions .divider-name { width: 150px; padding: 5px 10px; font-size: 11px; }
 .case-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; align-items: center; } /* a row, or two when it can't fit */
 
 /* ---- Canvases layered over everything ---- */
