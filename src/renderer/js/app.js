@@ -529,16 +529,31 @@ async function reloadSkips() {
 }
 // FILL on the shelf (changer mode): albums it picked, into every slot that's free or holds a finished disc; an idle
 // player starts on the first of them.
-function fillChanger(picks) {
+function fillChanger(picks, { quiet = false } = {}) {
   if (!state.changerMode) return { loaded: [] };
   const r = changer.fillWith(ch(), picks);
-  if (!r.loaded.length) { setStatus(r.full ? t('THE CHANGER IS FULL') : t('THOSE ALBUMS ARE IN THE CHANGER ALREADY')); return r; }
+  if (!r.loaded.length) { if (!quiet) setStatus(r.full ? t('THE CHANGER IS FULL') : t('THOSE ALBUMS ARE IN THE CHANGER ALREADY')); return r; }
   const wasPlaying = state.index >= 0 && !!engine.deck;
   apply(r.changer);
+  upcomingCache = null; dropPrepared(); // what comes next may be one of them now
   setStatus(r.loaded.length === 1 ? t('DISC {n} IN', { n: r.loaded[0] + 1 }) : t('{n} DISCS IN', { n: r.loaded.length }));
   renderQueue(); saveQueueSoon(); spotifyResync();
   if (!wasPlaying) load(state.queue[state.index], { autoPlay: true });
   return r;
+}
+// FILL · KEEP IT FULL (changer mode; till it's turned off, the changer put away or CDPlayer closed): a disc played to
+// its end makes room for another album picked from those the shelf showed — `pick` () → picks — so the music never
+// runs out. Done a moment after the next song has begun (not under a song changing over), or at once when nothing's
+// left to play.
+let keepFull = null;
+function keepChangerFull(pick) {
+  keepFull = state.changerMode && pick ? pick : null;
+  if (keepFull) fillChanger(keepFull(), { quiet: true });
+}
+const keepingFull = () => !!keepFull;
+function refillChanger() {
+  if (!keepFull || !state.changerMode) return false;
+  return fillChanger(keepFull(), { quiet: true }).loaded.length > 0;
 }
 async function addToQueue(items, { sorted = false, play = false, next = false, title = null } = {}) {
   const songs = sorted ? items : await cdp.collectAudio(items);
@@ -1170,10 +1185,13 @@ function playSlot(slot) {
 function notePlayed() {
   if (state.index < 0 || !state.changerMode) return;
   const pick = upcomingCache; // the current song was never a candidate: the pick shown as UP NEXT still stands
+  const here = changer.slotOf(ch(), state.index), wasDone = !!(here && ch().slots[here.slot].done);
   apply({ ...changer.markFinished(ch(), state.index, modes()), index: state.index });
   upcomingCache = pick;
   saveQueueSoon();
+  if (keepFull && here && !wasDone && ch().slots[here.slot].done) setTimeout(refillChanger, REFILL_AFTER_MS); // finished
 }
+const REFILL_AFTER_MS = 1500;
 // The queue entry `p` picks up exactly where the playing cue sheet track ends, in the same file (atBoundary: and
 // playback has got there).
 function continuesCurrent(p, { atBoundary = true } = {}) {
@@ -1286,6 +1304,7 @@ function trackFinished(deck) {
   notePlayed();
   if (sleeps) { engine.pause(); setPlaying(false); armSleepAtEnd(false); setStatus(t('END OF DISC · SLEEP WELL')); panels.refreshSettingsIfOpen(app); return; }
   if (state.repeat === 'TRACK') { engine.seek(0); engine.play(); setPlaying(true); return; }
+  if (keepFull && upcomingIndex() < 0) refillChanger(); // the last disc's end: new ones in, and on into them
   const next = upcomingIndex();
   // A cue sheet track ends mid-file: unless the next track carries straight on from here, stop the file right now
   // rather than let the following song start playing underneath.
@@ -2420,6 +2439,7 @@ async function setChangerMode(on) {
   if (on === state.changerMode || switching) return;
   if (state.trayBusy || disc.trayOpen) { setStatus(t('CLOSE THE TRAY FIRST')); return; }
   switching = true;
+  keepFull = null;
   try {
     clearTimeout(queueTimer); cdp.saveQueue(queueSnapshot());
     stores[modeKey()] = { ...takeStore(), positionMicros: Math.round(positionNow() * 1e6) };
@@ -2788,7 +2808,7 @@ export const app = {
     else if (what === 'karaoke') { if (!isKaraokeOpen()) toggleKaraoke(); }
   },
   remoteInfo: () => remoteInfo, remoteHeard: onRemoteStatus, commands,
-  changerState: ch, changerMode: () => state.changerMode, setChangerMode, discLabel, loadDisc, fillChanger, toggleSkip, reloadSkips, isSkippedPath: (p) => state.skipped.has(p), playSlot, ejectSlot, discSkip, coverForPath,
+  changerState: ch, changerMode: () => state.changerMode, setChangerMode, discLabel, loadDisc, fillChanger, keepChangerFull, keepingFull, toggleSkip, reloadSkips, isSkippedPath: (p) => state.skipped.has(p), playSlot, ejectSlot, discSkip, coverForPath,
   changerSlotOf: (i) => (changer.slotOf(ch(), i) || { slot: -1 }).slot,
   onFullChanger: (c) => panels.pickDiscToTakeOut(app, c),
   coverSource: () => state.coverFrom || null,

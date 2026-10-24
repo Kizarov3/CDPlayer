@@ -261,6 +261,7 @@ function render() {
   $('shelf-show').classList.toggle('on', showing);
   $('shelf-fill').hidden = !shelf.app.changerMode();
   $('shelf-fill').disabled = !shown.length;
+  showFill();
   const n = shelf.albums.length;
   // (The folder's name is the count's tooltip: the line keeps its room for the albums and what the shelf is worth.)
   shelf.countBase = [n === 1 ? t('1 ALBUM') : t('{n} ALBUMS', { n }), filtering || showing ? t('{n} SHOWN', { n: found.length }) : null].filter(Boolean).join(' · ');
@@ -810,11 +811,21 @@ function pullOne() {
 }
 
 // FILL (changer mode): albums at random from those shown — the dustier, the likelier, as PULL ONE — into the changer's
-// free and finished slots. (Twice as many picked as there are slots: some may be in the changer already.)
+// free and finished slots. (Twice as many picked as there are slots: some may be in the changer already.) KEEP IT FULL
+// goes on doing it from the same albums each time a disc is played to its end, till it's picked again.
+const picksFrom = (albums) => () => pickSome(albums, SLOTS * 2).map((a) => ({ disc: discOfAlbum(a), tracks: a.tracks.map((t) => t.path) }));
 function fillChanger() {
   if (!shelf.shown || !shelf.shown.length || !shelf.app.changerMode()) return;
-  shelf.app.fillChanger(pickSome(shelf.shown, SLOTS * 2).map((a) => ({ disc: discOfAlbum(a), tracks: a.tracks.map((t) => t.path) })));
+  const { app } = shelf, albums = shelf.shown.slice(), keeping = app.keepingFull();
+  app.menu($('shelf-fill'), [
+    { label: t('FILL IT NOW'), pick: () => app.fillChanger(picksFrom(albums)()) },
+    keeping ? { label: t('STOP KEEPING IT FULL'), current: true, pick: () => { app.keepChangerFull(null); app.setStatus(t('THE CHANGER NO LONGER FILLS ITSELF')); showFill(); } }
+      : { label: albums.length === 1 ? t('KEEP IT FULL FROM THIS ALBUM') : t('KEEP IT FULL FROM THESE {n} ALBUMS', { n: albums.length }),
+        pick: () => { app.keepChangerFull(picksFrom(albums)); app.setStatus(t('A FINISHED DISC MAKES ROOM FOR ANOTHER')); showFill(); } },
+  ], { alignEnd: true });
 }
+// FILL lit while the changer keeps itself full.
+function showFill() { $('shelf-fill').classList.toggle('on', shelf.app.changerMode() && shelf.app.keepingFull()); }
 
 // ---- The case, pulled out and turned to its front ----------------------------------------------------------------
 
