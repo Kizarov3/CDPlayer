@@ -2583,6 +2583,39 @@ function onKeyDown(e) {
   };
   if (actions[key]) { e.preventDefault(); if (!e.repeat || key.startsWith('Arrow')) { actions[key](); if (!e.repeat) noteKeyUsed(); } }
 }
+// What "/" finds besides songs (search-commands.js): what the keys and the header's buttons do, by name — those that
+// can be done now (a button that's hidden can't).
+function commands() {
+  const can = (id) => !$(id).hidden;
+  const click = (id) => () => $(id).click();
+  return [
+    { label: t('PLAY / PAUSE'), also: 'play pause stop', key: 'Space', run: toggle },
+    { label: t('NEXT TRACK'), also: 'next skip forward следующий', key: 'L', run: userNext },
+    { label: t('PREVIOUS TRACK'), also: 'previous back предыдущий', key: 'J', run: previousTrack },
+    state.changerMode ? { label: t('DISC SKIP'), also: 'next disc changer', key: 'D', run: discSkip } : null,
+    { label: t('SHUFFLE|action'), also: 'shuffle random перемешать', run: toggleShuffle },
+    { label: t('REPEAT|action'), also: 'repeat loop повтор', run: cycleRepeat },
+    { label: t('MUTE / UNMUTE'), also: 'mute sound звук', key: 'U', run: toggleMute },
+    { label: t('THE SHELF'), also: 'shelf albums полка', key: 'S', run: toggleShelf },
+    { label: t('CD VIEW'), key: 'C', run: toggleCdView },
+    { label: t('MINI MODE'), key: 'M', run: () => setMiniMode(!state.miniMode) },
+    { label: t('VISUALIZER MODE'), also: 'visualizer визуализатор', key: 'V', run: toggleVisualizerMode },
+    { label: t('KARAOKE'), also: 'karaoke', key: 'Y', run: toggleKaraoke },
+    { label: t('FULLSCREEN'), also: 'fullscreen полный экран', key: 'F', run: toggleFullscreen },
+    { label: t('OPEN / CLOSE THE TRAY'), also: 'tray eject лоток', key: 'E', run: toggleTray },
+    { label: t('TURN THE DISC OVER'), also: 'flip disc data side', key: 'B', run: () => disc.flip() },
+    { label: t('NOW PLAYING CARD'), also: 'share card image карточка', key: 'P', run: shareCard },
+    { label: t('HISTORY'), also: 'history played история', run: click('history-button') },
+    can('lyrics-button') ? { label: t('LYRICS'), also: 'lyrics words', run: click('lyrics-button') } : null,
+    can('tags-button') ? { label: t('TAGS'), also: 'tags edit теги', run: click('tags-button') } : null,
+    { label: t('SPOTIFY'), run: click('spotify-button') },
+    { label: t('LOAD A TRACK'), also: 'open files load открыть', key: '⌘O', run: click('load-button') },
+    { label: t('LIBRARY CHECK'), also: 'check problems проверка', run: () => panels.showLibraryCheck(app) },
+    { label: t('KEYBOARD SHORTCUTS'), also: 'keys shortcuts клавиши', key: '?', run: () => panels.showShortcuts() },
+    { label: t("WHAT'S NEW"), also: 'changelog whats new', run: () => panels.showWhatsNew(app) },
+  ].filter(Boolean);
+}
+
 // The keys along the bottom: there until a few of them have been used — then only ? ALL KEYS, the rest are known.
 // (Counted in this window's storage: it's only what the hint shows.)
 const KEYS_LEARNT = 5;
@@ -2751,7 +2784,7 @@ export const app = {
     else if (what === 'cdview') { disc.flip(false); if (!state.cdView) toggleCdView(); } // the disc itself, face up
     else if (what === 'karaoke') { if (!isKaraokeOpen()) toggleKaraoke(); }
   },
-  remoteInfo: () => remoteInfo, remoteHeard: onRemoteStatus,
+  remoteInfo: () => remoteInfo, remoteHeard: onRemoteStatus, commands,
   changerState: ch, changerMode: () => state.changerMode, setChangerMode, discLabel, loadDisc, fillChanger, toggleSkip, reloadSkips, isSkippedPath: (p) => state.skipped.has(p), playSlot, ejectSlot, discSkip, coverForPath,
   changerSlotOf: (i) => (changer.slotOf(ch(), i) || { slot: -1 }).slot,
   onFullChanger: (c) => panels.pickDiscToTakeOut(app, c),
