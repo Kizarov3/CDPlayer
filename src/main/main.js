@@ -562,7 +562,7 @@ let movesFound = null;
 let shelfIds = new Set(); // the albums on the shelf when the moves were found, by id
 function movedSongs(albums) {
   const present = new Set(albums.flatMap((a) => a.tracks.map((t) => t.path)));
-  const known = new Set([...plays().keys(), ...playedAt().keys(), ...firstPlayedAt().keys(), ...store.readHistoryAll()]);
+  const known = new Set([...plays().keys(), ...playedAt().keys(), ...firstPlayedAt().keys(), ...store.readHistoryAll(), ...skipped()]); // (a song marked SKIP may never have played)
   movesFound = relocate.findMoves([...known].filter((p) => !present.has(p) && !cue.entryExists(p)), present);
   shelfIds = new Set(albums.map((a) => a.id));
   const declined = store.readMovesDeclined();

@@ -345,6 +345,7 @@ function movedNotice() {
       pill(t('BRING THEIR HISTORY'), () => act(async (key) => {
         const n = await shelf.app.cdp.applyMove(key);
         await shelf.app.loadHistoryFromDisk();
+        await shelf.app.reloadSkips(); // the marks moved with the songs
         if (n) shelf.app.setStatus(t('HISTORY MOVED'));
       }), t('Their plays, dust and history go with them to where they are now')),
       pill(t('NOT THE SAME SONGS'), () => act((key) => shelf.app.cdp.declineMove(key)), t('Don’t ask about this folder again'))));

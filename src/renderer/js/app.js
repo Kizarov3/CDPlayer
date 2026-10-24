@@ -522,12 +522,17 @@ async function toggleSkip(p) {
   setStatus(state.skipped.has(p) ? t('PASSED OVER FROM NOW ON') : t('PLAYED AGAIN AS THE MUSIC MOVES ON'));
   return state.skipped.has(p);
 }
+// The SKIP marks as the main process has them now (moved with moved songs): what comes next worked out again.
+async function reloadSkips() {
+  state.skipped = new Set(await cdp.skips.list().catch(() => [...state.skipped]));
+  upcomingCache = null; dropPrepared(); renderQueue();
+}
 // FILL on the shelf (changer mode): albums it picked, into every slot that's free or holds a finished disc; an idle
 // player starts on the first of them.
 function fillChanger(picks) {
   if (!state.changerMode) return { loaded: [] };
   const r = changer.fillWith(ch(), picks);
-  if (!r.loaded.length) { setStatus(t('THE CHANGER IS FULL')); return r; }
+  if (!r.loaded.length) { setStatus(r.full ? t('THE CHANGER IS FULL') : t('THOSE ALBUMS ARE IN THE CHANGER ALREADY')); return r; }
   const wasPlaying = state.index >= 0 && !!engine.deck;
   apply(r.changer);
   setStatus(r.loaded.length === 1 ? t('DISC {n} IN', { n: r.loaded[0] + 1 }) : t('{n} DISCS IN', { n: r.loaded.length }));
@@ -2747,7 +2752,7 @@ export const app = {
     else if (what === 'karaoke') { if (!isKaraokeOpen()) toggleKaraoke(); }
   },
   remoteInfo: () => remoteInfo, remoteHeard: onRemoteStatus,
-  changerState: ch, changerMode: () => state.changerMode, setChangerMode, discLabel, loadDisc, fillChanger, toggleSkip, isSkippedPath: (p) => state.skipped.has(p), playSlot, ejectSlot, discSkip, coverForPath,
+  changerState: ch, changerMode: () => state.changerMode, setChangerMode, discLabel, loadDisc, fillChanger, toggleSkip, reloadSkips, isSkippedPath: (p) => state.skipped.has(p), playSlot, ejectSlot, discSkip, coverForPath,
   changerSlotOf: (i) => (changer.slotOf(ch(), i) || { slot: -1 }).slot,
   onFullChanger: (c) => panels.pickDiscToTakeOut(app, c),
   coverSource: () => state.coverFrom || null,

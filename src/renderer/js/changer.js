@@ -90,7 +90,7 @@ export function load(c, disc, tracks, { play = false, next = false, slot = null 
 /**
  * FILL: `picks` ([{ disc, tracks }], in the order picked) loaded one each into the slots that are free or hold a
  * finished disc (as `load` finds room), passing over a disc already in; where the changer stands stays (an empty one
- * stands on the first put in). → { changer, loaded: [slot…], replaced: [disc taken out…] }
+ * stands on the first put in). → { changer, loaded: [slot…], replaced: [disc taken out…], full: no room to begin with }
  */
 export function fillWith(c, picks) {
   let changer = c;
@@ -102,7 +102,7 @@ export function fillWith(c, picks) {
     changer = r.changer; loaded.push(r.slot);
     if (r.replaced) replaced.push(r.replaced);
   }
-  return { changer, loaded, replaced };
+  return { changer, loaded, replaced, full: roomFor(c) < 0 };
 }
 
 /**

@@ -339,7 +339,9 @@ test('FILL: an empty changer stands on the first disc put in; a full one is left
   assert.strictEqual(r.changer.queue[r.changer.index], 'a1');
   const full = fill(5);
   const none = fillWith(full, [{ disc: disc('z'), tracks: ['z1'] }]);
-  assert.deepStrictEqual([none.changer, none.loaded], [full, []]);
+  assert.deepStrictEqual([none.changer, none.loaded, none.full], [full, [], true]);
+  const again = fillWith(r.changer, [{ disc: disc('a'), tracks: ['a1', 'a2'] }]);
+  assert.deepStrictEqual([again.loaded, again.full], [[], false], 'in already: not full');
 });
 
 test('SKIP: songs marked not to play are passed over going on and going back; DISC SKIP lands on one to play', async () => {
