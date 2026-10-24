@@ -1202,7 +1202,9 @@ function notePlayed() {
   apply({ ...changer.markFinished(ch(), state.index, modes()), index: state.index });
   upcomingCache = pick;
   saveQueueSoon();
-  if (keepFull && here && !wasDone && ch().slots[here.slot].done) setTimeout(refillChanger, REFILL_AFTER_MS); // finished
+  const slot = here && ch().slots[here.slot];
+  // finished, or one finished before played to its end again
+  if (keepFull && slot && slot.done && (!wasDone || state.index === slot.end - 1)) setTimeout(refillChanger, REFILL_AFTER_MS);
 }
 const REFILL_AFTER_MS = 1500;
 // The queue entry `p` picks up exactly where the playing cue sheet track ends, in the same file (atBoundary: and
