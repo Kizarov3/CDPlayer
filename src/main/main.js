@@ -547,10 +547,12 @@ handle('shelf:albums', () => shelfListing());
 // Songs moved (relocate.js): what's kept by their old paths — plays, HISTORY — found again on the shelf, a folder at a
 // time, for the shelf to offer to bring along. Nothing moves until it's asked to.
 let movesFound = null;
+let shelfIds = new Set(); // the albums on the shelf when the moves were found, by id
 function movedSongs(albums) {
   const present = new Set(albums.flatMap((a) => a.tracks.map((t) => t.path)));
   const known = new Set([...plays().keys(), ...playedAt().keys(), ...firstPlayedAt().keys(), ...store.readHistoryAll()]);
   movesFound = relocate.findMoves([...known].filter((p) => !present.has(p) && !cue.entryExists(p)), present);
+  shelfIds = new Set(albums.map((a) => a.id));
   const declined = store.readMovesDeclined();
   return movesFound.groups.filter((g) => !declined.has(g.key));
 }
@@ -563,7 +565,9 @@ handle('moves:apply', (key) => {
   writePlays();
   store.writeHistoryAll(relocate.newestFirst(relocate.moveHistory(store.readHistoryAll(), moves), lastPlayed));
   // An album known by its folder (no tags to know it by) takes its sticky note, its dust and its wrapping along.
-  const moveId = (id) => relocate.moveAlbumId(id, group.from, group.to);
+  // (Not one still on the shelf by its id: the group's from → to can be a folder many albums share — "Rock" → "Archive"
+  // when one album of Rock's moved — and the others stayed.)
+  const moveId = (id) => (shelfIds.has(id) ? id : relocate.moveAlbumId(id, group.from, group.to));
   store.writeNotes(new Map([...store.readNotes()].map(([id, text]) => [moveId(id), text])));
   const d = dust(); d.wiped = new Map([...d.wiped].map(([id, t]) => [moveId(id), t])); store.writeDust(d);
   const w = wrap(); w.torn = new Set([...w.torn].map(moveId)); store.writeWrap(w);
