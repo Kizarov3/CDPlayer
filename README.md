@@ -31,8 +31,8 @@ When a new version is out, an **AVAILABLE** button appears in the player's top-l
 ## Features
 
 - **The disc** — spins in its jewel case with your cover printed on it, catches the light as you move the mouse (**DISC SHINE** turns it off), wears scratches as you play it, turns over (`B`) to show a ring for each track, can be turned by hand like a DJ's jog wheel, and shows on the Dock or taskbar icon (**DISC ICON**)
-- **The CD shelf** (`S`) — every album in your music folder spine-out, kept up to date as you add, rip or remove albums, sorted by artist, year, most played, last played (a divider for each month) or colour. Several music folders can share it — an external drive too, kept on the list while it's unplugged. Unplayed albums gather dust (wipe it off with the mouse), new ones come shrink-wrapped, sticky notes on cases, and the studio albums you're missing stand as see-through places
-- **The booklet** — the album's tracklist, lyrics and credits, marked in pen as you play: tally marks per song, your favourite circled
+- **The CD shelf** (`S`) — every album in your music folder spine-out, kept up to date as you add, rip or remove albums, sorted by artist, year, most played, last played (a divider for each month) or colour. Several music folders can share it — an external drive too, kept on the list while it's unplugged. Unplayed albums gather dust (wipe it off with the mouse), new ones come shrink-wrapped, sticky notes on cases, and the studio albums you're missing stand as see-through places. An album you started from its first song and left part-way has a ribbon bookmark on its spine and **CONTINUE · TRACK n** in its case. **SHOW** narrows the shelf to the dusty albums, the ones still wrapped, left part-way, with a note or never played, or one decade or genre — and **PULL ONE** pulls one of them out at random, the dustier the likelier
+- **The booklet** — the album's tracklist, lyrics and credits, marked in pen as you play: tally marks per song, your favourite circled, and on the back cover how many times you've played the album start to end
 - **Discogs** — each album's exact pressing and market price, on its case, sticker and receipt; **APPRAISE** values your whole shelf
 - **Audio CDs** — play a real CD, named from MusicBrainz, or **RIP** it to verified, tagged FLAC in one click
 - **Lyrics & Karaoke** (`Y`) — lyrics found online, highlighted word by word as they're sung
@@ -48,7 +48,7 @@ When a new version is out, an **AVAILABLE** button appears in the player's top-l
 - **Sound Check** — every song at the same loudness (−18 LUFS), from its ReplayGain tags or measured once; **ALBUM** keeps an album's quiet and loud songs as they were made
 - **Now Playing card** (`P`) — a picture or short video of the album and lyrics to share; Discord *Listening to* status
 - **Make it yours** — ten themes with animated scenes, your own themes shared as a file or code, Mini Mode (`M`), CD view, Visualizer Mode
-- **Library tools** — search by artist, album or song; fix tags from MusicBrainz, find missing covers, spot duplicates and broken files
+- **Library tools** — search by artist, album or song; fix tags from MusicBrainz (**PUT BACK THE ORIGINAL** undoes it), find missing covers, spot duplicates and broken files
 - **A guide round the window** — the first time CDPlayer opens, each part lights up in turn with a word on what it does and how it works; again any time from Settings → SHOW THE GUIDE
 - **Languages** — English and Russian; adding one is a single file ([docs/TRANSLATING.md](docs/TRANSLATING.md))
 
