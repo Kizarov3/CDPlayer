@@ -319,3 +319,25 @@ test('PLAY NEXT with nothing playing: the disc plays, and isn\'t left marked to 
   c = load(c, disc('b'), ['b1', 'b2']).changer;
   assert.ok(check(c));
 });
+
+test('FILL: the picked discs go into the free and finished slots, in the order picked; the playing one stays', async () => {
+  const { fillWith } = await import('../src/renderer/js/changer.js');
+  let c = fill(2); // d0 (playing, slot 0), d1
+  c = { ...c, slots: c.slots.map((d, s) => (s === 1 ? { ...d, done: true, finishedAt: 1 } : d)) }; // d1 has finished
+  const picks = ['p', 'd0', 'q', 'r', 's', 't'].map((id) => ({ disc: disc(id), tracks: [`${id}/1`] }));
+  const r = fillWith(c, picks);
+  assert.deepStrictEqual(r.changer.slots.map((d) => d && d.id), ['d0', 's', 'p', 'q', 'r'], 'the free slots first, then the finished one; d0 is in already; t finds no room');
+  assert.deepStrictEqual(r.loaded, [2, 3, 4, 1]);
+  assert.deepStrictEqual(r.replaced.map((d) => d.id), ['d1']);
+  assert.strictEqual(r.changer.queue[r.changer.index], 'd0/1', 'still where it was');
+  assert.ok(check(r.changer));
+});
+
+test('FILL: an empty changer stands on the first disc put in; a full one is left as it is', async () => {
+  const { fillWith } = await import('../src/renderer/js/changer.js');
+  const r = fillWith(empty(), [{ disc: disc('a'), tracks: ['a1', 'a2'] }, { disc: disc('b'), tracks: ['b1'] }]);
+  assert.strictEqual(r.changer.queue[r.changer.index], 'a1');
+  const full = fill(5);
+  const none = fillWith(full, [{ disc: disc('z'), tracks: ['z1'] }]);
+  assert.deepStrictEqual([none.changer, none.loaded], [full, []]);
+});

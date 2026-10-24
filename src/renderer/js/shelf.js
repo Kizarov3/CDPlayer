@@ -16,9 +16,9 @@ import { hash } from './disc-wear.js';
 import { stickyNote, noteLook } from './shelf-notes.js';
 import { receiptFor } from './shelf-receipt.js';
 import { withMissing, boxLabel, sameName, boxesFor, renderGate, groupFor, pickEdition, fullTracklist } from './shelf-missing.js';
-import { dustLevel, pickOne, Wiper } from './shelf-dust.js';
+import { dustLevel, pickOne, pickSome, Wiper } from './shelf-dust.js';
 import { showsAlbum, showChoices } from './shelf-show.js';
-import { slotOfAlbum } from './changer.js';
+import { SLOTS, slotOfAlbum } from './changer.js';
 import { t } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
@@ -148,6 +148,7 @@ export function setupShelf(app) {
   $('shelf-close').addEventListener('click', closeShelf);
   $('shelf-folder').addEventListener('click', folderMenu);
   $('shelf-pull').addEventListener('click', pullOne);
+  $('shelf-fill').addEventListener('click', fillChanger);
   $('shelf-here').addEventListener('click', goToPlayer);
   $('shelf-check').addEventListener('click', () => shelf.app.libraryCheck());
   $('shelf-filter').addEventListener('input', render);
@@ -254,6 +255,8 @@ function render() {
     && showsAlbum(a, shelf.show, nowShow));
   $('shelf-show').textContent = showing ? `${t('SHOW|shelf')}: ${shelf.showLabel}` : t('SHOW: ALL');
   $('shelf-show').classList.toggle('on', showing);
+  $('shelf-fill').hidden = !shelf.app.changerMode();
+  $('shelf-fill').disabled = !shown.length;
   const n = shelf.albums.length;
   // (The folder's name is the count's tooltip: the line keeps its room for the albums and what the shelf is worth.)
   shelf.countBase = [n === 1 ? t('1 ALBUM') : t('{n} ALBUMS', { n }), filtering || showing ? t('{n} SHOWN', { n: shown.length }) : null].filter(Boolean).join(' · ');
@@ -797,6 +800,13 @@ function pullOne() {
   spine.scrollIntoView({ block: 'center', inline: 'nearest', behavior: anim.enabled ? 'smooth' : 'auto' });
   shelf.pulling = true; // no redraw till it's out: the spine must still be the one on the shelf
   setTimeout(async () => { try { if (shelf.open) await openCase(a, spine); } finally { shelf.pulling = false; } }, anim.enabled ? 450 : 0);
+}
+
+// FILL (changer mode): albums at random from those shown — the dustier, the likelier, as PULL ONE — into the changer's
+// free and finished slots. (Twice as many picked as there are slots: some may be in the changer already.)
+function fillChanger() {
+  if (!shelf.shown || !shelf.shown.length || !shelf.app.changerMode()) return;
+  shelf.app.fillChanger(pickSome(shelf.shown, SLOTS * 2).map((a) => ({ disc: discOfAlbum(a), tracks: a.tracks.map((t) => t.path) })));
 }
 
 // ---- The case, pulled out and turned to its front ----------------------------------------------------------------

@@ -88,6 +88,24 @@ export function load(c, disc, tracks, { play = false, next = false, slot = null 
 }
 
 /**
+ * FILL: `picks` ([{ disc, tracks }], in the order picked) loaded one each into the slots that are free or hold a
+ * finished disc (as `load` finds room), passing over a disc already in; where the changer stands stays (an empty one
+ * stands on the first put in). → { changer, loaded: [slot…], replaced: [disc taken out…] }
+ */
+export function fillWith(c, picks) {
+  let changer = c;
+  const loaded = [], replaced = [];
+  for (const { disc, tracks } of picks) {
+    if (roomFor(changer) < 0) break;
+    const r = load(changer, disc, tracks);
+    if (r.already || r.full || r.slot < 0) continue;
+    changer = r.changer; loaded.push(r.slot);
+    if (r.replaced) replaced.push(r.replaced);
+  }
+  return { changer, loaded, replaced };
+}
+
+/**
  * The CD-R that loose songs go on: the one made last that isn't finished yet (a compilation being put together),
  * or -1 for none — then they make a new one.
  */

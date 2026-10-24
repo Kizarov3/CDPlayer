@@ -505,6 +505,19 @@ async function loadDisc(item, tracks, { play = false, next = false, startPlaybac
   if (startPlayback && (play || !wasPlaying)) load(state.queue[state.index], { autoPlay: true }); // an idle player plays it, as before the changer
   return { slot: r.slot };
 }
+// FILL on the shelf (changer mode): albums it picked, into every slot that's free or holds a finished disc; an idle
+// player starts on the first of them.
+function fillChanger(picks) {
+  if (!state.changerMode) return { loaded: [] };
+  const r = changer.fillWith(ch(), picks);
+  if (!r.loaded.length) { setStatus(t('THE CHANGER IS FULL')); return r; }
+  const wasPlaying = state.index >= 0 && !!engine.deck;
+  apply(r.changer);
+  setStatus(r.loaded.length === 1 ? t('DISC {n} IN', { n: r.loaded[0] + 1 }) : t('{n} DISCS IN', { n: r.loaded.length }));
+  renderQueue(); saveQueueSoon(); spotifyResync();
+  if (!wasPlaying) load(state.queue[state.index], { autoPlay: true });
+  return r;
+}
 async function addToQueue(items, { sorted = false, play = false, next = false, title = null } = {}) {
   const songs = sorted ? items : await cdp.collectAudio(items);
   if (!songs.length) { setStatus(t('NO SUPPORTED AUDIO FOUND')); return; }
@@ -2717,7 +2730,7 @@ export const app = {
     else if (what === 'karaoke') { if (!isKaraokeOpen()) toggleKaraoke(); }
   },
   remoteInfo: () => remoteInfo, remoteHeard: onRemoteStatus,
-  changerState: ch, changerMode: () => state.changerMode, setChangerMode, discLabel, loadDisc, playSlot, ejectSlot, discSkip, coverForPath,
+  changerState: ch, changerMode: () => state.changerMode, setChangerMode, discLabel, loadDisc, fillChanger, playSlot, ejectSlot, discSkip, coverForPath,
   changerSlotOf: (i) => (changer.slotOf(ch(), i) || { slot: -1 }).slot,
   onFullChanger: (c) => panels.pickDiscToTakeOut(app, c),
   coverSource: () => state.coverFrom || null,
