@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('cdp', {
   albumPlays: invoke('plays:album'),
   wipeAlbum: invoke('dust:wipe'),
   setNote: invoke('notes:set'),
+  setDivider: invoke('dividers:set'),
   shelfColors: invoke('shelf:colors'),
   saveShelfColors: invoke('shelf:saveColors'),
   tearWrap: invoke('wrap:tear'),

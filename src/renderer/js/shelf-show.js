@@ -1,5 +1,6 @@
 // SHOW on the shelf: which albums stand on it — all of them, or only the dusty ones, the ones still in shrink-wrap, the
-// ones left part-way through (a bookmark), with a sticky note, never played; or one decade, or one genre. Kept only
+// ones left part-way through (a bookmark), with a sticky note, never played; or one decade, one genre, or the ones
+// filed behind one of the user's own dividers. Kept only
 // while CDPlayer is open, so the shelf never opens looking half empty.
 
 import { dustLevel } from './shelf-dust.js';
@@ -10,7 +11,7 @@ const MAX_GENRES = 12;
 const fold = (s) => String(s || '').trim().toLowerCase();
 const decadeOf = (a) => { const y = parseInt(a.year, 10); return y > 1000 ? Math.floor(y / 10) * 10 : null; };
 
-/** Whether album `a` stands on the shelf with SHOW at `show` ('ALL', one of SHOWS, 'Y1990' or 'G<genre>'). */
+/** Whether album `a` stands on the shelf with SHOW at `show` ('ALL', one of SHOWS, 'Y1990', 'G<genre>' or 'F<divider>'). */
 export function showsAlbum(a, show, now = Date.now()) {
   switch (show) {
     case 'ALL': return true;
@@ -22,23 +23,28 @@ export function showsAlbum(a, show, now = Date.now()) {
     default:
       if (show.startsWith('Y')) return decadeOf(a) === Number(show.slice(1));
       if (show.startsWith('G')) return fold(a.genre) === show.slice(1);
+      if (show.startsWith('F')) return fold(a.filedUnder) === show.slice(1);
       return true;
   }
 }
 
-/** What SHOW can pick for these albums: [{ show, count }] for each kind there is, then decades, then genres (most first). */
+/** What SHOW can pick for these albums: [{ show, count }] for each kind there is, then decades, then genres (most
+ * first), then the user's dividers (by name). */
 export function showChoices(albums, now = Date.now()) {
   const kinds = SHOWS.slice(1).map((show) => ({ show, count: albums.filter((a) => showsAlbum(a, show, now)).length })).filter((c) => c.count);
-  const decades = new Map(), genres = new Map();
+  const decades = new Map(), genres = new Map(), dividers = new Map();
   for (const a of albums) {
     const d = decadeOf(a);
     if (d) decades.set(d, (decades.get(d) || 0) + 1);
     const g = fold(a.genre);
     if (g) genres.set(g, { name: genres.get(g)?.name || String(a.genre).trim(), count: (genres.get(g)?.count || 0) + 1 });
+    const f = fold(a.filedUnder);
+    if (f) dividers.set(f, { name: dividers.get(f)?.name || a.filedUnder.trim(), count: (dividers.get(f)?.count || 0) + 1 });
   }
   return {
     kinds,
     decades: [...decades].sort((x, y) => x[0] - y[0]).map(([d, count]) => ({ show: `Y${d}`, decade: d, count })),
     genres: [...genres].sort((x, y) => y[1].count - x[1].count).slice(0, MAX_GENRES).map(([g, { name, count }]) => ({ show: `G${g}`, label: name, count })),
+    dividers: [...dividers.values()].sort((x, y) => x.name.localeCompare(y.name)).map(({ name, count }) => ({ show: `F${fold(name)}`, label: name, count })),
   };
 }

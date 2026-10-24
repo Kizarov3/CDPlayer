@@ -812,6 +812,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 .case-skip:hover { color: rgb(var(--text)); border-color: rgb(var(--text)); }
 .case-skip.on { color: rgb(var(--accent)); border-color: rgb(var(--accent)); }
 .case-track.skipped .name, .queue-row.skipped .entry { text-decoration: line-through; opacity: .55; }
+.case-actions .divider-name { width: 150px; padding: 5px 10px; font-size: 11px; }
 .case-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; align-items: center; } /* a row, or two when it can't fit */
 
 /* ---- Canvases layered over everything ---- */

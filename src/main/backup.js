@@ -14,7 +14,7 @@ const path = require('path');
 const FORMAT = 'cdplayer-backup';
 const FILES = [
   'queue.txt', 'changer.txt', 'changer-queue.txt', 'settings.txt', 'eq-presets.txt', 'history.txt', 'plays.txt',
-  'lastplayed.txt', 'firstplayed.txt', 'dust.txt', 'notes.txt', 'missing-hidden.txt', 'wrap.txt', 'music-folders.txt',
+  'lastplayed.txt', 'firstplayed.txt', 'dust.txt', 'notes.txt', 'dividers.txt', 'missing-hidden.txt', 'wrap.txt', 'music-folders.txt',
   'lastpath.txt', 'onboarded', 'lastversion.txt', 'mini-position.txt', 'moves-declined.txt', 'tags-before.json', 'album-runs.json', 'skipped.txt',
 ];
 const THEMES = 'themes', THEME_FILE = /^[0-9a-f]{16}\.cdtheme$/;

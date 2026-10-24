@@ -39,7 +39,7 @@ const redraw = renderGate({ render: () => { if (shelf.open) render(); }, busy: (
 // The album whose disc is in the player (a track of it loaded, playing or paused) stands a little proud of the others,
 // lit in the theme's colour.
 const IN_PLAYER = t('IN THE PLAYER');
-const SORT_LABELS = { ARTIST: t('ARTIST'), NEW: t('NEW|sort'), PLAYED: t('MOST PLAYED'), RECENT: t('LAST PLAYED'), YEAR: t('YEAR'), COLOR: t('COLOR'), PRICE: t('PRICE') };
+const SORT_LABELS = { ARTIST: t('ARTIST'), NEW: t('NEW|sort'), PLAYED: t('MOST PLAYED'), RECENT: t('LAST PLAYED'), YEAR: t('YEAR'), COLOR: t('COLOR'), PRICE: t('PRICE'), MINE: t('MY DIVIDERS') };
 const holds = (a, path) => !!path && a.tracks.some((t) => t.path === path);
 const spineTitle = (a) => [a.artist, a.title, a.year, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ')
   + (a.bookmark ? `\n${leftAt(a)}` : '') + (a.note ? `\n\n${a.note}` : '');
@@ -323,6 +323,7 @@ function showMenu() {
     ...c.kinds.map((k) => item(k.show, SHOW_LABELS[k.show], k.count)),
     ...(c.decades.length > 1 ? [{ divider: true }, ...c.decades.map((d) => item(d.show, t('{decade}s', { decade: d.decade }), d.count))] : []),
     ...(c.genres.length > 1 ? [{ divider: true }, ...c.genres.map((g) => item(g.show, g.label.toUpperCase(), g.count))] : []),
+    ...(c.dividers.length ? [{ divider: true }, ...c.dividers.map((d) => item(d.show, d.label.toUpperCase(), d.count))] : []),
   ], { alignEnd: true });
 }
 
@@ -879,6 +880,7 @@ async function openCase(a, spine) {
   const putIn = async (opts) => { const r = await app.loadDisc(discOfAlbum(a), a.tracks.map((t) => t.path), opts); if (!(r && r.cancelled)) closeCase(); };
   const addNote = pill(t('+ NOTE'), () => { addNote.hidden = true; caseFront.append(stickyNote({ id: a.id, text: '', onSave: saveNote })); }, t('Stick a note on the case'));
   addNote.hidden = !!a.note;
+  const fileButton = dividerButton(a);
   const rare = el('div', { class: 'sticker-rare', hidden: !isRare(a.pressing) }, t('★ RARE'));
   const receipt = receiptSlip(a, st);
   // The price on the obi or the sticker: what it goes for on Discogs once that's known, else the shop's.
@@ -910,6 +912,7 @@ async function openCase(a, spine) {
       el('div', { class: 'case-actions' },
         pill(t('BACK ON THE SHELF'), () => closeCase()),
         addNote,
+        fileButton,
         el('span', { class: 'grow' }),
         pill(t('PLAY NEXT'), unwrapped(() => putIn({ next: true })), app.changerMode() ? t('Into the changer, to play after the disc playing') : t('Play the album next, after the song playing')),
         app.changerMode() ? pill(t('INTO THE CHANGER'), unwrapped(() => putIn()), t('Load the album into the changer: a free slot, or one you pick'))
@@ -917,6 +920,50 @@ async function openCase(a, spine) {
         a.bookmark ? pill(t('CONTINUE · TRACK {n}', { n: a.bookmark.track + 1 }), () => play(a, a.bookmark.track), leftAt(a)) : null,
         el('button', { class: 'pill on', onClick: unwrapped(() => play(a, 0)) }, t('PLAY')))));
   showCase(card, spine, from, shelf.colors.get(a.id) || hashColor(a.title + a.artist));
+}
+
+// The user's own divider cards (SORT: MY DIVIDERS, and SHOW): the case's button files the album behind one — one there
+// is, or a new one named on the spot — or takes it out from behind its own. The shelf stands anew once the case is back.
+const dividerNames = () => [...new Map(shelf.albums.filter((a) => a.filedUnder).map((a) => [a.filedUnder.toLocaleUpperCase(), a.filedUnder])).values()]
+  .sort((x, y) => x.localeCompare(y));
+function dividerButton(a) {
+  const label = () => (a.filedUnder ? `▮ ${a.filedUnder.toLocaleUpperCase()}` : t('+ DIVIDER'));
+  const fileUnder = (name) => {
+    a.filedUnder = name || null;
+    shelf.app.cdp.setDivider(a.id, a.filedUnder).catch(() => {});
+    button.textContent = label();
+    shelf.refiled = true;
+  };
+  // NEW DIVIDER…: its name typed where the button was; Enter files it, Esc (or leaving it empty) changes nothing.
+  const nameIt = () => {
+    const field = el('input', { class: 'text-input divider-name', type: 'text', maxlength: '30', placeholder: t('Divider name'), spellcheck: 'false' });
+    const done = (save) => {
+      if (!field.isConnected) return;
+      const name = field.value.trim();
+      field.replaceWith(button);
+      if (save && name) fileUnder(name);
+    };
+    field.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') done(true);
+      if (e.key === 'Escape') { e.preventDefault(); done(false); }
+    });
+    field.addEventListener('blur', () => done(true));
+    button.replaceWith(field);
+    field.focus();
+  };
+  const button = pill(label(), () => {
+    const names = dividerNames();
+    if (!names.length) { nameIt(); return; }
+    const same = (n) => !!a.filedUnder && n.toLocaleUpperCase() === a.filedUnder.toLocaleUpperCase();
+    shelf.app.menu(button, [
+      ...names.map((n) => ({ label: n.toLocaleUpperCase(), current: same(n), pick: () => { if (!same(n)) fileUnder(n); } })),
+      { divider: true },
+      { label: t('NEW DIVIDER…'), pick: nameIt },
+      ...(a.filedUnder ? [{ label: t('TAKE IT FROM BEHIND “{name}”', { name: a.filedUnder.toLocaleUpperCase() }), pick: () => fileUnder(null) }] : []),
+    ]);
+  }, t('File the album behind a divider of your own: SORT → MY DIVIDERS stands the shelf by them, SHOW shows one'));
+  return button;
 }
 
 // A case pulled out of the shelf: slides up off it, then turns towards you from its spine to its front.
@@ -962,6 +1009,8 @@ function closeCase(instant = false) {
   if (!c) return;
   shelf.caseOpen = null;
   c.spine.classList.remove('out');
+  // Filed behind another divider: the shelf stands anew, where that shows.
+  if (shelf.refiled) { shelf.refiled = false; if (shelf.app.state.shelfSort === 'MINE' || shelf.show.startsWith('F')) redraw.request(); }
   if (instant || !anim.enabled) { c.layer.remove(); return; }
   c.card.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.94) rotateY(-20deg)' }], { duration: 220, easing: EASE.in });
   c.layer.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 230, easing: EASE.in }).onfinish = () => c.layer.remove();

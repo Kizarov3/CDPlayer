@@ -1,10 +1,11 @@
 // The order the shelf stands in, and the cardboard divider cards between its sections, like a record shop's:
 // by artist (a card for each letter), newest in the music folder first (a card for each month), most played (a card
-// before the albums not played yet), last played first (a card for each month, then the ones not played yet), by year (a card for each decade), or by colour, round the rainbow (a card for each).
+// before the albums not played yet), last played first (a card for each month, then the ones not played yet), by year (a card for each decade), by colour, round the rainbow (a card for each), or behind the user's own divider
+// cards (MY DIVIDERS: one for each name they've filed albums under, then the albums not filed yet).
 import { t } from './i18n.js';
 import { priceBand } from './shelf-discogs.js';
 
-export const SORTS = ['ARTIST', 'NEW', 'PLAYED', 'RECENT', 'YEAR', 'COLOR', 'PRICE'];
+export const SORTS = ['ARTIST', 'NEW', 'PLAYED', 'RECENT', 'YEAR', 'COLOR', 'PRICE', 'MINE'];
 
 /**
  * Whether an album shows for what's typed in the shelf's filter: every word somewhere in its artist, title, year, note,
@@ -108,6 +109,11 @@ export function arrange(albums, sort, { currency = null } = {}) {
     const price = (a) => { const p = a.pressing && a.pressing.price; return p && typeof p.lowest === 'number' && (!currency || p.currency === currency) ? p.lowest : null; };
     list.sort((a, b) => (price(b) ?? -1) - (price(a) ?? -1));
     section = (a) => priceBand(price(a), currency || (a.pressing && a.pressing.price ? a.pressing.price.currency : 'USD'));
+  } else if (sort === 'MINE') {
+    // (A stable sort: by artist behind each card, as they came.)
+    const name = (a) => (a.filedUnder ? a.filedUnder.toLocaleUpperCase() : null);
+    list.sort((a, b) => (!a.filedUnder - !b.filedUnder) || (a.filedUnder ? name(a).localeCompare(name(b)) : 0));
+    section = (a) => name(a) || t('NOT FILED');
   } else {
     section = (a) => letterOf(a.artist);
   }

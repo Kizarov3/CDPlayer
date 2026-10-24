@@ -545,6 +545,8 @@ async function shelfListing() {
   for (const a of result.albums) a.lastPlayed = a.tracks.reduce((m, t) => Math.max(m, touch.lastPlayed.get(t.path) || 0), 0) || null;
   const notes = store.readNotes();
   for (const a of result.albums) a.note = notes.get(a.id) || null;
+  const dividers = store.readDividers();
+  for (const a of result.albums) a.filedUnder = dividers.get(a.id) || null;
   // …and which came in shrink-wrap (new since wrapping began, not played yet, not unwrapped by hand).
   const w = wrap();
   for (const a of result.albums) a.wrapped = shelf.isWrapped(a, w);
@@ -581,6 +583,7 @@ handle('moves:apply', (key) => {
   // when one album of Rock's moved — and the others stayed.)
   const moveId = (id) => (shelfIds.has(id) ? id : relocate.moveAlbumId(id, group.from, group.to));
   store.writeNotes(new Map([...store.readNotes()].map(([id, text]) => [moveId(id), text])));
+  store.writeDividers(new Map([...store.readDividers()].map(([id, name]) => [moveId(id), name])));
   const d = dust(); d.wiped = new Map([...d.wiped].map(([id, t]) => [moveId(id), t])); store.writeDust(d);
   const w = wrap(); w.torn = new Set([...w.torn].map(moveId)); store.writeWrap(w);
   runs = albumRuns.moveIds(runsState(), moveId); store.writeText('album-runs.json', JSON.stringify(runs));
@@ -683,6 +686,13 @@ handle('notes:set', (id, text) => {
   const notes = store.readNotes();
   if (text) notes.set(id, text); else notes.delete(id);
   store.writeNotes(notes);
+});
+// An album filed behind one of the user's own dividers (MY DIVIDERS on the shelf); none takes it out from behind it.
+handle('dividers:set', (id, name) => {
+  const dividers = store.readDividers();
+  if (name) dividers.set(id, name); else dividers.delete(id);
+  store.writeDividers(dividers);
+  phoneShelf = null;
 });
 handle('dust:wipe', (id) => { const d = dust(), t = Date.now(); d.wiped.set(id, t); store.writeDust(d); return t; });
 // LIBRARY CHECK (the shelf): what's wrong in the music folder — from the tags already read (library-check.js), and
