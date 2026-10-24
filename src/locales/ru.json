@@ -415,7 +415,6 @@
     "many": "ДЕРЖАТЬ ПОЛНЫМ ИЗ ЭТИХ {n} АЛЬБОМОВ",
     "other": "ДЕРЖАТЬ ПОЛНЫМ ИЗ ЭТИХ {n} АЛЬБОМОВ"
   },
-  "KEEP IT FULL FROM THIS ALBUM": "ДЕРЖАТЬ ПОЛНЫМ ИЗ ЭТОГО АЛЬБОМА",
   "KEYBOARD SHORTCUTS": "ГОРЯЧИЕ КЛАВИШИ",
   "KEYS": "КЛАВИШИ",
   "Karaoke": "Караоке",
@@ -847,7 +846,7 @@
   "Save your queue, history, plays, notes, themes and settings to one file": "Сохранить очередь, историю, прослушивания, заметки, темы и настройки в один файл",
   "Search Spotify for an album or playlist": "Найти в Spotify альбом или плейлист",
   "Search your music folder, or paste a Spotify track/playlist link": "Поиск по папке с музыкой или ссылка на трек/плейлист Spotify",
-  "Search your music, and what to do or a setting (Enter does the first)": "Поиск по музыке, действиям и настройкам (Enter выполняет первое найденное)",
+  "Search your music, and what to do or a setting (Enter plays the first song found)": "Поиск по музыке, действиям и настройкам (Enter включает первую найденную песню)",
   "See and fix this song's tags — from MusicBrainz, or by hand": "Посмотреть и исправить теги песни — с MusicBrainz или вручную",
   "Sep": "сен",
   "Settings": "Настройки",

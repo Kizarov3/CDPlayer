@@ -676,8 +676,10 @@ body.cursor-hidden #cd-exit { opacity: 0; }
   box-shadow: 0 -1px 2px rgba(0, 0, 0, .35);
 }
 .spine-editions.more { box-shadow: 0 -1px 2px rgba(0, 0, 0, .35), 3px -5px 0 rgba(var(--spine), .6); }
-.case-editions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.case-editions .pill { font-size: 10px; padding: 4px 10px; }
+/* Under the album's name, small: its editions to switch between (one lit), + NOTE and its divider. */
+.case-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.case-tools:empty { display: none; }
+.case-tools .pill { font-size: 10px; padding: 4px 10px; }
 /* The corner of a sticky note (shelf-notes.js) poking up above a spine. */
 .note-tab {
   position: absolute; top: -9px; left: 50%; width: 22px; height: 16px; margin-left: -11px; z-index: 3; pointer-events: none;
@@ -828,7 +830,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 .case-skip:hover { color: rgb(var(--text)); border-color: rgb(var(--text)); }
 .case-skip.on { color: rgb(var(--accent)); border-color: rgb(var(--accent)); }
 .case-track.skipped .name, .queue-row.skipped .entry { text-decoration: line-through; opacity: .55; }
-.case-actions .divider-name { width: 150px; padding: 5px 10px; font-size: 11px; }
+.case-tools .divider-name { width: 150px; padding: 4px 10px; font-size: 10px; }
 .case-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; align-items: center; } /* a row, or two when it can't fit */
 
 /* ---- Canvases layered over everything ---- */

@@ -31,7 +31,7 @@ test('the choices: only kinds there are, decades in order, genres most first', (
 
 test('SHOW one of my dividers: the albums filed behind it, whatever the case it was typed in; listed by name', () => {
   const filed = [{ id: 'x', filedUnder: 'Summer' }, { id: 'y', filedUnder: 'summer ' }, { id: 'z', filedUnder: 'Car' }, { id: 'w' }];
-  assert.deepStrictEqual(filed.filter((a) => showsAlbum(a, 'Fsummer')).map((a) => a.id), ['x', 'y']);
-  assert.deepStrictEqual(showChoices(filed).dividers, [{ show: 'Fcar', label: 'Car', count: 1 }, { show: 'Fsummer', label: 'Summer', count: 2 }]);
+  assert.deepStrictEqual(filed.filter((a) => showsAlbum(a, 'FSUMMER')).map((a) => a.id), ['x', 'y']);
+  assert.deepStrictEqual(showChoices(filed).dividers, [{ show: 'FCAR', label: 'Car', count: 1 }, { show: 'FSUMMER', label: 'Summer', count: 2 }]);
   assert.deepStrictEqual(showChoices(albums).dividers, []);
 });

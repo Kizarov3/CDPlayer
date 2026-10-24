@@ -42,10 +42,14 @@ const redraw = renderGate({ render: () => { if (shelf.open) render(); }, busy: (
 const IN_PLAYER = t('IN THE PLAYER');
 const SORT_LABELS = { ARTIST: t('ARTIST'), NEW: t('NEW|sort'), PLAYED: t('MOST PLAYED'), RECENT: t('LAST PLAYED'), YEAR: t('YEAR'), COLOR: t('COLOR'), PRICE: t('PRICE'), MINE: t('MY DIVIDERS') };
 const holds = (a, path) => !!path && a.tracks.some((t) => t.path === path);
-const spineHolds = (a, path) => (a.editions || [a]).some((e) => holds(e, path)); // (its other editions are behind it)
-const spineTitle = (a) => [a.artist, a.title, a.year, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ')
+// An album and the editions behind its spine (shelf-editions.js): what the spine shows is any of theirs.
+const group = (a) => a.editions || [a];
+const spineHolds = (a, path) => group(a).some((e) => holds(e, path));
+const noteOf = (a) => (group(a).find((e) => e.note) || {}).note || null;
+const bookmarkOf = (a) => group(a).some((e) => e.bookmark);
+const spineTitle = (a) => [a.artist, a.title, a.year, spineHolds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ')
   + (a.editions ? `\n${t('{n} EDITIONS', { n: a.editions.length })}` : '')
-  + (a.bookmark ? `\n${leftAt(a)}` : '') + (a.note ? `\n\n${a.note}` : '');
+  + (group(a).some((e) => e.bookmark) ? `\n${leftAt(group(a).find((e) => e.bookmark))}` : '') + (noteOf(a) ? `\n\n${noteOf(a)}` : '');
 // Where an album played from its start was left (album-runs.js): its bookmark's words.
 const leftAt = (a) => t('Left at track {n} · {song}', { n: a.bookmark.track + 1, song: (a.tracks[a.bookmark.track] || {}).title || '' });
 /** The track now in the player (null: none), so its album's spine can show it. */
@@ -53,7 +57,8 @@ const leftAt = (a) => t('Left at track {n} · {song}', { n: a.bookmark.track + 1
 const discOfAlbum = (a) => ({ id: a.id, kind: 'album', title: a.title, artist: a.artist });
 // The changer slot number on the spine of an album that's in the changer.
 function markSlot(spine) {
-  const slot = shelf.app && shelf.app.changerMode && shelf.app.changerMode() ? slotOfAlbum(shelf.app.changerState(), spine.album) : -1;
+  const c = shelf.app && shelf.app.changerMode && shelf.app.changerMode() ? shelf.app.changerState() : null;
+  const slot = c ? group(spine.album).map((e) => slotOfAlbum(c, e)).find((s) => s >= 0) ?? -1 : -1;
   let badge = spine.querySelector('.spine-slot');
   if (slot < 0) { if (badge) badge.remove(); return; }
   if (!badge) { badge = el('span', { class: 'spine-slot' }); spine.append(badge); }
@@ -294,7 +299,7 @@ function render() {
       st.obi ? el('span', { class: 'obi-cat' }, st.obi.catalog) : null,
       st.isNew ? el('span', { class: 'sticker-new' }, t('NEW')) : null,
       a.wrapped ? el('span', { class: 'spine-film' }) : null,
-      a.bookmark ? el('span', { class: 'spine-bookmark' }) : null,
+      bookmarkOf(a) ? el('span', { class: 'spine-bookmark' }) : null,
       a.editions ? el('span', { class: `spine-editions${a.editions.length > 2 ? ' more' : ''}` }) : null);
     spine.album = a;
     markSlot(spine);
@@ -667,11 +672,11 @@ async function playMissingOnSpotify(group, artist) {
 
 // The corner of an album's sticky note, showing above its spine.
 function showNoteTab(spine) {
-  const a = spine.album;
+  const a = spine.album, noted = group(a).find((e) => e.note);
   let tab = spine.querySelector('.note-tab');
-  if (!a.note) { if (tab) tab.remove(); return; }
+  if (!noted) { if (tab) tab.remove(); return; }
   if (!tab) { tab = el('span', { class: 'note-tab' }); spine.append(tab); }
-  const { color, tilt } = noteLook(a.id);
+  const { color, tilt } = noteLook(noted.id);
   tab.style.setProperty('--note', color);
   tab.style.transform = `rotate(${tilt * 1.5}deg)`;
 }
@@ -799,6 +804,8 @@ function puff(x, y, level) {
 // pulled out.
 // An album's spine on the shelf as it stands now (a redraw makes new ones), or null.
 const spineFor = (a) => [...document.querySelectorAll('#shelf-body .spine')].find((s) => s.album === a) || null;
+// …or the spine it stands behind, as one of its editions.
+const spineOf = (a) => spineFor(a) || [...document.querySelectorAll('#shelf-body .spine')].find((s) => s.album && group(s.album).includes(a)) || null;
 
 function pullOne() {
   if (shelf.caseOpen || shelf.opening || shelf.pulling || !shelf.shown || !shelf.shown.length) return;
@@ -819,10 +826,11 @@ function fillChanger() {
   const { app } = shelf, albums = shelf.shown.slice(), keeping = app.keepingFull();
   app.menu($('shelf-fill'), [
     { label: t('FILL IT NOW'), pick: () => app.fillChanger(picksFrom(albums)()) },
+    // (from one album there's nothing to keep it full with)
     keeping ? { label: t('STOP KEEPING IT FULL'), current: true, pick: () => { app.keepChangerFull(null); app.setStatus(t('THE CHANGER NO LONGER FILLS ITSELF')); showFill(); } }
-      : { label: albums.length === 1 ? t('KEEP IT FULL FROM THIS ALBUM') : t('KEEP IT FULL FROM THESE {n} ALBUMS', { n: albums.length }),
-        pick: () => { app.keepChangerFull(picksFrom(albums)); app.setStatus(t('A FINISHED DISC MAKES ROOM FOR ANOTHER')); showFill(); } },
-  ], { alignEnd: true });
+      : albums.length > 1 ? { label: t('KEEP IT FULL FROM THESE {n} ALBUMS', { n: albums.length }),
+        pick: () => { app.keepChangerFull(picksFrom(albums)); app.setStatus(t('A FINISHED DISC MAKES ROOM FOR ANOTHER')); showFill(); } } : null,
+  ].filter(Boolean), { alignEnd: true });
 }
 // FILL lit while the changer keeps itself full.
 function showFill() { $('shelf-fill').classList.toggle('on', shelf.app.changerMode() && shelf.app.keepingFull()); }
@@ -880,8 +888,8 @@ async function openCase(a, spine) {
     a.note = text || null;
     app.cdp.setNote(a.id, text).catch(() => {});
     addNote.hidden = !!a.note;
-    const spine = spineFor(a);
-    if (spine) { showNoteTab(spine); spine.title = spineTitle(a); }
+    const spine = spineOf(a);
+    if (spine) { showNoteTab(spine); spine.title = spineTitle(spine.album); }
   };
   // Shrink-wrap: dragged off by hand, or torn off at once by PLAY, PLAY NEXT or ADD TO QUEUE (or a track clicked).
   const film = a.wrapped ? caseFilm(a) : null;
@@ -896,7 +904,7 @@ async function openCase(a, spine) {
   const putIn = async (opts) => { const r = await app.loadDisc(discOfAlbum(a), a.tracks.map((t) => t.path), opts); if (!(r && r.cancelled)) closeCase(); };
   const addNote = pill(t('+ NOTE'), () => { addNote.hidden = true; caseFront.append(stickyNote({ id: a.id, text: '', onSave: saveNote })); }, t('Stick a note on the case'));
   addNote.hidden = !!a.note;
-  const fileButton = dividerButton(a);
+  const fileButton = dividerButton(a, spine);
   const rare = el('div', { class: 'sticker-rare', hidden: !isRare(a.pressing) }, t('★ RARE'));
   const receipt = receiptSlip(a, st);
   // The price on the obi or the sticker: what it goes for on Discogs once that's known, else the shop's.
@@ -923,13 +931,12 @@ async function openCase(a, spine) {
       el('div', { class: 'case-title' }, a.title),
       el('div', { class: 'case-artist' }, [a.artist, a.year].filter(Boolean).join(' · ')),
       el('div', { class: 'case-meta' }, [a.tracks.length === 1 ? t('1 TRACK') : t('{n} TRACKS', { n: a.tracks.length }), a.duration ? app.formatTime(a.duration) : null, a.discs > 1 ? t('{n} DISCS', { n: a.discs }) : null, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ')),
-      editionsRow(a, spine),
+      // (small, in one row with its editions: the actions underneath keep the track list its room in a small window)
+      el('div', { class: 'case-tools' }, ...editionButtons(a, spine), addNote, fileButton),
       pressingBlock(a, rare, (entry) => { if (receipt) receipt.showPressing(entry); showTag(entry); }),
       trackList,
       el('div', { class: 'case-actions' },
         pill(t('BACK ON THE SHELF'), () => closeCase()),
-        addNote,
-        fileButton,
         el('span', { class: 'grow' }),
         pill(t('PLAY NEXT'), unwrapped(() => putIn({ next: true })), app.changerMode() ? t('Into the changer, to play after the disc playing') : t('Play the album next, after the song playing')),
         app.changerMode() ? pill(t('INTO THE CHANGER'), unwrapped(() => putIn()), t('Load the album into the changer: a free slot, or one you pick'))
@@ -940,38 +947,46 @@ async function openCase(a, spine) {
 }
 
 // An album with other editions on the shelf: a button for each, the one out lit; another one's case takes its place.
-function editionsRow(a, spine) {
+function editionButtons(a, spine) {
   const editions = (spine.album && spine.album.editions) || null;
-  if (!editions || !editions.includes(a)) return null;
-  return el('div', { class: 'case-editions' }, editions.map((e) => {
+  if (!editions || !editions.includes(a)) return [];
+  return editions.map((e) => {
     const name = editionName(e, editions) || t('STANDARD|edition');
     const b = pill(name.toLocaleUpperCase(), () => { if (e === a) return; closeCase(true); openCase(e, spine); },
       `${e.title}${e.year ? ` · ${e.year}` : ''} · ${e.tracks.length === 1 ? t('1 TRACK') : t('{n} TRACKS', { n: e.tracks.length })}`);
+    b.classList.add('edition');
     b.classList.toggle('on', e === a);
     return b;
-  }));
+  });
 }
 
 // The user's own divider cards (SORT: MY DIVIDERS, and SHOW): the case's button files the album behind one — one there
 // is, or a new one named on the spot — or takes it out from behind its own. The shelf stands anew once the case is back.
 const dividerNames = () => [...new Map(shelf.albums.filter((a) => a.filedUnder).map((a) => [a.filedUnder.toLocaleUpperCase(), a.filedUnder])).values()]
   .sort((x, y) => x.localeCompare(y));
-function dividerButton(a) {
+function dividerButton(a, spine) {
   const label = () => (a.filedUnder ? `▮ ${a.filedUnder.toLocaleUpperCase()}` : t('+ DIVIDER'));
+  // (an album's editions stand behind one spine: they're filed together)
+  const together = spine.album && spine.album.editions && spine.album.editions.includes(a) ? spine.album.editions : [a];
   const fileUnder = (name) => {
-    a.filedUnder = name || null;
-    shelf.app.cdp.setDivider(a.id, a.filedUnder).catch(() => {});
+    for (const e of together) {
+      e.filedUnder = name || null;
+      shelf.app.cdp.setDivider(e.id, e.filedUnder).catch(() => {});
+    }
     button.textContent = label();
     shelf.refiled = true;
   };
   // NEW DIVIDER…: its name typed where the button was; Enter files it, Esc (or leaving it empty) changes nothing.
   const nameIt = () => {
     const field = el('input', { class: 'text-input divider-name', type: 'text', maxlength: '30', placeholder: t('Divider name'), spellcheck: 'false' });
+    let finished = false; // (taking the field away blurs it: that mustn't save what Esc threw away)
     const done = (save) => {
-      if (!field.isConnected) return;
-      const name = field.value.trim();
+      if (finished) return;
+      finished = true;
+      const typed = field.value.trim();
       field.replaceWith(button);
-      if (save && name) fileUnder(name);
+      // A name there is already, in another case ("for the car"), is that one.
+      if (save && typed) fileUnder(dividerNames().find((n) => n.toLocaleUpperCase() === typed.toLocaleUpperCase()) || typed);
     };
     field.addEventListener('keydown', (e) => {
       e.stopPropagation();

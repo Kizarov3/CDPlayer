@@ -83,7 +83,7 @@ When a new version is out, an **AVAILABLE** button appears in the player's top-l
 | `Y` | Toggle Karaoke Mode |
 | `E` | Open / close the disc tray |
 | `S` | The CD shelf |
-| `/` or `⌘K` / `Ctrl+K` | Search your music, and what to do or a setting (Enter does the first) |
+| `/` or `⌘K` / `Ctrl+K` | Search your music, and what to do or a setting (Enter plays the first song found) |
 | `B` | Turn the disc over to its data side: a ring for each track, the laser where it's playing |
 | `P` | Now Playing card: pick lines of the lyrics, then copy or save it |
 | `?` | These keyboard shortcuts |

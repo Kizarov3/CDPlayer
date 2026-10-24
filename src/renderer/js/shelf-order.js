@@ -111,7 +111,7 @@ export function arrange(albums, sort, { currency = null } = {}) {
     section = (a) => priceBand(price(a), currency || (a.pressing && a.pressing.price ? a.pressing.price.currency : 'USD'));
   } else if (sort === 'MINE') {
     // (A stable sort: by artist behind each card, as they came.)
-    const name = (a) => (a.filedUnder ? a.filedUnder.toLocaleUpperCase() : null);
+    const name = (a) => (a.filedUnder ? a.filedUnder.trim().toLocaleUpperCase() : null);
     list.sort((a, b) => (!a.filedUnder - !b.filedUnder) || (a.filedUnder ? name(a).localeCompare(name(b)) : 0));
     section = (a) => name(a) || t('NOT FILED');
   } else {

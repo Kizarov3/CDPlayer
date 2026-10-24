@@ -9,6 +9,8 @@ export const SHOWS = ['ALL', 'DUSTY', 'WRAPPED', 'LEFT', 'NOTE', 'UNPLAYED'];
 const MAX_GENRES = 12;
 
 const fold = (s) => String(s || '').trim().toLowerCase();
+// Divider names are told apart as the shelf's cards tell them ("Straße" is "STRASSE")
+const foldName = (s) => String(s || '').trim().toLocaleUpperCase();
 const decadeOf = (a) => { const y = parseInt(a.year, 10); return y > 1000 ? Math.floor(y / 10) * 10 : null; };
 
 /** Whether album `a` stands on the shelf with SHOW at `show` ('ALL', one of SHOWS, 'Y1990', 'G<genre>' or 'F<divider>'). */
@@ -23,7 +25,7 @@ export function showsAlbum(a, show, now = Date.now()) {
     default:
       if (show.startsWith('Y')) return decadeOf(a) === Number(show.slice(1));
       if (show.startsWith('G')) return fold(a.genre) === show.slice(1);
-      if (show.startsWith('F')) return fold(a.filedUnder) === show.slice(1);
+      if (show.startsWith('F')) return foldName(a.filedUnder) === show.slice(1);
       return true;
   }
 }
@@ -38,13 +40,13 @@ export function showChoices(albums, now = Date.now()) {
     if (d) decades.set(d, (decades.get(d) || 0) + 1);
     const g = fold(a.genre);
     if (g) genres.set(g, { name: genres.get(g)?.name || String(a.genre).trim(), count: (genres.get(g)?.count || 0) + 1 });
-    const f = fold(a.filedUnder);
+    const f = foldName(a.filedUnder);
     if (f) dividers.set(f, { name: dividers.get(f)?.name || a.filedUnder.trim(), count: (dividers.get(f)?.count || 0) + 1 });
   }
   return {
     kinds,
     decades: [...decades].sort((x, y) => x[0] - y[0]).map(([d, count]) => ({ show: `Y${d}`, decade: d, count })),
     genres: [...genres].sort((x, y) => y[1].count - x[1].count).slice(0, MAX_GENRES).map(([g, { name, count }]) => ({ show: `G${g}`, label: name, count })),
-    dividers: [...dividers.values()].sort((x, y) => x.name.localeCompare(y.name)).map(({ name, count }) => ({ show: `F${fold(name)}`, label: name, count })),
+    dividers: [...dividers.values()].sort((x, y) => x.name.localeCompare(y.name)).map(({ name, count }) => ({ show: `F${foldName(name)}`, label: name, count })),
   };
 }

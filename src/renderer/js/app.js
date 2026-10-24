@@ -548,12 +548,25 @@ function fillChanger(picks, { quiet = false } = {}) {
 let keepFull = null;
 function keepChangerFull(pick) {
   keepFull = state.changerMode && pick ? pick : null;
-  if (keepFull) fillChanger(keepFull(), { quiet: true });
+  if (keepFull) refillChanger();
 }
 const keepingFull = () => !!keepFull;
 function refillChanger() {
   if (!keepFull || !state.changerMode) return false;
-  return fillChanger(keepFull(), { quiet: true }).loaded.length > 0;
+  const loaded = fillChanger(keepFull(), { quiet: true }).loaded.length > 0;
+  aimOnward();
+  return loaded;
+}
+// …and when the disc playing ends, on to the nearest one not played yet round the changer (back to slot 1 too, which
+// it wouldn't do without REPEAT ALL), else to the nearest one at all: kept full, the music doesn't stop. PLAY NEXT's
+// choice stands.
+function aimOnward() {
+  const c = ch();
+  if (!keepFull || c.nextDisc != null || state.index < 0) return;
+  const to = changer.discAfter(c, isSkipped);
+  if (to < 0) return;
+  apply({ ...c, nextDisc: to });
+  upcomingCache = null; dropPrepared(); renderQueue(); saveQueueSoon();
 }
 async function addToQueue(items, { sorted = false, play = false, next = false, title = null } = {}) {
   const songs = sorted ? items : await cdp.collectAudio(items);
@@ -1304,7 +1317,7 @@ function trackFinished(deck) {
   notePlayed();
   if (sleeps) { engine.pause(); setPlaying(false); armSleepAtEnd(false); setStatus(t('END OF DISC · SLEEP WELL')); panels.refreshSettingsIfOpen(app); return; }
   if (state.repeat === 'TRACK') { engine.seek(0); engine.play(); setPlaying(true); return; }
-  if (keepFull && upcomingIndex() < 0) refillChanger(); // the last disc's end: new ones in, and on into them
+  if (keepFull && upcomingIndex() < 0) refillChanger(); // nothing to go on to: new discs in, and on into them
   const next = upcomingIndex();
   // A cue sheet track ends mid-file: unless the next track carries straight on from here, stop the file right now
   // rather than let the following song start playing underneath.
@@ -2632,7 +2645,7 @@ function commands() {
     can('lyrics-button') ? { label: t('LYRICS'), also: 'lyrics words', run: click('lyrics-button') } : null,
     can('tags-button') ? { label: t('TAGS'), also: 'tags edit теги', run: click('tags-button') } : null,
     { label: t('SPOTIFY'), run: click('spotify-button') },
-    { label: t('LOAD A TRACK'), also: 'open files load открыть', key: '⌘O', run: click('load-button') },
+    { label: t('LOAD A TRACK'), also: 'open files load открыть', key: state.platform === 'darwin' ? '⌘O' : 'Ctrl+O', run: click('load-button') },
     { label: t('LIBRARY CHECK'), also: 'check problems проверка', run: () => panels.showLibraryCheck(app) },
     { label: t('KEYBOARD SHORTCUTS'), also: 'keys shortcuts клавиши', key: '?', run: () => panels.showShortcuts() },
     { label: t("WHAT'S NEW"), also: 'changelog whats new', run: () => panels.showWhatsNew(app) },

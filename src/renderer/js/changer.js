@@ -182,12 +182,6 @@ export function fromQueue(paths, index, albumOf, { cdrTitle }) {
 // ---- The order: which song comes next, by the changer's modes ----------------------------------------------------
 
 const occupied = (c) => c.slots.map((d, s) => (d ? s : -1)).filter((s) => s >= 0);
-// The next occupied slot after `slot` (round to the first with `wrap`), or -1.
-function slotAfter(c, slot, wrap) {
-  const occ = occupied(c);
-  const later = occ.find((s) => s > slot);
-  return later != null ? later : wrap && occ.length ? occ[0] : -1;
-}
 const offsets = (d) => Array.from({ length: d.end - d.start }, (_, k) => k);
 const unplayed = (d) => { const played = new Set(d.played); return offsets(d).filter((k) => !played.has(k)); };
 const pick = (list, rnd) => list[Math.min(list.length - 1, Math.floor(rnd() * list.length))];
@@ -220,16 +214,33 @@ export function nextIndex(c, { shuffle = 'OFF', repeat = 'OFF', skip = NONE } = 
     if (repeat === 'DISC') { const first = playable(d, skip)[0]; return first != null ? d.start + first : -1; }
   }
   // The next disc (PLAY NEXT's first) with a song to play.
-  let to = c.nextDisc != null && c.nextDisc !== here.slot ? c.nextDisc : slotAfter(c, here.slot, repeat === 'ALL');
-  for (let tries = 0; to >= 0 && tries < SLOTS; tries++) {
+  for (const to of discsOnFrom(c, here.slot, repeat === 'ALL', true)) {
     const n = c.slots[to], l = playable(n, skip);
-    if (l.length) {
-      if (shuffle === 'DISC') { const f = fresh(n, skip); return n.start + pick(f.length ? f : l, rnd); }
-      return n.start + l[0];
-    }
-    to = slotAfter(c, to, repeat === 'ALL');
+    if (!l.length) continue;
+    if (shuffle === 'DISC') { const f = fresh(n, skip); return n.start + pick(f.length ? f : l, rnd); }
+    return n.start + l[0];
   }
   return -1;
+}
+// The discs to go on to from `slot`, in turn: PLAY NEXT's, then the ones after it (and round to the first ones, `wrap`
+// — and to `slot` itself last, `itself`: REPEAT ALL with one disc plays it again; DISC SKIP doesn't).
+function discsOnFrom(c, slot, wrap, itself = false) {
+  const after = occupied(c).filter((s) => s > slot), before = wrap ? occupied(c).filter((s) => s < slot || (itself && s === slot)) : [];
+  const first = c.nextDisc != null && c.nextDisc !== slot && c.slots[c.nextDisc] ? [c.nextDisc] : [];
+  return [...new Set([...first, ...after, ...before])];
+}
+
+/**
+ * KEEP IT FULL: the disc to go on to when the one playing ends — round the changer from it (not only on to the slots
+ * after it, as without REPEAT ALL), the nearest that isn't finished, else the nearest at all; one with a song to play,
+ * never the one playing. -1 for none.
+ */
+export function discAfter(c, skip = NONE) {
+  const here = slotOf(c, c.index), from = here ? here.slot : -1;
+  const round = Array.from({ length: SLOTS - 1 + (from < 0 ? 1 : 0) }, (_, k) => (from + 1 + k + SLOTS) % SLOTS)
+    .filter((s) => c.slots[s] && playable(c.slots[s], skip).length);
+  const fresh = round.find((s) => !c.slots[s].done);
+  return fresh ?? round[0] ?? -1;
 }
 
 /** The song before: the previous one to play on the disc, or the last of the disc before. -1 at the very start. */
@@ -245,11 +256,9 @@ export function previousIndex(c, skip = NONE) {
 export function discSkip(c, { shuffle = 'OFF', skip = NONE } = {}, rnd = Math.random) {
   const here = slotOf(c, c.index);
   if (!here) return -1;
-  let to = c.nextDisc != null && c.nextDisc !== here.slot ? c.nextDisc : slotAfter(c, here.slot, true);
-  for (let tries = 0; to >= 0 && to !== here.slot && tries < SLOTS; tries++) {
-    const n = c.slots[to], l = playable(n, skip);
-    if (l.length) return n.start + (shuffle === 'OFF' ? l[0] : pick(l, rnd));
-    to = slotAfter(c, to, true);
+  for (const to of discsOnFrom(c, here.slot, true)) {
+    const l = playable(c.slots[to], skip);
+    if (l.length) return c.slots[to].start + (shuffle === 'OFF' ? l[0] : pick(l, rnd));
   }
   return -1;
 }

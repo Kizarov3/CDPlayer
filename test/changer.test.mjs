@@ -344,6 +344,24 @@ test('FILL: an empty changer stands on the first disc put in; a full one is left
   assert.deepStrictEqual([again.loaded, again.full], [[], false], 'in already: not full');
 });
 
+test('KEEP IT FULL: on from the disc playing round the changer — the nearest not finished, else the nearest; never itself', async () => {
+  const { discAfter, nextIndex } = await import('../src/renderer/js/changer.js');
+  const done = (c, ...slots) => ({ ...c, slots: c.slots.map((d, s) => (slots.includes(s) ? { ...d, done: true, finishedAt: s } : d)) });
+  let c = at(fill(5), 8); // on slot 4, the last
+  assert.strictEqual(discAfter(c), 0, 'back round to slot 1');
+  assert.strictEqual(nextIndex({ ...done(c, 4), index: 9 }), -1, '(without it the changer stops there)');
+  assert.strictEqual(nextIndex({ ...done(c, 4), index: 9, nextDisc: discAfter(c) }), 0, 'with it, on into slot 1');
+  assert.strictEqual(discAfter(done(c, 0, 1)), 2, 'past the finished ones');
+  assert.strictEqual(discAfter(done(c, 0, 1, 2, 3)), 0, 'all finished: the nearest');
+  c = at(fill(5), 2); // on slot 1
+  assert.strictEqual(discAfter(done(c, 2)), 3);
+  const skipAll3 = (i) => i === 6 || i === 7; // slot 3's songs
+  assert.strictEqual(discAfter(done(c, 2), skipAll3), 4, 'a disc with nothing to play is passed over');
+  assert.strictEqual(discAfter(at(fill(1), 0)), -1, 'only the disc playing');
+  assert.strictEqual(discAfter({ ...fill(2), index: -1 }), 0, 'nothing playing: the first');
+  assert.strictEqual(discAfter(empty()), -1);
+});
+
 test('SKIP: songs marked not to play are passed over going on and going back; DISC SKIP lands on one to play', async () => {
   const { nextIndex, previousIndex, discSkip } = await import('../src/renderer/js/changer.js');
   let c = load(empty(), disc('a'), ['a1', 'a2', 'a3', 'a4']).changer;

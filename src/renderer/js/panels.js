@@ -894,8 +894,12 @@ function buildSearch(app) {
   search.field.addEventListener('keydown', (e) => {
     e.stopPropagation();
     if (e.key === 'Escape') closePanel('search');
-    // Enter: the first match plays (its PLAY button), the way a search box is used from the keyboard.
-    if (e.key === 'Enter' && search.results) { const first = search.results.querySelector('.list-row:not(.plain)'); if (first) { e.preventDefault(); first.click(); } }
+    // Enter: the first song found plays (its PLAY button), the way a search box is used from the keyboard — or, with
+    // no song found, the first thing to do or setting is (a song called "Stop" isn't PLAY / PAUSE).
+    if (e.key === 'Enter' && search.results) {
+      const first = search.results.querySelector('.list-row:not(.plain):not(.command-row)') || search.results.querySelector('.command-row');
+      if (first) { e.preventDefault(); first.click(); }
+    }
   });
   search.results = el('div', { class: 'scroll' });
   search.results.style.height = '340px';

@@ -47,9 +47,13 @@ export function groupEditions(albums) {
  * Remaster"), else its year; '' when that says nothing (the plain one).
  */
 export function editionName(a, editions) {
-  const base = editions.map((e) => String(e.title || '')).reduce((x, y) => (y.length < x.length ? y : x));
+  // What all the titles start with, to a word's end ("Ten (Remastered)", "Ten [Deluxe Edition]" → "Ten ")
+  const titles = editions.map((e) => String(e.title || '').toLowerCase());
+  let n = 0;
+  while (titles.every((x) => n < x.length && x[n] === titles[0][n])) n++;
+  if (titles.some((x) => /[\p{L}\p{N}]/u.test(x[n] || ''))) while (n > 0 && /[\p{L}\p{N}]/u.test(titles[0][n - 1])) n--;
   const title = String(a.title || '');
-  let extra = title.toLowerCase().startsWith(base.toLowerCase()) ? title.slice(base.length) : title;
+  let extra = title.slice(n);
   extra = extra.replace(/^[\s([\-–—:,]+|[\s)\]]+$/g, '').replace(/[)\]]\s*[([]/g, ' · ').trim();
   if (extra) return extra;
   const sameYear = editions.filter((e) => e !== a && e.year && e.year === a.year).length;
