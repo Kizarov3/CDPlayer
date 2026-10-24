@@ -567,6 +567,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
   color: rgb(var(--accent)); text-shadow: 0 0 6px rgba(var(--accent), .9);
 }
 .spine.in-player.obi .obi-cat { bottom: 20px; }
+.spine.in-player.obi .spine-text { bottom: 74px; } /* (its title ends above the catalog number, raised for the ▶) */
 .spine.in-player:not(.obi) .spine-text { bottom: 20px; }
 .spine.out { transform: translateY(-40px); opacity: .25; }
 .spine-text {
@@ -656,7 +657,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 }
 /* A ribbon bookmark hanging out of the top of an album left part-way through (album-runs.js). */
 .spine-bookmark {
-  position: absolute; top: -12px; right: 5px; width: 6px; height: 24px; z-index: 3; pointer-events: none;
+  position: absolute; top: -22px; right: 4px; width: 8px; height: 36px; z-index: 3; pointer-events: none;
   background: linear-gradient(to right, rgb(var(--accent)), rgba(var(--accent), .75)); box-shadow: 0 1px 2px rgba(0, 0, 0, .45);
   clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 82%, 0 100%);
 }
