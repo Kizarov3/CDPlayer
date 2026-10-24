@@ -1060,3 +1060,19 @@ body.no-anim .tour-spot, body.no-anim .tour-bubble { transition: none; }
 .tour-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .tour-bubble.wide { width: 470px; } /* the welcome and the last word: more to say, and more buttons */
 .tour-actions .grow { flex: 1; }
+
+/* Narrow windows (see #body's): rules that have to come after the ones they change. */
+@media (max-width: 900px) {
+  /* The deck display's flags closer together, so ИГРАЕТ … ПОВТОР 1 fit beside the track and the time. */
+  .vfd-flags { gap: 8px; letter-spacing: .04em; }
+  /* A case: its cover a little smaller, so the songs keep their room beside it, and its buttons smaller. */
+  .case-card { gap: 22px; }
+  .case-front { height: auto; width: 44%; align-self: flex-start; }
+  .case-actions .pill { font-size: 10px; padding: 6px 12px; }
+  .obi-foot { font-size: 6px; padding: 0 1px 8px; }
+  .obi-foot div:last-child { font-size: 9px; }
+}
+/* A short window: the changer's wheel hangs below the song list, over where the keys' hint is — the hint goes right. */
+@media (max-height: 860px) {
+  body.changer-mode #hint { text-align: right; }
+}

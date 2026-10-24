@@ -111,8 +111,10 @@ export function arrange(albums, sort, { currency = null } = {}) {
     section = (a) => priceBand(price(a), currency || (a.pressing && a.pressing.price ? a.pressing.price.currency : 'USD'));
   } else if (sort === 'MINE') {
     // (A stable sort: by artist behind each card, as they came.)
-    const name = (a) => (a.filedUnder ? a.filedUnder.trim().toLocaleUpperCase() : null);
-    list.sort((a, b) => (!a.filedUnder - !b.filedUnder) || (a.filedUnder ? name(a).localeCompare(name(b)) : 0));
+    // (an album's editions behind one spine: filed where any of them is)
+    const filed = (a) => (a.editions || [a]).map((e) => e.filedUnder).find(Boolean) || null;
+    const name = (a) => (filed(a) ? filed(a).trim().toLocaleUpperCase() : null);
+    list.sort((a, b) => (!filed(a) - !filed(b)) || (filed(a) ? name(a).localeCompare(name(b)) : 0));
     section = (a) => name(a) || t('NOT FILED');
   } else {
     section = (a) => letterOf(a.artist);

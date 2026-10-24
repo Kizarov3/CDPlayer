@@ -610,6 +610,7 @@ function dropPaths(gone) {
 function clearQueue() {
   if (!state.queue.length) return;
   if (undoClear) clearTimeout(undoClear.timer);
+  clearTimeout(refillTimer);
   undoClear = { store: takeStore(), position: engine.position, playing: engine.playing, timer: setTimeout(() => { undoClear = null; renderQueue(); }, UNDO_CLEAR_SECONDS * 1000) };
   putStore(state.changerMode ? { changer: changer.clear() } : { queue: [], index: -1, nextUp: null });
   resetToIdle(state.changerMode ? t('CHANGER EMPTIED') : t('QUEUE CLEARED'));
@@ -1204,8 +1205,13 @@ function notePlayed() {
   saveQueueSoon();
   const slot = here && ch().slots[here.slot];
   // finished, or one finished before played to its end again
-  if (keepFull && slot && slot.done && (!wasDone || state.index === slot.end - 1)) setTimeout(refillChanger, REFILL_AFTER_MS);
+  if (keepFull && slot && slot.done && (!wasDone || state.index === slot.end - 1)) {
+    clearTimeout(refillTimer);
+    // (not if the changer's been cleared meanwhile: new discs mustn't start the music again)
+    refillTimer = setTimeout(() => { if (state.index >= 0) refillChanger(); }, REFILL_AFTER_MS);
+  }
 }
+let refillTimer = null;
 const REFILL_AFTER_MS = 1500;
 // The queue entry `p` picks up exactly where the playing cue sheet track ends, in the same file (atBoundary: and
 // playback has got there).
@@ -2623,6 +2629,12 @@ function onKeyDown(e) {
 }
 // What "/" finds besides songs (search-commands.js): what the keys and the header's buttons do, by name — those that
 // can be done now (a button that's hidden can't).
+// FILL, from the search: the shelf's FILL menu, the shelf opened for it (once its albums are on it).
+async function fillFromShelf() {
+  if (!isShelfOpen()) toggleShelf();
+  for (let i = 0; i < 60 && isShelfOpen() && !document.querySelector('#shelf-body .spine'); i++) await new Promise((r) => setTimeout(r, 50));
+  if (isShelfOpen()) $('shelf-fill').click();
+}
 function commands() {
   const can = (id) => !$(id).hidden;
   const click = (id) => () => $(id).click();
@@ -2634,7 +2646,9 @@ function commands() {
     { label: t('SHUFFLE|action'), also: 'shuffle random перемешать', run: toggleShuffle },
     { label: t('REPEAT|action'), also: 'repeat loop повтор', run: cycleRepeat },
     { label: t('MUTE / UNMUTE'), also: 'mute sound звук', key: 'U', run: toggleMute },
-    { label: t('THE SHELF'), also: 'shelf albums полка', key: 'S', run: toggleShelf },
+    { label: t('THE SHELF'), also: 'shelf albums divider dividers editions полка разделитель разделители издания', key: 'S', run: toggleShelf },
+    state.changerMode ? { label: t('FILL'), also: 'fill changer keep full заполнить держать полным чейнджер', run: fillFromShelf } : null,
+    state.index >= 0 ? { label: state.skipped.has(state.queue[state.index]) ? t('DON’T SKIP THIS SONG') : t('SKIP THIS SONG'), also: 'skip song mark пропуск пропускать', run: () => toggleSkip(state.queue[state.index]) } : null,
     { label: t('CD VIEW'), key: 'C', run: toggleCdView },
     { label: t('MINI MODE'), key: 'M', run: () => setMiniMode(!state.miniMode) },
     { label: t('VISUALIZER MODE'), also: 'visualizer визуализатор', key: 'V', run: toggleVisualizerMode },

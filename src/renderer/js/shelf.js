@@ -261,15 +261,16 @@ function render() {
   const showing = shelf.show !== 'ALL', nowShow = Date.now();
   const found = shelf.albums.filter((a) => matchesFilter(a, query, (stickersFor(a).obi || {}).catalog) // the number on its obi too
     && showsAlbum(a, shelf.show, nowShow));
-  const shown = groupEditions(found); // an album's editions behind one spine
+  // An album's editions behind one spine, and counted as one (first all of them, then the ones shown: each sets them)
+  const n = groupEditions(shelf.albums).length;
+  const shown = groupEditions(found);
   $('shelf-show').textContent = showing ? `${t('SHOW|shelf')}: ${shelf.showLabel}` : t('SHOW: ALL');
   $('shelf-show').classList.toggle('on', showing);
   $('shelf-fill').hidden = !shelf.app.changerMode();
   $('shelf-fill').disabled = !shown.length;
   showFill();
-  const n = shelf.albums.length;
   // (The folder's name is the count's tooltip: the line keeps its room for the albums and what the shelf is worth.)
-  shelf.countBase = [n === 1 ? t('1 ALBUM') : t('{n} ALBUMS', { n }), filtering || showing ? t('{n} SHOWN', { n: found.length }) : null].filter(Boolean).join(' · ');
+  shelf.countBase = [n === 1 ? t('1 ALBUM') : t('{n} ALBUMS', { n }), filtering || showing ? t('{n} SHOWN', { n: shown.length }) : null].filter(Boolean).join(' · ');
   $('shelf-count').title = shelf.folderName ? t('Your music folder: {name}', { name: shelf.folderName }) : '';
   renderCount();
   if (!n) { body.replaceChildren(el('div', { class: 'shelf-empty' }, el('div', {}, t('No music in this folder yet.')), pill(t('CHOOSE ANOTHER FOLDER…'), pickFolder))); return; }
@@ -965,9 +966,10 @@ function editionButtons(a, spine) {
 const dividerNames = () => [...new Map(shelf.albums.filter((a) => a.filedUnder).map((a) => [a.filedUnder.toLocaleUpperCase(), a.filedUnder])).values()]
   .sort((x, y) => x.localeCompare(y));
 function dividerButton(a, spine) {
-  const label = () => (a.filedUnder ? `▮ ${a.filedUnder.toLocaleUpperCase()}` : t('+ DIVIDER'));
-  // (an album's editions stand behind one spine: they're filed together)
+  // (an album's editions stand behind one spine: they're filed together, where any of them is)
   const together = spine.album && spine.album.editions && spine.album.editions.includes(a) ? spine.album.editions : [a];
+  const filed = () => together.map((e) => e.filedUnder).find(Boolean) || null;
+  const label = () => (filed() ? `▮ ${filed().toLocaleUpperCase()}` : t('+ DIVIDER'));
   const fileUnder = (name) => {
     for (const e of together) {
       e.filedUnder = name || null;
@@ -990,7 +992,7 @@ function dividerButton(a, spine) {
     };
     field.addEventListener('keydown', (e) => {
       e.stopPropagation();
-      if (e.key === 'Enter') done(true);
+      if (e.key === 'Enter' && !e.isComposing) done(true);
       if (e.key === 'Escape') { e.preventDefault(); done(false); }
     });
     field.addEventListener('blur', () => done(true));
@@ -1000,12 +1002,12 @@ function dividerButton(a, spine) {
   const button = pill(label(), () => {
     const names = dividerNames();
     if (!names.length) { nameIt(); return; }
-    const same = (n) => !!a.filedUnder && n.toLocaleUpperCase() === a.filedUnder.toLocaleUpperCase();
+    const same = (n) => !!filed() && n.toLocaleUpperCase() === filed().toLocaleUpperCase();
     shelf.app.menu(button, [
       ...names.map((n) => ({ label: n.toLocaleUpperCase(), current: same(n), pick: () => { if (!same(n)) fileUnder(n); } })),
       { divider: true },
       { label: t('NEW DIVIDER…'), pick: nameIt },
-      ...(a.filedUnder ? [{ label: t('TAKE IT FROM BEHIND “{name}”', { name: a.filedUnder.toLocaleUpperCase() }), pick: () => fileUnder(null) }] : []),
+      ...(filed() ? [{ label: t('TAKE IT FROM BEHIND “{name}”', { name: filed().toLocaleUpperCase() }), pick: () => fileUnder(null) }] : []),
     ]);
   }, t('File the album behind a divider of your own: SORT → MY DIVIDERS stands the shelf by them, SHOW shows one'));
   return button;

@@ -896,7 +896,8 @@ function buildSearch(app) {
     if (e.key === 'Escape') closePanel('search');
     // Enter: the first song found plays (its PLAY button), the way a search box is used from the keyboard — or, with
     // no song found, the first thing to do or setting is (a song called "Stop" isn't PLAY / PAUSE).
-    if (e.key === 'Enter' && search.results) {
+    // (Nothing typed, or a word still being composed in an input method: Enter isn't a choice yet.)
+    if (e.key === 'Enter' && !e.isComposing && search.results && search.field.value.trim()) {
       const first = search.results.querySelector('.list-row:not(.plain):not(.command-row)') || search.results.querySelector('.command-row');
       if (first) { e.preventDefault(); first.click(); }
     }
@@ -928,7 +929,8 @@ function refreshSearchResults(app) {
   }
   setSearchStatus(search.scanning ? t('SCANNING YOUR MUSIC FOLDER…') : !words.length ? t('{n} SONGS IN {folder} · TYPE TO FIND ONE', { n: search.index.length, folder: search.folder })
     : matches.length >= SEARCH_LIMIT ? t('{n}+ MATCHES IN {folder}', { n: matches.length, folder: search.folder })
-    : matches.length === 1 ? t('1 MATCH IN {folder}', { folder: search.folder }) : t('{n} MATCHES IN {folder}', { n: matches.length, folder: search.folder }));
+    : matches.length === 1 ? t('1 MATCH IN {folder}', { folder: search.folder })
+    : !matches.length && commands.length ? t('NO SONGS LIKE THAT IN {folder}', { folder: search.folder }) : t('{n} MATCHES IN {folder}', { n: matches.length, folder: search.folder }));
   search.results.replaceChildren(...commands, ...(matches.length
     ? matches.map((p) => trackRow(app, p, searchName(p), async () => {
       if (!(await app.cdp.exists(p))) { app.setStatus(t('FILE NO LONGER FOUND')); startLibraryScan(app); return; }

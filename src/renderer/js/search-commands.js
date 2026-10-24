@@ -53,8 +53,10 @@ const MAX = 4;
  */
 export function findCommands(query, actions) {
   const found = actions.filter((a) => matchesName(query, [a.label, a.also || ''])).map((a) => ({ kind: 'action', label: a.label, key: a.key, run: a.run }));
-  for (const [section, row, also] of SETTING_ROWS) {
-    if (matchesName(query, [row, t(row), also])) found.push({ kind: 'setting', label: t(row), section: t(section), row });
-  }
+  SETTING_ROWS.forEach(([section, row, also], i) => {
+    // (a row that goes on from the one above, "…OR AT THE END OF THE DISC", is named with it)
+    const label = row.startsWith('…') && i ? `${t(SETTING_ROWS[i - 1][1])} ${t(row)}` : t(row);
+    if (matchesName(query, [row, t(row), also])) found.push({ kind: 'setting', label, section: t(section), row });
+  });
   return found.slice(0, MAX);
 }
