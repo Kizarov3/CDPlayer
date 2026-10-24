@@ -18,6 +18,7 @@ import { receiptFor } from './shelf-receipt.js';
 import { withMissing, boxLabel, sameName, boxesFor, renderGate, groupFor, pickEdition, fullTracklist } from './shelf-missing.js';
 import { dustLevel, pickOne, pickSome, Wiper } from './shelf-dust.js';
 import { showsAlbum, showChoices } from './shelf-show.js';
+import { groupEditions, editionName } from './shelf-editions.js';
 import { SLOTS, slotOfAlbum } from './changer.js';
 import { t } from './i18n.js';
 
@@ -41,7 +42,9 @@ const redraw = renderGate({ render: () => { if (shelf.open) render(); }, busy: (
 const IN_PLAYER = t('IN THE PLAYER');
 const SORT_LABELS = { ARTIST: t('ARTIST'), NEW: t('NEW|sort'), PLAYED: t('MOST PLAYED'), RECENT: t('LAST PLAYED'), YEAR: t('YEAR'), COLOR: t('COLOR'), PRICE: t('PRICE'), MINE: t('MY DIVIDERS') };
 const holds = (a, path) => !!path && a.tracks.some((t) => t.path === path);
+const spineHolds = (a, path) => (a.editions || [a]).some((e) => holds(e, path)); // (its other editions are behind it)
 const spineTitle = (a) => [a.artist, a.title, a.year, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ')
+  + (a.editions ? `\n${t('{n} EDITIONS', { n: a.editions.length })}` : '')
   + (a.bookmark ? `\n${leftAt(a)}` : '') + (a.note ? `\n\n${a.note}` : '');
 // Where an album played from its start was left (album-runs.js): its bookmark's words.
 const leftAt = (a) => t('Left at track {n} · {song}', { n: a.bookmark.track + 1, song: (a.tracks[a.bookmark.track] || {}).title || '' });
@@ -67,7 +70,7 @@ export function showInPlayer(path) {
   shelf.inPlayer = path || null;
   for (const spine of document.querySelectorAll('#shelf-body .spine')) {
     if (!spine.album) continue; // a missing album's place
-    spine.classList.toggle('in-player', holds(spine.album, shelf.inPlayer));
+    spine.classList.toggle('in-player', spineHolds(spine.album, shelf.inPlayer));
     spine.title = spineTitle(spine.album);
   }
   if (shelf.open) showHere();
@@ -251,15 +254,16 @@ function render() {
   }
   const query = $('shelf-filter').value, filtering = !!query.trim();
   const showing = shelf.show !== 'ALL', nowShow = Date.now();
-  const shown = shelf.albums.filter((a) => matchesFilter(a, query, (stickersFor(a).obi || {}).catalog) // the number on its obi too
+  const found = shelf.albums.filter((a) => matchesFilter(a, query, (stickersFor(a).obi || {}).catalog) // the number on its obi too
     && showsAlbum(a, shelf.show, nowShow));
+  const shown = groupEditions(found); // an album's editions behind one spine
   $('shelf-show').textContent = showing ? `${t('SHOW|shelf')}: ${shelf.showLabel}` : t('SHOW: ALL');
   $('shelf-show').classList.toggle('on', showing);
   $('shelf-fill').hidden = !shelf.app.changerMode();
   $('shelf-fill').disabled = !shown.length;
   const n = shelf.albums.length;
   // (The folder's name is the count's tooltip: the line keeps its room for the albums and what the shelf is worth.)
-  shelf.countBase = [n === 1 ? t('1 ALBUM') : t('{n} ALBUMS', { n }), filtering || showing ? t('{n} SHOWN', { n: shown.length }) : null].filter(Boolean).join(' · ');
+  shelf.countBase = [n === 1 ? t('1 ALBUM') : t('{n} ALBUMS', { n }), filtering || showing ? t('{n} SHOWN', { n: found.length }) : null].filter(Boolean).join(' · ');
   $('shelf-count').title = shelf.folderName ? t('Your music folder: {name}', { name: shelf.folderName }) : '';
   renderCount();
   if (!n) { body.replaceChildren(el('div', { class: 'shelf-empty' }, el('div', {}, t('No music in this folder yet.')), pill(t('CHOOSE ANOTHER FOLDER…'), pickFolder))); return; }
@@ -275,7 +279,7 @@ function render() {
   if (shelf.boxObserver) shelf.boxObserver.disconnect();
   shelf.onScreen.clear();
   if (sort !== 'ARTIST') stopLookups();
-  const boxes = sort === 'ARTIST' && !showing ? boxesFor({ albums: shelf.albums, shown, discogs: shelf.discogs, hidden: shelf.hidden, open: shelf.openBoxes, query }) : new Map();
+  const boxes = sort === 'ARTIST' && !showing ? boxesFor({ albums: shelf.albums, shown: found, discogs: shelf.discogs, hidden: shelf.hidden, open: shelf.openBoxes, query }) : new Map();
   const arranged = arrange(shown, sort, { currency: (shelf.settings && shelf.settings.currency) || 'USD' });
   showIndex(jumpTargets(arranged));
   showHere();
@@ -284,12 +288,13 @@ function render() {
     if (a.ghost) return ghostSpine(a.ghost, a.artist);
     if (a.divider) return el('div', { class: `shelf-divider${[...a.divider].length <= 2 ? ' short' : ''}`, 'aria-hidden': 'true', 'data-section': a.divider }, el('span', {}, a.divider));
     const st = a.stickers = stickersFor(a, now);
-    const spine = el('button', { class: `spine${a.discs > 1 ? ' double' : ''}${st.obi ? ' obi' : ''}${st.isNew ? ' new' : ''}${holds(a, shelf.inPlayer) ? ' in-player' : ''}${isRare(a.pressing) ? ' rare' : ''}`, title: spineTitle(a), onClick: () => { if (!shelf.dragged) openCase(a, spine); } },
+    const spine = el('button', { class: `spine${a.discs > 1 ? ' double' : ''}${st.obi ? ' obi' : ''}${st.isNew ? ' new' : ''}${spineHolds(a, shelf.inPlayer) ? ' in-player' : ''}${isRare(a.pressing) ? ' rare' : ''}`, title: spineTitle(a), onClick: () => { if (!shelf.dragged) openCase(a, spine); } },
       el('span', { class: 'spine-text' }, a.artist ? el('b', {}, a.artist) : null, a.artist ? ' · ' : null, a.title),
       st.obi ? el('span', { class: 'obi-cat' }, st.obi.catalog) : null,
       st.isNew ? el('span', { class: 'sticker-new' }, t('NEW')) : null,
       a.wrapped ? el('span', { class: 'spine-film' }) : null,
-      a.bookmark ? el('span', { class: 'spine-bookmark' }) : null);
+      a.bookmark ? el('span', { class: 'spine-bookmark' }) : null,
+      a.editions ? el('span', { class: `spine-editions${a.editions.length > 2 ? ' more' : ''}` }) : null);
     spine.album = a;
     markSlot(spine);
     showNoteTab(spine);
@@ -549,10 +554,10 @@ function pointOut(card) {
 }
 // ⌖ IN THE PLAYER: shown while the album whose disc is in is on the shelf as it stands; goes to it, and it waves.
 function showHere() {
-  $('shelf-here').hidden = !(shelf.inPlayer && (shelf.shown || []).some((a) => holds(a, shelf.inPlayer)));
+  $('shelf-here').hidden = !(shelf.inPlayer && (shelf.shown || []).some((a) => spineHolds(a, shelf.inPlayer)));
 }
 function goToPlayer() {
-  const spine = [...document.querySelectorAll('#shelf-body .spine')].find((s) => s.album && holds(s.album, shelf.inPlayer));
+  const spine = [...document.querySelectorAll('#shelf-body .spine')].find((s) => s.album && spineHolds(s.album, shelf.inPlayer));
   if (!spine) return;
   spine.scrollIntoView({ block: 'center', inline: 'nearest', behavior: anim.enabled ? 'smooth' : 'auto' });
   if (anim.enabled) setTimeout(() => spine.animate([{ transform: 'translateY(-12px)' }, { transform: 'translateY(-26px)' }, { transform: 'translateY(-12px)' }], { duration: 420, easing: 'ease-in-out' }), 350);
@@ -907,6 +912,7 @@ async function openCase(a, spine) {
       el('div', { class: 'case-title' }, a.title),
       el('div', { class: 'case-artist' }, [a.artist, a.year].filter(Boolean).join(' · ')),
       el('div', { class: 'case-meta' }, [a.tracks.length === 1 ? t('1 TRACK') : t('{n} TRACKS', { n: a.tracks.length }), a.duration ? app.formatTime(a.duration) : null, a.discs > 1 ? t('{n} DISCS', { n: a.discs }) : null, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ')),
+      editionsRow(a, spine),
       pressingBlock(a, rare, (entry) => { if (receipt) receipt.showPressing(entry); showTag(entry); }),
       trackList,
       el('div', { class: 'case-actions' },
@@ -920,6 +926,19 @@ async function openCase(a, spine) {
         a.bookmark ? pill(t('CONTINUE · TRACK {n}', { n: a.bookmark.track + 1 }), () => play(a, a.bookmark.track), leftAt(a)) : null,
         el('button', { class: 'pill on', onClick: unwrapped(() => play(a, 0)) }, t('PLAY')))));
   showCase(card, spine, from, shelf.colors.get(a.id) || hashColor(a.title + a.artist));
+}
+
+// An album with other editions on the shelf: a button for each, the one out lit; another one's case takes its place.
+function editionsRow(a, spine) {
+  const editions = (spine.album && spine.album.editions) || null;
+  if (!editions || !editions.includes(a)) return null;
+  return el('div', { class: 'case-editions' }, editions.map((e) => {
+    const name = editionName(e, editions) || t('STANDARD|edition');
+    const b = pill(name.toLocaleUpperCase(), () => { if (e === a) return; closeCase(true); openCase(e, spine); },
+      `${e.title}${e.year ? ` · ${e.year}` : ''} · ${e.tracks.length === 1 ? t('1 TRACK') : t('{n} TRACKS', { n: e.tracks.length })}`);
+    b.classList.toggle('on', e === a);
+    return b;
+  }));
 }
 
 // The user's own divider cards (SORT: MY DIVIDERS, and SHOW): the case's button files the album behind one — one there

@@ -804,6 +804,7 @@
   "SPOTIFY SIGN-IN FAILED — {why}": "НЕ УДАЛОСЬ ВОЙТИ В SPOTIFY — {why}",
   "SPOTIFY SIGNED OUT · CONNECT AGAIN UNDER SPOTIFY": "ВЫХОД ИЗ SPOTIFY · ПОДКЛЮЧИСЬ СНОВА В РАЗДЕЛЕ SPOTIFY",
   "SPOTIFY'S PLAYER DIDN'T START": "ПЛЕЕР SPOTIFY НЕ ЗАПУСТИЛСЯ",
+  "STANDARD|edition": "ОБЫЧНОЕ",
   "START FROM": "НАЧАТЬ С",
   "START FROM…": "НАЧАТЬ С…",
   "START LISTENING": "НАЧАТЬ СЛУШАТЬ",
@@ -1072,6 +1073,12 @@
     "few": "ЗАГРУЖЕНО {n} ДИСКА",
     "many": "ЗАГРУЖЕНО {n} ДИСКОВ",
     "other": "ЗАГРУЖЕНО {n} ДИСКА"
+  },
+  "{n} EDITIONS": {
+    "one": "{n} ИЗДАНИЕ",
+    "few": "{n} ИЗДАНИЯ",
+    "many": "{n} ИЗДАНИЙ",
+    "other": "{n} ИЗДАНИЯ"
   },
   "{n} MATCHES IN {folder}": {
     "one": "{n} СОВПАДЕНИЕ В {folder}",

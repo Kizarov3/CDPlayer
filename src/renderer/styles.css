@@ -662,6 +662,15 @@ body.cursor-hidden #cd-exit { opacity: 0; }
   background: linear-gradient(to right, rgb(var(--accent)), rgba(var(--accent), .75)); box-shadow: 0 1px 2px rgba(0, 0, 0, .45);
   clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 82%, 0 100%);
 }
+/* An album with other editions (shelf-editions.js): theirs stand right behind it, their tops showing above it. */
+.spine-editions {
+  position: absolute; top: -7px; left: 3px; right: -3px; height: 7px; pointer-events: none; border-radius: 3px 3px 0 0;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, .3) 0 1px, rgba(var(--spine), .85) 1px, rgba(var(--spine), .55));
+  box-shadow: 0 -1px 2px rgba(0, 0, 0, .35);
+}
+.spine-editions.more { box-shadow: 0 -1px 2px rgba(0, 0, 0, .35), 3px -5px 0 rgba(var(--spine), .6); }
+.case-editions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.case-editions .pill { font-size: 10px; padding: 4px 10px; }
 /* The corner of a sticky note (shelf-notes.js) poking up above a spine. */
 .note-tab {
   position: absolute; top: -9px; left: 50%; width: 22px; height: 16px; margin-left: -11px; z-index: 3; pointer-events: none;
