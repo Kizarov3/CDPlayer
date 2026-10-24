@@ -1289,6 +1289,19 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.18.0', changes: [
+    '<b>SHOW on the shelf</b>: all the albums, or only the dusty ones, still wrapped, left part-way, with a note, never played, one decade or one genre; PULL ONE pulls from what&rsquo;s shown',
+    '<b>Albums heard as albums</b>: one played from its first song and left part-way has a ribbon bookmark on its spine and CONTINUE &middot; TRACK n in its case; played to the end, the booklet&rsquo;s back cover says &ldquo;start to end &times;n&rdquo;',
+    '<b>Moved songs keep their history</b>: music moved to another folder or drive is found again, and BRING THEIR HISTORY brings its plays, dust and HISTORY along',
+    '<b>BACKUP</b> in Settings &rarr; LIBRARY: your queue, history, plays, notes, themes and settings in one .cdbackup file, for a new computer or after reinstalling',
+    '<b>PUT BACK THE ORIGINAL</b> in the Tags panel: the tags a file had before CDPlayer first wrote over them',
+  ], changesIn: { ru: [
+    '<b>ПОКАЗ на полке</b>: все альбомы или только пыльные, в плёнке, недослушанные, со стикером, ни разу не игранные, одно десятилетие или один жанр; НАУГАД выбирает из показанных',
+    '<b>Альбомы слушаются альбомами</b>: начатый с первой песни и брошенный на середине получает закладку-ленточку на корешке и ПРОДОЛЖИТЬ &middot; ТРЕК n в коробке; дослушанный до конца &mdash; надпись &laquo;целиком &times;n&raquo; на задней обложке буклета',
+    '<b>Перенесённые песни сохраняют историю</b>: музыка, переложенная в другую папку или на другой диск, находится снова, и ПЕРЕНЕСТИ ИСТОРИЮ переносит её прослушивания, пыль и ИСТОРИЮ',
+    '<b>РЕЗЕРВНАЯ КОПИЯ</b> в Настройках &rarr; БИБЛИОТЕКА: очередь, история, прослушивания, заметки, темы и настройки в одном файле .cdbackup &mdash; для нового компьютера или после переустановки',
+    '<b>ВЕРНУТЬ ИСХОДНЫЕ</b> в панели тегов: теги, которые были в файле до того, как CDPlayer впервые их переписал',
+  ] } },
   { version: '2.17.3', changes: [
     '<b>The square video&rsquo;s lyrics</b> start below the song&rsquo;s name: a long title on two lines no longer runs the album line into them',
   ], changesIn: { ru: [
