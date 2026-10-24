@@ -394,3 +394,34 @@ test('SKIP: a disc whose last songs are passed over is finished at the one befor
   const shuffled = markFinished(markFinished(c, 0, { shuffle: 'DISC', skip }), 1, { shuffle: 'DISC', skip });
   assert.strictEqual(shuffled.slots[0].done, true, 'shuffled: every one to play has played');
 });
+
+test('the playing disc ejected onto PLAY NEXT\'s: the mark is taken off it, so the changer goes on past it', async () => {
+  const { nextIndex, markFinished } = await import('../src/renderer/js/changer.js');
+  let c = load(fill(3), disc('n'), ['n1', 'n2'], { next: true }).changer; // slot 3, marked
+  c = { ...c, index: 2 }; // on slot 1
+  c = eject(c, 1);
+  assert.strictEqual(c.queue[c.index], 'n1', 'on to the disc marked');
+  assert.strictEqual(c.nextDisc, null, 'no longer marked');
+  c = { ...markFinished({ ...c, index: c.index + 1 }, c.index + 1), index: c.index + 1 }; // its last song played
+  assert.strictEqual(c.queue[nextIndex(c, { repeat: 'ALL' })], 'd0/1', 'on round the changer, not that disc again');
+  assert.ok(check(c));
+});
+
+test('SHUFFLE DISC: a disc just finished isn\'t gone round again — on to the next (REPEAT DISC: round again)', async () => {
+  const { nextIndex, markFinished } = await import('../src/renderer/js/changer.js');
+  let c = { ...fill(2), index: 0 };
+  c = markFinished(c, 0, { shuffle: 'DISC' });
+  c = { ...markFinished({ ...c, index: 1 }, 1, { shuffle: 'DISC' }), index: 1 }; // both its songs: finished, its round over
+  assert.ok(c.slots[0].done);
+  assert.ok(['d1/1', 'd1/2'].includes(c.queue[nextIndex(c, { shuffle: 'DISC' })]), 'the next disc');
+  assert.strictEqual(c.queue[nextIndex(c, { shuffle: 'DISC', repeat: 'DISC' }, () => 0)], 'd0/1', 'REPEAT DISC: the same disc');
+});
+
+test('a slot played from its first song not marked SKIP', async () => {
+  const { playSlot } = await import('../src/renderer/js/changer.js');
+  const c = fill(2);
+  assert.strictEqual(playSlot(c, 1), 2);
+  assert.strictEqual(playSlot(c, 1, (i) => i === 2), 3, 'its first skipped');
+  assert.strictEqual(playSlot(c, 1, () => true), 2, 'all skipped: its first, asked for');
+  assert.strictEqual(playSlot(c, 3, () => false), -1, 'empty');
+});

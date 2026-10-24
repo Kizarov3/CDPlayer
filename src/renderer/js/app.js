@@ -1192,7 +1192,7 @@ function discSkip() {
 /** A slot's disc (1–5, or a click on it in the carousel), from its first song. */
 function playSlot(slot) {
   if (!state.changerMode) return;
-  const to = changer.playSlot(ch(), slot);
+  const to = changer.playSlot(ch(), slot, isSkipped);
   if (to >= 0) goTo(to); else setStatus(t('SLOT {n} IS EMPTY', { n: slot + 1 }));
 }
 // The playing song has played to its end: the changer notes it (a disc is finished at its last song).

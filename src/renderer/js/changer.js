@@ -136,7 +136,9 @@ export function eject(c, slot, modes = {}, rnd = Math.random) {
   }
   const entries = entriesOf(c);
   entries[slot] = null;
-  return build(entries, stand, c.nextDisc === slot ? null : c.nextDisc);
+  const out = build(entries, stand, c.nextDisc === slot ? null : c.nextDisc);
+  // On to another disc: stood on as any disc moved to is (PLAY NEXT's mark off it, a finished one not finished).
+  return here && here.slot === slot && out.index >= 0 ? moveTo(out, out.index, modes.skip) : out;
 }
 
 /** Files gone from the disk leave their discs (an emptied disc frees its slot); the changer stays on the same song. */
@@ -205,7 +207,8 @@ export function nextIndex(c, { shuffle = 'OFF', repeat = 'OFF', skip = NONE } = 
     return any.length ? pick(any, rnd) : itself;
   }
   if (shuffle === 'DISC') {
-    const left = fresh(d, skip).filter((k) => k !== here.offset);
+    // (a disc just finished has nothing fresh: its next round begins only if it's played again, or REPEAT DISC)
+    const left = d.done ? [] : fresh(d, skip).filter((k) => k !== here.offset);
     if (left.length) return d.start + pick(left, rnd);
     if (repeat === 'DISC') { const others = playable(d, skip).filter((k) => k !== here.offset); return others.length ? d.start + pick(others, rnd) : itself; }
   } else {
@@ -264,7 +267,13 @@ export function discSkip(c, { shuffle = 'OFF', skip = NONE } = {}, rnd = Math.ra
 }
 
 /** A slot's button (or a click on its disc): its first song, or -1 for an empty slot. */
-export const playSlot = (c, slot) => (c.slots[slot] ? c.slots[slot].start : -1);
+/** A slot's disc from its first song — its first not passed over (`skip`), when it has one. */
+export function playSlot(c, slot, skip = null) {
+  const d = c.slots[slot];
+  if (!d) return -1;
+  const first = skip ? playable(d, skip)[0] : null;
+  return d.start + (first ?? 0);
+}
 
 /** The changer stands on `index`: PLAY NEXT's disc, reached, is no longer marked; a finished disc played again isn't. */
 export function moveTo(c, index, skip = NONE) {
