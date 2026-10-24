@@ -2564,8 +2564,11 @@ function onKeyDown(e) {
     e.preventDefault(); if (undoClear) undoClearQueue(); else undoEjectSlot(); return;
   }
   if (state.changerMode && (e.metaKey || e.ctrlKey) && e.code === 'KeyZ' && !e.shiftKey && !isTyping(e)) { e.preventDefault(); setStatus(t('NOTHING TO BRING BACK')); return; }
-  // ⌘/Ctrl+O opens songs, ⌘/Ctrl+, the settings: a desktop app's own keys (no menu bar has them; Windows and Linux
-  // have no menu bar at all).
+  // ⌘/Ctrl+O opens songs, ⌘/Ctrl+, the settings, ⌘/Ctrl+K the search (as /, the key other apps use for it): a
+  // desktop app's own keys (no menu bar has them; Windows and Linux have no menu bar at all).
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === 'KeyK' && !anyOverlayOpen()) {
+    e.preventDefault(); if (!e.repeat) panels.showSearch(app); return;
+  }
   if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.code === 'KeyO' || e.code === 'Comma') && !anyOverlayOpen()) {
     e.preventDefault(); if (!e.repeat) $(e.code === 'KeyO' ? 'load-button' : 'settings-button').click(); return;
   }
