@@ -210,13 +210,13 @@ export function nextIndex(c, { shuffle = 'OFF', repeat = 'OFF', skip = NONE } = 
     // (a disc just finished has nothing fresh: its next round begins only if it's played again, or REPEAT DISC)
     const left = d.done ? [] : fresh(d, skip).filter((k) => k !== here.offset);
     if (left.length) return d.start + pick(left, rnd);
-    if (repeat === 'DISC') { const others = playable(d, skip).filter((k) => k !== here.offset); return others.length ? d.start + pick(others, rnd) : itself; }
+    if (repeat === 'DISC') { const others = playable(d, skip).filter((k) => k !== here.offset); if (others.length || itself >= 0) return others.length ? d.start + pick(others, rnd) : itself; }
   } else {
     const after = playable(d, skip).find((k) => k > here.offset);
     if (after != null) return d.start + after;
-    if (repeat === 'DISC') { const first = playable(d, skip)[0]; return first != null ? d.start + first : -1; }
+    if (repeat === 'DISC') { const first = playable(d, skip)[0]; if (first != null) return d.start + first; }
   }
-  // The next disc (PLAY NEXT's first) with a song to play.
+  // The next disc (PLAY NEXT's first) with a song to play. (REPEAT DISC gets here only on a disc with none to play.)
   for (const to of discsOnFrom(c, here.slot, repeat === 'ALL', true)) {
     const n = c.slots[to], l = playable(n, skip);
     if (!l.length) continue;

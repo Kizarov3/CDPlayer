@@ -425,3 +425,12 @@ test('a slot played from its first song not marked SKIP', async () => {
   assert.strictEqual(playSlot(c, 1, () => true), 2, 'all skipped: its first, asked for');
   assert.strictEqual(playSlot(c, 3, () => false), -1, 'empty');
 });
+
+test('REPEAT DISC on a disc whose songs are all marked SKIP: nothing to repeat — on to the next disc', async () => {
+  const { nextIndex } = await import('../src/renderer/js/changer.js');
+  const c = { ...fill(2), index: 0 }; // played as asked, though skipped
+  const skip0 = (i) => i < 2;
+  assert.strictEqual(nextIndex(c, { repeat: 'DISC', skip: skip0 }), 2);
+  assert.strictEqual(nextIndex(c, { shuffle: 'DISC', repeat: 'DISC', skip: skip0 }, () => 0), 2);
+  assert.strictEqual(nextIndex(c, { repeat: 'DISC' }), 1, 'a disc with songs to play: round it');
+});

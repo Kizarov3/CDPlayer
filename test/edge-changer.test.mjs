@@ -38,9 +38,9 @@ test('SKIP: a one-song disc passed over — going on, going back and DISC SKIP a
   assert.strictEqual(previousIndex(at(c, 3), skip), 1, 'b1 ← a2');
   assert.strictEqual(discSkip(c, { skip }), 3, 'a → b, s passed over');
   subset(sweep((rnd) => nextIndex(withSlot(at(c, 1), 0, { played: [0] }), { shuffle: 'DISC', skip }, rnd)), [3, 4], 'SHUFFLE DISC on to the next disc with one to play');
-  // s1 picked by hand under REPEAT DISC: its disc has nothing to play again
-  assert.strictEqual(nextIndex(at(c, 2), { repeat: 'DISC', skip }), -1);
-  assert.strictEqual(nextIndex(at(c, 2), { shuffle: 'DISC', repeat: 'DISC', skip }, () => 0), -1);
+  // s1 picked by hand under REPEAT DISC: its disc has nothing to play again — on to the next
+  assert.strictEqual(nextIndex(at(c, 2), { repeat: 'DISC', skip }), 3);
+  assert.strictEqual(nextIndex(at(c, 2), { shuffle: 'DISC', repeat: 'DISC', skip }, () => 0), 3);
   assert.strictEqual(nextIndex(at(c, 2), { skip }), 3, 'picked by hand: on to b1 at its end');
 });
 
