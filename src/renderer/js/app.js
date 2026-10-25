@@ -7,7 +7,7 @@ import { snapshot as remoteSnapshot, fullSlots, commandError, isStale, musicKey 
 import { Disc } from './disc.js';
 import { Visualizer } from './visualizer.js';
 import { Particles } from './particles.js';
-import { anim, EASE, el, pill, roundButton, modeButton, Slider, fitText, pulse } from './widgets.js';
+import { anim, EASE, el, pill, roundButton, modeButton, Slider, fitText, pulse, followPlaying } from './widgets.js';
 import { openBooklet, closeBooklet } from './booklet.js';
 import { withoutHeader, parseLrc, currentLineIndex, heardPosition, playbackTimeFor, looksOnlineFor, takesOnline } from './lyrics.js';
 import { shortcutKey } from './keys.js';
@@ -379,10 +379,11 @@ function renderQueueList() {
     return row;
   });
   const ghost = ghostRow();
+  const was = list.querySelector('.queue-row.active')?.offsetTop ?? null;
   list.replaceChildren(...(ghost ? [...rows.slice(0, state.index + 1), ghost, ...rows.slice(state.index + 1)] : rows));
   list.scrollTop = scrollTop;
   // The song playing moved on: the list follows it, if it went out of sight (scrolling by hand is left alone otherwise).
-  if (state.index !== shownIndex && drag.index < 0 && rows[state.index]) rows[state.index].scrollIntoView({ block: 'center' }); // the next songs in sight too
+  if (state.index !== shownIndex && drag.index < 0) followPlaying(rows[state.index], was, list); // the next songs in sight too
   shownIndex = state.index;
 }
 let shownIndex = -1;
@@ -3138,6 +3139,7 @@ async function start() {
   switchTheme(themeIndex, { instant: true });
   setTrackTitle(t('Pick a track to get started.'), null);
   renderQueue();
+  deckDisplay.powerOn();
   requestAnimationFrame(frame);
   setInterval(playbackTick, 40);
   cdp.remoteStatus().then(onRemoteStatus).catch(() => {});

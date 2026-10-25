@@ -55,6 +55,11 @@ function drawCells(g, text, h, lit, ghost) {
     x += step;
   }
 }
+// A lamp's way of coming on: a flash past full, then settling (the track number changing; the display at start)
+const FLICKER = [{ opacity: 0.15 }, { opacity: 1, filter: 'brightness(1.6)', offset: 0.35 }, { opacity: 0.7, offset: 0.55 }, { opacity: 1, filter: 'none' }];
+// (animations off in Settings: body.no-anim)
+const moving = () => typeof document !== 'undefined' && !document.body.classList.contains('no-anim') && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 // (the last digit's gap after it isn't part of it: the time lines up with what's above it)
 const cellsWidth = (text, h) => [...text].reduce((sum, ch) => sum + (ch === ':' ? h * 0.32 : h * 0.72), 0) - (text.endsWith(':') ? 0 : h * 0.16) + h * SLANT;
 
@@ -62,7 +67,17 @@ export class DeckDisplay {
   constructor({ track, time, of, total, flags, elapsed = null, length = null }) {
     Object.assign(this, { trackCanvas: track, timeCanvas: time, ofNode: of, totalNode: total, flags, elapsedNode: elapsed, lengthNode: length });
     this.shown = { track: null, time: null, color: null };
-    this.track = '--'; this.time = timeCells(0); this.left = false;
+    this.track = '--'; this.time = timeCells(0); this.left = false; this.lampTest = false;
+  }
+  /** The display switched on, once at start: every segment and flag lit for a moment, then what it shows. */
+  powerOn() {
+    if (!moving()) return;
+    this.lampTest = true; this.draw();
+    for (const node of this.flags) node.classList.add('lit');
+    setTimeout(() => {
+      this.lampTest = false; this.draw(); this.setFlags(this.on || {});
+      for (const canvas of [this.trackCanvas, this.timeCanvas]) canvas.animate(FLICKER, { duration: 360, easing: 'ease-out' });
+    }, 420);
   }
   setTrack(n, of) {
     this.track = trackCells(n);
@@ -82,6 +97,8 @@ export class DeckDisplay {
   }
   setFlags({ playing, paused, shuffle, repeat, repeatOne, net }) {
     const on = { play: playing, pause: paused, shuffle, repeat, one: repeatOne, net };
+    this.on = arguments[0];
+    if (this.lampTest) return;
     for (const node of this.flags) node.classList.toggle('lit', !!on[node.dataset.flag]);
   }
   // The theme's colour moved (a theme change fades): drawn again in it.
@@ -89,8 +106,13 @@ export class DeckDisplay {
   draw() {
     const color = `${colors.accent.join(',')}@${window.devicePixelRatio || 1}`; // (moved to a sharper screen: drawn again)
     if (this.shown.color !== color) { this.shown = { track: null, time: null, color }; }
-    if (this.shown.track !== this.track) { this.paint(this.trackCanvas, this.track, color); this.shown.track = this.track; }
-    if (this.shown.time !== this.time) { this.paint(this.timeCanvas, this.time, color); this.shown.time = this.time; }
+    const lit = (text) => (this.lampTest ? text.replace(/[^:]/g, '8') : text), track = lit(this.track), time = lit(this.time);
+    if (this.shown.track !== track) {
+      // another track: its number flickers on (not at the lamp test, nor drawn again in a theme's colour: shown is null)
+      if (this.shown.track !== null && !this.lampTest && this.shown.track !== '88' && moving()) this.trackCanvas.animate(FLICKER, { duration: 320, easing: 'ease-out' });
+      this.paint(this.trackCanvas, track, color); this.shown.track = track;
+    }
+    if (this.shown.time !== time) { this.paint(this.timeCanvas, time, color); this.shown.time = time; }
   }
   paint(canvas, text, key) {
     const color = key.split('@')[0];

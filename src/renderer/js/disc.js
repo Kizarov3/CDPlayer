@@ -15,7 +15,7 @@ const SIZES = {
 };
 const EJECT_OUT = 300, EJECT_HOLD = 180, EJECT_BACK = 320;
 const TRAY_MS = 650;     // the tray motor, one way
-const SPIN_TAU_MS = 260; // how quickly the disc gets up to speed or winds down (READING spins up slower)
+const SPIN_TAU_MS = 380, WIND_DOWN_TAU_MS = 700; // how quickly the disc gets up to speed, and winds down (READING spins up slower)
 const ART_MS = 340;
 const FLIP_MS = 460;     // turning the disc over
 const MARKER_FONT = '"Marker Felt", "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive';
@@ -541,7 +541,7 @@ export class Disc {
     if (!r.width || !r.height) return null;
     const pw = Math.round(r.width * dpr), ph = Math.round(r.height * dpr);
     if (cnv.width !== pw || cnv.height !== ph) { cnv.width = pw; cnv.height = ph; }
-    const tau = this.reading ? SPIN_TAU_MS * 3 : SPIN_TAU_MS;
+    const tau = this.reading ? SPIN_TAU_MS * 3 : this.spinning ? SPIN_TAU_MS : WIND_DOWN_TAU_MS;
     this.speed += ((this.spinning ? 1 : 0) - this.speed) * (1 - Math.exp(-dt / tau));
     if (this.speed < 0.002 && !this.spinning) this.speed = 0;
     if (this.fling) {

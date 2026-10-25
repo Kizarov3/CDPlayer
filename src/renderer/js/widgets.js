@@ -207,3 +207,16 @@ export function fitText(node, text, maxWidth, startSize, minSize, bold) {
   node.textContent = text;
   node.title = text;
 }
+
+const still = () => !anim.enabled || matchMedia('(prefers-reduced-motion: reduce)').matches;
+/**
+ * The song playing moved on in a list: the list scrolls to its row (gently), and the highlight slides there from the
+ * row that was (`fromTop`, that row's offsetTop) — when that was near.
+ */
+export function followPlaying(row, fromTop, list) {
+  if (!row) return;
+  row.scrollIntoView({ block: 'center', behavior: still() ? 'auto' : 'smooth' });
+  const dy = fromTop - row.offsetTop;
+  if (fromTop === null || still() || !dy || Math.abs(dy) > list.clientHeight * 2) return;
+  row.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 360, easing: EASE.out, pseudoElement: '::before' });
+}

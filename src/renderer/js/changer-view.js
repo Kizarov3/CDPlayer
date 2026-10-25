@@ -1,6 +1,6 @@
 // The changer's carousel, seen from above: five slots round a tray, each disc with its cover printed on it, the
 // playing one turned to the laser on the side facing the big disc. Under it, the playing disc's tracklist.
-import { el } from './widgets.js';
+import { el, followPlaying } from './widgets.js';
 import { trayAngle } from './changer.js';
 import { t } from './i18n.js';
 
@@ -45,7 +45,8 @@ export function createChangerView(root, { tray, heading, list, onPlaySlot, onPla
     });
     turnTo(view.playingSlot);
     heading.textContent = view.heading;
-    const scrollTop = list.scrollTop;
+    const scrollTop = list.scrollTop, was = list.querySelector('.queue-row.active');
+    if (was) lastActive = { key: shownKey, top: was.offsetTop }; // (kept through the renders while the next one loads)
     // (A track's `ghost`: a hidden track's row under its song, made by the player as it is.)
     list.replaceChildren(...view.tracks.map((tr) => tr.ghost || el('div', { class: `queue-row${tr.current ? ' active' : ''}${tr.skipped ? ' skipped' : ''}`, title: t('Play {song}', { song: tr.title }), onClick: () => onPlayTrack(tr.index) },
       el('span', { class: 'num' }, `${tr.no}.`), el('span', { class: 'entry' }, tr.title), el('span', { class: 'east' }, el('span', { class: 'duration' }, tr.time)))));
@@ -54,9 +55,11 @@ export function createChangerView(root, { tray, heading, list, onPlaySlot, onPla
     const now = view.tracks.find((tr) => tr.current);
     const key = now ? `${view.playingSlot}:${now.index}` : null;
     if (!list.offsetParent) { shownKey = null; return; } // not on screen (queue mode): scrolled to it when it's back
-    if (key && key !== shownKey) { const row = list.querySelector('.queue-row.active'); if (row) row.scrollIntoView({ block: 'center' }); }
+    // (the highlight slides from the song before only on the same disc)
+    const sameDisc = lastActive && lastActive.key && lastActive.key.split(':')[0] === key?.split(':')[0];
+    if (key && key !== shownKey) followPlaying(list.querySelector('.queue-row.active'), sameDisc ? lastActive.top : null, list);
     shownKey = key;
   }
-  let shownKey = null;
+  let shownKey = null, lastActive = null;
   return { render, turnTo };
 }

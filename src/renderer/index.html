@@ -45,22 +45,24 @@
         <div id="track-title" class="fit" data-i18n>Pick a track to get started.</div>
         <div id="track-artist" class="fit" hidden></div>
         <div id="source-row"><span id="hidden-badge" hidden data-i18n>HIDDEN</span><span id="quality-badge" hidden></span><span id="soundcheck-badge" hidden></span><div id="track-source" data-i18n>YOUR MUSIC LIBRARY</div></div>
-        <div id="progress-row"></div>
-        <div id="deck-display">
-          <div class="vfd-track"><span class="vfd-label" data-i18n>TRACK</span><div class="vfd-digits"><canvas id="vfd-track" data-h="26"></canvas><span id="vfd-of"></span></div></div>
-          <div class="vfd-flags"><span class="vfd-flag" data-flag="play" data-i18n>PLAY|display</span><span class="vfd-flag" data-flag="pause" data-i18n>PAUSE|display</span><span class="vfd-flag" data-flag="shuffle" data-i18n>SHUFFLE|display</span><span class="vfd-flag" data-flag="repeat" data-i18n>REPEAT|display</span><span class="vfd-flag" data-flag="one">1</span></div>
-          <div class="vfd-time" id="vfd-time-button" title="Click: the time left in the song, or how far in it is" data-i18n-title><span id="vfd-total" class="vfd-label"><span data-i18n>TOTAL|display</span><span> --:--</span></span><canvas id="vfd-time" data-h="26"></canvas></div>
-          <span class="vfd-flag" data-flag="net" title="Streamed: the sound comes over the internet" data-i18n-title data-i18n>NET|display</span>
-        </div>
-        <div id="times"><span id="elapsed">0:00</span><span id="length" title="Click: the time left in the song, or its length" data-i18n-title>0:00</span></div>
-        <div id="controls"><div id="transport"></div></div>
-        <div id="volume-row" class="slider-row">
-          <span class="row-label" data-i18n>VOLUME</span>
-          <div id="volume-slider"></div>
-          <span class="row-value" id="volume-value">100%</span>
-          <span class="grow"></span>
-          <button class="pill small" id="tray-button" title="Open / close the disc tray (E)" data-i18n-title>⏏</button>
-          <button class="pill" id="load-button" data-i18n>LOAD A TRACK&nbsp;&nbsp;+</button>
+        <div id="faceplate">
+          <div id="progress-row"></div>
+          <div id="deck-display">
+            <div class="vfd-track"><span class="vfd-label" data-i18n>TRACK</span><div class="vfd-digits"><canvas id="vfd-track" data-h="26"></canvas><span id="vfd-of"></span></div></div>
+            <div class="vfd-flags"><span class="vfd-flag" data-flag="play" data-i18n>PLAY|display</span><span class="vfd-flag" data-flag="pause" data-i18n>PAUSE|display</span><span class="vfd-flag" data-flag="shuffle" data-i18n>SHUFFLE|display</span><span class="vfd-flag" data-flag="repeat" data-i18n>REPEAT|display</span><span class="vfd-flag" data-flag="one">1</span></div>
+            <div class="vfd-time" id="vfd-time-button" title="Click: the time left in the song, or how far in it is" data-i18n-title><span id="vfd-total" class="vfd-label"><span data-i18n>TOTAL|display</span><span> --:--</span></span><canvas id="vfd-time" data-h="26"></canvas></div>
+            <span class="vfd-flag" data-flag="net" title="Streamed: the sound comes over the internet" data-i18n-title data-i18n>NET|display</span>
+          </div>
+          <div id="times"><span id="elapsed">0:00</span><span id="length" title="Click: the time left in the song, or its length" data-i18n-title>0:00</span></div>
+          <div id="controls"><div id="transport"></div></div>
+          <div id="volume-row" class="slider-row">
+            <span class="row-label" data-i18n>VOLUME</span>
+            <div id="volume-slider"></div>
+            <span class="row-value" id="volume-value">100%</span>
+            <span class="grow"></span>
+            <button class="pill small" id="tray-button" title="Open / close the disc tray (E)" data-i18n-title>⏏</button>
+            <button class="pill" id="load-button" data-i18n>LOAD A TRACK&nbsp;&nbsp;+</button>
+          </div>
         </div>
         <div id="queue-card">
           <div id="queue-head">

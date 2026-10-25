@@ -42,7 +42,7 @@ button { font-family: inherit; outline: none; }
   position: fixed; inset: 0; z-index: 0;
   background: linear-gradient(to bottom, rgb(28, 28, 31), rgb(9, 9, 10));
 }
-#backdrop-art { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 400ms; }
+#backdrop-art { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 400ms; filter: saturate(.7) brightness(.85); } /* (a wash, not a second picture) */
 #backdrop.has-art #backdrop-art { opacity: 1; }
 /* A theme's own background image (themes people make), blurred and dimmed by the theme; it replaces the cover's glow. */
 #backdrop-theme { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 400ms; }
@@ -75,17 +75,16 @@ button { font-family: inherit; outline: none; }
 #rip-button.ripping { color: rgb(var(--accent)); font-variant-numeric: tabular-nums; }
 #phone-tag { color: rgb(var(--accent2)); } /* while a phone is connected */
 #update-button { color: rgb(var(--accent)); font-variant-numeric: tabular-nums; }
-#status-pill {
-  justify-self: center;
-  padding: 7px 16px; border-radius: 999px; /* a pill like the buttons beside it, but sunk in: it's a display, not a button */
-  background: rgba(0, 0, 0, .4); border: 1px solid rgba(255, 255, 255, .08); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .5);
-  white-space: nowrap;
-}
-#status { color: rgb(var(--accent)); font-size: 11px; }
+#status-pill { justify-self: center; padding: 7px 16px; white-space: nowrap; } /* words, not a button */
+#status { color: rgb(var(--accent)); font-size: 12px; letter-spacing: .04em; }
 #header-east { justify-self: end; display: flex; gap: 8px; align-items: center; }
+/* The header's buttons are words: the eye goes to the song, not to a row of pills */
+#header .pill { background: none; box-shadow: none; padding: 7px 6px; font-size: 11.5px; letter-spacing: .06em; }
+#header .pill:hover { background: none; color: rgb(var(--text)); }
+#header .pill.on { color: rgb(var(--bg)); padding: 7px 12px; }
 #sleep-indicator { flex: none; white-space: nowrap; padding: 0 4px; color: rgb(var(--muted)); font-size: 10px; font-variant-numeric: tabular-nums; cursor: pointer; } /* one line, beside the buttons */
 #sleep-indicator:empty { display: none; }
-#divider { display: block; width: 100%; height: 14px; }
+#divider { display: none; }
 
 #body {
   flex: 1 1 auto; min-height: 0;
@@ -117,19 +116,31 @@ body.cd-view #cd-info { display: block !important; }
 #queue-card > * { flex-shrink: 0; }
 #queue-card > #queue-list { flex-shrink: 1; }
 #now-row { display: flex; align-items: center; gap: 6px; min-height: 32px; }
-#now-playing-label { color: rgb(var(--accent2)); font-size: 11px; margin-right: 12px; }
-#visualizer { width: 56px; height: 22px; }
-#track-title { margin-top: 12px; height: 44px; line-height: 44px; font-size: 34px; color: rgb(var(--text)); }
-#track-artist { margin-top: 4px; height: 20px; line-height: 20px; font-size: 15px; font-weight: normal; color: rgb(var(--accent2)); }
+#now-playing-label, #visualizer { display: none; } /* (the title under it says as much) */
+#now-row .pill, #volume-row .pill { background: none; box-shadow: none; }
+#now-row .pill:hover, #volume-row .pill:hover { background: rgba(255, 255, 255, .06); color: rgb(var(--text)); }
+#track-title { margin-top: 6px; height: 60px; line-height: 60px; font-size: 48px; letter-spacing: -.02em; color: rgb(var(--text)); }
+#track-artist { margin-top: 2px; height: 26px; line-height: 26px; font-size: 19px; font-weight: normal; color: rgb(var(--accent2)); }
 #source-row { margin-top: 6px; display: flex; align-items: center; gap: 8px; min-width: 0; }
 #hidden-badge, #quality-badge, #soundcheck-badge { flex: none; height: 16px; line-height: 16px; padding: 0 6px; border-radius: 4px; font-size: 10px; letter-spacing: 0.06em; color: rgb(var(--text)); background: rgba(var(--text), 0.12); cursor: default; }
 #quality-badge.dim, #soundcheck-badge.dim { opacity: 0.45; }
 #track-source { min-width: 0; height: 16px; line-height: 16px; font-size: 12px; font-weight: normal; color: rgb(var(--muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fit { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.fade-in { animation: fadeIn 260ms var(--ease-out); }
+.fade-in { animation: fadeIn 420ms var(--ease-out) backwards; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+/* A new song: its name rises into place, then who it's by, then where it's from */
+#player .fade-in { animation-name: riseIn; }
+#track-artist.fade-in { animation-delay: 50ms; }
+#track-source.fade-in { animation-delay: 100ms; }
+@keyframes riseIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
-#progress-row { margin-top: 24px; height: 20px; }
+/* The faceplate: seek bar, display and keys on one panel, as on a deck */
+#faceplate {
+  margin: 20px -20px 0; padding: 18px 20px 12px; border-radius: 14px; /* (out past the column: what's on it lines up with the title) */
+  background: linear-gradient(rgba(255, 255, 255, .065), rgba(255, 255, 255, .025));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .11), inset 0 0 0 1px rgba(255, 255, 255, .07), 0 18px 40px rgba(0, 0, 0, .3);
+}
+#progress-row { height: 20px; }
 /* The deck's display (deck-display.js): a window sunk into the panel, its glass faintly ruled like a VFD's mesh; what's
    on it glows in the theme's colour, what's off is there faintly. */
 #deck-display {
@@ -160,10 +171,10 @@ body.classic-display #times { display: flex; }
 body.classic-display #deck-display { display: none; }
 #cd-info #deck-display { width: 460px; max-width: 100%; margin: 14px auto 0; text-align: left; }
 /* One row: shuffle · skip back · previous · PLAY · next · skip forward · repeat, centered in the column. */
-#controls { margin-top: 16px; display: flex; justify-content: center; align-items: center; min-height: 68px; }
+#controls { margin-top: 12px; display: flex; justify-content: center; align-items: center; min-height: 68px; }
 #transport { display: flex; align-items: center; }
 .slider-row { display: flex; align-items: center; height: 20px; }
-#volume-row { margin-top: 16px; height: 30px; }
+#volume-row { margin-top: 8px; height: 30px; }
 .row-label { font-size: 10px; color: rgb(var(--muted)); margin-right: 10px; }
 .row-value { font-size: 10px; color: rgb(var(--muted)); margin-left: 8px; min-width: 36px; }
 #volume-slider { width: 120px; height: 20px; }
@@ -177,7 +188,10 @@ body.classic-display #deck-display { display: none; }
 }
 #queue-head { margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 #queue-text { flex: 1 1 220px; min-width: 200px; display: flex; flex-direction: column; gap: 5px; }
-#queue-actions { flex: 0 1 auto; margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; }
+#queue-actions { flex: 0 1 auto; margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 2px; opacity: .75; transition: opacity 200ms ease; }
+#queue-card:hover #queue-actions, #queue-actions:focus-within { opacity: 1; } /* there when wanted, quiet otherwise */
+#queue-actions .pill { background: none; box-shadow: none; padding: 6px 8px; color: rgb(var(--accent2)); }
+#queue-actions .pill:hover { background: rgba(255, 255, 255, .06); color: rgb(var(--text)); }
 #queue-info { font-size: 10px; color: rgb(var(--muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #queue-next { font-size: 9px; color: rgb(var(--muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #queue-list { margin-top: 10px; flex: 1 1 auto; min-height: 60px; }
@@ -198,7 +212,9 @@ body.classic-display #deck-display { display: none; }
 .queue-row.ghost { padding-left: 36px; font-style: italic; opacity: .7; cursor: default; } /* a hidden track, under its song */
 .queue-row.ghost.found { cursor: pointer; }
 .queue-row:hover { color: rgb(var(--text)); }
-.queue-row.active { color: rgb(var(--accent)); background: rgba(var(--accent), .10); font-weight: bold; }
+.queue-row { position: relative; isolation: isolate; }
+.queue-row.active { color: rgb(var(--accent)); font-weight: bold; }
+.queue-row.active::before { content: ""; position: absolute; inset: -1px 0; z-index: -1; border-radius: 4px; background: rgba(var(--accent), .10); } /* (its own layer: it glides to the next song) */
 .queue-row.active .duration { color: rgb(var(--accent2)); }
 .queue-row.dragging { border-top-color: rgb(var(--accent)); border-bottom-color: rgb(var(--accent)); }
 
@@ -254,6 +270,8 @@ body.cursor-hidden #cd-exit { opacity: 0; }
   transition: background var(--hover) ease;
 }
 .round:hover { background: rgba(255, 255, 255, .086); }
+.round:not(.primary):not(.on) { background: none; box-shadow: none; } /* only PLAY is a key: the rest are its marks */
+.round:not(.primary):not(.on):hover { background: rgba(255, 255, 255, .07); }
 .round svg { display: block; overflow: visible; }
 .round.primary { /* one colour (two blended went muddy: red into green on SNOW), lit along its top edge like a real key */
   color: rgb(var(--bg));
@@ -307,7 +325,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 }
 .overlay.closing .card { animation: cardOut var(--anim-out) var(--ease-in) forwards; }
 /* A panel rises a touch as it comes, and sinks a touch as it goes — no big zoom. */
-@keyframes cardIn { from { opacity: 0; transform: translateY(10px) scale(.975); } to { opacity: 1; transform: none; } }
+@keyframes cardIn { from { opacity: 0; transform: translateY(18px) scale(.985); } to { opacity: 1; transform: none; } } /* up, like a tray coming out */
 @keyframes cardOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(6px) scale(.985); } }
 .card h1 { margin: 0; font-size: 16px; color: rgb(var(--accent)); font-weight: bold; }
 .card .subtitle { margin-top: 6px; font-size: 11px; color: rgb(var(--muted)); }
@@ -990,8 +1008,8 @@ kbd {
   font: bold 11px var(--font, inherit); color: rgb(var(--text)); background: rgba(var(--text), .1); box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .4);
 }
 .help-pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
-#hint b { color: rgb(var(--accent2)); cursor: pointer; }
-body.keys-learnt #hint-keys { display: none; } /* the keys used a few times: just ? ALL KEYS */
+#hint b { color: rgb(var(--accent2)); cursor: pointer; font-size: 11px; }
+#hint-keys, body.keys-learnt #hint-keys { display: none; } /* the keys used a few times: just ? ALL KEYS */
 #karaoke-close { position: absolute; top: 18px; right: 24px; z-index: 2; }
 
 /* LIBRARY CHECK (panels.js): groups that open into rows — what, where, and the buttons to fix or show it. */
