@@ -110,6 +110,7 @@ contextBridge.exposeInMainWorld('cdp', {
   reportInfo: invoke('app:reportInfo'),
   scrobbleSignIn: invoke('scrobble:signIn'),
   scrobbleSignOut: invoke('scrobble:signOut'),
+  scrobbleConnectLastfm: invoke('scrobble:connectLastfm'),
   openListenBrainz: invoke('scrobble:openTokenPage'),
   scrobbleNowPlaying: (song) => ipcRenderer.send('scrobble:nowPlaying', song),
   scrobbleHeard: (song) => ipcRenderer.send('scrobble:heard', song),

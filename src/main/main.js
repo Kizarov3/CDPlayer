@@ -646,15 +646,17 @@ handle('app:reportInfo', async (streamingOn) => ({
   gpu: softwareRendering() ? 'software' : 'hardware', folders: store.musicFolders().length,
   ytdlp: streamingOn ? await streaming.available(10000) : null,
 }));
-// Scrobbling to ListenBrainz (scrobble.js): songs heard, and the one playing now; what waited sent every 10 minutes too.
+// Scrobbling to ListenBrainz and Last.fm (scrobble.js): songs heard, and the one playing now; what waited sent every 10
+// minutes too.
 const scrobbler = require('./scrobble').createScrobbler({ store, version: APP_VERSION });
 handle('scrobble:status', () => scrobbler.status());
 handle('scrobble:signIn', (token) => scrobbler.signIn(typeof token === 'string' ? token : ''));
-handle('scrobble:signOut', () => scrobbler.signOut());
+handle('scrobble:connectLastfm', () => scrobbler.connectLastfm((url) => shell.openExternal(url)));
+handle('scrobble:signOut', (service) => scrobbler.signOut(service === 'lastfm' ? 'lastfm' : 'listenbrainz'));
 handle('scrobble:openTokenPage', () => shell.openExternal('https://listenbrainz.org/settings/'));
 ipcMain.on('scrobble:nowPlaying', (_e, song) => { if (!smokeDir) scrobbler.nowPlaying(song || {}); });
 ipcMain.on('scrobble:heard', (_e, song) => { if (!smokeDir) scrobbler.scrobble(song || {}); });
-setInterval(() => { if (scrobbler.status().waiting) scrobbler.flush(); }, 10 * 60e3);
+setInterval(() => { if (Object.values(scrobbler.status()).some((s) => s.waiting)) scrobbler.flush(); }, 10 * 60e3);
 // Each output's own sound (renderer/js/device-sound.js), by the device's name.
 handle('sound:devices', () => { try { return JSON.parse(store.readText('device-sound.json') || '{}'); } catch { return {}; } });
 handle('sound:saveDevices', (kept) => { if (kept && typeof kept === 'object') store.writeText('device-sound.json', JSON.stringify(kept)); });

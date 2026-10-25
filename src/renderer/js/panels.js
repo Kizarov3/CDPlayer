@@ -181,7 +181,7 @@ export function updateThemeButton(app, name) { if (themeButton) themeButton.last
 let discogsSettings = null, scrobbleSettings = null;
 async function loadDiscogsSettings(app) {
   [discogsSettings, scrobbleSettings] = await Promise.all([app.cdp.discogsSettings().catch(() => null), app.cdp.scrobbleStatus().catch(() => null)]);
-  app.state.scrobbleUser = scrobbleSettings && !scrobbleSettings.dropped ? scrobbleSettings.user || '?' : null;
+  app.noteScrobbling(scrobbleSettings);
 }
 
 export function showSettings(app) {
@@ -260,9 +260,19 @@ function buildSettings(app) {
         await loadDiscogsSettings(app); refreshSettingsIfOpen(app);
       }, t('Paste the token you copied from Discogs'))]));
   // LISTENBRAINZ: scrobbling, signed in with the token from its settings page.
-  const lb = scrobbleSettings;
-  const listenBrainz = el('div', { class: 'row-pills' }, ...(lb && lb.user && !lb.dropped
-    ? [pill(t('SIGN OUT'), async () => { await app.cdp.scrobbleSignOut(); await loadDiscogsSettings(app); refreshSettingsIfOpen(app); }, t('Stop scrobbling to ListenBrainz'))]
+  const lb = scrobbleSettings && scrobbleSettings.listenbrainz, lf = scrobbleSettings && scrobbleSettings.lastfm;
+  const on = (s) => !!(s && s.user && !s.dropped);
+  const signOut = (service) => async () => { await app.cdp.scrobbleSignOut(service); await loadDiscogsSettings(app); refreshSettingsIfOpen(app); };
+  const lastFm = el('div', { class: 'row-pills' }, on(lf)
+    ? pill(t('SIGN OUT'), signOut('lastfm'), t('Stop scrobbling to Last.fm'))
+    : pill(t('CONNECT'), async () => {
+      app.setStatus(t('ALLOW CDPLAYER ON LAST.FM, IN THE BROWSER…'));
+      const r = await app.cdp.scrobbleConnectLastfm().catch(() => ({ error: 'OFFLINE' }));
+      if (r.error !== 'CANCELLED') app.setStatus(r.ok ? t('SCROBBLING TO LAST.FM AS {user}', { user: r.user || '?' }) : r.error === 'NOT_ALLOWED' ? t("LAST.FM WASN'T ALLOWED · TRY AGAIN") : t('LAST.FM UNAVAILABLE'));
+      await loadDiscogsSettings(app); refreshSettingsIfOpen(app);
+    }, t('Opens Last.fm in the browser, to allow CDPlayer to scrobble')));
+  const listenBrainz = el('div', { class: 'row-pills' }, ...(on(lb)
+    ? [pill(t('SIGN OUT'), signOut('listenbrainz'), t('Stop scrobbling to ListenBrainz'))]
     : [pill(t('GET A TOKEN'), () => app.cdp.openListenBrainz(), t('ListenBrainz → Settings → User token')),
       pill(t('PASTE'), async () => {
         const r = await app.cdp.scrobbleSignIn(await app.cdp.clipboardText());
@@ -441,11 +451,13 @@ function buildSettings(app) {
     section(t('SHARING')),
     row(t('DISCORD STATUS'), discord),
     hint(t('Shows the song you’re playing on your Discord profile, while the Discord app is open.')),
+    row(t('LAST.FM'), lastFm),
+    lf && lf.dropped ? hint(t('LAST.FM SIGNED CDPLAYER OUT · CONNECT AGAIN')) : null,
     row(t('LISTENBRAINZ'), listenBrainz),
     lb && lb.dropped ? hint(t('TOKEN NO LONGER WORKS')) : null,
-    hint(lb && lb.user && !lb.dropped
-      ? t('Scrobbling as {user}: each song heard — half of it, or 4 minutes — goes to your ListenBrainz profile, and waits while you’re offline.', { user: lb.user })
-      : t('Scrobbles the songs you hear to your free ListenBrainz profile — your listening history and statistics, kept outside CDPlayer too.')), gap(18),
+    hint(on(lf) || on(lb)
+      ? t('Scrobbling as {who}: each song heard — half of it, or 4 minutes — goes to your profile, and waits while you’re offline.', { who: [on(lf) && `${lf.user} (Last.fm)`, on(lb) && `${lb.user} (ListenBrainz)`].filter(Boolean).join(', ') })
+      : t('Scrobbles the songs you hear to Last.fm or ListenBrainz — your listening history and statistics, kept outside CDPlayer too.')), gap(18),
     section(t('DISCOGS')),
     row(t('TOKEN'), discogsToken), row(t('CURRENCY'), currencyButton),
     discogs && discogs.tokenDropped ? hint(t('TOKEN NO LONGER WORKS')) : null,

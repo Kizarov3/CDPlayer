@@ -2819,9 +2819,11 @@ let sessionTick = 0, miniLevelsAt = 0;
 // Scrobbling (main/scrobble.js): the song playing said once its name is known, and sent as heard once half of it — or
 // 4 minutes — has played, once per time it's loaded. Not Spotify's songs: Spotify sends those itself.
 const SCROBBLE_LONGEST = 240;
+/** Scrobbling while any service is signed in (scrobble:status's answer). */
+function noteScrobbling(status) { state.scrobbling = !!status && Object.values(status).some((s) => s && s.user && !s.dropped); }
 let scrobbleFor = -1, heardMs = 0, heardAt = 0, toldPlaying = false, scrobbled = false;
 function trackScrobble(now) {
-  if (!state.scrobbleUser || !state.loadedPath || isSpotifyUri(state.loadedPath)) return;
+  if (!state.scrobbling || !state.loadedPath || isSpotifyUri(state.loadedPath)) return;
   if (scrobbleFor !== state.loadToken) { scrobbleFor = state.loadToken; heardMs = 0; toldPlaying = scrobbled = false; heardAt = now; }
   heardMs += Math.min(now - heardAt, 200); heardAt = now; // (a pause between two ticks isn't heard)
   const d = state.details, length = engine.duration;
@@ -2936,7 +2938,7 @@ export const app = {
   onFullChanger: (c) => panels.pickDiscToTakeOut(app, c),
   coverSource: () => state.coverFrom || null,
   switchTheme, previewTheme, restoreTheme, shownTheme: () => shownTheme, saveTheme, importTheme, pasteThemeCode, exportTheme, copyThemeCode, deleteTheme,
-  copyReport, setQuality, setSoundCheck, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setAnimations, setCrossfade, setTransition, setEq, armSleepTimer, armSleepAtEnd, setDisplay, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setTaskbarDisc, setOutput, listOutputs, currentOutputName,
+  copyReport, noteScrobbling, setQuality, setSoundCheck, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setAnimations, setCrossfade, setTransition, setEq, armSleepTimer, armSleepAtEnd, setDisplay, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setTaskbarDisc, setOutput, listOutputs, currentOutputName,
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
   menu: (anchor, items, opts) => panels.menu(anchor, items, opts),
@@ -3098,8 +3100,8 @@ async function start() {
   state.taskbarDisc = !!s.taskbarDisc; // its default is the system's (main/store.js)
   state.output = s.output || null;
   state.deviceSounds = {};
-  state.scrobbleUser = null;
-  cdp.scrobbleStatus().then((s) => { state.scrobbleUser = s && !s.dropped ? s.user || '?' : null; }).catch(() => {});
+  state.scrobbling = false;
+  cdp.scrobbleStatus().then(noteScrobbling).catch(() => {});
   cdp.deviceSounds().catch(() => null).then((kept) => { if (kept && typeof kept === 'object') state.deviceSounds = kept; applyOutput(false); });
   navigator.mediaDevices.addEventListener('devicechange', () => applyOutput(true));
   state.saveFound = !!s.saveFound;
