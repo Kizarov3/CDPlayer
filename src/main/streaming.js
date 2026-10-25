@@ -138,8 +138,6 @@ async function resolve(page, { fresh = false } = {}) {
       type: info.ext === 'webm' ? 'audio/webm' : info.ext === 'm4a' ? 'audio/mp4' : info.ext === 'mp3' ? 'audio/mpeg' : 'application/octet-stream',
       codec: String(info.acodec || info.ext || '').toUpperCase(), bitrate: info.abr ? Math.round(info.abr) : null, sampleRate: info.asr || null,
       until: expiry(info.url),
-      // YouTube's address answers only a few seconds after it's given (yt-dlp waits too: "as required by the site")
-      readyAt: Date.now() + (/googlevideo\.com/.test(info.url) ? 4000 : 0),
     };
     if (/m3u8/.test(info.protocol || '')) { entry.whole = await joinPieces(info.url, entry.headers); entry.size = entry.whole.length; keepFew(page); }
     remember(page, {
@@ -176,8 +174,23 @@ function keepFew(page) {
   const whole = [...found].filter(([p, e]) => e.whole && p !== page).map(([p]) => p);
   whole.slice(0, Math.max(0, whole.length - (WHOLE_KEPT - 1))).forEach((p) => found.delete(p));
 }
-/** The next song's address asked for now, so it's ready (YouTube's few seconds waited) by the time it's needed. */
-function prepare(page) { if (isStreamPage(page)) resolve(page).catch(() => {}); }
+// YouTube's address answers only a while after it's given — mostly some 3 s, sometimes at once: asked again and again
+// (a byte) till it does, rather than waited for the longest it may take.
+function ready(entry) {
+  if (entry.whole || entry.ready) return Promise.resolve();
+  if (!entry.readying) {
+    entry.readying = (async () => {
+      for (const t0 = Date.now(); Date.now() - t0 < 10000; await wait(250)) {
+        const res = await fetch(entry.url, { headers: { 'User-Agent': entry.headers['User-Agent'] || 'Mozilla/5.0', Range: 'bytes=0-0' } }).catch(() => null);
+        if (res) await res.arrayBuffer().catch(() => {});
+        if (res && res.status < 300) { entry.ready = true; return; }
+      }
+    })();
+  }
+  return entry.readying;
+}
+/** A song about to be played (the next one, or one the mouse is on PLAY for): its address asked for now, and waited for. */
+function prepare(page) { if (isStreamPage(page)) resolve(page).then(ready).catch(() => {}); }
 
 // (YouTube's channels made for an artist's music are named "<artist> - Topic")
 // (a song uploaded as a file is often named after it: "Xtal.mp3")
@@ -261,13 +274,12 @@ async function details(page, { withCover = true } = {}) {
 async function fetchPiece(page, start, last) {
   let entry = await resolve(page);
   if (entry.whole) return { res: new Response(entry.whole.subarray(start, last + 1), { status: 206 }), total: entry.whole.length };
-  if (entry.readyAt > Date.now()) await wait(entry.readyAt - Date.now());
+  await ready(entry);
   const ask = () => fetch(entry.url, { headers: { 'User-Agent': entry.headers['User-Agent'] || 'Mozilla/5.0', Range: `bytes=${start}-${last}` } });
   let res = await ask();
   for (let tries = 0; (res.status === 403 || res.status === 410) && tries < 4; tries++) {
     await res.arrayBuffer().catch(() => {});
-    if (tries >= 2) entry = await resolve(page, { fresh: true });
-    await wait(Math.max(1000, entry.readyAt - Date.now()));
+    if (tries >= 2) { entry = await resolve(page, { fresh: true }); await ready(entry); } else await wait(500);
     res = await ask();
   }
   const total = Number((/\/(\d+)$/.exec(res.headers.get('content-range') || '') || [])[1]) || null;

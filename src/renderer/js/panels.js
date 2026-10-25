@@ -334,7 +334,15 @@ function buildSettings(app) {
   const taskbarDisc = toggle(s.taskbarDisc, () => { app.setTaskbarDisc(!s.taskbarDisc); setToggle(taskbarDisc, s.taskbarDisc); });
   const platform = document.body.dataset.platform;
   const saveFound = toggle(s.saveFound, () => { app.setSaveFound(!s.saveFound); setToggle(saveFound, s.saveFound); });
-  const streaming = toggle(s.streaming, async () => { await app.setStreaming(!s.streaming); setToggle(streaming, s.streaming); });
+  // (turned on the first time, yt-dlp is downloaded: the button waits, and says how it went under it — the status line is under this panel)
+  const streamingNote = hint('');
+  streamingNote.hidden = true;
+  const streaming = toggle(s.streaming, async () => {
+    streaming.disabled = true; streaming.textContent = '…';
+    await app.setStreaming(!s.streaming, (text) => { streamingNote.textContent = text; streamingNote.hidden = false; app.setStatus(text); });
+    streaming.disabled = false; streaming.textContent = s.streaming ? t('ON') : t('OFF');
+    setToggle(streaming, s.streaming);
+  });
   // A Spotify disc plays outside Web Audio: the EQ, crossfade and mono can't shape it.
   const forSpotify = app.spotifyActive();
   const unavailable = (node) => (forSpotify ? el('div', { class: 'unavailable', title: t('Not available for Spotify') }, node) : node);
@@ -394,7 +402,8 @@ function buildSettings(app) {
     row(t('SAVE FOUND ART & LYRICS'), saveFound),
     hint(t('Covers and lyrics found online are written into the song’s file (once it’s finished playing), so they’re there offline and in other players too.')),
     row(t('YOUTUBE MUSIC & SOUNDCLOUD'), streaming),
-    hint(t('The search (/) finds albums on YouTube Music and songs on SoundCloud too, to play like your own: the EQ, the changer and the history as for a file. Unofficial — through the free yt-dlp (got from its site when this is turned on), which YouTube’s terms don’t allow; it may stop working for a while when YouTube changes. Songs a label has locked (DRM) can’t be played.')),
+    hint(t('The search (/) also finds albums on YouTube Music and songs on SoundCloud, played like your own: EQ, changer, history. Unofficial — through the free yt-dlp, downloaded when this is turned on. YouTube’s terms don’t allow it, and it may stop working for a while when YouTube changes. Songs a label has locked (DRM) don’t play.')),
+    streamingNote,
     row(t('BACKUP'), el('div', { class: 'row-pills' },
       pill(t('SAVE…'), async () => { const r = await app.cdp.saveBackup().catch(() => ({ error: true })); if (r) app.setStatus(r.ok ? t('BACKUP SAVED') : t('UNKNOWN ERROR')); }, t('Save your queue, history, plays, notes, themes and settings to one file')),
       pill(t('RESTORE…'), async () => { const r = await app.cdp.restoreBackup().catch(() => ({ error: 'UNKNOWN ERROR' })); if (r && r.error) app.setStatus(r.error === 'NOT A BACKUP' ? t('NOT A CDPLAYER BACKUP') : t('UNKNOWN ERROR')); }, t('Put back what a backup kept: CDPlayer then starts again')))),
@@ -885,6 +894,9 @@ export function showSearch(app) {
   search.lastSpotifyUrl = null;
   startLibraryScan(app);
   openPanel('search', () => buildSearch(app), { width: 600 });
+  search.instructions.textContent = app.state.streaming
+    ? t('Type to find a song in your library, something to do or a setting — or albums on YouTube Music and songs on SoundCloud, at the end of the list')
+    : t('Type to find a song in your library, something to do or a setting — or paste a Spotify track/playlist link to add the matching songs you already have');
   refreshSearchResults(app);
   setTimeout(() => search.field && search.field.focus(), 50);
 }
@@ -908,7 +920,7 @@ function buildSearch(app) {
   search.results = el('div', { class: 'scroll' });
   search.results.style.height = '340px';
   const importButton = pill(t('IMPORT LIBRARY…'), () => importLibrary(app), t('Import an iTunes/Music "Library.xml", or a Spotify "Liked Songs" export (CSV or YourLibrary.json)'));
-  const instructions = el('div', { class: 'tip' }, t('Type to find a song in your library, something to do or a setting — or paste a Spotify track/playlist link to add the matching songs you already have'));
+  const instructions = search.instructions = el('div', { class: 'tip' });
   Object.assign(instructions.style, { fontSize: '11px', fontWeight: 'bold', marginTop: '12px', lineHeight: '1.35' });
   const importRow = el('div', {}, importButton);
   importRow.style.margin = '10px 0';
@@ -963,9 +975,16 @@ async function searchOnline(app, where, name, query) {
   if (asked !== search.online || !isOpen('search') || search.field.value.trim().toLowerCase() !== query) return;
   if (!found) { setSearchStatus(t('{where} DIDN’T ANSWER · TRY AGAIN IN A MOMENT', { where: name })); search.results.replaceChildren(back); return; }
   setSearchStatus(found.length ? t('{n} FOUND ON {where}', { n: found.length, where: name }) : t('NOTHING LIKE THAT ON {where}', { where: name }));
-  search.results.replaceChildren(back, ...found.map((f) => (f.kind === 'album' ? onlineAlbumRow(app, f) : trackRow(app, f.page, [f.artist, f.title].filter(Boolean).join(' · '), () => {
-    app.appendAndPlay(f.page); closePanel('search');
-  }))));
+  const rows = found.map((f) => {
+    const row = f.kind === 'album' ? onlineAlbumRow(app, f) : trackRow(app, f.page, [f.artist, f.title].filter(Boolean).join(' · '), () => {
+      app.appendAndPlay(f.page); closePanel('search');
+    });
+    // the mouse on it: its (first) song's sound asked for now — it may be clicked in a moment
+    const first = f.kind === 'album' ? f.tracks[0] && f.tracks[0].page : f.page;
+    row.addEventListener('mouseenter', () => { if (first) app.cdp.stream.prepare(first); }, { once: true });
+    return row;
+  });
+  search.results.replaceChildren(back, ...rows);
 }
 // An album found: PLAY puts it in (a disc in the changer) and plays it, ADD only puts it in.
 function onlineAlbumRow(app, a) {

@@ -142,6 +142,7 @@ function setStatus(text) {
   statusHeld = true;
   statusTimer = setTimeout(() => { statusHeld = false; if (!state.trayBusy && !disc.reading) { $('status').textContent = STATUS_DOT + stateStatus(); remoteSoon(); } }, 6000);
 }
+let streamReading = null; // the load (its token) a streamed song is being read for
 const statusWords = () => $('status').textContent.replace(STATUS_DOT, '');
 // A cue sheet track is queued as "<path to .cue>#<track number>" (see src/main/cue.js).
 const cueRef = (p) => /^(.*\.cue)#(\d+)$/i.exec(p);
@@ -783,11 +784,20 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
     engine.setTrim(trim);
     state.deckToken = token;
   } else {
+    // A streamed song takes a few seconds to come (YouTube's more): the disc reads, as when the tray closes.
+    if (isStream(path)) { streamReading = token; disc.reading = true; setStatus(t('READING…')); }
+    const doneReading = () => {
+      if (streamReading !== token) return;
+      streamReading = null; disc.reading = false;
+      if (statusWords() === t('READING…')) { $('status').textContent = STATUS_DOT + stateStatus(); remoteSoon(); }
+    };
     try {
       const ok = await engine.load(url, { autoPlay: false, crossfadeSeconds: fade, segment: cue, trim });
+      doneReading();
       if (!ok || token !== state.loadToken) return;
       state.deckToken = token; // the engine holds this load's track now: its next one may be prepared
     } catch {
+      doneReading();
       if (token !== state.loadToken) return;
       setPlaying(false);
       setStatus(isStream(path) ? t("COULDN'T STREAM THAT SONG") : (await cdp.exists(path)) ? t("COULDN'T PLAY THAT FILE") : t('FILE NO LONGER FOUND'));
@@ -807,7 +817,8 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   updateProgressUi(true);
   renderQueue(); saveQueueSoon();
 
-  const details = (await detailsPromise) || { title: displayName(path), artist: null, album: null, lyrics: null, cover: null, ext: extension(path), duration: engine.duration };
+  // (a streamed song's quality is known once its sound has been found: asked again, now; its cover is kept in main)
+  const details = (await (isStream(path) ? cdp.details(path, { withCover: true }).catch(() => null) : detailsPromise)) || { title: displayName(path), artist: null, album: null, lyrics: null, cover: null, ext: extension(path), duration: engine.duration };
   if (token !== state.loadToken) return;
   state.details = details; state.detailsPath = path;
   detailsCache.set(path, { ...details, cover: undefined, duration: details.duration || engine.duration });
@@ -1009,12 +1020,12 @@ function flushFoundSoon() {
   }, (Math.max(crossfadeSeconds(), automixOn() ? MAX_OVERLAP : 0) + 2) * 1000);
 }
 // YOUTUBE MUSIC & SOUNDCLOUD: on only with yt-dlp there to stream with.
-async function setStreaming(on) {
+async function setStreaming(on, say = setStatus) {
   // (turned on the first time: yt-dlp is got for it, unless the user has one)
   if (on && !(await cdp.stream.available().catch(() => null))) {
-    setStatus(t('GETTING YT-DLP…'));
-    if (!(await cdp.stream.install().catch(() => null))) { setStatus(t('COULDN’T GET YT-DLP · CHECK THE CONNECTION')); return false; }
-    setStatus(t('YT-DLP IS READY · SEARCH WITH /'));
+    say(t('GETTING YT-DLP…'));
+    if (!(await cdp.stream.install().catch(() => null))) { say(t('COULDN’T GET YT-DLP · CHECK THE CONNECTION')); return false; }
+    say(t('YT-DLP IS READY · SEARCH WITH /'));
   }
   state.streaming = !!on; saveSettingsSoon();
   return true;
