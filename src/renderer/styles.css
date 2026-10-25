@@ -249,7 +249,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 .pill.small { padding: 7px 13px; font-size: 10px; }
 .pill:hover { background: rgba(255, 255, 255, .078); }
 .pill:active:not(:disabled) { transform: scale(.97); } /* pressed: it gives a little */
-.pill.on { color: rgb(var(--text)); background: rgba(255, 255, 255, .1); padding-left: 29px; }
+.pill.on { color: rgb(var(--text)); background: rgba(255, 255, 255, .12); padding-left: 29px; }
 .pill.small.on { padding-left: 25px; }
 .pill.small::before { left: 10px; }
 .pill.on::before { opacity: 1; }
@@ -296,14 +296,14 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 }
 /* …and a lamp under it, as under a deck's SHUFFLE key */
 .round.mode::after {
-  content: ""; position: absolute; left: 50%; bottom: -11px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%;
+  content: ""; position: absolute; left: 50%; bottom: -7px; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%;
   background: rgb(var(--accent)); box-shadow: 0 0 8px 2px rgba(var(--accent), .7);
   opacity: 0; transition: opacity 200ms ease;
 }
 .round.mode.on::after { opacity: 1; }
 .round.mode svg { position: relative; }
-.round.mode.on { color: rgb(var(--accent)); background: rgba(255, 255, 255, .06); box-shadow: none; }
-.round.mode.on svg { filter: brightness(1.3) drop-shadow(0 0 5px rgba(var(--accent), .8)); }
+.round.mode.on { color: rgb(var(--text)); background: rgba(255, 255, 255, .06); box-shadow: none; } /* (its mark white: red crossed arrows read as "not allowed") */
+.round.mode.on svg { filter: drop-shadow(0 0 4px rgba(var(--accent), .7)); }
 .round.mode.on::before { opacity: 1; }
 
 .glyph-x {
