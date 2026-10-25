@@ -12,6 +12,14 @@ if (smokeDir) process.env.CDPLAYER_HOME = fs.mkdtempSync(path.join(require('os')
 // An isolated data folder (tests) also gets its own Electron profile, so it's a separate single instance and never
 // hands off to — or shares browser storage with — a CDPlayer the user already has open.
 if (process.env.CDPLAYER_HOME) app.setPath('userData', path.join(process.env.CDPLAYER_HOME, 'electron-profile'));
+// (tests, with an isolated data folder only: the files picked in place of the system's Open dialog — one path a line in
+// the file CDPLAYER_TEST_PICK names, read each time; an empty file is CANCEL)
+if (process.env.CDPLAYER_HOME && process.env.CDPLAYER_TEST_PICK) {
+  dialog.showOpenDialog = async () => {
+    const filePaths = fs.readFileSync(process.env.CDPLAYER_TEST_PICK, 'utf8').split(/\r?\n/).filter(Boolean);
+    return { canceled: !filePaths.length, filePaths };
+  };
+}
 
 const store = require('./store');
 const userThemes = require('./user-themes');
