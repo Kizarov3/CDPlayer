@@ -127,17 +127,59 @@ test('an album asked for by something not a stream page is refused before yt-dlp
   await assert.rejects(streaming.resolve('-o /tmp/x'), /Not a stream page/);
 });
 
-test("yt-dlp is got from its releases and kept only when it matches the published sum", async () => {
-  const own = { darwin: 'yt-dlp_macos', win32: 'yt-dlp.exe', linux: process.arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux' }[process.platform];
+// A .zip as yt-dlp's releases are: files stored or deflated, the program runnable.
+function makeZip(files) {
+  const zlib = require('zlib');
+  const locals = [], centrals = [];
+  let at = 0;
+  for (const { name, data, deflate, mode = 0o644 } of files) {
+    const packed = deflate ? zlib.deflateRawSync(data) : data, n = Buffer.from(name);
+    const local = Buffer.alloc(30); local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(deflate ? 8 : 0, 8);
+    local.writeUInt32LE(packed.length, 18); local.writeUInt32LE(data.length, 22); local.writeUInt16LE(n.length, 26);
+    const central = Buffer.alloc(46); central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(deflate ? 8 : 0, 10);
+    central.writeUInt32LE(packed.length, 20); central.writeUInt32LE(data.length, 24); central.writeUInt16LE(n.length, 28);
+    central.writeUInt32LE(((0o100000 | mode) << 16) >>> 0, 38); central.writeUInt32LE(at, 42);
+    locals.push(local, n, packed); centrals.push(central, n);
+    at += 30 + n.length + packed.length;
+  }
+  const dir = Buffer.concat(centrals), end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(files.length, 8); end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(dir.length, 12); end.writeUInt32LE(at, 16);
+  return Buffer.concat([...locals, dir, end]);
+}
+
+test('yt-dlp is got from its releases (the folder build) and kept only when it matches the published sum', async () => {
+  const [asset, exe] = { darwin: ['yt-dlp_macos.zip', 'yt-dlp_macos'], win32: ['yt-dlp_win.zip', 'yt-dlp.exe'],
+    linux: process.arch === 'arm64' ? ['yt-dlp_linux_aarch64.zip', 'yt-dlp_linux_aarch64'] : ['yt-dlp_linux.zip', 'yt-dlp_linux'] }[process.platform];
   const base = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/';
-  const exe = bytes(3000, 19), sum = crypto.createHash('sha256').update(exe).digest('hex');
-  files.set(base + own, exe);
-  files.set(base + 'SHA2-256SUMS', `${'0'.repeat(64)}  yt-dlp.tar.gz\n${sum}  ${own}\n`);
+  const program = bytes(3000, 19), lib = bytes(9000, 29);
+  const zip = makeZip([{ name: exe, data: program, mode: 0o755, deflate: true }, { name: '_internal/lib.so', data: lib }]);
+  files.set(base + asset, zip);
+  files.set(base + 'SHA2-256SUMS', `${'0'.repeat(64)}  yt-dlp.tar.gz\n${crypto.createHash('sha256').update(zip).digest('hex')}  ${asset}\n`);
   assert.strictEqual(await streaming.install(), '2026.10.21');
-  const at = path.join(home, 'bin', own);
-  assert.ok(fs.readFileSync(at).equals(exe));
+  const at = path.join(home, 'bin', 'yt-dlp', exe);
+  assert.ok(fs.readFileSync(at).equals(program));
+  assert.ok(fs.readFileSync(path.join(home, 'bin', 'yt-dlp', '_internal', 'lib.so')).equals(lib));
+  if (process.platform !== 'win32') assert.ok(fs.statSync(at).mode & 0o100, 'runnable');
   assert.strictEqual(streaming.ytDlpPath(), at);
-  files.set(base + own, bytes(3000, 23)); // tampered with
+  // a newer one replaces it
+  const newer = bytes(3000, 31);
+  const zip2 = makeZip([{ name: exe, data: newer, mode: 0o755 }]);
+  files.set(base + asset, zip2);
+  files.set(base + 'SHA2-256SUMS', `${crypto.createHash('sha256').update(zip2).digest('hex')}  ${asset}\n`);
+  await streaming.install();
+  assert.ok(fs.readFileSync(at).equals(newer));
+  assert.ok(!fs.existsSync(path.join(home, 'bin', 'yt-dlp', '_internal')), 'the old folder is gone');
+  files.set(base + asset, makeZip([{ name: exe, data: bytes(3000, 37) }])); // tampered with
   await assert.rejects(streaming.install(), /Checksum mismatch/);
-  assert.ok(fs.readFileSync(at).equals(exe), 'the good copy stays');
+  assert.ok(fs.readFileSync(at).equals(newer), 'the good copy stays');
+});
+
+test('a zip naming a place outside its folder is refused', () => {
+  const unzip = require('../src/main/unzip');
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'cdplayer-unzip-test-'));
+  for (const name of ['../escaped', '/etc/escaped', 'a/../../escaped']) {
+    assert.throws(() => unzip.extract(makeZip([{ name, data: bytes(10) }]), path.join(out, 'in')), /Bad name/, name);
+  }
+  assert.ok(!fs.existsSync(path.join(out, 'escaped')));
 });

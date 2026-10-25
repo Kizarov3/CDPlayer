@@ -14,11 +14,16 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const CANDIDATES = ['/opt/homebrew/bin/yt-dlp', '/usr/local/bin/yt-dlp', '/usr/bin/yt-dlp'];
 
 // yt-dlp: the app's own copy (got from yt-dlp's releases when streaming is first turned on, and got again when it's a
-// few days old: YouTube changes, yt-dlp follows), or one the user installed.
-const OWN = { darwin: 'yt-dlp_macos', win32: 'yt-dlp.exe', linux: process.arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux' }[process.platform];
+// few days old: YouTube changes, yt-dlp follows), or one the user installed. The release as a folder (.zip), not one
+// file: that one unpacks itself each time it's run, some 3 s before every search.
+const OWN = {
+  darwin: ['yt-dlp_macos.zip', 'yt-dlp_macos'], win32: ['yt-dlp_win.zip', 'yt-dlp.exe'],
+  linux: process.arch === 'arm64' ? ['yt-dlp_linux_aarch64.zip', 'yt-dlp_linux_aarch64'] : ['yt-dlp_linux.zip', 'yt-dlp_linux'],
+}[process.platform];
 const RELEASES = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/';
 const STALE = 3 * 24 * 60 * 60 * 1000;
-const ownPath = () => (store && OWN ? path.join(store.dataDir(), 'bin', OWN) : null);
+const ownDir = () => (store && OWN ? path.join(store.dataDir(), 'bin', 'yt-dlp') : null);
+const ownPath = () => (ownDir() ? path.join(ownDir(), OWN[1]) : null);
 function ytDlpPath() {
   const own = ownPath();
   if (own && fs.existsSync(own)) return own;
@@ -37,21 +42,31 @@ let installing = null;
 function install() {
   if (installing) return installing;
   installing = (async () => {
-    if (!ownPath()) throw new Error('No yt-dlp for this system');
+    if (!OWN || !ownDir()) throw new Error('No yt-dlp for this system');
+    const [asset] = OWN;
     const get = async (name) => {
       const res = await fetch(RELEASES + name, { redirect: 'follow' });
       if (!res.ok) throw new Error(`${name}: ${res.status}`);
       return res;
     };
     const sums = await (await get('SHA2-256SUMS')).text();
-    const want = (new RegExp(`^([0-9a-f]{64})\\s+\\*?${OWN.replace(/\./g, '\\.')}$`, 'm').exec(sums) || [])[1];
+    const want = (new RegExp(`^([0-9a-f]{64})\\s+\\*?${asset.replace(/\./g, '\\.')}$`, 'm').exec(sums) || [])[1];
     if (!want) throw new Error('No checksum');
-    const bytes = Buffer.from(await (await get(OWN)).arrayBuffer());
-    if (require('crypto').createHash('sha256').update(bytes).digest('hex') !== want) throw new Error('Checksum mismatch');
-    const target = ownPath(), part = `${target}.part`;
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(part, bytes, { mode: 0o755 });
-    fs.renameSync(part, target);
+    const zip = Buffer.from(await (await get(asset)).arrayBuffer());
+    if (require('crypto').createHash('sha256').update(zip).digest('hex') !== want) throw new Error('Checksum mismatch');
+    // unpacked beside the one there is, then put in its place (one in use — Windows won't let it go — stays till next time)
+    const dir = ownDir(), fresh = `${dir}.new`, old = `${dir}.old`;
+    for (const d of [fresh, old]) fs.rmSync(d, { recursive: true, force: true });
+    require('./unzip').extract(zip, fresh);
+    try {
+      if (fs.existsSync(dir)) fs.renameSync(dir, old);
+      fs.renameSync(fresh, dir);
+    } catch (e) {
+      if (!fs.existsSync(dir) && fs.existsSync(old)) fs.renameSync(old, dir);
+      fs.rmSync(fresh, { recursive: true, force: true });
+      throw e;
+    }
+    fs.rmSync(old, { recursive: true, force: true });
     return available();
   })();
   installing.finally(() => { installing = null; }).catch(() => {});
