@@ -68,7 +68,7 @@ const safePath = (p) => typeof p === 'string' && !/[\r\n]/.test(p);
 // lines keep their defaults.
 const DEFAULT_SETTINGS = {
   volume: 100, crossfade: 5, mono: false, animations: true, theme: 'RED', eq: new Array(10).fill(0),
-  waveform: true, miniMode: false, bounds: null, ambient: true, discord: false, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false, playModes: defaultPlayModes(), display: 'DECK', transition: 'OFF',
+  waveform: true, miniMode: false, bounds: null, ambient: true, discord: false, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false, playModes: defaultPlayModes(), display: 'DECK', transition: 'OFF', streaming: false,
 };
 const SHELF_SORTS = ['ARTIST', 'NEW', 'PLAYED', 'RECENT', 'YEAR', 'COLOR', 'PRICE', 'MINE'];
 const QUALITIES = ['HIGH', 'LOSSLESS', 'HIRES'];
@@ -128,6 +128,7 @@ function readSettings() {
   const [mode, kept] = String(l[27] || '').trim().split(/\s+/), keptSeconds = int(kept, 0);
   s.transition = TRANSITIONS.includes(mode) ? mode : mode === '1' ? 'AUTOMIX' : seconds > 0 ? 'CROSSFADE' : 'OFF';
   s.crossfade = keptSeconds >= 1 && keptSeconds <= 15 ? keptSeconds : seconds > 0 ? seconds : 5;
+  s.streaming = String(l[28] || '').trim() === 'ON';
   return s;
 }
 function writeSettings(s) {
@@ -143,7 +144,7 @@ function writeSettings(s) {
     QUALITIES.includes(s.quality) ? s.quality : 'HIGH', s.spatial ? 1 : 0,
     Math.max(0, Math.min(100, Math.round(Number.isFinite(s.spatialAmount) ? s.spatialAmount : 50))), s.discShine === false ? 0 : 1, s.taskbarDisc ? 1 : 0,
     SOUND_CHECKS.includes(s.soundCheck) ? s.soundCheck : 'OFF', s.changer ? 'ON' : 'OFF', writePlayModes(s.playModes),
-    DISPLAYS.includes(s.display) ? s.display : 'DECK', `${transition} ${seconds}`].join('\n') + '\n';
+    DISPLAYS.includes(s.display) ? s.display : 'DECK', `${transition} ${seconds}`, s.streaming ? 'ON' : 'OFF'].join('\n') + '\n';
   return writeText(FILES.settings, content);
 }
 

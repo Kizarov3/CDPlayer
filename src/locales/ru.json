@@ -124,6 +124,7 @@
   "Back to the disc": "Обратно к диску",
   "Back to the full player (M)": "Обратно в большой плеер (M)",
   "Back to the player (Y or Esc)": "Обратно к плееру (Y или Esc)",
+  "Back to what’s yours": "Назад к своей музыке",
   "Back {n} seconds": {
     "one": "Назад на {n} секунду",
     "few": "Назад на {n} секунды",
@@ -221,6 +222,7 @@
   "COULDN'T READ THAT IMPORT FILE": "НЕ УДАЛОСЬ ПРОЧИТАТЬ ФАЙЛ ИМПОРТА",
   "COULDN'T SAVE PLAYLIST": "НЕ УДАЛОСЬ СОХРАНИТЬ ПЛЕЙЛИСТ",
   "COULDN'T SAVE THE THEME": "НЕ УДАЛОСЬ СОХРАНИТЬ ТЕМУ",
+  "COULDN'T STREAM THAT SONG": "НЕ УДАЛОСЬ ВКЛЮЧИТЬ ЭТУ ПЕСНЮ ИЗ СЕТИ",
   "COULDN’T INSTALL THE UPDATE": "НЕ УДАЛОСЬ УСТАНОВИТЬ ОБНОВЛЕНИЕ",
   "COULDN’T READ THE SHELF · OPEN SHELF AGAIN": "НЕ УДАЛОСЬ ПРОЧИТАТЬ ПОЛКУ · ОТКРОЙ ПОЛКУ СНОВА",
   "COULDN’T SAVE · {why}": "НЕ УДАЛОСЬ СОХРАНИТЬ · {why}",
@@ -441,6 +443,7 @@
   "LOOK": "ВИД",
   "LOOK UP AGAIN": "ИСКАТЬ СНОВА",
   "LOOKING ON DISCOGS…": "ИЩУ НА DISCOGS…",
+  "LOOKING ON {where}…": "ИЩУ НА {where}…",
   "LOOKING THE SONG UP ON MUSICBRAINZ…": "ИЩУ ПЕСНЮ НА MUSICBRAINZ…",
   "LOOKING UP YOUR ARTISTS ON MUSICBRAINZ · TRY AGAIN IN A MOMENT": "ИЩУ ТВОИХ ИСПОЛНИТЕЛЕЙ НА MUSICBRAINZ · ПОПРОБУЙ ЧЕРЕЗ МИНУТУ",
   "LOOKING…": "ИЩУ…",
@@ -456,6 +459,7 @@
   "Load a .m3u playlist file as a CD-R": "Загрузить плейлист .m3u как CD-R",
   "Load a Track": "Загрузить трек",
   "Load the album into the changer: a free slot, or one you pick": "Загрузить альбом в чейнджер: в свободное гнездо или в то, что выберешь",
+  "Look for it on {where}": "Поискать на {where}",
   "Look for its cover online": "Поискать обложку онлайн",
   "Look for problems in your music folder: missing tags and covers, duplicates, gaps": "Найти проблемы в папке с музыкой: нет тегов или обложек, дубликаты, пропуски",
   "Looking up {artist} on MusicBrainz…": "Ищу {artist} на MusicBrainz…",
@@ -538,6 +542,7 @@
   "NOTHING BEING RIPPED": "НИЧЕГО НЕ РИПАЕТСЯ",
   "NOTHING FOUND": "НИЧЕГО НЕ НАЙДЕНО",
   "NOTHING FOUND ON DISCOGS": "НА DISCOGS НИЧЕГО НЕ НАЙДЕНО",
+  "NOTHING LIKE THAT ON {where}": "НА {where} ТАКОГО НЕТ",
   "NOTHING NEW IN YOUR MUSIC FOLDER LATELY": "В ПАПКЕ С МУЗЫКОЙ ДАВНО НИЧЕГО НОВОГО",
   "NOTHING PLAYED YET": "ПОКА НИЧЕГО НЕ ИГРАЛО",
   "NOTHING PLAYING TO SHARE": "НЕЧЕМ ПОДЕЛИТЬСЯ — НИЧЕГО НЕ ИГРАЕТ",
@@ -837,6 +842,7 @@
   "STOP": "СТОП",
   "STOP KEEPING IT FULL": "БОЛЬШЕ НЕ ДЕРЖАТЬ ПОЛНЫМ",
   "STOPPING…": "ОСТАНАВЛИВАЮ…",
+  "STREAMING NEEDS YT-DLP · SEE SETTINGS": "ДЛЯ СТРИМИНГА НУЖЕН YT-DLP · СМ. НАСТРОЙКИ",
   "SUNSET|theme": "ЗАКАТ",
   "SYSTEM DEFAULT": "КАК В СИСТЕМЕ",
   "Same Wi-Fi, not a guest network. On Windows, allow CDPlayer through the firewall on a Private network — it asks again after each update.": "Та же сеть Wi-Fi, не гостевая. В Windows разреши CDPlayer в брандмауэре для частной сети — после каждого обновления он спросит снова.",
@@ -959,6 +965,7 @@
   "The rainbow reflection on the disc that follows your mouse, like a CD tilted under a lamp.": "Радужный блик на диске, который следует за мышкой, — как будто наклоняешь CD под лампой.",
   "The receipt": "Чек",
   "The same song in more than one file (the same artist and title, nearly the same length) — say, an MP3 and a FLAC. Nothing is deleted: have a look.": "Одна и та же песня в нескольких файлах (тот же исполнитель и название, почти та же длина) — скажем, MP3 и FLAC. Ничего не удаляется — просто взгляни.",
+  "The search (/) finds albums on YouTube Music and songs on SoundCloud too, to play like your own: the EQ, the changer and the history as for a file. Unofficial — through the free yt-dlp, which YouTube’s terms don’t allow; it may stop working for a while when YouTube changes. Songs a label has locked (DRM) can’t be played.": "Поиск (/) находит ещё и альбомы на YouTube Music и песни на SoundCloud, чтобы слушать их как свои: с эквалайзером, в чейнджере и в истории. Неофициально — через бесплатный yt-dlp, что запрещают правила YouTube; когда YouTube что-то меняет, это может на время перестать работать. Песни, закрытые лейблом (DRM), не играют.",
   "The tags this file had before CDPlayer first changed them ({when})": "Теги, которые были у файла до первой правки в CDPlayer ({when})",
   "The taskbar button shows the disc that’s in. While it’s on, CDPlayer pinned to the taskbar opens as a button of its own beside the pin.": "Кнопка на панели задач показывает вставленный диск. Пока это включено, закреплённый на панели CDPlayer открывается отдельной кнопкой рядом с закреплённой.",
   "The taskbar icon shows the disc that’s in. Off, it’s CDPlayer’s own icon.": "Иконка на панели задач показывает вставленный диск. Если выключить — обычная иконка CDPlayer.",
@@ -1044,9 +1051,11 @@
   "Y: the lyrics fill the window and light up word by word as they’re sung — backing vocals under the line, a duet’s singers left and right. Click a line to jump to it.": "Y: текст на всё окно, слова загораются по одному, когда их поют; бэк-вокал — под строкой, голоса дуэта — слева и справа. Клик по строке перематывает к ней.",
   "YEAR": "ГОД",
   "YESTERDAY": "ВЧЕРА",
+  "YOUR MUSIC": "ТВОЯ МУЗЫКА",
   "YOUR MUSIC FOLDER": "ПАПКУ С МУЗЫКОЙ",
   "YOUR MUSIC LIBRARY": "ТВОЯ МУЗЫКАЛЬНАЯ БИБЛИОТЕКА",
   "YOUTUBE MUSIC": "YOUTUBE MUSIC",
+  "YOUTUBE MUSIC & SOUNDCLOUD": "YOUTUBE MUSIC И SOUNDCLOUD",
   "You have everything {artist} has released": "У тебя есть всё, что выпустил {artist}",
   "Your Music Folder": "Папка с музыкой",
   "Your Spotify albums and playlists play as discs too, with Premium. It’s optional, and walks you through it.": "Альбомы и плейлисты Spotify тоже играют как диски — нужен Premium. Это необязательно, настройка проведёт по шагам.",
@@ -1107,6 +1116,12 @@
     "many": "{n} ИЗДАНИЙ",
     "other": "{n} ИЗДАНИЯ"
   },
+  "{n} FOUND ON {where}": {
+    "one": "НА {where} НАЙДЕН {n}",
+    "few": "НА {where} НАЙДЕНО {n}",
+    "many": "НА {where} НАЙДЕНО {n}",
+    "other": "НА {where} НАЙДЕНО {n}"
+  },
   "{n} MATCHES IN {folder}": {
     "one": "{n} СОВПАДЕНИЕ В {folder}",
     "few": "{n} СОВПАДЕНИЯ В {folder}",
@@ -1121,6 +1136,12 @@
     "few": "ПОКАЗАНО {n}",
     "many": "ПОКАЗАНО {n}",
     "other": "ПОКАЗАНО {n}"
+  },
+  "{n} SONGS": {
+    "one": "{n} ПЕСНЯ",
+    "few": "{n} ПЕСНИ",
+    "many": "{n} ПЕСЕН",
+    "other": "{n} ПЕСНИ"
   },
   "{n} SONGS IN {folder} · TYPE TO FIND ONE": {
     "one": "{n} ПЕСНЯ В {folder} · НАЧНИ ПЕЧАТАТЬ",
@@ -1191,6 +1212,8 @@
   "{use} — the disc turning as the picked lines are sung, with the song": "{use} — диск крутится, пока звучат выбранные строки, вместе с песней",
   "{version} AVAILABLE": "ДОСТУПНА {version}",
   "{what} · {key} BRINGS IT BACK": "{what} · {key} — ВЕРНУТЬ",
+  "{where} DIDN’T ANSWER · TRY AGAIN IN A MOMENT": "{where} НЕ ОТВЕЧАЕТ · ПОПРОБУЙ ЧУТЬ ПОЗЖЕ",
+  "{where}: “{query}”": "{where}: «{query}»",
   "— WITHOUT LYRICS —": "— БЕЗ ТЕКСТА —",
   "“{name}” · NOT CONNECTED": "«{name}» · НЕ ПОДКЛЮЧЕНА",
   "…OR AT THE END OF THE DISC": "…ИЛИ В КОНЦЕ ДИСКА",

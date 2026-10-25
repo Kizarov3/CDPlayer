@@ -6,6 +6,7 @@
 const path = require('path');
 const { nativeImage } = require('electron');
 const cue = require('./cue');
+const streaming = require('./streaming');
 const audioCd = require('./audio-cd');
 const winCd = require('./win-cd');
 const { describeFormat } = require('./audio-format');
@@ -148,6 +149,7 @@ function replayGainFrom(meta) {
 
 /** A track's details: its tags, cover and lyrics — and for a track of an audio CD, the names the disc was looked up by. */
 async function getDetails(filePath, opts = {}) {
+  if (streaming.isStreamPage(filePath)) return streaming.details(filePath, opts);
   const onDisc = winCd.trackInfo(filePath);
   const details = onDisc ? cdTrackDetails(filePath, onDisc, opts) : await readDetails(filePath, opts);
   const cd = audioCd.detailsFor(filePath);

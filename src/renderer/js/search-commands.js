@@ -29,6 +29,7 @@ export const SETTING_ROWS = [
   ['PLAYBACK', 'MINI MODE', 'small window мини'],
   ['PHONE REMOTE', 'CONTROL FROM A PHONE', 'remote phone qr пульт телефон'],
   ['LIBRARY', 'SAVE FOUND ART & LYRICS', 'covers lyrics write files обложки'],
+  ['LIBRARY', 'YOUTUBE MUSIC & SOUNDCLOUD', 'stream streaming youtube soundcloud online стриминг ютуб онлайн'],
   ['LIBRARY', 'BACKUP', 'restore export cdbackup резервная копия восстановить'],
   ['SHARING', 'DISCORD STATUS', 'discord rich presence дискорд'],
   ['DISCOGS', 'TOKEN', 'discogs api key токен'],

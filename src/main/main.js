@@ -22,6 +22,7 @@ const online = require('./online');
 const spotify = require('./spotify');
 const library = require('./library');
 const media = require('./media-protocol');
+const streaming = require('./streaming');
 const updates = require('./updates');
 const discord = require('./discord');
 const cue = require('./cue');
@@ -255,6 +256,12 @@ handle('app:relaunch', () => { app.relaunch(); app.quit(); });
 
 handle('fs:exists', (p) => cue.entryExists(p));
 handle('meta:details', (p, opts) => metadata.getDetails(p, opts));
+// Streamed songs (streaming.js): YouTube Music's albums and SoundCloud's songs found, an album opened, the next song readied.
+streaming.setStore(store);
+handle('stream:search', (query, where) => streaming.search(String(query || ''), where));
+handle('stream:album', (page) => streaming.album(page));
+handle('stream:prepare', (page) => streaming.prepare(page));
+handle('stream:available', () => streaming.available());
 // Play counts, kept in memory and written a moment after the last change.
 let playCounts = null, playsTimer = null;
 const plays = () => (playCounts = playCounts || store.readPlayCounts());

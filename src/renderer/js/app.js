@@ -72,6 +72,7 @@ const state = {
   volume: 100, volumeBeforeMute: -1, transition: 'OFF', crossfade: 5, mono: false, spatial: false, spatialAmount: 50, waveform: true, ambient: true, miniMode: false, discord: true, discNoise: false, discWear: true, discShine: true, taskbarDisc: true,
   trayBusy: false, // the tray is moving or the disc is being read: transport presses wait
   saveFound: false, // covers and lyrics found online are written into the song's file
+  streaming: false, // the search finds albums on YouTube Music and songs on SoundCloud too (streaming.js, through yt-dlp)
   lyricsOffset: 0,  // ms the lyrics are moved by (+ later), on top of the output latency
   shelfSort: 'ARTIST', // how the shelf is sorted (shelf-order.js)
   audioCd: null,    // the audio CD in the drive: { mount, tracks, name, album, artist, year }
@@ -105,7 +106,9 @@ const soundCheck = createSoundCheck({
   cache: cdp.soundCheck,
   measure: (file) => measureFile(cdp.mediaUrl(file)),
 });
-const evensOut = (p) => !isSpotifyUri(p) && !isAudioCdTrack(p);
+// A streamed song (YouTube Music, SoundCloud — streaming.js): its page's address. No file to tag, measure or evens out.
+const isStream = (p) => typeof p === 'string' && p.startsWith('https://');
+const evensOut = (p) => !isSpotifyUri(p) && !isAudioCdTrack(p) && !isStream(p);
 state.systemRate = engine.rate; // the device's rate as CDPlayer found it, before any setRate: what HIGH plays at
 const disc = new Disc($('disc'));
 const visualizer = new Visualizer($('visualizer'));
@@ -745,7 +748,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   resetHidden();
   showSoundCheck(null); // until it's known (and hidden for Spotify and CDs)
   showInPlayer(path);
-  $('tags-button').hidden = false;
+  $('tags-button').hidden = isStream(path); // (no file to write tags to)
   if (isSpotifyUri(path)) { progress.setWaveform(null); await loadSpotify(path, token, { autoPlay, startAt }); return; }
   progress.setWaveform(null);
   const detailsPromise = cdp.details(path, { withCover: true }).catch(() => null);
@@ -787,7 +790,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
     } catch {
       if (token !== state.loadToken) return;
       setPlaying(false);
-      setStatus((await cdp.exists(path)) ? t("COULDN'T PLAY THAT FILE") : t('FILE NO LONGER FOUND'));
+      setStatus(isStream(path) ? t("COULDN'T STREAM THAT SONG") : (await cdp.exists(path)) ? t("COULDN'T PLAY THAT FILE") : t('FILE NO LONGER FOUND'));
       return;
     }
     if (startAt > 0) engine.seek(Math.min(startAt, engine.duration));
@@ -817,7 +820,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   await setCover(details.cover);
   disc.lookingUp = canLookUp;
   const fromCd = isAudioCdTrack(path);
-  $('tags-button').hidden = fromCd; // a CD can't be written to
+  $('tags-button').hidden = fromCd || isStream(path); // a CD can't be written to (nor a streamed song)
   $('track-source').textContent = sourceLine(details, ext, fromCd);
   state.coverFrom = details.cover ? (fromCd ? 'MusicBrainz' : t('In the file')) : null; // where the cover came from, for the booklet
   updateMediaSession();
@@ -991,7 +994,7 @@ async function saveTags(path, changes) {
 const pendingFound = new Map(); // path -> changes
 let flushTimer = null;
 function saveFoundLater(path, changes) {
-  if (!path || /\.cue#\d+$/i.test(path) || isSpotifyUri(path)) return;
+  if (!path || /\.cue#\d+$/i.test(path) || isSpotifyUri(path) || isStream(path)) return;
   pendingFound.set(path, { ...(pendingFound.get(path) || {}), ...changes });
 }
 function flushFoundSoon() {
@@ -1004,6 +1007,12 @@ function flushFoundSoon() {
       if (r && r.ok) detailsCache.delete(path);
     }
   }, (Math.max(crossfadeSeconds(), automixOn() ? MAX_OVERLAP : 0) + 2) * 1000);
+}
+// YOUTUBE MUSIC & SOUNDCLOUD: on only with yt-dlp there to stream with.
+async function setStreaming(on) {
+  if (on && !(await cdp.stream.available().catch(() => null))) { setStatus(t('STREAMING NEEDS YT-DLP · SEE SETTINGS')); return false; }
+  state.streaming = !!on; saveSettingsSoon();
+  return true;
 }
 function setSaveFound(on) { state.saveFound = on; if (!on) pendingFound.clear(); saveSettingsSoon(); }
 function setLyricsOffset(ms) { state.lyricsOffset = ms; saveSettingsSoon(); }
@@ -1234,6 +1243,9 @@ async function prepareNext() {
   if (same && engine.prepared && engine.seamLeft() < 3) return;
   if (preparedNext || engine.prepared) dropPrepared();
   if (!path || isSpotifyUri(path)) return;
+  // A streamed song next: its address asked for now, so it starts as soon as it's due (not prepared to run on: nothing
+  // here knows where its sound begins and ends)
+  if (isStream(path) || isStream(state.loadedPath)) { if (isStream(path)) cdp.stream.prepare(path); return; }
   const token = state.loadToken, mark = { path, index: next, token, seen: edgesSeen(path) };
   preparedNext = mark;
   const nextDetails = detailsCache.get(path) || await cdp.details(path, { withCover: false }).catch(() => null);
@@ -1267,7 +1279,7 @@ const edgesOf = (p) => songEdges.get(p); // undefined: not known yet
 const edgesKnown = (p) => songEdges.has(p);
 function measureEdgesSoon(p) {
   if (!automixOn() || !p || songEdges.has(p) || edgesWanted.has(p)) return;
-  if (isSpotifyUri(p) || isAudioCdTrack(p) || cueRef(p)) { songEdges.set(p, null); return; }
+  if (isSpotifyUri(p) || isAudioCdTrack(p) || cueRef(p) || isStream(p)) { songEdges.set(p, null); return; }
   edgesWanted.add(p);
   edgesJobs = edgesJobs.then(async () => {
     if (!automixOn() || (p !== state.loadedPath && p !== upcomingPath())) return; // no longer playing or next: asked again if it is
@@ -2388,7 +2400,7 @@ const appendAndPlay = (p) => addToQueue([p], { sorted: true, play: true });
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, transition: state.transition, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, changer: state.changerMode, playModes: { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } }, display: state.display };
+  return { volume: state.volume, crossfade: state.crossfade, transition: state.transition, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, changer: state.changerMode, streaming: state.streaming, playModes: { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } }, display: state.display };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -2825,7 +2837,7 @@ function frame(now) {
 
 export const app = {
   state, engine, disc, THEMES, BUILTIN_EQ_PRESETS, cdp, libraryCheck: () => panels.showLibraryCheck(app),
-  setStatus, queueDisplay, displayName, formatTime, ensureDetails, load, addToQueue, playNext, appendAndPlay, seekTo,
+  setStatus, setStreaming, queueDisplay, displayName, formatTime, ensureDetails, load, addToQueue, playNext, appendAndPlay, seekTo,
   detailsFor: (p) => detailsCache.get(p),
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) goTo(i); },
   // WHAT'S SPECIAL's SHOW ME: the shelf, the disc's other side, CD View or karaoke, opened for a look.
@@ -3006,6 +3018,7 @@ async function start() {
   applyOutput(false);
   navigator.mediaDevices.addEventListener('devicechange', () => applyOutput(true));
   state.saveFound = !!s.saveFound;
+  state.streaming = !!s.streaming;
   state.lyricsOffset = s.lyricsOffset || 0;
   state.shelfSort = s.shelfSort || 'ARTIST';
   state.language = s.language || 'AUTO';

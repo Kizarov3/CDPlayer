@@ -124,6 +124,7 @@ async function resolveRef(ref) {
 
 /** A queue entry that still exists: a plain file, or a cue track whose .cue file is still there. */
 function entryExists(p) {
+  if (/^https:\/\//.test(String(p))) return require('./streaming').isStreamPage(p); // a streamed song: there while its page is
   const r = parseRef(p);
   return isFile(r ? r.cuePath : p);
 }
