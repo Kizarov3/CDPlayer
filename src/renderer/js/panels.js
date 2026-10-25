@@ -163,7 +163,7 @@ export function showCard(app, { choices, maxLines, render, copy, save, video }) 
     el('div', { class: 'card-pick' }, preview, list),
     el('div', { class: 'close-row split' }, pill(t('CANCEL'), () => closePanel('card')), note,
       el('div', { class: 'card-actions' }, videoButton('9:16', t('For Stories, Reels and TikTok')), videoButton('1:1', t('Square, for chats')),
-        pill(t('SAVE…'), finish(save), t('Save the card as a picture')), el('button', { class: 'pill on', onClick: finish(copy) }, t('COPY')))),
+        pill(t('SAVE…'), finish(save), t('Save the card as a picture')), el('button', { class: 'pill go', onClick: finish(copy) }, t('COPY')))),
   ], { width: 940 });
   window.addEventListener('keydown', onKey);
   p.onClose = () => { window.removeEventListener('keydown', onKey); clearTimeout(noteTimer); drawing++; if (shownUrl) URL.revokeObjectURL(shownUrl); };
@@ -779,7 +779,7 @@ function buildTags(app) {
   if (v.foundCover) rows.push(el('div', { class: 'tag-row' }, el('span', { class: 'tag-label' }, t('COVER')), coverNow, el('div', {}, thumb(v.foundCover), el('span', { class: 'tag-source' }, t('Cover Art Archive'))), pick('cover')));
   if (v.lyricsOffer) rows.push(el('div', { class: 'tag-row' }, el('span', { class: 'tag-label' }, t('LYRICS')), el('span', { class: 'tag-now' }, t('None')),
     el('span', { class: 'tag-source' }, (/^\[\d/m.test(v.lyricsOffer) ? t('Timed, from {source}', { source: app.state.lyricsSource || t('the internet') }) : t('Plain, from {source}', { source: app.state.lyricsSource || t('the internet') }))), pick('lyrics')));
-  const save = el('button', { class: 'pill on', disabled: !v.picked.size || v.busy || !v.canWrite }, t('SAVE TO FILE'));
+  const save = el('button', { class: 'pill go', disabled: !v.picked.size || v.busy || !v.canWrite }, t('SAVE TO FILE'));
   save.addEventListener('click', async () => {
     const changes = {};
     for (const k of v.picked) {
@@ -1304,7 +1304,7 @@ function spotifyWizard(app, a, status, foot) {
     secret.addEventListener('input', () => { sp.keySecret = secret.value; mark(secret, secretNote); });
     const paste = (input, note, key) => pill(t('PASTE'), async () => { const text = await app.cdp.clipboardText().catch(() => ''); if (text) { input.value = text; sp[key] = text; mark(input, note); } }, t('Paste it from the clipboard'));
     requestAnimationFrame(() => { mark(id, idNote); mark(secret, secretNote); });
-    const check = el('button', { class: 'pill on', onClick: async () => {
+    const check = el('button', { class: 'pill go', onClick: async () => {
       if (!id.value.trim() || !secret.value.trim()) { sp.status = t('BOTH ARE NEEDED'); refreshPanel('spotify'); return; }
       check.disabled = true; status.textContent = t('ASKING SPOTIFY…');
       const r = await app.cdp.spotifyCheckKeys({ clientId: id.value, clientSecret: secret.value }).catch(() => ({ error: 'OFFLINE' }));
@@ -1323,7 +1323,7 @@ function spotifyWizard(app, a, status, foot) {
     return page(...heading, hint(t('Spotify only lets people you’ve added use your app. In your app’s settings, open User Management and add the name and email of the Spotify account you listen with.')),
       gap(10), el('div', { class: 'row-pills' }, dashboard), trouble, dots, nav(pill(t('NEXT|step'), () => go(4))));
   }
-  const connect = el('button', { class: 'pill on', onClick: async () => {
+  const connect = el('button', { class: 'pill go', onClick: async () => {
     connect.disabled = true; sp.trouble = null;
     status.textContent = t('SIGN IN TO SPOTIFY IN YOUR BROWSER…');
     const slow = setTimeout(async () => { if (!sp.account || sp.account.connected) return; sp.trouble = await app.cdp.spotifyDiagnose('NO_ANSWER'); sp.status = t('STILL WAITING FOR THE BROWSER…'); refreshPanel('spotify'); }, 20000);
@@ -1440,7 +1440,7 @@ function buildCheck(app) {
       for (const p of a.paths) await app.saveTags(p, { cover }).catch(() => {});
       check.covers.set(a.folder, 'SAVED'); refreshPanel('check');
     };
-    const buttons = state && state.cover ? [el('img', { class: 'check-cover', src: state.cover, alt: '' }), el('button', { class: 'pill on', onClick: () => save(state.cover) }, t('SAVE'))]
+    const buttons = state && state.cover ? [el('img', { class: 'check-cover', src: state.cover, alt: '' }), el('button', { class: 'pill go', onClick: () => save(state.cover) }, t('SAVE'))]
       : state === 'LOOKING' ? [el('span', { class: 'check-sub' }, t('LOOKING…'))] : state === 'SAVING' ? [el('span', { class: 'check-sub' }, t('SAVING…'))]
       : state === 'SAVED' ? [el('span', { class: 'check-sub' }, t('SAVED ★'))] : [pill(state === 'NONE' ? t('NOT FOUND · AGAIN') : t('FIND COVER'), find, t('Look for its cover online'))];
     return row(a.album, a.artist, ...buttons, show(a.paths[0]));

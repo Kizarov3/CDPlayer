@@ -42,7 +42,7 @@ export function startTour({ first = false, onFeatures = null } = {}) {
 
   function show() {
     const step = steps[i], last = i === steps.length - 1, n = steps.indexOf(step) - (first ? 1 : 0) + 1;
-    const next = el('button', { class: 'pill on', onClick: () => go(1) }, last ? (first ? t('START LISTENING') : t('DONE')) : t('NEXT|step'));
+    const next = el('button', { class: 'pill go', onClick: () => go(1) }, last ? (first ? t('START LISTENING') : t('DONE')) : t('NEXT|step'));
     bubble.replaceChildren(...[ // (replaceChildren would write a null out as "null")
       step === welcome ? null : el('div', { class: 'tour-count' }, t('{step} OF {total}', { step: n, total: counted })),
       el('div', { class: 'tour-title' }, step.title),

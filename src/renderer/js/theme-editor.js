@@ -90,5 +90,5 @@ export function buildThemeEditor(app, ctx, ui) {
   ctx.problem ? el('div', { class: 'theme-warning theme-problem' }, ctx.problem) : null, // said here: the status line is under the panel
   ui.row(t('NAME'), name), picker);
   return [ui.title(ctx.editing ? t('EDIT {theme}', { theme: ctx.editing.name }) : t('NEW THEME')), ui.gap(14), body,
-    el('div', { class: 'close-row split' }, pill(t('CANCEL'), ui.close), el('button', { class: 'pill on', onClick: save }, t('SAVE')))];
+    el('div', { class: 'close-row split' }, pill(t('CANCEL'), ui.close), el('button', { class: 'pill go', onClick: save }, t('SAVE')))];
 }

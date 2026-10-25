@@ -81,7 +81,8 @@ button { font-family: inherit; outline: none; }
 /* The header's buttons are words: the eye goes to the song, not to a row of pills */
 #header .pill { background: none; box-shadow: none; padding: 7px 6px; font-size: 11.5px; letter-spacing: .06em; }
 #header .pill:hover { background: none; color: rgb(var(--text)); }
-#header .pill.on { color: rgb(var(--bg)); padding: 7px 12px; }
+#header .pill.on { padding: 7px 6px 7px 20px; }
+#header .pill::before { left: 6px; }
 #sleep-indicator { flex: none; white-space: nowrap; padding: 0 4px; color: rgb(var(--muted)); font-size: 10px; font-variant-numeric: tabular-nums; cursor: pointer; } /* one line, beside the buttons */
 #sleep-indicator:empty { display: none; }
 #divider { display: none; }
@@ -238,20 +239,27 @@ body.cursor-hidden #cd-exit { opacity: 0; }
   cursor: pointer; white-space: nowrap;
   transition: background var(--hover) ease, color var(--hover) ease, transform var(--hover) var(--ease-out);
 }
+/* On: a lamp lit before the word, as on a deck's panel — the button itself stays plain (a fill went muddy, or
+   fought PLAY for the eye) */
 .pill::before {
-  content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: -1;
-  background: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent2)));
+  content: ""; position: absolute; left: 12px; top: 50%; width: 7px; height: 7px; margin-top: -3.5px; border-radius: 50%;
+  background: rgb(var(--accent)); box-shadow: 0 0 6px 1px rgba(var(--accent), .7);
   opacity: 0; transition: opacity 200ms ease;
 }
 .pill.small { padding: 7px 13px; font-size: 10px; }
 .pill:hover { background: rgba(255, 255, 255, .078); }
 .pill:active:not(:disabled) { transform: scale(.97); } /* pressed: it gives a little */
-.pill.on { color: rgb(var(--bg)); }
+.pill.on { color: rgb(var(--text)); background: rgba(255, 255, 255, .085); padding-left: 28px; }
+.pill.small.on { padding-left: 25px; }
+.pill.small::before { left: 10px; }
 .pill.on::before { opacity: 1; }
 .pill:disabled { color: rgba(var(--muted), .39); cursor: default; }
 .pill:disabled:hover { background: rgba(255, 255, 255, .047); }
-.pill.on:disabled { color: rgba(var(--muted), .6); } /* a main button that can't be pressed yet: plain, not lit */
 .pill.on:disabled::before { opacity: 0; }
+/* A panel's main button (SAVE, NEXT, PLAY): a key in the theme's colour, lit along its top like PLAY */
+.pill.go { color: #fff; background: rgb(var(--accent)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), inset 0 -2px 5px rgba(0, 0, 0, .15); }
+.pill.go:hover { background: rgb(var(--accent)); filter: brightness(1.1); }
+.pill.go:disabled { color: rgba(var(--muted), .6); background: rgba(255, 255, 255, .047); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .10); filter: none; } /* can't be pressed yet: plain, not lit */
 .unavailable { opacity: .4; }
 .setting-row.idle { opacity: .45; filter: grayscale(1); } /* kept for when it's on: plainly not in use now */
 .unavailable > * { pointer-events: none; }
@@ -281,13 +289,14 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 }
 .round.primary:hover { background: rgb(var(--accent)); filter: brightness(1.08); }
 .round.primary:active { transform: translateY(1px); filter: brightness(.85); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .35), 0 2px 8px rgba(var(--accent), .2); }
-.round.mode::before {
+.round.mode::before { /* on: a thin ring in the theme's colour, the mark lit inside it */
   content: ""; position: absolute; inset: 0; border-radius: 50%;
-  background: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent2)));
+  box-shadow: inset 0 0 0 1px rgba(var(--accent), .55);
   opacity: 0; transition: opacity 200ms ease;
 }
 .round.mode svg { position: relative; }
-.round.mode.on { color: rgb(var(--bg)); }
+.round.mode.on { color: rgb(var(--accent)); background: rgba(255, 255, 255, .06); box-shadow: none; }
+.round.mode.on svg { filter: drop-shadow(0 0 4px rgba(var(--accent), .6)); }
 .round.mode.on::before { opacity: 1; }
 
 .glyph-x {
@@ -444,7 +453,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
   width: 24px; height: 24px; border-radius: 4px; border: none; cursor: pointer; font: bold 12px var(--font);
   color: transparent; background: rgba(255, 255, 255, .06); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16);
 }
-.tag-pick.on { color: rgb(var(--bg)); background: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent2))); box-shadow: none; }
+.tag-pick.on { color: rgb(var(--text)); background: rgba(255, 255, 255, .085); box-shadow: inset 0 0 0 1px rgba(var(--accent), .55); }
 .tag-pick:disabled { opacity: .3; cursor: default; }
 
 /* ---- Theme picker menu ---- */
