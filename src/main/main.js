@@ -633,6 +633,33 @@ handle('backup:restore', async () => {
   app.quit();
   return { ok: true };
 });
+// IMPORT PLAYS (import-plays.js): plays from Last.fm, ListenBrainz, Spotify or Apple Music added to the songs on the shelf.
+const importPlays = require('./import-plays');
+handle('plays:import', async () => {
+  const r = await dialog.showOpenDialog(win, {
+    properties: ['openFile', 'multiSelections'],
+    filters: [{ name: t('Plays from Last.fm, ListenBrainz, Spotify or Apple Music'), extensions: ['zip', 'json', 'jsonl', 'csv', 'xml'] }],
+  });
+  if (r.canceled || !r.filePaths || !r.filePaths.length) return null;
+  const found = [];
+  for (const p of r.filePaths) {
+    try { if (fs.statSync(p).size < 1024 * 1024 * 1024) found.push(...importPlays.read({ name: path.basename(p), data: fs.readFileSync(p) })); } catch { /* unreadable */ }
+  }
+  if (!found.length) return { error: 'NOT RECOGNISED' };
+  const { albums } = await shelf.scanAlbums(() => {});
+  let before = {};
+  try { before = JSON.parse(store.readText('imports.json') || '{}'); } catch { /* none yet */ }
+  clearTimeout(playsTimer);
+  const done = importPlays.apply(found, albums, { counts: plays(), last: playedAt(), first: firstPlayedAt() }, before);
+  ({ counts: playCounts, last: lastPlayed, first: firstPlayed } = done.plays);
+  writePlays();
+  store.writeText('imports.json', JSON.stringify(done.imports));
+  // Their songs in HISTORY, each at its last play — those played here since stay above them.
+  if (done.songs.length) store.writeHistoryAll(relocate.newestFirst([...new Set([...store.readHistoryAll(), ...done.songs])], lastPlayed));
+  phoneShelf = null;
+  if (done.added && win && !win.isDestroyed()) win.webContents.send('library-changed'); // the shelf's plays and dust
+  return { added: done.added, songs: done.songs.length, already: done.already, missing: done.missing, sources: done.sources };
+});
 handle('moves:decline', (key) => {
   if (typeof key !== 'string' || !key.includes('\n')) return;
   const declined = store.readMovesDeclined(); declined.add(key); store.writeMovesDeclined(declined);

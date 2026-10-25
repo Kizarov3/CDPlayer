@@ -76,6 +76,16 @@ const title = (text) => el('h1', {}, text);
 const closeRow = (onClick, caption = t('CLOSE')) => el('div', { class: 'close-row' }, pill(caption, onClick));
 const gap = (h = 22) => { const d = el('div', { class: 'gap-22' }); d.style.height = `${h}px`; return d; };
 const hint = (text) => el('div', { class: 'setting-hint' }, text);
+// IMPORT PLAYS: the files picked read in the main process; what it added said in the status line.
+async function importPlays(app) {
+  const r = await app.cdp.importPlays().catch(() => ({ error: true }));
+  if (!r) return;
+  if (r.error) { app.setStatus(r.error === 'NOT RECOGNISED' ? t('NOT AN EXPORT CDPLAYER CAN READ') : t('UNKNOWN ERROR')); return; }
+  if (r.added) await app.loadHistoryFromDisk();
+  const where = r.sources.join(' + ');
+  app.setStatus(r.added ? [t('+{n} PLAYS FROM {where}', { n: r.added, where }), r.missing ? t('NOT ON THE SHELF: {n}', { n: r.missing }) : null].filter(Boolean).join(' · ')
+    : r.already ? t('NOTHING NEW: ALREADY IMPORTED') : t('NONE OF THOSE SONGS ARE ON THE SHELF'));
+}
 const quietHint = (text) => el('div', { class: 'setting-hint quiet' }, text); // the small print under a hint
 function row(label, control) { return el('div', { class: 'setting-row' }, el('span', {}, label), control); }
 function sliderRow(label, slider, valueLabel) {
@@ -409,7 +419,10 @@ function buildSettings(app) {
     row(t('BACKUP'), el('div', { class: 'row-pills' },
       pill(t('SAVE…'), async () => { const r = await app.cdp.saveBackup().catch(() => ({ error: true })); if (r) app.setStatus(r.ok ? t('BACKUP SAVED') : t('UNKNOWN ERROR')); }, t('Save your queue, history, plays, notes, themes and settings to one file')),
       pill(t('RESTORE…'), async () => { const r = await app.cdp.restoreBackup().catch(() => ({ error: 'UNKNOWN ERROR' })); if (r && r.error) app.setStatus(r.error === 'NOT A BACKUP' ? t('NOT A CDPLAYER BACKUP') : t('UNKNOWN ERROR')); }, t('Put back what a backup kept: CDPlayer then starts again')))),
-    hint(t('For a new computer, or after reinstalling: everything that’s yours in CDPlayer, but not your music, nor Spotify and Discogs sign-ins.')), gap(18),
+    hint(t('For a new computer, or after reinstalling: everything that’s yours in CDPlayer, but not your music, nor Spotify and Discogs sign-ins.')),
+    row(t('IMPORT PLAYS'), el('div', { class: 'row-pills' }, pill(t('CHOOSE FILES…'), () => importPlays(app), t('The export from Last.fm, ListenBrainz, Spotify or Apple Music')))),
+    hint(t('What you played on Last.fm, ListenBrainz, Spotify or Apple Music counts on the same songs here: their plays, dust and HISTORY. Imported again, nothing’s counted twice.')),
+    quietHint(t('Spotify: Account → Privacy → Download your data (its .zip). Apple Music: File → Library → Export Library. Last.fm: a CSV from an exporter such as lastfm.ghan.nl. ListenBrainz: Settings → Export.')), gap(18),
     section(t('SHARING')),
     row(t('DISCORD STATUS'), discord),
     hint(t('Shows the song you’re playing on your Discord profile, while the Discord app is open.')), gap(18),

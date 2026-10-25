@@ -26,20 +26,25 @@ function entries(zip) {
   return list;
 }
 
+// One file's bytes, unpacked.
+function data(zip, e) {
+  if (zip.readUInt32LE(e.local) !== 0x04034b50) throw new Error('Broken zip');
+  const start = e.local + 30 + zip.readUInt16LE(e.local + 26) + zip.readUInt16LE(e.local + 28);
+  const packed = zip.subarray(start, start + e.size);
+  const out = e.method === 0 ? packed : e.method === 8 ? zlib.inflateRawSync(packed) : null;
+  if (!out) throw new Error(`Unknown packing in zip: ${e.method}`);
+  return out;
+}
+
 function extract(zip, dir) {
   const root = path.resolve(dir);
   for (const e of entries(zip)) {
     const to = path.resolve(root, e.name);
     if (path.isAbsolute(e.name) || (to !== root && !to.startsWith(root + path.sep))) throw new Error(`Bad name in zip: ${e.name}`);
     if (e.name.endsWith('/')) { fs.mkdirSync(to, { recursive: true }); continue; }
-    if (zip.readUInt32LE(e.local) !== 0x04034b50) throw new Error('Broken zip');
-    const start = e.local + 30 + zip.readUInt16LE(e.local + 26) + zip.readUInt16LE(e.local + 28);
-    const packed = zip.subarray(start, start + e.size);
-    const data = e.method === 0 ? packed : e.method === 8 ? zlib.inflateRawSync(packed) : null;
-    if (!data) throw new Error(`Unknown packing in zip: ${e.method}`);
     fs.mkdirSync(path.dirname(to), { recursive: true });
-    fs.writeFileSync(to, data, { mode: e.mode & 0o111 ? 0o755 : 0o644 });
+    fs.writeFileSync(to, data(zip, e), { mode: e.mode & 0o111 ? 0o755 : 0o644 });
   }
 }
 
-module.exports = { extract, entries };
+module.exports = { extract, entries, data };

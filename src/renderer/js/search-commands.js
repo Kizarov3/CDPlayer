@@ -31,6 +31,7 @@ export const SETTING_ROWS = [
   ['LIBRARY', 'SAVE FOUND ART & LYRICS', 'covers lyrics write files обложки'],
   ['LIBRARY', 'YOUTUBE MUSIC & SOUNDCLOUD', 'stream streaming youtube soundcloud online стриминг ютуб онлайн'],
   ['LIBRARY', 'BACKUP', 'restore export cdbackup резервная копия восстановить'],
+  ['LIBRARY', 'IMPORT PLAYS', 'last.fm lastfm listenbrainz spotify apple music itunes scrobbles history импорт истории скробблы'],
   ['SHARING', 'DISCORD STATUS', 'discord rich presence дискорд'],
   ['DISCOGS', 'TOKEN', 'discogs api key токен'],
   ['DISCOGS', 'CURRENCY', 'discogs price money валюта цена'],
