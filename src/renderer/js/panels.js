@@ -1039,7 +1039,7 @@ function paintSource(app) {
   const name = onlineName(search.source);
   search.title.textContent = name ? t('SEARCH · {where}', { where: name }) : t('SEARCH LIBRARY');
   search.importRow.hidden = !!name;
-  search.instructions.textContent = search.source === 'youtube' ? t('Albums on YouTube Music — one played goes into the changer as a disc of your own')
+  search.instructions.textContent = search.source === 'youtube' ? t('Songs and albums on YouTube Music — an album played goes into the changer as a disc of your own')
     : search.source === 'soundcloud' ? t('Songs on SoundCloud — after each title, who put it there')
     : app.state.streaming ? t('Type to find a song in your library, something to do or a setting — or look on YouTube Music or SoundCloud')
     : t('Type to find a song in your library, something to do or a setting — or paste a Spotify track/playlist link to add the matching songs you already have');
@@ -1056,28 +1056,36 @@ async function searchOnline(app) {
   search.onlineQuery = query;
   setSearchStatus(t('LOOKING ON {where}…', { where: name }));
   // (rows waiting for what's found: a square for the cover, a bar for the name)
-  search.results.replaceChildren(...Array.from({ length: 5 }, () => el('div', { class: 'list-row plain waiting-row' }, el('span', { class: 'row-cover' }), el('span', { class: 'waiting-bar' }))));
-  let found;
-  try { found = await app.cdp.stream.search(query, where); } catch { found = null; }
-  if (asked !== search.online || !isOpen('search')) return;
-  if (!found) {
-    setSearchStatus(t('{where} DIDN’T ANSWER', { where: name }));
-    search.results.replaceChildren(el('div', { class: 'list-row plain' }, pill(t('TRY AGAIN'), () => searchOnline(app))));
-    return;
-  }
-  setSearchStatus(found.length ? t('{n} FOUND ON {where}', { n: found.length, where: name }) : t('NOTHING LIKE THAT ON {where}', { where: name }));
-  const rows = found.map((f) => {
-    const row = f.kind === 'album' ? onlineAlbumRow(app, f) : onlineSongRow(app, f);
-    // the mouse resting on it: its (first) song's sound asked for now — it may be clicked in a moment
-    const first = f.kind === 'album' ? f.tracks[0] && f.tracks[0].page : f.page;
-    let resting = null;
-    row.addEventListener('mouseenter', () => { resting = setTimeout(() => {
-      if (first && !row.classList.contains('locked')) app.cdp.stream.prepare(first).then((r) => { if (r && r.locked && f.kind === 'song') markLocked(row); }).catch(() => {});
-    }, 400); });
-    row.addEventListener('mouseleave', () => clearTimeout(resting));
-    return row;
-  });
-  search.results.replaceChildren(...rows);
+  const waiting = (n) => Array.from({ length: n }, () => el('div', { class: 'list-row plain waiting-row' }, el('span', { class: 'row-cover' }), el('span', { class: 'waiting-bar' })));
+  search.results.replaceChildren(...waiting(5));
+  // YouTube Music's songs come at once, its albums (each opened to name its songs) a few seconds later: shown as they come.
+  const parts = where === 'youtube' ? ['youtube-songs', 'youtube-albums'] : [where];
+  const got = parts.map(() => undefined), rows = new Map();
+  const draw = () => {
+    if (asked !== search.online || !isOpen('search')) return;
+    const coming = got.includes(undefined), found = got.flatMap((x) => x || []);
+    if (!coming && got.every((x) => x === null)) {
+      setSearchStatus(t('{where} DIDN’T ANSWER', { where: name }));
+      search.results.replaceChildren(el('div', { class: 'list-row plain' }, pill(t('TRY AGAIN'), () => searchOnline(app))));
+      return;
+    }
+    if (coming && !found.length) return;
+    setSearchStatus(coming ? t('LOOKING ON {where}…', { where: name }) : found.length ? t('{n} FOUND ON {where}', { n: found.length, where: name }) : t('NOTHING LIKE THAT ON {where}', { where: name }));
+    search.results.replaceChildren(...found.map((f) => rows.get(f) || rows.set(f, onlineRow(app, f)).get(f)), ...(coming ? waiting(3) : []));
+  };
+  await Promise.all(parts.map((w, i) => app.cdp.stream.search(query, w).catch(() => null).then((r) => { got[i] = r; draw(); })));
+}
+// One thing found: a song's row or an album's, its sound asked for when the mouse rests on it.
+function onlineRow(app, f) {
+  const row = f.kind === 'album' ? onlineAlbumRow(app, f) : onlineSongRow(app, f);
+  // the mouse resting on it: its (first) song's sound asked for now — it may be clicked in a moment
+  const first = f.kind === 'album' ? f.tracks[0] && f.tracks[0].page : f.page;
+  let resting = null;
+  row.addEventListener('mouseenter', () => { resting = setTimeout(() => {
+    if (first && !row.classList.contains('locked')) app.cdp.stream.prepare(first).then((r) => { if (r && r.locked && f.kind === 'song') markLocked(row); }).catch(() => {});
+  }, 400); });
+  row.addEventListener('mouseleave', () => clearTimeout(resting));
+  return row;
 }
 // A song on SoundCloud: its title first, then (quieter) who put it there, and its length — a 30 s preview, a
 // "slowed" copy, told apart at a glance. NEXT and ADD show on the row the mouse is on.
@@ -1085,7 +1093,8 @@ function onlineSongRow(app, f) {
   const row = trackRow(app, f.page, f.title || '', () => { if (row.classList.contains('locked')) return; app.appendAndPlay(f.page); closePanel('search'); });
   const buttons = row.querySelectorAll('button');
   buttons.forEach((b, i) => { if (i) b.classList.add('on-hover'); });
-  row.querySelector('.entry').replaceChildren(f.title || '', f.artist ? el('span', { class: 'by' }, ` · ${f.artist}`) : '');
+  const by = [f.artist, f.album].filter(Boolean).join(' · '); // (YouTube Music's: its album too)
+  row.querySelector('.entry').replaceChildren(f.title || '', by ? el('span', { class: 'by' }, ` · ${by}`) : '');
   row.prepend(rowCover(f.thumb));
   if (f.duration) row.insertBefore(el('span', { class: 'when count' }, minutes(f.duration)), buttons[0]);
   row.append(buttons[0]); // PLAY at the right edge, where it always is; NEXT and ADD come up beside it
@@ -1113,7 +1122,7 @@ function onlineAlbumRow(app, a) {
   return el('div', { class: 'list-row', title: t('Play {song}', { song: a.title }), onClick: () => { put(true); closePanel('search'); } },
     rowCover(a.thumb),
     el('span', { class: 'entry' }, [a.artist, a.title].filter(Boolean).join(' · ')),
-    el('span', { class: 'when count' }, t('{n} SONGS', { n: a.count })), add, now);
+    el('span', { class: 'when count' }, a.count === 1 ? t('1 SONG|single') : t('{n} SONGS', { n: a.count })), add, now);
 }
 // An action or a setting the search found, above the songs: an action is done (the search closed first), a setting
 // shown — Settings opened at its row.

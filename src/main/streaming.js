@@ -280,10 +280,59 @@ async function search(query, where = 'youtube') {
       return withThumb(song, e.thumbnails);
     }));
   }
-  const r = await run(['--flat-playlist', '-J', '--', `https://music.youtube.com/search?q=${encodeURIComponent(query)}#albums`]);
-  const pages = (r.entries || []).map((e) => e.url).filter(Boolean).slice(0, ALBUMS_NAMED);
-  const named = await Promise.all(pages.map((pg) => album(pg).catch(() => null)));
-  return Promise.all(named.filter((a) => a && a.tracks.length).map((a) => withThumb({ kind: 'album', ...a, count: a.tracks.length }, a.thumbnails)));
+  // The songs first (a song's name typed finds it, not the tribute albums named after it), then the albums — asked
+  // for apart ('youtube-songs', 'youtube-albums') to be shown as each comes, or together.
+  if (where === 'youtube-songs') return youTubeSongs(query);
+  const albums = async () => {
+    const r = await run(['--flat-playlist', '-J', '--', `https://music.youtube.com/search?q=${encodeURIComponent(query)}#albums`]);
+    const pages = (r.entries || []).map((e) => e.url).filter(Boolean).slice(0, ALBUMS_NAMED);
+    const named = await Promise.all(pages.map((pg) => album(pg).catch(() => null)));
+    return Promise.all(named.filter((a) => a && a.tracks.length).map((a) => withThumb({ kind: 'album', ...a, count: a.tracks.length }, a.thumbnails)));
+  };
+  if (where === 'youtube-albums') return albums();
+  const [songs, found] = await Promise.all([youTubeSongs(query).catch(() => []), albums()]);
+  return [...songs, ...found];
+}
+
+// YouTube Music's own search, its songs: as its page asks for them, with each song's artist, album and length
+// (yt-dlp's list of the same names only the titles). → [{ kind: 'song', page, title, artist, album, duration, cover }]
+const SONGS_ONLY = 'EgWKAQIIAWoKEAkQBRAKEAMQBA==', SONGS_SHOWN = 6;
+async function youTubeSongs(query) {
+  const res = await fetch('https://music.youtube.com/youtubei/v1/search?prettyPrint=false', {
+    method: 'POST', signal: AbortSignal.timeout(15000),
+    headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0', Origin: 'https://music.youtube.com', Referer: 'https://music.youtube.com/' },
+    body: JSON.stringify({ context: { client: { clientName: 'WEB_REMIX', clientVersion: '1.20251020.01.00', hl: 'en' } }, query, params: SONGS_ONLY }),
+  });
+  if (!res.ok) return [];
+  const items = [];
+  (function walk(o) {
+    if (!o || typeof o !== 'object' || items.length >= SONGS_SHOWN) return;
+    if (o.musicResponsiveListItemRenderer) { items.push(o.musicResponsiveListItemRenderer); return; }
+    for (const v of Object.values(o)) walk(v);
+  })(await res.json());
+  const songs = items.map(youTubeSong).filter(Boolean);
+  return Promise.all(songs.map(({ thumbs, ...song }) => {
+    glimpse(song.page, { title: song.title, artist: song.artist, album: song.album, duration: song.duration, cover: song.cover });
+    return withThumb({ ...song, locked: isLocked(song.page) }, thumbs);
+  }));
+}
+// One of its rows: the title (and the song's id) in the first column; "Artist • Album • 4:19" in the second.
+function youTubeSong(it) {
+  const cols = (it.flexColumns || []).map((c) => ((c.musicResponsiveListItemFlexColumnRenderer || {}).text || {}).runs || []);
+  const id = ((((cols[0] || [])[0] || {}).navigationEndpoint || {}).watchEndpoint || {}).videoId || (it.playlistItemData || {}).videoId;
+  if (!id || !/^[\w-]{11}$/.test(id)) return null;
+  const typeOf = (r) => ((((r.navigationEndpoint || {}).browseEndpoint || {}).browseEndpointContextSupportedConfigs || {}).browseEndpointContextMusicConfig || {}).pageType;
+  const meta = cols[1] || [];
+  const artists = meta.filter((r) => typeOf(r) === 'MUSIC_PAGE_TYPE_ARTIST').map((r) => r.text);
+  const album = (meta.find((r) => typeOf(r) === 'MUSIC_PAGE_TYPE_ALBUM') || {}).text || null;
+  const time = (meta.map((r) => r.text).find((x) => /^\d+(:\d\d){1,2}$/.test(x.trim())) || '').trim();
+  const thumbs = ((((it.thumbnail || {}).musicThumbnailRenderer || {}).thumbnail || {}).thumbnails || []).filter((x) => x && x.url);
+  const big = thumbs.length ? thumbs[thumbs.length - 1].url.replace(/=w\d+-h\d+/, '=w544-h544') : null; // (its picture, asked for big)
+  return {
+    kind: 'song', page: `https://music.youtube.com/watch?v=${id}`, title: (cols[0] || []).map((r) => r.text).join('') || null,
+    artist: artists.length ? artists.join(' & ') : null, album, cover: big, thumbs,
+    duration: time ? time.split(':').reduce((s, n) => s * 60 + Number(n), 0) : null,
+  };
 }
 
 /** An album (or playlist) page → { title, artist, cover, page, tracks: [{ page, title, artist, duration }] }. */
@@ -406,4 +455,4 @@ async function serveStream(request, page) {
   return new Response(body, { status: 206, headers: { ...headers, 'Content-Range': `bytes ${start}-${end}/${total}` } });
 }
 
-module.exports = { available, install, isStreamPage, isLocked, setStore, remember, songInfo, resolve, prepare, search, album, details, coverData, serveStream, ytDlpPath };
+module.exports = { available, install, isStreamPage, isLocked, setStore, remember, songInfo, resolve, prepare, search, album, details, coverData, serveStream, ytDlpPath, youTubeSong };

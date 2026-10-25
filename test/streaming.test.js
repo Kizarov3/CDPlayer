@@ -215,3 +215,17 @@ test('a dropped connection is asked again; a range past the end is answered 416'
   assert.strictEqual(past.status, 416);
   assert.strictEqual(past.headers.get('content-range'), 'bytes */4000');
 });
+
+test("a song in YouTube Music's search: its id, title, artists, album, length and a big picture", () => {
+  const run = (text, pageType) => ({ text, ...(pageType ? { navigationEndpoint: { browseEndpoint: { browseEndpointContextSupportedConfigs: { browseEndpointContextMusicConfig: { pageType } } } } } : {}) });
+  const col = (runs) => ({ musicResponsiveListItemFlexColumnRenderer: { text: { runs } } });
+  const item = {
+    flexColumns: [col([{ text: 'Will You Be There', navigationEndpoint: { watchEndpoint: { videoId: 'aIuPDFw9dRU' } } }]),
+      col([run('Michael Jackson', 'MUSIC_PAGE_TYPE_ARTIST'), run(' & '), run('The Cleveland Orchestra', 'MUSIC_PAGE_TYPE_ARTIST'), run(' • '), run('Dangerous', 'MUSIC_PAGE_TYPE_ALBUM'), run(' • '), run('7:40')])],
+    thumbnail: { musicThumbnailRenderer: { thumbnail: { thumbnails: [{ url: 'https://lh3.googleusercontent.com/x=w60-h60-l90-rj', width: 60 }, { url: 'https://lh3.googleusercontent.com/x=w120-h120-l90-rj', width: 120 }] } } },
+  };
+  const s = streaming.youTubeSong(item);
+  assert.deepStrictEqual([s.page, s.title, s.artist, s.album, s.duration, s.cover],
+    ['https://music.youtube.com/watch?v=aIuPDFw9dRU', 'Will You Be There', 'Michael Jackson & The Cleveland Orchestra', 'Dangerous', 460, 'https://lh3.googleusercontent.com/x=w544-h544-l90-rj']);
+  assert.strictEqual(streaming.youTubeSong({ flexColumns: [col([{ text: 'x', navigationEndpoint: { watchEndpoint: { videoId: '../../etc' } } }])] }), null);
+});

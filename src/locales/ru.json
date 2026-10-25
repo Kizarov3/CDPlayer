@@ -99,7 +99,7 @@
   "Albums Discogs’ search didn’t find. CHOOSE PRESSING… lets you search and pick it.": "Альбомы, которые поиск Discogs не нашёл. ВЫБРАТЬ ПРЕССИНГ… даёт найти и выбрать его вручную.",
   "Albums are mastered at different loudness — an old CD can be 10 dB quieter than a new remaster. Turn on Settings → SOUND CHECK: every song plays at the same loudness, from its ReplayGain tags or measured once. ALBUM keeps an album’s own quiet and loud songs.": "Альбомы сводят с разной громкостью — старый CD бывает на 10 дБ тише нового ремастера. Включи НАСТРОЙКИ → ВЫРАВНИВАНИЕ ГРОМКОСТИ: все песни будут звучать одинаково громко — по тегам ReplayGain или по замеру, сделанному один раз. АЛЬБОМ сохраняет тихие и громкие песни альбома.",
   "Albums missing some of their track numbers — a song or two may not have come across.": "Альбомы, где не хватает каких-то номеров треков — песня-другая могла потеряться.",
-  "Albums on YouTube Music — one played goes into the changer as a disc of your own": "Альбомы на YouTube Music — сыгранный встаёт в чейнджер как твой диск",
+  "Songs and albums on YouTube Music — an album played goes into the changer as a disc of your own": "Песни и альбомы на YouTube Music — сыгранный альбом встаёт в чейнджер как твой диск",
   "Albums you don’t have": "Недостающие альбомы",
   "Almost everything has a key. Press ? any time to see them all.": "Почти у всего есть клавиша. Нажми ? в любой момент, чтобы увидеть все.",
   "An album new in your music folder arrives in shrink-wrap: the film comes off when you play it, or tear it off the case yourself. Its NEW sticker stays for two weeks.": "Новый альбом в папке с музыкой приходит в заводской плёнке: она снимается, когда альбом заиграет, — или сорви её с коробки руками. Наклейка «НОВ.» держится две недели.",
@@ -1200,6 +1200,7 @@
     "many": "ПОКАЗАНО {n}",
     "other": "ПОКАЗАНО {n}"
   },
+  "1 SONG|single": "1 ПЕСНЯ",
   "{n} SONGS": {
     "one": "{n} ПЕСНЯ",
     "few": "{n} ПЕСНИ",
