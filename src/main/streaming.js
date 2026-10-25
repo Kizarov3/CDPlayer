@@ -70,6 +70,7 @@ function run(args, timeout = 30000) {
   return new Promise((resolve, reject) => {
     // YouTube's checks are puzzles in JavaScript: the app itself (Electron, run as Node) solves them for yt-dlp, so no
     // other JavaScript runtime (deno) is needed. (Homebrew's yt-dlp is given its own folder on the PATH too.)
+    // yt-dlp runs it with --permission: Node's permission model, no files, no processes, for YouTube's script.
     const env = { ...process.env, ELECTRON_RUN_AS_NODE: '1', PATH: [path.dirname(ytDlpPath()), process.env.PATH || ''].join(path.delimiter) };
     const js = ['--no-js-runtimes', '--js-runtimes', `node:${process.execPath}`];
     execFile(ytDlpPath(), [...js, ...args], { timeout, maxBuffer: 64 * 1024 * 1024, env }, (err, stdout, stderr) => {
