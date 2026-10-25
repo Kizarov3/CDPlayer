@@ -400,7 +400,11 @@ function buildSettings(app) {
     languageButton.textContent = s.language === 'AUTO' ? `${t('AUTO')} · ${(code === 'en' ? 'ENGLISH' : l ? l.name : code).toUpperCase()}` : (code === 'en' ? 'ENGLISH' : l ? l.name.toUpperCase() : code);
   });
   refreshLanguageName();
-  const ambient = toggle(s.ambient, () => { app.setAmbient(!s.ambient); setToggle(ambient, s.ambient); });
+  const AMBIENT_NAMES = { OFF: t('OFF'), COVER: t('COVER|ambient'), GRADIENT: t('GRADIENT|ambient') };
+  const ambientNow = () => (s.ambient ? s.ambientStyle || 'COVER' : 'OFF');
+  const ambient = pill(AMBIENT_NAMES[ambientNow()], () => showMenu(ambient, Object.keys(AMBIENT_NAMES).map((kind) => ({
+    label: AMBIENT_NAMES[kind], current: kind === ambientNow(), pick: () => { app.setAmbient(kind); refreshSettingsIfOpen(app); },
+  }))), t('Behind the player: the cover blurred, or its colours flowing'));
   const animations = toggle(anim.enabled, () => { app.setAnimations(!anim.enabled); setToggle(animations, anim.enabled); });
   const mini = toggle(s.miniMode, () => app.setMiniMode(!s.miniMode));
   const discord = toggle(s.discord, () => { app.setDiscord(!s.discord); setToggle(discord, s.discord); });
@@ -457,6 +461,7 @@ function buildSettings(app) {
     hint(t('DECK: a glowing panel like a CD player’s — the track number and the time in segment digits. CLASSIC: just the times.')),
     row(t('WAVEFORM'), waveform),
     row(t('AMBIENT BACKGROUND'), ambient),
+    hint(t('COVER: the album’s cover, blurred, behind the player. GRADIENT: its colours, flowing slowly round each other.')),
     app.shownTheme().image ? hint(t('The theme’s own image is the background while it’s on.')) : null,
     row(t('DISC WEAR'), discWear),
     hint(t('A disc played a lot looks it: scratches from ten plays of its album, fingerprints from fifty, chips from a hundred.')),

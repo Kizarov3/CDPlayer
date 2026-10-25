@@ -62,6 +62,26 @@ button { font-family: inherit; outline: none; }
     repeating-linear-gradient(to bottom, rgba(255, 255, 255, .024) 0, rgba(255, 255, 255, .024) 1px, transparent 1px, transparent 3px);
 }
 #backdrop.has-art { --top-shade: .88; --top-shade-height: 24%; }
+/* AMBIENT BACKGROUND → GRADIENT: in place of the glow, the cover's colours flowing round each other. Each light is a
+   small soft circle scaled up: cheap to draw, and only moved (transform), so it stays on the graphics card. */
+@property --c { syntax: '<color>'; inherits: false; initial-value: rgb(40, 40, 44); }
+#backdrop-flow { position: absolute; inset: 0; overflow: hidden; opacity: 0; transition: opacity 600ms; }
+#backdrop.has-flow #backdrop-flow { opacity: 1; }
+#backdrop.has-flow #backdrop-art { opacity: 0; }
+#backdrop.has-flow::before { background: linear-gradient(to bottom, rgba(15, 15, 17, .3), rgba(9, 9, 10, .55)); }
+#backdrop-flow i {
+  position: absolute; left: 50%; top: 50%; width: 100px; height: 100px; margin: -50px 0 0 -50px; border-radius: 50%;
+  background: radial-gradient(closest-side, var(--c), transparent);
+  transition: --c 1.2s ease;
+  will-change: transform;
+  animation: flow 28s ease-in-out infinite alternate;
+}
+#backdrop-flow i:nth-child(1) { --from: translate(-38vw, -30vh) scale(11); --to: translate(-6vw, 4vh) scale(14); }
+#backdrop-flow i:nth-child(2) { --from: translate(36vw, -28vh) scale(12); --to: translate(4vw, 10vh) scale(9); animation-duration: 34s; animation-delay: -9s; }
+#backdrop-flow i:nth-child(3) { --from: translate(-34vw, 32vh) scale(10); --to: translate(14vw, -8vh) scale(13); animation-duration: 31s; animation-delay: -17s; }
+#backdrop-flow i:nth-child(4) { --from: translate(38vw, 30vh) scale(13); --to: translate(-12vw, -12vh) scale(10); animation-duration: 25s; animation-delay: -5s; }
+@keyframes flow { from { transform: var(--from); } to { transform: var(--to); } }
+body.no-anim #backdrop-flow i { animation: none; transform: var(--from); }
 
 /* ---- Main layout ---- */
 #main {

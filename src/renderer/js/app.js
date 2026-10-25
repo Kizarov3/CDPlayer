@@ -71,7 +71,7 @@ const state = {
   softwareRendering: false, // the window put together without the graphics card (gpu-status.js, render-budget.js)
   skipped: new Set(),  // songs (paths) marked SKIP in their case: passed over as the music moves on, still played when picked
   nextUp: null,        // the queue's { start, end }: the run put to PLAY NEXT (play-next.js)
-  volume: 100, volumeBeforeMute: -1, transition: 'OFF', crossfade: 5, mono: false, spatial: false, spatialAmount: 50, waveform: true, ambient: true, miniMode: false, discord: true, discNoise: false, discWear: true, discShine: true, taskbarDisc: true,
+  volume: 100, volumeBeforeMute: -1, transition: 'OFF', crossfade: 5, mono: false, spatial: false, spatialAmount: 50, waveform: true, ambient: true, ambientStyle: 'COVER', miniMode: false, discord: true, discNoise: false, discWear: true, discShine: true, taskbarDisc: true,
   trayBusy: false, // the tray is moving or the disc is being read: transport presses wait
   saveFound: false, // covers and lyrics found online are written into the song's file
   streaming: false, // the search finds albums on YouTube Music and songs on SoundCloud too (streaming.js, through yt-dlp)
@@ -2004,7 +2004,23 @@ function paintCoverGlow() {
     } else draw(1);
     art.style.objectFit = 'cover';
     backdrop.classList.add('has-art');
-  } else backdrop.classList.remove('has-art');
+    const flowing = state.ambientStyle === 'GRADIENT';
+    if (flowing) paintFlow(cover);
+    backdrop.classList.toggle('has-flow', flowing);
+  } else backdrop.classList.remove('has-art', 'has-flow');
+}
+// GRADIENT: four soft lights in the cover's colours — those of its four corners, a little richer — drifting slowly
+// round each other (styles.css: drawn small and scaled up, moved only by the graphics card).
+function paintFlow(cover) {
+  const g = Object.assign(document.createElement('canvas'), { width: 2, height: 2 }).getContext('2d', { willReadFrequently: true });
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(cover, 0, 0, 2, 2);
+  const d = g.getImageData(0, 0, 2, 2).data;
+  $('backdrop-flow').querySelectorAll('i').forEach((blob, k) => {
+    const c = [d[k * 4], d[k * 4 + 1], d[k * 4 + 2]], grey = (c[0] + c[1] + c[2]) / 3;
+    const rich = c.map((v) => grey + (v - grey) * 2), top = Math.max(...rich, 1), lift = Math.max(1, 170 / top); // (a dark cover's colours brought up to be seen)
+    blob.style.setProperty('--c', `rgb(${rich.map((v) => Math.round(Math.max(0, Math.min(255, v * lift)))).join(',')})`);
+  });
 }
 // The window resized while the glow is stretched here: stretched again once it has settled (not on every step).
 function paintCoverGlowSoon() { clearTimeout(glowResize); glowResize = setTimeout(paintCoverGlow, 200); }
@@ -2115,7 +2131,12 @@ function setMono(on) { state.mono = on; engine.setMono(on); updateQualityBadge()
 function setSpatial(on) { state.spatial = on; engine.setSpatial(on, state.spatialAmount / 100); updateQualityBadge(); saveSettingsSoon(); keepDeviceSound(); }
 function setSpatialAmount(v) { state.spatialAmount = v; engine.setSpatial(state.spatial, v / 100); saveSettingsSoon(); keepDeviceSound(); }
 function setWaveform(on) { state.waveform = on; progress.setWaveformEnabled(on); saveSettingsSoon(); }
-function setAmbient(on) { state.ambient = on; onCoverChanged(); saveSettingsSoon(); }
+// AMBIENT BACKGROUND: OFF, COVER (the cover's glow) or GRADIENT (its colours flowing).
+function setAmbient(kind) {
+  state.ambient = kind !== 'OFF';
+  if (kind !== 'OFF') state.ambientStyle = kind === 'GRADIENT' ? 'GRADIENT' : 'COVER';
+  onCoverChanged(); saveSettingsSoon();
+}
 function setAnimations(on) { anim.enabled = on; document.body.classList.toggle('no-anim', !on); saveSettingsSoon(); }
 function setCrossfade(v) { state.crossfade = v; saveSettingsSoon(); }
 function setEq(gains) { state.eq = gains.slice(); engine.setEq(state.eq); updateQualityBadge(); saveSettingsSoon(); keepDeviceSound(); }
@@ -2513,7 +2534,7 @@ const appendAndPlay = (p) => addToQueue([p], { sorted: true, play: true });
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, transition: state.transition, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, changer: state.changerMode, streaming: state.streaming, playModes: { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } }, display: state.display, look: state.look };
+  return { volume: state.volume, crossfade: state.crossfade, transition: state.transition, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, ambientStyle: state.ambientStyle, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, changer: state.changerMode, streaming: state.streaming, playModes: { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } }, display: state.display, look: state.look };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -3162,6 +3183,7 @@ async function start() {
   setSpatial(!!s.spatial);
   setWaveform(s.waveform);
   state.ambient = s.ambient;
+  state.ambientStyle = s.ambientStyle === 'GRADIENT' ? 'GRADIENT' : 'COVER';
   state.discord = s.discord !== false;
   setDiscNoise(!!s.discNoise);
   state.discWear = s.discWear !== false;

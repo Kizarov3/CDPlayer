@@ -21,7 +21,7 @@ test('reads a settings.txt written by the Java version', () => {
     volume: 70, crossfade: 5, mono: true, animations: false, theme: 'OCEAN', eq: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
     waveform: false, miniMode: false, bounds: { x: 10, y: 20, width: 1200, height: 900 }, ambient: false, discord: false,
     discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false,
-    playModes: { QUEUE: { shuffle: 'OFF', repeat: 'OFF' }, CHANGER: { shuffle: 'OFF', repeat: 'OFF' } }, display: 'DECK', transition: 'CROSSFADE', streaming: false, look: 'CLASSIC',
+    playModes: { QUEUE: { shuffle: 'OFF', repeat: 'OFF' }, CHANGER: { shuffle: 'OFF', repeat: 'OFF' } }, display: 'DECK', transition: 'CROSSFADE', streaming: false, look: 'CLASSIC', ambientStyle: 'COVER',
   });
 });
 
@@ -384,4 +384,14 @@ test("the player's LOOK: CLASSIC unless another is picked, kept on its own line;
   assert.strictEqual(fs.readFileSync(path.join(home, 'settings.txt'), 'utf8').split('\n')[29], 'STAGE');
   store.writeSettings({ ...store.readSettings(), look: 'NEON' });
   assert.strictEqual(store.readSettings().look, 'CLASSIC');
+});
+
+test('how the ambient background is drawn is the 31st settings line: COVER unless GRADIENT, and it survives a save', () => {
+  fs.writeFileSync(path.join(home, 'settings.txt'), '70\n5\n1\n0\nOCEAN\n0,0,0,0,0,0,0,0,0,0\n0\n0\n\n0\n1\n');
+  assert.strictEqual(store.readSettings().ambientStyle, 'COVER');
+  store.writeSettings({ ...store.readSettings(), ambientStyle: 'GRADIENT' });
+  assert.strictEqual(fs.readFileSync(path.join(home, 'settings.txt'), 'utf8').split('\n')[30], 'GRADIENT');
+  assert.strictEqual(store.readSettings().ambientStyle, 'GRADIENT');
+  store.writeSettings({ ...store.readSettings(), ambientStyle: 'NEON' });
+  assert.strictEqual(store.readSettings().ambientStyle, 'COVER');
 });
