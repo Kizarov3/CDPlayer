@@ -678,7 +678,7 @@ handle('plays:import', async () => {
   let before = {};
   try { before = JSON.parse(store.readText('imports.json') || '{}'); } catch { /* none yet */ }
   clearTimeout(playsTimer);
-  const done = importPlays.apply(found, albums, { counts: plays(), last: playedAt(), first: firstPlayedAt() }, before);
+  const done = importPlays.apply(found, albums, { counts: plays(), last: playedAt(), first: firstPlayedAt() }, before, { own: scrobbler.ownSince() });
   ({ counts: playCounts, last: lastPlayed, first: firstPlayed } = done.plays);
   writePlays();
   store.writeText('imports.json', JSON.stringify(done.imports));

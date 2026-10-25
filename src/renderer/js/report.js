@@ -9,10 +9,10 @@ const trail = [];
 export function scrub(text) {
   return String(text)
     .replace(/(?:cdp|file|https?):\/\/[^\s'"()]*\/((?:[\w-]+\.)+m?js):(\d+)(?::\d+)?/g, '$1:$2')
-    .replace(/(?:https?|cdp|file|spotify):\/?\/?[^\s'"()]+/g, '<address>')
-    .replace(/(['"])(?:\/|~\/|[A-Za-z]:\\)[^'"]*\1/g, '$1<path>$1') // (a quoted one may have spaces in it)
-    .replace(/[A-Za-z]:\\[^\s'"()]+/g, '<path>')
-    .replace(/(?:~|\/(?:Users|home|Volumes|mnt|media|tmp|private|var))\/[^\s'"()]+/g, '<path>');
+    .replace(/(?:https?|cdp|file|spotify):\/?\/?[^\s'"()]+/gi, '<address>')
+    .replace(/(['"])(?:\/|~\/|[a-z]:\\|\\\\)[^'"]*\1/gi, '$1<path>$1') // (a quoted one may have spaces in it)
+    // any other: from where it begins to the next · or the end — a path with spaces in it taken whole, and more with it
+    .replace(/(?:~\/|\/(?=[^\s/]+\/)|[a-z]:\\|\\\\)[^'"()·\n]*/gi, '<path>');
 }
 
 /** Something said in the status line, or an error: kept, the last 40. */

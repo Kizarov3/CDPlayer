@@ -17,7 +17,9 @@ const LASTFM_KEY = '28a46ad4e3daba21fda9817c8ca1f3e6', LASTFM_SECRET = 'd4a3eb97
 const LASTFM_AUTH = 'https://www.last.fm/api/auth/';
 const SERVICES = ['listenbrainz', 'lastfm'];
 const QUEUE_MAX = 5000, BATCH = { listenbrainz: 1000, lastfm: 50 };
-const LASTFM_RETRY = [8, 11, 16, 29]; // its errors that pass: operation failed, offline, temporarily unavailable, too many at once
+// its errors that pass: operation failed, offline, temporarily unavailable, too many at once — and CDPlayer's key
+// refused (invalid, suspended, a bad signature): not the listens' fault, so they wait
+const LASTFM_RETRY = [4, 8, 10, 11, 13, 16, 26, 29];
 const NOT_YET = 14; // the token isn't allowed (yet)
 
 function createScrobbler({ store, fetch = globalThis.fetch, version = '', wait = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
@@ -86,6 +88,8 @@ function createScrobbler({ store, fetch = globalThis.fetch, version = '', wait =
     for (const s of SERVICES) { const c = settings()[s]; out[s] = { user: c ? c.user : null, dropped: !!(c && c.dropped), waiting: q[s].length }; }
     return out;
   }
+  /** When CDPlayer began scrobbling to each service that keeps no note of who sent a listen: { lastfm: ms }. */
+  const ownSince = () => (settings().lastfmSince ? { lastfm: settings().lastfmSince } : {});
   /** ListenBrainz's token pasted → { ok, user } | { error: 'EMPTY' | 'BAD_TOKEN' | 'OFFLINE' }. */
   async function signIn(value) {
     const key = String(value || '').trim();
@@ -119,6 +123,7 @@ function createScrobbler({ store, fetch = globalThis.fetch, version = '', wait =
       if (session && session.key) {
         connecting = null;
         settings().lastfm = { key: session.key, user: session.name || null };
+        settings().lastfmSince = settings().lastfmSince || Date.now(); // its listens from then on are CDPlayer's own (IMPORT PLAYS)
         save();
         await flush('lastfm');
         return { ok: true, user: session.name || null };
@@ -161,14 +166,16 @@ function createScrobbler({ store, fetch = globalThis.fetch, version = '', wait =
     if (sending[service]) return sending[service];
     sending[service] = (async () => {
       const q = pending()[service];
+      let size = BATCH[service];
       while (q.length) {
         const c = signedIn(service);
         if (!c) return false;
-        const batch = q.slice(0, BATCH[service]);
+        const batch = q.slice(0, size);
         let result;
         try { result = await send[service](batch, c); } catch { return false; }
         if (result === 'dropped') { c.dropped = true; save(); return false; } // signed out there: asked to sign in again
         if (result === 'later') return false;
+        if (result === 'refused' && batch.length > 1) { size = 1; continue; } // one of them it won't take: the rest go one by one
         q.splice(0, batch.length);
         saveQueue();
       }
@@ -176,7 +183,7 @@ function createScrobbler({ store, fetch = globalThis.fetch, version = '', wait =
     })().finally(() => { sending[service] = null; });
     return sending[service];
   }
-  return { status, signIn, connectLastfm, signOut, nowPlaying, scrobble, flush };
+  return { status, ownSince, signIn, connectLastfm, signOut, nowPlaying, scrobble, flush };
 }
 
 module.exports = { createScrobbler };

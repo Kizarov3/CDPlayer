@@ -761,6 +761,7 @@ async function applyQuality(details, token, path) {
 // what's shown and kept is brought up to date.
 async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0, reload = false, seamless = false } = {}) {
   const token = ++state.loadToken;
+  if (reload && path === state.loadedPath && scrobbleFor === token - 1) scrobbleFor = token; // the same song again: heard so far, and sent, as it was
   stopStreamReading();
   // The tray's out: the new song waits on it, and plays when it closes (nothing plays from an open tray).
   if (disc.trayOpen && autoPlay && !seamless) { autoPlay = false; if (trayResume) trayResume.playing = true; }
@@ -1805,14 +1806,15 @@ async function followDeviceSound() {
   const before = soundDevice;
   soundDevice = key;
   const kept = state.deviceSounds[key];
-  if (!kept) { keepDeviceSound(); return; } // a new one starts from the sound there is
+  const usable = kept && Array.isArray(kept.eq) && kept.eq.length === state.eq.length && kept.eq.every(Number.isFinite);
+  if (!usable) { keepDeviceSound(); return; } // a new one starts from the sound there is (and one kept broken is replaced)
   if (sameSound(kept, soundOf(state))) return;
   applyingSound = true;
   try {
-    state.spatialAmount = kept.spatialAmount;
-    setEq(kept.eq); setMono(kept.mono); setSpatial(kept.spatial);
+    if (Number.isFinite(kept.spatialAmount)) state.spatialAmount = kept.spatialAmount;
+    setEq(kept.eq); setMono(!!kept.mono); setSpatial(!!kept.spatial);
   } finally { applyingSound = false; }
-  if (before) setStatus(t('{device}: ITS OWN SOUND', { device: key }));
+  if (before) setStatus(t('{device}: ITS OWN SOUND', { device: outputName({ label: key }) }));
 }
 // COPY REPORT (report.js): the errors that happen kept with what was said, and all of it copied for a bug report.
 window.addEventListener('error', (e) => noteForReport('error', `${e.message}${e.filename ? ` at ${e.filename}:${e.lineno}` : ''}`));

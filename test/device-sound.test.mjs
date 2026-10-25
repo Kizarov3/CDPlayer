@@ -11,9 +11,9 @@ const devices = [
 ];
 
 test('the device the sound reaches: the one picked, or the system default as it is now', () => {
-  assert.strictEqual(deviceKey(devices, 'b2'), 'MACBOOK AIR SPEAKERS');
-  assert.strictEqual(deviceKey(devices, ''), 'AIRPODS PRO');
-  assert.strictEqual(deviceKey(devices, 'gone'), 'AIRPODS PRO');
+  assert.strictEqual(deviceKey(devices, 'b2'), 'MacBook Air Speakers (Built-in)');
+  assert.strictEqual(deviceKey(devices, ''), 'AirPods Pro (Bluetooth)');
+  assert.strictEqual(deviceKey(devices, 'gone'), 'AirPods Pro (Bluetooth)');
   assert.strictEqual(deviceKey([], ''), null);
 });
 

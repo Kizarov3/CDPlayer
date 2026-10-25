@@ -81,7 +81,7 @@ function keepDaily(dir, { version, now = Date.now() } = {}) {
   let kept = [];
   try { kept = fs.readdirSync(to).filter((f) => /^CDPlayer \d{4}-\d{2}-\d{2}\.cdbackup$/.test(f)).sort(); } catch { /* none yet */ }
   const newest = kept.length ? fs.statSync(path.join(to, kept[kept.length - 1])).mtimeMs : 0;
-  if (now - newest < DAY) return null;
+  if (newest <= now && now - newest < DAY) return null; // (one from a clock set ahead doesn't stop them)
   const name = `CDPlayer ${new Date(now).toISOString().slice(0, 10)}.cdbackup`, target = path.join(to, name);
   write(target, make(dir, { version, now }));
   fs.utimesSync(target, now / 1000, now / 1000);

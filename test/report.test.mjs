@@ -6,10 +6,14 @@ import { scrub, note, recent, buildReport } from '../src/renderer/js/report.js';
 test('paths and web addresses go; CDPlayer’s own code keeps its file and line', () => {
   assert.strictEqual(scrub('TypeError: x is undefined at load (cdp://app/js/app.js:1234:5)'), 'TypeError: x is undefined at load (app.js:1234)');
   assert.strictEqual(scrub("ENOENT: open '/Users/sam/Music/Björk/01 Joga.flac'"), "ENOENT: open '<path>'");
-  assert.strictEqual(scrub('C:\\Users\\Sam\\Music\\a.mp3 failed'), '<path> failed');
+  assert.strictEqual(scrub('C:\\Users\\Sam\\Music\\a.mp3 failed'), '<path>'); // (unquoted: up to the next ·, spaces and all)
   assert.strictEqual(scrub('fetch https://music.youtube.com/watch?v=abc failed'), 'fetch <address> failed');
-  assert.strictEqual(scrub('/home/sam/a.flac and ~/Music/b.flac'), '<path> and <path>');
+  assert.strictEqual(scrub('/home/sam/a.flac and ~/Music/b.flac'), '<path>');
   assert.strictEqual(scrub('NOW SPINNING'), 'NOW SPINNING');
+  assert.strictEqual(scrub('RIP FAILED · /USERS/SAM/MUSIC/SOME ARTIST/A.FLAC'), 'RIP FAILED · <path>');
+  assert.strictEqual(scrub('read /data/Music/Some Artist/Song.mp3 · then'), 'read <path>· then');
+  assert.strictEqual(scrub('\\\\nas\\music\\a.flac'), '<path>');
+  assert.strictEqual(scrub('TRACK 1 / 14 · J/L'), 'TRACK 1 / 14 · J/L');
 });
 
 test('the report: the system, the sound, what is in, and the last things said', () => {

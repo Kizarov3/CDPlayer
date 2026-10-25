@@ -470,7 +470,7 @@ function buildSettings(app) {
       pill(t('WHAT’S SPECIAL'), () => showFeatures(app), t('Dust, Discogs prices, missing albums, disc wear — what other players don’t have')),
       pill(t('FAQ'), () => showFaq(), t('Answers to what people ask the first time')),
       pill(t('KEYBOARD SHORTCUTS'), () => showShortcuts(), t('Every key, also with ?')),
-      pill(t('COPY REPORT'), () => app.copyReport(), t('For a bug report: the version, your system, the output and the sound settings, and what happened lately — no names of your music’s files'))));
+      pill(t('COPY REPORT'), () => app.copyReport(), t('For a bug report: the version, your system, the output and the sound settings, and what happened lately — no paths to your music’s files'))));
   const version = el('div', { class: 'settings-version' }, `CDPlayer ${app.state.version}`);
   // The sections, to jump to: the list is long, and HELP is at the bottom of it.
   const jumps = el('div', { class: 'settings-jumps' }, [...body.querySelectorAll('.settings-section')].map((sec) =>
@@ -1066,7 +1066,7 @@ async function searchOnline(app) {
     const first = f.kind === 'album' ? f.tracks[0] && f.tracks[0].page : f.page;
     let resting = null;
     row.addEventListener('mouseenter', () => { resting = setTimeout(() => {
-      if (first) app.cdp.stream.prepare(first).then((r) => { if (r && r.locked && f.kind === 'song') markLocked(row); }).catch(() => {});
+      if (first && !row.classList.contains('locked')) app.cdp.stream.prepare(first).then((r) => { if (r && r.locked && f.kind === 'song') markLocked(row); }).catch(() => {});
     }, 400); });
     row.addEventListener('mouseleave', () => clearTimeout(resting));
     return row;

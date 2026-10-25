@@ -4,9 +4,12 @@
  * A file (or a service's whole export, as its .zip) is read into listens ({ artist, title, album, at }) or, from Apple
  * Music's Library.xml, a total for each song ({ artist, title, album, count, at, file }). Each is found on the shelf by
  * its artist and title — the album choosing between the albums a song is on — and added to the song's plays, last and
- * first play. Imported twice, nothing's counted twice: a listen from between the first and last of an earlier import
- * from the same service is passed over, and an Apple Music total adds only what it's grown by since (imports.json).
+ * first play. Imported twice, nothing's counted twice: each listen counted is remembered (a short hash of it) and passed
+ * over the next time, while one not found on the shelf is left to be counted once it is there; an Apple Music total
+ * adds only what it's grown by since (imports.json). Nor are CDPlayer's own plays counted again: ListenBrainz's listens
+ * it sent itself, and Last.fm's from since it first scrobbled there (`own`).
  */
+const crypto = require('crypto');
 const { fileURLToPath } = require('url');
 const unzip = require('./unzip');
 const { sameName } = require('./same-name');
@@ -29,12 +32,13 @@ function fromJson(value) {
     return { source: 'spotify', listens: list.filter((x) => x.trackName && x.msPlayed >= HEARD)
       .map((x) => ({ artist: x.artistName, title: x.trackName, album: null, at: Date.parse(`${String(x.endTime).replace(' ', 'T')}Z`) })) };
   }
-  if ('listened_at' in one && one.track_metadata) return { source: 'listenbrainz', listens: list.map(listenBrainz) };
+  if ('listened_at' in one && one.track_metadata) return { source: 'listenbrainz', listens: list.map(listenBrainz).filter((x) => !x.ours) };
   return null;
 }
 function listenBrainz(x) {
-  const m = (x && x.track_metadata) || {};
-  return { artist: m.artist_name, title: m.track_name, album: m.release_name, at: Number(x.listened_at) * 1000 };
+  const m = (x && x.track_metadata) || {}, info = m.additional_info || {};
+  const ours = [info.media_player, info.submission_client].includes('CDPlayer'); // sent by CDPlayer: counted here already
+  return { artist: m.artist_name, title: m.track_name, album: m.release_name, at: Number(x.listened_at) * 1000, ...(ours ? { ours } : {}) };
 }
 
 function csvRows(text) {
@@ -115,7 +119,7 @@ function fromText(name, text) {
     const listens = [];
     for (const line of t.split('\n')) {
       if (!line.trim()) continue;
-      try { const x = JSON.parse(line); if (x && x.track_metadata) listens.push(listenBrainz(x)); } catch { return null; }
+      try { const x = JSON.parse(line); if (x && x.track_metadata) { const l = listenBrainz(x); if (!l.ours) listens.push(l); } } catch { return null; }
     }
     return listens.length ? { source: 'listenbrainz', listens } : null;
   }
@@ -177,21 +181,18 @@ function find({ index, paths }, x) {
 
 // --- counting ------------------------------------------------------------------------------------------------------
 
-const within = (ranges, at) => (ranges || []).some(([a, b]) => at >= a && at <= b);
-function addRange(ranges, from, to) {
-  const all = [...(ranges || []), [from, to]].sort((x, y) => x[0] - y[0]), out = [];
-  for (const r of all) { const last = out[out.length - 1]; if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]); else out.push([...r]); }
-  return out;
-}
+// A listen counted, as remembered: 12 hex digits of its hash (a few hundred thousand fit in a few MB).
+const listenKey = (source, x) => crypto.createHash('sha1').update(`${source}\n${x.at}\n${sameName(x.artist)}\n${sameName(x.title)}`).digest('hex').slice(0, 12);
 // The maps again with the most recently played last, as plays.js keeps them (the oldest are dropped first).
 const byLast = (map, last) => new Map([...map].sort(([a], [b]) => (last.get(a) || 0) - (last.get(b) || 0)));
 
 /**
  * What `found` (read()'s, from every file picked) adds to `plays` ({ counts, last, first }, Maps by path) for the songs
- * on the shelf (`albums`, as scanAlbums gives them), with `before` (imports.json's) remembering what was imported.
+ * on the shelf (`albums`, as scanAlbums gives them), with `before` (imports.json's) remembering what was imported, and
+ * `own` when CDPlayer began scrobbling to a service ({ lastfm: ms }), its listens from then on being its own plays.
  * → { plays, imports, songs (the paths that got plays), added, already, missing, sources }
  */
-function apply(found, albums, plays, before = {}) {
+function apply(found, albums, plays, before = {}, { own = {} } = {}) {
   const shelf = shelfIndex(albums), imports = JSON.parse(JSON.stringify(before || {}));
   const counts = new Map(plays.counts), last = new Map(plays.last), first = new Map(plays.first);
   const songs = new Set(), sources = new Set();
@@ -212,15 +213,15 @@ function apply(found, albums, plays, before = {}) {
   const found1 = new Map();
   const where = (x) => { const k = `${x.file || ''}\n${x.artist}\n${x.title}\n${x.album}`; if (!found1.has(k)) found1.set(k, find(shelf, x)); return found1.get(k); };
   for (const [source, seen] of listens) {
-    const ranges = imports[source] || [];
-    let from = Infinity, to = 0;
+    const counted = new Set(Array.isArray(imports[source]) && typeof imports[source][0] === 'string' ? imports[source] : []);
     for (const x of seen.values()) {
-      from = Math.min(from, x.at); to = Math.max(to, x.at);
-      if (within(ranges, x.at)) { already++; continue; }
+      if (own[source] && x.at >= own[source]) { already++; continue; }
+      const key = listenKey(source, x);
+      if (counted.has(key)) { already++; continue; }
       const p = where(x);
-      if (p) play(p, 1, x.at, true); else missing++;
+      if (p) { play(p, 1, x.at, true); counted.add(key); } else missing++;
     }
-    if (to) imports[source] = addRange(ranges, from, to);
+    imports[source] = [...counted];
   }
   // Apple Music's totals: what each song's count has grown by since it was last imported.
   const totals = new Map();

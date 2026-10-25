@@ -142,7 +142,7 @@ async function resolve(page, { fresh = false } = {}) {
   if (!fresh && asking.has(page)) return asking.get(page);
   const job = (async () => {
     const info = await run(['-f', 'bestaudio', '-J', '--no-playlist', '--', page]).catch((e) => {
-      if (/DRM/i.test(e.message)) remember(page, { locked: true }); // a label's song: said so, and marked where it's found
+      if (/is DRM protected/i.test(e.message)) remember(page, { locked: true }); // a label's song: said so, and marked where it's found
       throw e;
     });
     const entry = {
@@ -153,13 +153,14 @@ async function resolve(page, { fresh = false } = {}) {
       until: expiry(info.url),
     };
     if (/m3u8/.test(info.protocol || '')) {
-      try { entry.whole = await joinPieces(info.url, entry.headers); } catch (e) { if (/Protected/.test(e.message)) remember(page, { locked: true }); throw e; }
+      try { entry.whole = await joinPieces(info.url, entry.headers); } catch (e) { if (e.message === 'Protected song') remember(page, { locked: true }); throw e; }
       entry.size = entry.whole.length;
     }
     remember(page, {
       title: songTitle(info.track || info.title), artist: artistName(info.artist || (info.artists && info.artists[0]) || info.uploader), album: info.album,
       year: info.release_year, duration: info.duration, cover: songInfo(page)?.cover || bestThumb(info.thumbnails),
     });
+    if (isLocked(page)) remember(page, { locked: false }); // (it plays after all)
     found.set(page, entry);
     keepFew();
     return entry;

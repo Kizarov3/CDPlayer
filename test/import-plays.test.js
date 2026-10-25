@@ -65,7 +65,7 @@ test('imported again — or a file picked twice — nothing is counted twice; wh
   assert.strictEqual(first.plays.counts.get('/m/okc/01 Airbag.flac'), 2);
   const again = apply(read(lines(100, 200, 300)), ALBUMS, first.plays, first.imports);
   assert.deepStrictEqual([again.plays.counts.get('/m/okc/01 Airbag.flac'), again.added, again.already], [3, 1, 2]);
-  assert.deepStrictEqual(again.imports.lastfm, [[100000, 300000]]);
+  assert.strictEqual(again.imports.lastfm.length, 3);
   assert.strictEqual(again.plays.last.get('/m/okc/01 Airbag.flac'), 300000);
 });
 
@@ -123,4 +123,19 @@ test('CSV cells: quotes, commas and line breaks inside them', () => {
   assert.strictEqual(plainTitle('Airbag - Remastered 2017'), 'Airbag');
   assert.strictEqual(plainTitle('Airbag (2009 Remaster)'), 'Airbag');
   assert.strictEqual(plainTitle('Airbag (Live)'), 'Airbag (Live)');
+});
+
+test('a listen not on the shelf is counted once it is; CDPlayer’s own scrobbles aren’t counted again', () => {
+  const csv = file('s.csv', 'uts,artist,album,track\n100,Radiohead,OK Computer,Airbag\n200,Radiohead,Kid A,Idioteque');
+  const first = apply(read(csv), ALBUMS, empty());
+  assert.deepStrictEqual([first.added, first.missing], [1, 1]);
+  const more = [...ALBUMS, { title: 'Kid A', artist: 'Radiohead', tracks: [{ path: '/m/kida/08.flac', title: 'Idioteque', artist: 'Radiohead' }] }];
+  const later = apply(read(csv), more, first.plays, first.imports);
+  assert.deepStrictEqual([later.added, later.already, later.plays.counts.get('/m/kida/08.flac')], [1, 1, 1]);
+  const lb = read(file('l.jsonl', [
+    '{"listened_at":100,"track_metadata":{"artist_name":"Radiohead","track_name":"Airbag","additional_info":{"media_player":"CDPlayer"}}}',
+    '{"listened_at":200,"track_metadata":{"artist_name":"Radiohead","track_name":"Airbag","additional_info":{"media_player":"Spotify"}}}'].join('\n')));
+  assert.strictEqual(apply(lb, ALBUMS, empty()).added, 1);
+  const since = apply(read(file('s.csv', 'uts,artist,track\n100,Radiohead,Airbag\n500,Radiohead,Airbag')), ALBUMS, empty(), {}, { own: { lastfm: 300000 } });
+  assert.deepStrictEqual([since.added, since.already], [1, 1]);
 });
