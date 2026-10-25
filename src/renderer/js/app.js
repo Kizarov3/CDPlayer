@@ -2199,9 +2199,10 @@ function morphCdView(entering) {
   // The divider too: the header above it comes and goes, so it sits higher in CD View.
   const chrome = ['header', 'divider', 'player', 'hint'].map($);
   if (entering) {
-    body.classList.add('cd-view');
+    // (measured in CD View as it will be: its title under the disc, and the deck's display under that, taking room)
+    state.cdView = true; applyCdViewState();
     to = canvas.getBoundingClientRect();
-    body.classList.remove('cd-view');
+    state.cdView = false; applyCdViewState();
     for (const node of chrome) node.animate([{ opacity: 1 }, { opacity: 0 }], { duration: CD_MORPH_MS * 0.45, easing: 'ease-out', fill: 'forwards' });
   } else {
     state.cdView = false; applyCdViewState(); // the player is laid out again underneath, and fades in as the disc lands
@@ -2938,8 +2939,8 @@ let last = performance.now(), idleCheck = 0;
 // or Karaoke on screen — it stays at full rate.
 // Drawn without the graphics card, it's 30 always (render-budget.js).
 function frame(now) {
-  const watched = document.hasFocus() || state.cdView || state.visualizerMode || isKaraokeOpen();
-  const gap = frameGap({ watched, software: state.softwareRendering, playing: engine.playing || !!jog });
+  const watched = document.hasFocus() || state.cdView || state.visualizerMode || isKaraokeOpen() || !!discMorph;
+  const gap = discMorph ? 0 : frameGap({ watched, software: state.softwareRendering, playing: engine.playing || !!jog }); // (CD View coming or going: every frame)
   if (gap && now - last < gap - 2) { requestAnimationFrame(frame); return; }
   const dt = Math.min(100, now - last); last = now;
   if (engine.deck && engine.playing && !jog) { // turning the disc, the seek bar shows where it has got to (turnJog)
