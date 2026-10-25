@@ -676,6 +676,20 @@ function undoEjectSlot() {
   if (at < 0 && state.index >= 0) load(state.queue[state.index], { autoPlay: u.playing, startAt: u.position }).then(said); else said();
   return true;
 }
+// A song that wouldn't play: its name shown (not the one before it), with nothing to play.
+function showUnplayed(path, d) {
+  state.details = null; state.detailsPath = null; state.lyrics = null;
+  resetHidden();
+  disc.setWear(null);
+  setTrackTitle((d && d.title) || displayName(path), (d && d.artist) || null);
+  $('track-source').textContent = '';
+  deckDisplay.setTime(0, 0);
+  progress.setValue(0); progress.setWaveform(null);
+  setCover((d && d.cover) || null); disc.lookingUp = false;
+  $('tags-button').hidden = true;
+  updateQualityBadge();
+  lyricsChanged();
+}
 function resetToIdle(message) {
   state.index = -1; state.loadToken++;
   stopStreamReading();
@@ -807,7 +821,11 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
       doneReading();
       if (token !== state.loadToken) return;
       setPlaying(false);
-      setStatus(isStream(path) ? t("COULDN'T STREAM THAT SONG") : (await cdp.exists(path)) ? t("COULDN'T PLAY THAT FILE") : t('FILE NO LONGER FOUND'));
+      const why = isStream(path) ? ((await cdp.stream.locked(path).catch(() => false)) ? t('THAT SONG IS LOCKED BY ITS LABEL (DRM)') : t("COULDN'T STREAM THAT SONG"))
+        : (await cdp.exists(path)) ? t("COULDN'T PLAY THAT FILE") : t('FILE NO LONGER FOUND');
+      if (token !== state.loadToken) return;
+      showUnplayed(path, await detailsPromise);
+      setStatus(why);
       return;
     }
     if (startAt > 0) engine.seek(Math.min(startAt, engine.duration));

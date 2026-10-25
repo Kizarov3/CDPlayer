@@ -1065,7 +1065,9 @@ async function searchOnline(app) {
     // the mouse resting on it: its (first) song's sound asked for now — it may be clicked in a moment
     const first = f.kind === 'album' ? f.tracks[0] && f.tracks[0].page : f.page;
     let resting = null;
-    row.addEventListener('mouseenter', () => { resting = setTimeout(() => { if (first) app.cdp.stream.prepare(first); }, 400); });
+    row.addEventListener('mouseenter', () => { resting = setTimeout(() => {
+      if (first) app.cdp.stream.prepare(first).then((r) => { if (r && r.locked && f.kind === 'song') markLocked(row); }).catch(() => {});
+    }, 400); });
     row.addEventListener('mouseleave', () => clearTimeout(resting));
     return row;
   });
@@ -1074,14 +1076,23 @@ async function searchOnline(app) {
 // A song on SoundCloud: its title first, then (quieter) who put it there, and its length — a 30 s preview, a
 // "slowed" copy, told apart at a glance. NEXT and ADD show on the row the mouse is on.
 function onlineSongRow(app, f) {
-  const row = trackRow(app, f.page, f.title || '', () => { app.appendAndPlay(f.page); closePanel('search'); });
+  const row = trackRow(app, f.page, f.title || '', () => { if (row.classList.contains('locked')) return; app.appendAndPlay(f.page); closePanel('search'); });
   const buttons = row.querySelectorAll('button');
   buttons.forEach((b, i) => { if (i) b.classList.add('on-hover'); });
   row.querySelector('.entry').replaceChildren(f.title || '', f.artist ? el('span', { class: 'by' }, ` · ${f.artist}`) : '');
   row.prepend(rowCover(f.thumb));
   if (f.duration) row.insertBefore(el('span', { class: 'when count' }, minutes(f.duration)), buttons[0]);
   row.append(buttons[0]); // PLAY at the right edge, where it always is; NEXT and ADD come up beside it
+  if (f.locked) markLocked(row);
   return row;
+}
+// A label's song (DRM), known once it's been tried: no buttons, DRM where they were.
+function markLocked(row) {
+  if (row.classList.contains('locked')) return;
+  row.classList.add('locked');
+  row.querySelectorAll('button').forEach((b) => b.remove());
+  row.title = t('Locked by its label (DRM): it doesn’t play');
+  row.append(el('span', { class: 'when count' }, t('DRM')));
 }
 // An album found: PLAY puts it in (a disc in the changer) and plays it, ADD only puts it in.
 function onlineAlbumRow(app, a) {

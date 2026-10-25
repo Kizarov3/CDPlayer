@@ -261,6 +261,7 @@ streaming.setStore(store);
 handle('stream:search', (query, where) => streaming.search(String(query || ''), where));
 handle('stream:album', (page) => streaming.album(page));
 handle('stream:prepare', (page) => streaming.prepare(page));
+handle('stream:locked', (page) => streaming.isLocked(page));
 handle('stream:available', () => streaming.available());
 handle('stream:install', () => streaming.install());
 // Play counts, kept in memory and written a moment after the last change.

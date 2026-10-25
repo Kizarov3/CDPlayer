@@ -1088,6 +1088,7 @@ body.no-anim .tour-spot, body.no-anim .tour-bubble { transition: none; }
 .source-row[hidden] { display: none; }
 .list-row .row-cover { flex: none; width: 34px; height: 34px; margin-right: 10px; border-radius: 3px; object-fit: cover; background: rgba(var(--muted), 0.15); box-shadow: 0 0 0 1px rgba(var(--muted), 0.25); }
 .list-row .entry .by { color: rgb(var(--muted)); font-weight: normal; }
+.list-row.locked { opacity: .45; cursor: default; }
 .list-row:not(:hover):not(:focus-within) .on-hover { display: none; } /* (the name has the room till then) */
 .waiting-row .waiting-bar { flex: 1; max-width: 55%; height: 10px; border-radius: 5px; background: rgba(var(--muted), 0.18); animation: waiting 1.2s ease-in-out infinite alternate; }
 @keyframes waiting { from { opacity: 0.45; } to { opacity: 1; } }

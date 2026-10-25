@@ -141,7 +141,10 @@ async function resolve(page, { fresh = false } = {}) {
   if (had && !fresh && had.until > Date.now()) return had;
   if (!fresh && asking.has(page)) return asking.get(page);
   const job = (async () => {
-    const info = await run(['-f', 'bestaudio', '-J', '--no-playlist', '--', page]);
+    const info = await run(['-f', 'bestaudio', '-J', '--no-playlist', '--', page]).catch((e) => {
+      if (/DRM/i.test(e.message)) remember(page, { locked: true }); // a label's song: said so, and marked where it's found
+      throw e;
+    });
     const entry = {
       chunks: had ? had.chunks : new Map(), used: Date.now(),
       url: info.url, headers: info.http_headers || {}, size: info.filesize || (had && had.size) || null,
@@ -149,7 +152,10 @@ async function resolve(page, { fresh = false } = {}) {
       codec: String(info.acodec || info.ext || '').toUpperCase(), bitrate: info.abr ? Math.round(info.abr) : null, sampleRate: info.asr || null,
       until: expiry(info.url),
     };
-    if (/m3u8/.test(info.protocol || '')) { entry.whole = await joinPieces(info.url, entry.headers); entry.size = entry.whole.length; }
+    if (/m3u8/.test(info.protocol || '')) {
+      try { entry.whole = await joinPieces(info.url, entry.headers); } catch (e) { if (/Protected/.test(e.message)) remember(page, { locked: true }); throw e; }
+      entry.size = entry.whole.length;
+    }
     remember(page, {
       title: songTitle(info.track || info.title), artist: artistName(info.artist || (info.artists && info.artists[0]) || info.uploader), album: info.album,
       year: info.release_year, duration: info.duration, cover: songInfo(page)?.cover || bestThumb(info.thumbnails),
@@ -212,7 +218,12 @@ function ready(entry) {
   return entry.readying;
 }
 /** A song about to be played (the next one, or one the mouse is on PLAY for): its address asked for now, and waited for. */
-function prepare(page) { if (isStreamPage(page)) resolve(page).then(ready).catch(() => {}); }
+/** A song readied to play; → { locked } once it's known whether it can be (a label's, DRM: no). */
+function prepare(page) {
+  if (!isStreamPage(page)) return Promise.resolve(null);
+  return resolve(page).then(ready).then(() => ({ locked: false }), () => ({ locked: isLocked(page) }));
+}
+const isLocked = (page) => !!(songInfo(page) || {}).locked;
 
 // (YouTube's channels made for an artist's music are named "<artist> - Topic")
 // (a song uploaded as a file is often named after it: "Xtal.mp3")
@@ -241,7 +252,7 @@ async function search(query, where = 'youtube') {
     const r = await run(['--flat-playlist', '-J', '--', `scsearch12:${query}`]);
     return Promise.all((r.entries || []).map((e) => {
       const page = e.url;
-      const song = { kind: 'song', page, title: songTitle(e.title), artist: e.uploader || null, duration: e.duration || null, cover: bestThumb(e.thumbnails) };
+      const song = { kind: 'song', page, title: songTitle(e.title), artist: e.uploader || null, duration: e.duration || null, cover: bestThumb(e.thumbnails), locked: isLocked(page) };
       remember(page, { title: song.title, artist: song.artist, duration: song.duration, cover: song.cover });
       return withThumb(song, e.thumbnails);
     }));
@@ -370,4 +381,4 @@ async function serveStream(request, page) {
   return new Response(body, { status: 206, headers: { ...headers, 'Content-Range': `bytes ${start}-${end}/${total}` } });
 }
 
-module.exports = { available, install, isStreamPage, setStore, remember, songInfo, resolve, prepare, search, album, details, coverData, serveStream, ytDlpPath };
+module.exports = { available, install, isStreamPage, isLocked, setStore, remember, songInfo, resolve, prepare, search, album, details, coverData, serveStream, ytDlpPath };

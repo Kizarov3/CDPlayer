@@ -26,7 +26,7 @@ contextBridge.exposeInMainWorld('cdp', {
 
   exists: invoke('fs:exists'),
   details: invoke('meta:details'),
-  stream: { search: invoke('stream:search'), album: invoke('stream:album'), prepare: invoke('stream:prepare'), available: invoke('stream:available'), install: invoke('stream:install') },
+  stream: { search: invoke('stream:search'), album: invoke('stream:album'), prepare: invoke('stream:prepare'), locked: invoke('stream:locked'), available: invoke('stream:available'), install: invoke('stream:install') },
   addPlay: invoke('plays:add'),
   playCount: invoke('plays:count'),
   playTimes: invoke('plays:times'),
