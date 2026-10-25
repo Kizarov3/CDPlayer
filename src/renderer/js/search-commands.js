@@ -15,6 +15,7 @@ export const SETTING_ROWS = [
   ['SOUND', 'DISC NOISE', 'hiss motor skip шум'],
   ['LOOK', 'THEME', 'colors colours dark light тема цвета'],
   ['LOOK', 'LANGUAGE', 'english russian язык'],
+  ['LOOK', 'PLAYER LOOK', 'layout dock stage glass panel вид плеера оформление пульт сцена стекло панель cover обложка apple music'],
   ['LOOK', 'DISPLAY', 'deck vfd classic digits дисплей'],
   ['LOOK', 'WAVEFORM', 'seek bar волна'],
   ['LOOK', 'AMBIENT BACKGROUND', 'blur cover background фон'],

@@ -294,6 +294,10 @@ function buildSettings(app) {
     pick: () => app.setQuality(level).then(() => refreshSettingsIfOpen(app)),
   }))), t('How the sound leaves CDPlayer'));
   const SOUND_CHECK_NAMES = { OFF: t('OFF'), ALBUM: t('ALBUM'), TRACK: t('TRACK') };
+  const LOOK_NAMES = { CLASSIC: t('CLASSIC|look'), DOCK: t('DOCK|look'), STAGE: t('STAGE|look'), GLASS: t('GLASS|look'), PANEL: t('PANEL|look'), COVER: t('COVER|look') };
+  const lookButton = pill(LOOK_NAMES[s.look] || LOOK_NAMES.CLASSIC, () => showMenu(lookButton, Object.keys(LOOK_NAMES).map((kind) => ({
+    label: LOOK_NAMES[kind], current: kind === (s.look || 'CLASSIC'), pick: () => { app.setLook(kind); refreshSettingsIfOpen(app); },
+  }))));
   const DISPLAY_NAMES = { DECK: t('DECK|display'), CLASSIC: t('CLASSIC|display') };
   const displayButton = pill(DISPLAY_NAMES[s.display] || DISPLAY_NAMES.DECK, () => showMenu(displayButton, ['DECK', 'CLASSIC'].map((kind) => ({
     label: DISPLAY_NAMES[kind], current: kind === s.display, pick: () => { app.setDisplay(kind); refreshSettingsIfOpen(app); },
@@ -408,6 +412,8 @@ function buildSettings(app) {
     section(t('LOOK')),
     row(t('THEME'), themeButton),
     row(t('LANGUAGE'), languageButton), languageNote,
+    row(t('PLAYER LOOK'), lookButton),
+    hint(t('CLASSIC: as it always was. DOCK: the keys in a bar along the bottom. STAGE: the disc in the middle, the queue at the side. GLASS: the cover bright behind frosted glass. PANEL: the keys and the display on one panel. COVER: the album’s cover instead of the disc, as in a streaming app.')),
     row(t('DISPLAY'), displayButton),
     hint(t('DECK: a glowing panel like a CD player’s — the track number and the time in segment digits. CLASSIC: just the times.')),
     row(t('WAVEFORM'), waveform),

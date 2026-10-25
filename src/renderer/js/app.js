@@ -86,6 +86,7 @@ const state = {
   loadedPath: null, details: null, detailsPath: null, lyrics: null, cover: null, loadToken: 0, deckToken: 0, crossfadeStarted: false,
   cdView: false, visualizerMode: false, fullscreen: false,
   display: 'DECK', // Settings → DISPLAY: the deck's display under the seek bar, or CLASSIC (the plain times)
+  look: 'CLASSIC', // Settings → PLAYER LOOK: how the player is laid out (styles.css, body.look-…)
   sleepRemaining: 0, sleepMinutes: 0, sleepAtEnd: false, // sleepAtEnd: the sleep timer's END OF DISC
   lastActivity: Date.now(), lastCdMouse: Date.now(), cursorHidden: false, visualizerEnteredAt: 0,
   lastPath: null, version: '', platform: '',
@@ -1089,6 +1090,9 @@ async function decodeCover(dataUrl) {
 function applyCover(img) {
   state.cover = img;
   disc.setCover(img);
+  // (PLAYER LOOK: COVER shows it flat, as a streaming app does, instead of on the disc)
+  $('cover-art').style.backgroundImage = img ? `url("${img.src}")` : '';
+  $('cover-art').classList.toggle('none', !img);
   onCoverChanged();
   pushMini(true);
   refreshDockSoon();
@@ -2488,7 +2492,7 @@ const appendAndPlay = (p) => addToQueue([p], { sorted: true, play: true });
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, transition: state.transition, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, changer: state.changerMode, streaming: state.streaming, playModes: { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } }, display: state.display };
+  return { volume: state.volume, crossfade: state.crossfade, transition: state.transition, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, changer: state.changerMode, streaming: state.streaming, playModes: { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } }, display: state.display, look: state.look };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -2616,6 +2620,9 @@ function buildStaticUi() {
   $('lyrics-button').addEventListener('click', () => panels.showLyrics(app));
   $('karaoke-button').addEventListener('click', toggleKaraoke);
   $('tray-button').addEventListener('click', toggleTray);
+  // STAGE: the queue and the changer slide in at the side, and away again with a click anywhere else
+  $('queue-toggle').addEventListener('click', (e) => { e.stopPropagation(); showQueueDrawer(!document.body.classList.contains('queue-open')); });
+  document.addEventListener('click', (e) => { if (document.body.classList.contains('queue-open') && !e.target.closest('#queue-card, #overlays')) showQueueDrawer(false); });
   $('cd-button').addEventListener('click', playAudioCd);
   $('rip-button').addEventListener('click', () => ripAudioCd());
   cdp.onRipProgress(({ done, total, percent, current, stage, size, folder }) => {
@@ -2828,6 +2835,17 @@ function setDisplay(kind, { save = true } = {}) {
   document.body.classList.toggle('classic-display', state.display === 'CLASSIC');
   if (save) saveSettingsSoon();
 }
+const LOOKS = ['CLASSIC', 'DOCK', 'STAGE', 'GLASS', 'PANEL', 'COVER'];
+function setLook(kind, { save = true } = {}) {
+  state.look = LOOKS.includes(kind) ? kind : 'CLASSIC';
+  for (const k of LOOKS) document.body.classList.toggle(`look-${k.toLowerCase()}`, state.look === k);
+  showQueueDrawer(false);
+  if (save) saveSettingsSoon();
+}
+function showQueueDrawer(open) {
+  document.body.classList.toggle('queue-open', open);
+  $('queue-toggle').classList.toggle('on', open);
+}
 function showDeckFlags() {
   deckDisplay.setFlags({ playing: engine.playing, paused: !!engine.deck && !engine.playing, shuffle: state.shuffle !== 'OFF', repeat: state.repeat !== 'OFF', repeatOne: state.repeat === 'TRACK', net: isStream(state.loadedPath) }); // (NET: streamed, as a tuner's ST)
 }
@@ -2959,7 +2977,7 @@ export const app = {
   onFullChanger: (c) => panels.pickDiscToTakeOut(app, c),
   coverSource: () => state.coverFrom || null,
   switchTheme, previewTheme, restoreTheme, shownTheme: () => shownTheme, saveTheme, importTheme, pasteThemeCode, exportTheme, copyThemeCode, deleteTheme,
-  copyReport, noteScrobbling, setQuality, setSoundCheck, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setAnimations, setCrossfade, setTransition, setEq, armSleepTimer, armSleepAtEnd, setDisplay, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setTaskbarDisc, setOutput, listOutputs, currentOutputName,
+  copyReport, noteScrobbling, setQuality, setSoundCheck, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setAnimations, setCrossfade, setTransition, setEq, armSleepTimer, armSleepAtEnd, setDisplay, setLook, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setTaskbarDisc, setOutput, listOutputs, currentOutputName,
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
   menu: (anchor, items, opts) => panels.menu(anchor, items, opts),
@@ -3118,6 +3136,7 @@ async function start() {
   state.discWear = s.discWear !== false;
   state.discShine = s.discShine !== false; disc.setShine(state.discShine);
   setDisplay(s.display, { save: false });
+  setLook(s.look, { save: false });
   state.taskbarDisc = !!s.taskbarDisc; // its default is the system's (main/store.js)
   state.output = s.output || null;
   state.deviceSounds = {};

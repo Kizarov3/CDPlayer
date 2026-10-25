@@ -21,7 +21,7 @@ test('reads a settings.txt written by the Java version', () => {
     volume: 70, crossfade: 5, mono: true, animations: false, theme: 'OCEAN', eq: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
     waveform: false, miniMode: false, bounds: { x: 10, y: 20, width: 1200, height: 900 }, ambient: false, discord: false,
     discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false,
-    playModes: { QUEUE: { shuffle: 'OFF', repeat: 'OFF' }, CHANGER: { shuffle: 'OFF', repeat: 'OFF' } }, display: 'DECK', transition: 'CROSSFADE', streaming: false,
+    playModes: { QUEUE: { shuffle: 'OFF', repeat: 'OFF' }, CHANGER: { shuffle: 'OFF', repeat: 'OFF' } }, display: 'DECK', transition: 'CROSSFADE', streaming: false, look: 'CLASSIC',
   });
 });
 
@@ -374,4 +374,14 @@ test('YOUTUBE MUSIC & SOUNDCLOUD: off unless turned on, kept on its own line', (
   assert.strictEqual(fs.readFileSync(path.join(home, 'settings.txt'), 'utf8').split('\n')[28], 'ON');
   store.writeSettings({ ...store.readSettings(), streaming: false });
   assert.strictEqual(store.readSettings().streaming, false);
+});
+
+test("the player's LOOK: CLASSIC unless another is picked, kept on its own line; one it doesn't know is CLASSIC", () => {
+  fs.writeFileSync(path.join(home, 'settings.txt'), '70\n0\n1\n0\nOCEAN\n0,0,0,0,0,0,0,0,0,0\n0\n0\n\n0\n1\n');
+  assert.strictEqual(store.readSettings().look, 'CLASSIC', 'an older file');
+  store.writeSettings({ ...store.readSettings(), look: 'STAGE' });
+  assert.strictEqual(store.readSettings().look, 'STAGE');
+  assert.strictEqual(fs.readFileSync(path.join(home, 'settings.txt'), 'utf8').split('\n')[29], 'STAGE');
+  store.writeSettings({ ...store.readSettings(), look: 'NEON' });
+  assert.strictEqual(store.readSettings().look, 'CLASSIC');
 });
