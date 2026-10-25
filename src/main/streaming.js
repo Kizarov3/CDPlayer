@@ -141,7 +141,8 @@ async function resolve(page, { fresh = false } = {}) {
   if (had && !fresh && had.until > Date.now()) return had;
   if (!fresh && asking.has(page)) return asking.get(page);
   const job = (async () => {
-    const info = await run(['-f', 'bestaudio', '-J', '--no-playlist', '--', page]).catch((e) => {
+    // the most the site gives without signing in: by bitrate, then rate (YouTube: Opus ~145k; SoundCloud: AAC 160k over MP3 128k / Opus 64k)
+    const info = await run(['-f', 'bestaudio', '-S', 'abr,asr', '-J', '--no-playlist', '--', page]).catch((e) => {
       if (/is DRM protected/i.test(e.message)) remember(page, { locked: true }); // a label's song: said so, and marked where it's found
       throw e;
     });
