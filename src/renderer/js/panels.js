@@ -6,7 +6,7 @@ import { buildThemeEditor } from './theme-editor.js';
 import { t, locale } from './i18n.js';
 import { historyDays } from './history-days.js';
 import { EQ_FREQUENCIES } from './audio.js';
-import { el, pill, toggle, setToggle, Slider, anim, EASE, spring } from './widgets.js';
+import { el, pill, toggle, setToggle, Slider, anim, EASE, growFrom } from './widgets.js';
 import { FAQ, SHORTCUTS, FEATURES } from './help.js';
 import { findCommands } from './search-commands.js';
 import { startTour } from './tour-view.js';
@@ -33,22 +33,7 @@ function originOf(name) {
   const b = pressed && performance.now() - pressed.at < 1500 && pressed.b.isConnected ? pressed.b : document.getElementById(ORIGINS[name] || '');
   return b && b.offsetParent && !b.closest('.overlay.closing') ? b : null;
 }
-// As Apple's do: the whole panel grows out of the button, its shape kept (not stretched to the button's), on a spring
-// that goes a touch past and settles; going back it shrinks into the button faster, without the bounce.
-const SPRING_OPEN = spring(0.8), SPRING_CLOSE = spring(0.999);
-document.documentElement.style.setProperty('--spring', SPRING_OPEN); // (styles.css: a panel with no button to come from)
-function morph(card, from, back) {
-  const a = from.getBoundingClientRect(), c = card.getBoundingClientRect();
-  if (!a.width || !c.width) return null;
-  const s = Math.max(0.06, Math.min(1, Math.max(a.width / c.width, a.height / c.height)));
-  const at = `translate(${a.left + a.width / 2 - (c.left + c.width / 2)}px, ${a.top + a.height / 2 - (c.top + c.height / 2)}px) scale(${s})`;
-  if (back) {
-    card.animate([{ opacity: 1 }, { opacity: 1, offset: 0.4 }, { opacity: 0 }], { duration: 300, easing: 'ease-in', fill: 'forwards' });
-    return card.animate([{ transform: 'none' }, { transform: at }], { duration: 340, easing: SPRING_CLOSE, fill: 'forwards' });
-  }
-  card.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: 'ease-out' });
-  return card.animate([{ transform: at }, { transform: 'none' }], { duration: 560, easing: SPRING_OPEN });
-}
+const morph = (card, from, back) => growFrom(card, from, back);
 
 function openPanel(name, build, { width } = {}) {
   let p = panels.get(name);
@@ -82,7 +67,7 @@ function closePanel(name) {
   const back = p.origin && p.origin.isConnected && p.origin.offsetParent ? morph(p.card, p.origin, true) : null;
   if (back) back.onfinish = () => p.overlay.remove();
   else { p.card.classList.remove('morph'); p.card.addEventListener('animationend', () => p.overlay.remove(), { once: true }); }
-  setTimeout(() => p.overlay.remove(), 450);
+  setTimeout(() => p.overlay.remove(), 320);
 }
 function refreshPanel(name) {
   const p = panels.get(name);

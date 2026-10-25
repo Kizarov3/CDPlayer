@@ -874,7 +874,6 @@ function readMiniPosition() {
 }
 
 function createMiniWindow() {
-  const mac = process.platform === 'darwin';
   miniWin = new BrowserWindow({
     ...MINI, ...readMiniPosition(),
     frame: false,
@@ -884,10 +883,7 @@ function createMiniWindow() {
     hasShadow: true,
     roundedCorners: true,
     transparent: true,
-    backgroundColor: '#00000000',
-    // macOS: the frosted, translucent material Apple Music's mini player uses. Elsewhere the page paints its own panel.
-    vibrancy: mac ? 'hud' : undefined,
-    visualEffectState: 'active',
+    backgroundColor: '#00000000', // (the page paints its own panel, in the theme's colours, round-cornered)
     title: 'CDPlayer',
     icon: process.platform === 'linux' ? path.join(__dirname, '..', 'renderer', 'icon.png') : undefined,
     webPreferences: {
@@ -925,6 +921,7 @@ handle('win:setMiniMode', async (enabled) => {
     }
     if (!miniWin) await createMiniWindow();
     miniWin.setPosition(...Object.values(readMiniPosition()));
+    miniWin.webContents.send('mini-state', { appear: true }); // (its coming-up animation, under way as it's shown)
     miniWin.show();
     win.hide();
   } else {

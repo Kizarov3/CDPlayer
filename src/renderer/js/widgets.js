@@ -17,6 +17,23 @@ export function spring(damping) {
   }
   return `linear(${points.join(', ')})`;
 }
+// As Apple's do: a panel (or the shelf) grows out of the button that opened it, its shape kept (not stretched to the
+// button's), on a spring that goes a touch past and settles; going back it shrinks into the button faster, without
+// the bounce. Transform and opacity only, so it keeps to the frame rate. → the animation, or null.
+const SPRING_OPEN = spring(0.8), SPRING_CLOSE = spring(0.999);
+document.documentElement.style.setProperty('--spring', SPRING_OPEN); // (styles.css: a panel with no button to come from)
+export function growFrom(node, from, back, { open = 380, close = 220 } = {}) {
+  const a = from.getBoundingClientRect(), c = node.getBoundingClientRect();
+  if (!a.width || !c.width) return null;
+  const s = Math.max(0.04, Math.min(1, Math.max(a.width / c.width, a.height / c.height)));
+  const at = `translate(${a.left + a.width / 2 - (c.left + c.width / 2)}px, ${a.top + a.height / 2 - (c.top + c.height / 2)}px) scale(${s})`;
+  if (back) {
+    node.animate([{ opacity: 1 }, { opacity: 1, offset: 0.4 }, { opacity: 0 }], { duration: close - 20, easing: 'ease-in', fill: 'forwards' });
+    return node.animate([{ transform: 'none' }, { transform: at }], { duration: close, easing: SPRING_CLOSE, fill: 'forwards' });
+  }
+  node.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 110, easing: 'ease-out' });
+  return node.animate([{ transform: at }, { transform: 'none' }], { duration: open, easing: SPRING_OPEN });
+}
 
 export function el(tag, props = {}, ...children) {
   const node = document.createElement(tag);

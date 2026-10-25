@@ -7,7 +7,7 @@
 // wipe it. PULL ONE takes one off the shelf at random, the dustier the likelier. A case can have a sticky note on it
 // (shelf-notes.js), whose corner shows above its spine. A new album comes in shrink-wrap until it's played or
 // unwrapped by hand, dragging the film off its case.
-import { el, pill, anim, EASE } from './widgets.js';
+import { el, pill, anim, EASE, growFrom } from './widgets.js';
 import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './booklet.js';
 import { stickersFor } from './shelf-stickers.js';
 import { arrange, SORTS, matchesFilter, dominantColor, jumpTargets, shelfSignature } from './shelf-order.js';
@@ -87,9 +87,25 @@ export async function openShelf(app) {
   shelf.open = true;
   const root = $('shelf');
   root.hidden = false;
-  if (anim.enabled) root.animate([{ opacity: 0, transform: 'translateY(18px)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: EASE.out });
+  root.getAnimations().forEach((a) => a.cancel()); // (its going, if it's opened again before it's gone)
+  // (out of the SHELF button, as the panels come out of theirs; then the albums go up on it one after another)
+  const from = anim.enabled && shownButton();
+  if (from) growFrom(root, from, false, { open: 420 });
+  else if (anim.enabled) root.animate([{ opacity: 0, transform: 'translateY(18px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: EASE.out });
   $('shelf-filter').value = '';
   await load();
+  if (anim.enabled && shelf.open) shelveIn();
+}
+const shownButton = () => { const b = $('shelf-button'); return b && b.offsetParent ? b : null; };
+// The spines in sight rise onto the shelf a moment apart, from the left (those out of sight just are there).
+function shelveIn() {
+  const box = $('shelf-body').getBoundingClientRect();
+  const seen = [...document.querySelectorAll('#shelf-body .spine, #shelf-body .missing-box')].filter((sp) => {
+    const r = sp.getBoundingClientRect();
+    return r.bottom > box.top && r.top < box.bottom && r.right > box.left && r.left < box.right;
+  }).slice(0, 60);
+  seen.forEach((sp, i) => sp.animate([{ opacity: 0, transform: 'translateY(22px)' }, { opacity: 1, transform: 'none' }],
+    { duration: 300, delay: Math.min(i * 12, 420), easing: EASE.out, fill: 'backwards' }));
 }
 
 /**
@@ -140,8 +156,10 @@ export function closeShelf() {
   shelf.openBoxes.clear();
   stopLookups();
   const root = $('shelf');
-  if (anim.enabled) root.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(10px)' }], { duration: 200, easing: EASE.in }).onfinish = () => { if (!shelf.open) root.hidden = true; };
-  else root.hidden = true;
+  const back = anim.enabled ? shownButton() : null;
+  const going = back ? growFrom(root, back, true, { close: 240 }) : anim.enabled ? root.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(10px)' }], { duration: 180, easing: EASE.in }) : null;
+  if (!going) { root.hidden = true; return; }
+  going.onfinish = () => { if (!shelf.open) { root.hidden = true; root.getAnimations().forEach((a) => a.cancel()); } };
 }
 
 /** Esc: the open case first, then the shelf. → true when something closed. */

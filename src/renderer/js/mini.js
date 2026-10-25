@@ -6,6 +6,7 @@ import { Visualizer } from './visualizer.js';
 import { glyphSvg } from './glyphs.js';
 import { shortcutKey } from './keys.js';
 import { t, translatePage } from './i18n.js';
+import { spring } from './widgets.js';
 
 const cdp = window.cdp;
 translatePage(document);
@@ -13,7 +14,6 @@ const $ = (id) => document.getElementById(id);
 const send = (action, value) => cdp.sendMiniCommand({ action, value });
 const formatTime = (sec) => { const s = Math.max(0, Math.floor(sec || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
-if (!/Mac/.test(navigator.userAgent)) document.body.classList.add('opaque'); // no frosted window material there
 
 const disc = new Disc($('disc'));
 disc.setMode('mini');
@@ -28,8 +28,23 @@ let playGlyph = null;
 function setPlayGlyph(playing) {
   const name = playing ? 'SOLID_PAUSE' : 'SOLID_PLAY';
   if (playGlyph === name) return;
+  const first = !playGlyph;
   playGlyph = name;
-  $('play').replaceChildren(glyphSvg(name, 30));
+  const g = glyphSvg(name, 30);
+  if (!first) g.classList.add('swap'); // (the new one pops in)
+  $('play').replaceChildren(g);
+}
+// Coming up, as the full player's panels do: out of a touch smaller, on a spring.
+const SPRING = spring(0.8);
+function appear() {
+  if (document.body.classList.contains('no-anim')) return;
+  $('panel').animate([{ opacity: 0, transform: 'translateY(-6px) scale(.94)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: SPRING });
+}
+// A new song's name and artist rise in.
+function rise(node, text) {
+  if (node.textContent === text) return;
+  node.textContent = text;
+  node.classList.remove('rise'); void node.offsetWidth; node.classList.add('rise');
 }
 setPlayGlyph(false);
 
@@ -85,11 +100,12 @@ cdp.onMiniState(async (s) => {
     }
   }
   if ('animations' in s) document.body.classList.toggle('no-anim', !s.animations);
+  if (s.appear) appear();
   if ('shine' in s) disc.setShine(s.shine);
   if (s.track) {
     const track = s.track;
-    $('title').textContent = track.title || t('Pick a track to get started.');
-    $('subtitle').textContent = [s.disc > 0 ? t('DISC {n}', { n: s.disc }) : null, [track.artist, track.album].filter(Boolean).join(' — ')].filter(Boolean).join(' · ');
+    rise($('title'), track.title || t('Pick a track to get started.'));
+    rise($('subtitle'), [s.disc > 0 ? t('DISC {n}', { n: s.disc }) : null, [track.artist, track.album].filter(Boolean).join(' — ')].filter(Boolean).join(' · '));
     document.title = track.artist ? `${track.artist} – ${track.title}` : (track.title || 'CDPlayer');
     disc.lookingUp = !!track.lookingUp;
     disc.setLabel(track.loaded ? track.title : null, track.artist);
@@ -97,7 +113,11 @@ cdp.onMiniState(async (s) => {
       coverKey = track.coverKey;
       let img = null;
       if (track.cover) { img = new Image(); img.src = track.cover; try { await img.decode(); } catch { img = null; } }
-      if (coverKey === track.coverKey) disc.setCover(img);
+      if (coverKey === track.coverKey) {
+        disc.setCover(img);
+        if (img) $('wash').style.backgroundImage = `url("${img.src}")`;
+        $('wash').classList.toggle('on', !!img);
+      }
     }
   }
   if ('playing' in s) { disc.spinning = s.playing; vis.setActive(s.playing); setPlayGlyph(s.playing); }

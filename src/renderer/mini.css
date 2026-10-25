@@ -1,4 +1,4 @@
-/* The mini player — laid out like Apple Music's mini player, colored by the active CDPlayer theme. */
+/* The mini player — laid out like Apple Music's mini player, in the full player's own look: its theme, its type, its keys. */
 :root {
   --bg: 17, 17, 19;
   --card: 31, 31, 34;
@@ -6,7 +6,7 @@
   --accent2: 180, 186, 194;
   --text: 232, 233, 236;
   --muted: 138, 142, 148;
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Helvetica Neue", Ubuntu, "DejaVu Sans", Arial, sans-serif;
+  --font: "Lucida Grande", "Segoe UI", "DejaVu Sans", "Helvetica Neue", Arial, sans-serif; /* (theme.js FONT) */
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
@@ -26,11 +26,16 @@ button { font-family: inherit; outline: none; }
   border-radius: 12px;
   overflow: hidden;
   -webkit-app-region: drag;
-  /* On macOS the window itself is a frosted "HUD" material; this tints it with the theme. Elsewhere it's opaque. */
-  background: rgba(var(--bg), .62);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08);
+  /* The theme's own colours, as the full player's panels have them, the cover washed in behind (as its Ambient
+     Background); a hairline edge like theirs. */
+  background: linear-gradient(to bottom, rgb(var(--card)), rgb(var(--bg)));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .157);
+  transform-origin: 50% 0;
 }
-body.opaque #panel { background: linear-gradient(to bottom, rgb(var(--card)), rgb(var(--bg))); }
+#wash { position: absolute; inset: -40px; background-size: cover; background-position: center; filter: blur(28px) saturate(1.4); opacity: 0; transition: opacity 600ms ease; pointer-events: none; }
+#wash.on { opacity: .32; }
+#panel > :not(#wash) { position: relative; }
+#panel > #close { position: absolute; }
 .no-drag { -webkit-app-region: no-drag; }
 
 /* Close/expand button: hidden until the pointer is over the player, like Apple Music's. */
@@ -50,8 +55,12 @@ body.opaque #panel { background: linear-gradient(to bottom, rgb(var(--card)), rg
 #disc { position: absolute; inset: 0; width: 100%; height: 100%; }
 #meta { flex: 1 1 auto; min-width: 0; }
 .line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#title { font-size: 16px; font-weight: 600; letter-spacing: -.01em; line-height: 20px; }
-#subtitle { font-size: 13px; line-height: 17px; color: rgb(var(--muted)); margin-top: 1px; }
+#title { font-size: 16px; font-weight: bold; line-height: 20px; }
+#subtitle { font-size: 12px; line-height: 17px; color: rgb(var(--accent2)); margin-top: 1px; }
+/* A new song's name rises in, as in the full player. */
+.rise { animation: riseIn 320ms cubic-bezier(.22, 1, .36, 1) backwards; }
+#subtitle.rise { animation-delay: 50ms; }
+@keyframes riseIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 #vis { width: 32px; height: 22px; flex: 0 0 32px; align-self: flex-start; margin-top: 4px; opacity: .9; }
 
 #bar { position: relative; height: 14px; margin-top: 10px; cursor: pointer; display: flex; align-items: center; }
@@ -71,15 +80,22 @@ body.opaque #panel { background: linear-gradient(to bottom, rgb(var(--card)), rg
 #controls button {
   border: none; padding: 0; background: transparent; color: rgb(var(--text));
   display: grid; place-items: center; cursor: pointer; border-radius: 50%;
-  transition: transform 90ms, background 120ms, color 120ms, opacity 120ms;
+  transition: transform 260ms var(--spring, ease-out), background 120ms, color 120ms, opacity 120ms;
 }
-#controls button:active { transform: scale(.88); }
+#controls button:active { transform: scale(.86); transition-duration: 70ms; }
 #controls button svg { display: block; }
 #prev, #next { width: 36px; height: 30px; }
 #play { width: 40px; height: 40px; }
+#controls #play { /* the full player's PLAY: one colour, lit along its top edge like a real key */
+  color: rgb(var(--bg)); background: rgb(var(--accent));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), inset 0 -2px 6px rgba(0, 0, 0, .18), 0 4px 14px rgba(var(--accent), .3);
+}
+#play svg { width: 22px; height: 22px; }
+#play svg.swap { animation: swapIn 220ms cubic-bezier(.22, 1, .36, 1); }
+@keyframes swapIn { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
 #controls .mode { position: relative; width: 30px; height: 30px; color: rgb(var(--muted)); }
 #controls .mode:hover { color: rgb(var(--text)); }
 #controls .mode.on { background: rgba(var(--text), .15); color: rgb(var(--accent)); }
 #badge { position: absolute; right: 3px; bottom: 2px; font-size: 8px; font-weight: 700; line-height: 1; }
 
-body.no-anim *, body.no-anim *::before, body.no-anim *::after { transition: none !important; }
+body.no-anim *, body.no-anim *::before, body.no-anim *::after { transition: none !important; animation: none !important; }
