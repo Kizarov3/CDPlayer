@@ -178,8 +178,11 @@ const THEME_NAMES = { RED: t('RED|theme'), BLUE: t('BLUE|theme'), SUNSET: t('SUN
 const themeLabel = (theme) => (theme.user ? theme.name : THEME_NAMES[theme.name] || theme.name);
 export function updateThemeButton(app, name) { if (themeButton) themeButton.lastChild.textContent = themeLabel(THEMES.find((x) => x.name === name) || { name }); }
 
-let discogsSettings = null;
-async function loadDiscogsSettings(app) { discogsSettings = await app.cdp.discogsSettings().catch(() => null); }
+let discogsSettings = null, scrobbleSettings = null;
+async function loadDiscogsSettings(app) {
+  [discogsSettings, scrobbleSettings] = await Promise.all([app.cdp.discogsSettings().catch(() => null), app.cdp.scrobbleStatus().catch(() => null)]);
+  app.state.scrobbleUser = scrobbleSettings && !scrobbleSettings.dropped ? scrobbleSettings.user || '?' : null;
+}
 
 export function showSettings(app) {
   const open = () => openPanel('settings', () => buildSettings(app), { width: 420 });
@@ -256,6 +259,16 @@ function buildSettings(app) {
         app.setStatus(r.ok ? t('DISCOGS TOKEN SAVED') : r.error === 'BAD_TOKEN' ? t("TOKEN DIDN'T WORK") : r.error === 'EMPTY' ? t('COPY THE TOKEN FIRST') : t('DISCOGS UNAVAILABLE'));
         await loadDiscogsSettings(app); refreshSettingsIfOpen(app);
       }, t('Paste the token you copied from Discogs'))]));
+  // LISTENBRAINZ: scrobbling, signed in with the token from its settings page.
+  const lb = scrobbleSettings;
+  const listenBrainz = el('div', { class: 'row-pills' }, ...(lb && lb.user && !lb.dropped
+    ? [pill(t('SIGN OUT'), async () => { await app.cdp.scrobbleSignOut(); await loadDiscogsSettings(app); refreshSettingsIfOpen(app); }, t('Stop scrobbling to ListenBrainz'))]
+    : [pill(t('GET A TOKEN'), () => app.cdp.openListenBrainz(), t('ListenBrainz → Settings → User token')),
+      pill(t('PASTE'), async () => {
+        const r = await app.cdp.scrobbleSignIn(await app.cdp.clipboardText());
+        app.setStatus(r.ok ? t('SCROBBLING TO LISTENBRAINZ AS {user}', { user: r.user || '?' }) : r.error === 'BAD_TOKEN' ? t("TOKEN DIDN'T WORK") : r.error === 'EMPTY' ? t('COPY THE TOKEN FIRST') : t('LISTENBRAINZ UNAVAILABLE'));
+        await loadDiscogsSettings(app); refreshSettingsIfOpen(app);
+      }, t('Paste the token you copied from ListenBrainz'))]));
   const currencyButton = pill(discogs ? discogs.currency : 'USD', () => showMenu(currencyButton, ((discogs && discogs.currencies) || ['USD']).map((c) => ({
     label: c, current: discogs && c === discogs.currency, pick: async () => { await app.cdp.discogsSetCurrency(c); await loadDiscogsSettings(app); app.discogsCurrencyChanged(); refreshSettingsIfOpen(app); },
   }))), t('The currency Discogs prices are shown in'));
@@ -427,7 +440,12 @@ function buildSettings(app) {
     quietHint(t('Spotify: Account → Privacy → Download your data (its .zip). Apple Music: File → Library → Export Library. Last.fm: a CSV from an exporter such as lastfm.ghan.nl. ListenBrainz: Settings → Export.')), gap(18),
     section(t('SHARING')),
     row(t('DISCORD STATUS'), discord),
-    hint(t('Shows the song you’re playing on your Discord profile, while the Discord app is open.')), gap(18),
+    hint(t('Shows the song you’re playing on your Discord profile, while the Discord app is open.')),
+    row(t('LISTENBRAINZ'), listenBrainz),
+    lb && lb.dropped ? hint(t('TOKEN NO LONGER WORKS')) : null,
+    hint(lb && lb.user && !lb.dropped
+      ? t('Scrobbling as {user}: each song heard — half of it, or 4 minutes — goes to your ListenBrainz profile, and waits while you’re offline.', { user: lb.user })
+      : t('Scrobbles the songs you hear to your free ListenBrainz profile — your listening history and statistics, kept outside CDPlayer too.')), gap(18),
     section(t('DISCOGS')),
     row(t('TOKEN'), discogsToken), row(t('CURRENCY'), currencyButton),
     discogs && discogs.tokenDropped ? hint(t('TOKEN NO LONGER WORKS')) : null,

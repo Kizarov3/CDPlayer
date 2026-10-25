@@ -33,6 +33,7 @@ export const SETTING_ROWS = [
   ['LIBRARY', 'BACKUP', 'restore export cdbackup резервная копия восстановить'],
   ['LIBRARY', 'IMPORT PLAYS', 'last.fm lastfm listenbrainz spotify apple music itunes scrobbles history импорт истории скробблы'],
   ['SHARING', 'DISCORD STATUS', 'discord rich presence дискорд'],
+  ['SHARING', 'LISTENBRAINZ', 'scrobble scrobbling last.fm lastfm скробблинг скробблы'],
   ['DISCOGS', 'TOKEN', 'discogs api key токен'],
   ['DISCOGS', 'CURRENCY', 'discogs price money валюта цена'],
 ];

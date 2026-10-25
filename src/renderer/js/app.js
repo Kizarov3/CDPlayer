@@ -2798,8 +2798,23 @@ function setText(node, text) { if (node.textContent !== text) node.textContent =
 // Playback logic that must keep running even while this window is hidden (Mini Mode) or minimized — where
 // requestAnimationFrame stops — so it runs on a plain timer instead of the frame loop.
 let sessionTick = 0, miniLevelsAt = 0;
+// Scrobbling (main/scrobble.js): the song playing said once its name is known, and sent as heard once half of it — or
+// 4 minutes — has played, once per time it's loaded. Not Spotify's songs: Spotify sends those itself.
+const SCROBBLE_LONGEST = 240;
+let scrobbleFor = -1, heardMs = 0, heardAt = 0, toldPlaying = false, scrobbled = false;
+function trackScrobble(now) {
+  if (!state.scrobbleUser || !state.loadedPath || isSpotifyUri(state.loadedPath)) return;
+  if (scrobbleFor !== state.loadToken) { scrobbleFor = state.loadToken; heardMs = 0; toldPlaying = scrobbled = false; heardAt = now; }
+  heardMs += Math.min(now - heardAt, 200); heardAt = now; // (a pause between two ticks isn't heard)
+  const d = state.details, length = engine.duration;
+  if (scrobbled || !d || state.detailsPath !== state.loadedPath || !(length >= 30)) return;
+  const song = { artist: d.artist, title: state.titleText || d.title, album: d.album || null, duration: length };
+  if (!toldPlaying) { toldPlaying = true; cdp.scrobbleNowPlaying(song); }
+  if (heardMs >= Math.min(length / 2, SCROBBLE_LONGEST) * 1000) { scrobbled = true; cdp.scrobbleHeard({ ...song, at: Date.now() - heardMs }); }
+}
 function playbackTick() {
   if (!engine.deck || !engine.playing || jog) return; // the snatches heard while the disc is turned by hand aren't playing
+  trackScrobble(performance.now());
   engine.watchSegmentEnd();
   if (crossfadeSeconds() === 0 && !spotifyActive()) { // gapless: the next track waits on the standby deck for the seam (or the mix)
     if (automixOn()) { measureEdgesSoon(state.loadedPath); measureEdgesSoon(upcomingPath()); }
@@ -3065,6 +3080,8 @@ async function start() {
   state.taskbarDisc = !!s.taskbarDisc; // its default is the system's (main/store.js)
   state.output = s.output || null;
   state.deviceSounds = {};
+  state.scrobbleUser = null;
+  cdp.scrobbleStatus().then((s) => { state.scrobbleUser = s && !s.dropped ? s.user || '?' : null; }).catch(() => {});
   cdp.deviceSounds().catch(() => null).then((kept) => { if (kept && typeof kept === 'object') state.deviceSounds = kept; applyOutput(false); });
   navigator.mediaDevices.addEventListener('devicechange', () => applyOutput(true));
   state.saveFound = !!s.saveFound;
