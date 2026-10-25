@@ -89,7 +89,11 @@ function createScrobbler({ store, fetch = globalThis.fetch, version = '', wait =
     return out;
   }
   /** When CDPlayer began scrobbling to each service that keeps no note of who sent a listen: { lastfm: ms }. */
-  const ownSince = () => (settings().lastfmSince ? { lastfm: settings().lastfmSince } : {});
+  const ownSince = () => {
+    const c = settings();
+    if (c.lastfm && !c.lastfmSince) { c.lastfmSince = Date.now(); save(); } // (signed in before this was noted)
+    return c.lastfmSince ? { lastfm: c.lastfmSince } : {};
+  };
   /** ListenBrainz's token pasted → { ok, user } | { error: 'EMPTY' | 'BAD_TOKEN' | 'OFFLINE' }. */
   async function signIn(value) {
     const key = String(value || '').trim();
