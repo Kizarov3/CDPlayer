@@ -140,7 +140,11 @@ test('a listen not on the shelf is counted once it is; CDPlayer’s own scrobble
   const lb = read(file('l.jsonl', [
     '{"listened_at":100,"track_metadata":{"artist_name":"Radiohead","track_name":"Airbag","additional_info":{"media_player":"CDPlayer"}}}',
     '{"listened_at":200,"track_metadata":{"artist_name":"Radiohead","track_name":"Airbag","additional_info":{"media_player":"Spotify"}}}'].join('\n')));
-  assert.strictEqual(apply(lb, ALBUMS, empty()).added, 1);
+  assert.deepStrictEqual([apply(lb, ALBUMS, empty()).added, apply(lb, ALBUMS, empty()).already], [1, 1]);
+  // a null in Spotify's list is passed over; a time years ahead isn't taken as the last time played
+  const sp = read(file('s.json', JSON.stringify([null, { ts: '2030-01-01T00:00:00Z', ms_played: 99999, master_metadata_track_name: 'Airbag', master_metadata_album_artist_name: 'Radiohead' }].map((x, i) => (i && x ? { ...x, ts: '5138-01-01T00:00:00Z' } : x)))));
+  const ahead = apply(sp, ALBUMS, empty());
+  assert.deepStrictEqual([ahead.added, ahead.plays.last.size], [1, 0]);
   const since = apply(read(file('s.csv', 'uts,artist,track\n100,Radiohead,Airbag\n500,Radiohead,Airbag')), ALBUMS, empty(), {}, { own: { lastfm: 300000 } });
   assert.deepStrictEqual([since.added, since.already], [1, 1]);
 });

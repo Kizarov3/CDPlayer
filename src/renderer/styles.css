@@ -651,14 +651,34 @@ body.look-cover #queue-card { border-top: none; margin-top: 18px; padding: 4px 1
 .k-dots { display: none; justify-content: center; gap: 10px; padding-top: 14px; }
 .k-line.current.resting .k-dots { display: flex; }
 .k-line.current.resting .k-main { opacity: .5; }
-.k-dots i { width: 9px; height: 9px; border-radius: 50%; background: rgb(var(--accent)); animation: k-breathe 1.6s ease-in-out infinite; }
+.k-dots i {
+  width: 11px; height: 11px; border-radius: 50%; background: rgb(var(--accent));
+  opacity: .25; transform: scale(.7); animation: k-breathe 1.6s ease-in-out infinite;
+  transition: opacity 300ms ease, transform 300ms cubic-bezier(.3, 1.6, .5, 1), box-shadow 300ms ease;
+}
 .k-dots i:nth-child(2) { animation-delay: .2s; } .k-dots i:nth-child(3) { animation-delay: .4s; }
-@keyframes k-breathe { 0%, 100% { transform: scale(.6); opacity: .35; } 50% { transform: scale(1); opacity: 1; } }
+@keyframes k-breathe { 0%, 100% { scale: .85; } 50% { scale: 1.1; } }
+/* Counting in: each dot lit as the break passes, and all three gone as the line comes. */
+.k-dots i.lit { opacity: 1; transform: scale(1); box-shadow: 0 0 14px rgba(var(--accent), .7); }
+.k-line.going .k-dots i { opacity: 0; transform: scale(1.6); transition-duration: 320ms; }
+.k-line.k-intro { display: none; padding-top: 40px; }
+.k-line.k-intro.current { display: block; }
+.k-line.k-intro.current .k-dots { display: flex; }
+/* The next line, a moment before it's sung: up to be read ahead. */
+.k-line.soon { color: rgba(var(--text), .62); filter: none; opacity: 1; }
+/* Behind: the album's cover, blurred, breathing with the music (karaoke.js). */
+#karaoke-cover {
+  position: absolute; inset: -10%; z-index: -1; pointer-events: none;
+  background: center / cover no-repeat; filter: blur(70px) saturate(1.5); opacity: .3; transform: scale(1.18);
+  transition: background-image 600ms ease;
+}
+#karaoke-cover.none { display: none; }
+#karaoke { isolation: isolate; overflow: hidden; }
 #karaoke-lines { transition: transform 520ms cubic-bezier(.3, 1.25, .45, 1); }
 /* Animations off: the fill only. */
 #karaoke.calm .k-line { filter: none; opacity: 1; transition: none; }
 #karaoke.calm .k-word { transform: none !important; text-shadow: none !important; transition: none; }
-#karaoke.calm .k-dots i { animation: none; opacity: .8; transform: none; }
+#karaoke.calm .k-dots i { animation: none; transition: none; }
 #karaoke.calm #karaoke-lines { transition: none; }
 
 /* ---- The CD shelf (shelf.js): jewel cases spine-out on shelves, and the case pulled out to its front ---- */

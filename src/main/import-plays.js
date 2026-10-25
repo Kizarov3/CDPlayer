@@ -25,14 +25,14 @@ function fromJson(value) {
   if (!list || !list.length) return null;
   const one = list.find((x) => x && typeof x === 'object') || {};
   if ('master_metadata_track_name' in one) { // Spotify's extended streaming history
-    return { source: 'spotify', listens: list.filter((x) => x.master_metadata_track_name && x.ms_played >= HEARD)
+    return { source: 'spotify', listens: list.filter((x) => x && x.master_metadata_track_name && x.ms_played >= HEARD)
       .map((x) => ({ artist: x.master_metadata_album_artist_name, title: x.master_metadata_track_name, album: x.master_metadata_album_album_name, at: Date.parse(x.ts) })) };
   }
   if ('trackName' in one && 'endTime' in one) { // Spotify's account data (its last year)
-    return { source: 'spotify', listens: list.filter((x) => x.trackName && x.msPlayed >= HEARD)
+    return { source: 'spotify', listens: list.filter((x) => x && x.trackName && x.msPlayed >= HEARD)
       .map((x) => ({ artist: x.artistName, title: x.trackName, album: null, at: Date.parse(`${String(x.endTime).replace(' ', 'T')}Z`) })) };
   }
-  if ('listened_at' in one && one.track_metadata) return { source: 'listenbrainz', listens: list.map(listenBrainz).filter((x) => !x.ours) };
+  if ('listened_at' in one && one.track_metadata) return { source: 'listenbrainz', listens: list.filter((x) => x && typeof x === 'object').map(listenBrainz) };
   return null;
 }
 function listenBrainz(x) {
@@ -123,7 +123,7 @@ function fromText(name, text) {
     const listens = [];
     for (const line of t.split('\n')) {
       if (!line.trim()) continue;
-      try { const x = JSON.parse(line); if (x && x.track_metadata) { const l = listenBrainz(x); if (!l.ours) listens.push(l); } } catch { return null; }
+      try { const x = JSON.parse(line); if (x && x.track_metadata) listens.push(listenBrainz(x)); } catch { return null; }
     }
     return listens.length ? { source: 'listenbrainz', listens } : null;
   }
@@ -201,7 +201,9 @@ function apply(found, albums, plays, before = {}, { own = {} } = {}) {
   const counts = new Map(plays.counts), last = new Map(plays.last), first = new Map(plays.first);
   const songs = new Set(), sources = new Set();
   let added = 0, already = 0, missing = 0;
+  const soon = Date.now() + 24 * 60 * 60 * 1000; // (a time past this is a wrong one: not taken as when it was played)
   const play = (p, n, at, isListen) => {
+    if (at > soon) at = null;
     counts.set(p, (counts.get(p) || 0) + n); added += n; songs.add(p);
     if (at && at > (last.get(p) || 0)) last.set(p, at);
     if (isListen && at && (!first.has(p) || at < first.get(p))) first.set(p, at);
@@ -219,7 +221,7 @@ function apply(found, albums, plays, before = {}, { own = {} } = {}) {
   for (const [source, seen] of listens) {
     const counted = new Set(Array.isArray(imports[source]) && typeof imports[source][0] === 'string' ? imports[source] : []);
     for (const x of seen.values()) {
-      if (own[source] && x.at >= own[source]) { already++; continue; }
+      if (x.ours || (own[source] && x.at >= own[source])) { already++; continue; } // CDPlayer's own: counted here already
       const key = listenKey(source, x);
       if (counted.has(key)) { already++; continue; }
       const p = where(x);

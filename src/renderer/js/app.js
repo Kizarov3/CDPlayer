@@ -37,7 +37,7 @@ import { soundOf, sameSound, deviceKey } from './device-sound.js';
 import { note as noteForReport, buildReport } from './report.js';
 import { phoneTagTitle, phoneJoined } from './remote-settings.js';
 import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged } from './shelf.js';
-import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
+import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke, karaokeCover } from './karaoke.js';
 import { SpotifySession, SpotifyTrackElement, isSpotifyUri, spotifyUpcoming, loadSpotifySdk } from './spotify-deck.js';
 
 const cdp = window.cdp;
@@ -1095,6 +1095,7 @@ function applyCover(img) {
   // (PLAYER LOOK: COVER shows it flat, as a streaming app does, instead of on the disc)
   $('cover-art').style.backgroundImage = img ? `url("${img.src}")` : '';
   $('cover-art').classList.toggle('none', !img);
+  karaokeCover();
   onCoverChanged();
   pushMini(true);
   refreshDockSoon();
@@ -1833,6 +1834,7 @@ async function followDeviceSound() {
     if (Number.isFinite(kept.spatialAmount)) state.spatialAmount = kept.spatialAmount;
     setEq(kept.eq); setMono(!!kept.mono); setSpatial(!!kept.spatial);
   } finally { applyingSound = false; }
+  panels.refreshSettingsIfOpen(app); // (its rows: this output's EQ, mono and spatial)
   if (before) setStatus(t('{device}: ITS OWN SOUND', { device: outputName({ label: key }) }));
 }
 // COPY REPORT (report.js): the errors that happen kept with what was said, and all of it copied for a bug report.
@@ -2791,6 +2793,7 @@ function commands() {
     { label: t('LIBRARY CHECK'), also: 'check problems проверка', run: () => panels.showLibraryCheck(app) },
     { label: t('KEYBOARD SHORTCUTS'), also: 'keys shortcuts клавиши', key: '?', run: () => panels.showShortcuts() },
     { label: t("WHAT'S NEW"), also: 'changelog whats new', run: () => panels.showWhatsNew(app) },
+    { label: t('COPY REPORT'), also: 'bug report issue problem отчёт ошибка баг проблема', run: copyReport },
   ].filter(Boolean);
 }
 
