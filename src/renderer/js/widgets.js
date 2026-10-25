@@ -7,6 +7,16 @@ import { glyphSvg } from './glyphs.js';
 export const anim = { enabled: true };
 // The motion curves of styles.css (--ease-out, --ease-in, --ease-in-out), for animations made in JS.
 export const EASE = { out: 'cubic-bezier(.22, 1, .36, 1)', in: 'cubic-bezier(.4, 0, 1, 1)', inOut: 'cubic-bezier(.65, 0, .35, 1)' };
+/** A spring, as Apple's animations move: settling by the end of the animation, past its mark a little first while
+ *  `damping` is under 1 (0.8: about 2%). → a CSS linear() easing. */
+export function spring(damping) {
+  const w = 6.2 / damping, wd = w * Math.sqrt(1 - damping * damping), points = [];
+  for (let i = 0; i <= 48; i++) {
+    const t = i / 48;
+    points.push(+(1 - Math.exp(-damping * w * t) * (Math.cos(wd * t) + (damping * w / wd) * Math.sin(wd * t))).toFixed(4));
+  }
+  return `linear(${points.join(', ')})`;
+}
 
 export function el(tag, props = {}, ...children) {
   const node = document.createElement(tag);
@@ -102,11 +112,12 @@ export class Slider {
     allSliders.add(this);
   }
   mount(parent) { parent.append(this.canvas); this.resize(); return this; }
+  // (its laid-out size, not as it's drawn on screen: a panel growing out of its button is scaled down at first)
   resize() {
-    const r = this.canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
-    if (!r.width) return;
-    this.canvas.width = Math.round(r.width * dpr);
-    this.canvas.height = Math.round(r.height * dpr);
+    const w = this.canvas.clientWidth, h = this.canvas.clientHeight, dpr = window.devicePixelRatio || 1;
+    if (!w) return;
+    this.canvas.width = Math.round(w * dpr);
+    this.canvas.height = Math.round(h * dpr);
     this.draw();
   }
   get track() {
@@ -120,7 +131,8 @@ export class Slider {
   }
   pointer(e, phase) {
     if (!this.enabled) return;
-    const x = e.clientX - this.canvas.getBoundingClientRect().left;
+    const r = this.canvas.getBoundingClientRect();
+    const x = (e.clientX - r.left) * (r.width ? this.canvas.clientWidth / r.width : 1);
     if (phase === 'down') { this.dragging = true; this.canvas.setPointerCapture(e.pointerId); }
     // Let go within a few pixels of the ?, it lands on it exactly.
     const v = phase === 'up' && this.marker !== null && Math.abs(x - this.xForValue(this.marker)) <= MARKER_SNAP ? this.marker : this.valueForX(x);

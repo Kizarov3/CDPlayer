@@ -18,6 +18,7 @@
   --ease-out: cubic-bezier(.22, 1, .36, 1);
   --ease-in: cubic-bezier(.4, 0, 1, 1);
   --ease-in-out: cubic-bezier(.65, 0, .35, 1);
+  --spring: var(--ease-out); /* (panels.js puts a spring here) */
 }
 
 * { box-sizing: border-box; }
@@ -432,13 +433,14 @@ body.look-cover #queue-card { border-top: none; margin-top: 18px; padding: 4px 1
 #overlays { position: fixed; inset: 0; z-index: 20; pointer-events: none; }
 .overlay {
   position: absolute; inset: 0; pointer-events: auto;
-  background: rgba(0, 0, 0, .55);
+  background: rgba(0, 0, 0, .45);
+  backdrop-filter: blur(6px);
   display: grid; place-items: center;
-  animation: overlayIn var(--anim-in) var(--ease-out); /* the dimming fades in and out with the panel */
+  animation: overlayIn 300ms var(--ease-out); /* the dimming and the blur behind fade in and out with the panel, as Apple's */
 }
-.overlay.closing { animation: overlayOut var(--anim-out) var(--ease-in) forwards; pointer-events: none; }
-@keyframes overlayIn { from { background: rgba(0, 0, 0, 0); } }
-@keyframes overlayOut { to { background: rgba(0, 0, 0, 0); } }
+.overlay.closing { animation: overlayOut 260ms var(--ease-in) forwards; pointer-events: none; }
+@keyframes overlayIn { from { background: rgba(0, 0, 0, 0); backdrop-filter: blur(0); } }
+@keyframes overlayOut { to { background: rgba(0, 0, 0, 0); backdrop-filter: blur(0); } }
 .card {
   background: rgb(var(--card));
   border: 1px solid rgba(255, 255, 255, .157);
@@ -446,13 +448,13 @@ body.look-cover #queue-card { border-top: none; margin-top: 18px; padding: 4px 1
   max-height: calc(100vh - 40px);
   display: flex; flex-direction: column;
   transform-origin: center;
-  animation: cardIn var(--anim-in) var(--ease-out);
+  animation: cardIn 420ms var(--spring);
 }
 .overlay.closing .card { animation: cardOut var(--anim-out) var(--ease-in) forwards; }
 .card.morph, .overlay.closing .card.morph { animation: none; } /* (out of its button and back: panels.js morph) */
-/* A panel rises a touch as it comes, and sinks a touch as it goes — no big zoom. */
-@keyframes cardIn { from { opacity: 0; transform: translateY(18px) scale(.985); } to { opacity: 1; transform: none; } } /* up, like a tray coming out */
-@keyframes cardOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(6px) scale(.985); } }
+/* Without a button to come out of, a panel grows in from a little smaller, and shrinks a little as it goes. */
+@keyframes cardIn { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
+@keyframes cardOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(.95); } }
 .card h1 { margin: 0; font-size: 16px; color: rgb(var(--accent)); font-weight: bold; }
 .card .subtitle { margin-top: 6px; font-size: 11px; color: rgb(var(--muted)); }
 .card .close-row { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 16px; }
