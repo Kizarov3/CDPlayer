@@ -493,6 +493,26 @@ body.look-cover #queue-card { border-top: none; margin-top: 18px; padding: 4px 1
 .settings-body .setting-row.slider-row .slider { flex: 1 1 auto; width: auto; }
 .settings-body .setting-row.slider-row .row-value { flex: 0 0 52px; margin-left: 0; text-align: right; }
 .settings-body .setting-hint { margin-top: 0; width: auto; }
+/* Settings a section at a time: the sections down the left, the one picked on the right; each setting set apart. */
+.card:has(> .settings-split) { height: min(680px, calc(100vh - 40px)); max-width: calc(100vw - 32px); }
+.settings-split { flex: 1 1 auto; min-height: 0; display: flex; gap: 26px; }
+.settings-tabs { flex: 0 0 156px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+.settings-tab {
+  padding: 9px 12px; border: 0; border-radius: 8px; background: none; text-align: left;
+  font: inherit; font-size: 10px; letter-spacing: .06em; color: rgb(var(--muted)); cursor: pointer;
+  transition: background var(--hover) ease, color var(--hover) ease, box-shadow var(--hover) ease;
+}
+.settings-tab:hover { color: rgb(var(--text)); background: rgba(255, 255, 255, .04); }
+.settings-tab.on { color: rgb(var(--text)); background: rgba(255, 255, 255, .08); box-shadow: inset 3px 0 0 rgb(var(--accent)); }
+.settings-page { flex: 1 1 auto; min-width: 0; padding-right: 10px; }
+.settings-page-title { padding-bottom: 6px; font-size: 18px; font-weight: bold; color: rgb(var(--text)); }
+.setting { padding: 14px 0; border-bottom: 1px solid rgba(255, 255, 255, .07); }
+.setting:last-child { border-bottom: none; }
+.setting > .setting-row:first-child > :first-child { font-size: 11px; color: rgb(var(--text)); } /* the setting's name, the sub-rows' quieter */
+.setting .setting-hint { margin-top: 6px; max-width: 440px; line-height: 1.45; }
+.setting .setting-hint.quiet { margin-top: 5px; }
+.setting .help-pills { margin: 2px 0; }
+@media (max-width: 820px) { .settings-tabs { flex-basis: 128px; } .settings-split { gap: 16px; } }
 .phone-remote { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 8px 0; }
 .phone-qr { width: 168px; height: 168px; line-height: 0; border-radius: 2px; overflow: hidden; }
 .phone-qr svg { width: 100%; height: 100%; }

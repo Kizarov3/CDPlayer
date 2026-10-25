@@ -6,7 +6,7 @@ import { buildThemeEditor } from './theme-editor.js';
 import { t, locale } from './i18n.js';
 import { historyDays } from './history-days.js';
 import { EQ_FREQUENCIES } from './audio.js';
-import { el, pill, toggle, setToggle, Slider, anim } from './widgets.js';
+import { el, pill, toggle, setToggle, Slider, anim, EASE } from './widgets.js';
 import { FAQ, SHORTCUTS, FEATURES } from './help.js';
 import { findCommands } from './search-commands.js';
 import { startTour } from './tour-view.js';
@@ -185,7 +185,7 @@ async function loadDiscogsSettings(app) {
 }
 
 export function showSettings(app) {
-  const open = () => openPanel('settings', () => buildSettings(app), { width: 420 });
+  const open = () => openPanel('settings', () => buildSettings(app), { width: 700 });
   // DISCOGS's token and currency, asked each time (a token Discogs dropped shows at once); the first time, before
   // the panel opens, so it never shows defaults for a moment.
   if (!discogsSettings) { loadDiscogsSettings(app).then(open); return; }
@@ -202,6 +202,26 @@ export function refreshSettingsIfOpen(app) {
 }
 
 const section = (text) => el('div', { class: 'settings-section' }, text);
+const subRow = (r) => { r.classList.add('setting-sub'); return r; }; // (a row going on from the one above: one setting)
+
+// Settings a section at a time: the sections listed down the left, the one picked on the right — each setting there
+// (its row, any rows going on from it, its hints) set apart from the next. Sections and settings are found in the flat
+// list buildSettings makes: a section's name starts a section, a row a setting.
+let settingsPage = 0, settingsGo = null;
+function settingsPages(nodes) {
+  const pages = [];
+  let one = null;
+  for (const node of nodes) {
+    if (node.classList.contains('gap-22')) continue;
+    if (node.classList.contains('settings-section')) { pages.push({ name: node.textContent, settings: [] }); one = null; continue; }
+    if (!one || (node.classList.contains('setting-row') && !node.classList.contains('setting-sub'))) {
+      one = el('div', { class: 'setting' });
+      pages[pages.length - 1].settings.push(one);
+    }
+    one.append(node);
+  }
+  return pages;
+}
 
 // Settings → PHONE REMOTE: the switch and, while it's on, the code to scan with the phone, its address in words, the
 // phones connected and NEW CODE. The status is main's (app.remoteInfo()); a change comes back through app.remoteHeard.
@@ -392,7 +412,7 @@ function buildSettings(app) {
     section(t('SOUND')),
     unavailable(row(t('EQUALIZER'), el('div', { class: 'row-pills' }, presetButton, eqButton))),
     unavailable(row(t('TRANSITION'), transitionButton)),
-    ...(s.transition === 'CROSSFADE' ? [unavailable(sliderRow(t('LENGTH'), crossfade, crossfadeValue))] : []),
+    ...(s.transition === 'CROSSFADE' ? [subRow(unavailable(sliderRow(t('LENGTH'), crossfade, crossfadeValue)))] : []),
     hint(TRANSITION_HINTS[s.transition] || TRANSITION_HINTS.OFF),
     unavailable(row(t('OUTPUT'), outputButton)),
     quietHint(t('Each output keeps its own EQ, mono and spatial audio: headphones and speakers each sound as you set them.')),
@@ -403,7 +423,7 @@ function buildSettings(app) {
     unavailable(row(t('MONO AUDIO'), mono)),
     hint(t('Sums the left and right channels together — for a single speaker or one earbud.')),
     unavailable(row(t('SPATIAL AUDIO'), spatial)),
-    unavailable(spaceRow),
+    subRow(unavailable(spaceRow)),
     hint(t('For headphones: the music comes from two speakers in front of you instead of from inside your head. Off with mono, and best off on speakers.')),
     unavailable(row(t('SOUND CHECK'), soundCheckButton)),
     hint(t('Plays every song at the same loudness, from its ReplayGain tags or measured once. ALBUM keeps an album’s quiet and loud songs as they were made.')),
@@ -432,7 +452,7 @@ function buildSettings(app) {
     row(t('CD CHANGER'), changerMode),
     hint(t('Five discs in a carousel instead of the queue: albums go in as discs, with DISC SKIP (D) and 1–5. The queue and the changer each keep their own music.')),
     sliderRow(t('SLEEP TIMER'), sleep, sleepValue),
-    row(t('…OR AT THE END OF THE DISC'), sleepAtEnd),
+    subRow(row(t('…OR AT THE END OF THE DISC'), sleepAtEnd)),
     hint(t('Stops once the album playing has ended (a changer disc, or the folder its songs are in) instead of going on into the next. A shuffled queue plays to its end.')),
     sliderRow(t('LYRICS OFFSET'), lyricsOffset, offsetValue),
     hint(t('Karaoke and the lyrics already follow what you hear, Bluetooth included. Move them if a song’s lyrics are timed a little off.')),
@@ -478,10 +498,25 @@ function buildSettings(app) {
       pill(t('KEYBOARD SHORTCUTS'), () => showShortcuts(), t('Every key, also with ?')),
       pill(t('COPY REPORT'), () => app.copyReport(), t('For a bug report: the version, your system, the output and the sound settings, and what happened lately — no paths to your music’s files'))));
   const version = el('div', { class: 'settings-version' }, `CDPlayer ${app.state.version}`);
-  // The sections, to jump to: the list is long, and HELP is at the bottom of it.
-  const jumps = el('div', { class: 'settings-jumps' }, [...body.querySelectorAll('.settings-section')].map((sec) =>
-    el('button', { class: 'settings-jump', onClick: () => { body.scrollTo({ top: body.scrollTop + sec.getBoundingClientRect().top - body.getBoundingClientRect().top, behavior: anim.enabled ? 'smooth' : 'auto' }); } }, sec.textContent)));
-  return [title(t('SETTINGS')), gap(10), jumps, gap(8), body, el('div', { class: 'settings-foot' }, github, version, pill(t('CLOSE'), () => closePanel('settings')))];
+  const pages = settingsPages([...body.children]);
+  settingsPage = Math.min(settingsPage, pages.length - 1);
+  const page = el('div', { class: 'scroll settings-body settings-page' });
+  const tabs = pages.map((p, i) => el('button', { class: 'settings-tab', onClick: () => show(i) }, p.name));
+  const show = (i, { moved = true } = {}) => {
+    settingsPage = i;
+    tabs.forEach((b, k) => b.classList.toggle('on', k === i));
+    page.replaceChildren(el('div', { class: 'settings-page-title' }, pages[i].name), ...pages[i].settings);
+    page.scrollTop = 0;
+    if (moved && anim.enabled) page.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 200, easing: EASE.out });
+  };
+  show(settingsPage, { moved: false });
+  // (the search's "Settings at a row": to the section it's in)
+  settingsGo = (label) => {
+    const i = pages.findIndex((p) => p.settings.some((x) => [...x.querySelectorAll('.setting-row')].some((r) => r.firstElementChild && r.firstElementChild.textContent === label)));
+    if (i >= 0 && i !== settingsPage) show(i, { moved: false });
+  };
+  return [title(t('SETTINGS')), gap(16), el('div', { class: 'settings-split' }, el('nav', { class: 'settings-tabs' }, tabs), page),
+    el('div', { class: 'settings-foot' }, github, version, pill(t('CLOSE'), () => closePanel('settings')))];
 }
 
 // ---- Drop-down menus (theme picker, EQ presets) ------------------------------------------------------------------
@@ -1137,6 +1172,7 @@ function commandRow(app, c) {
 export function showSettingAt(app, label, tries = 20) {
   if (!isOpen('settings')) showSettings(app);
   const card = panels.get('settings') && panels.get('settings').card;
+  if (card && settingsGo) settingsGo(t(label));
   const row = card && [...card.querySelectorAll('.setting-row')].find((r) => r.firstElementChild && r.firstElementChild.textContent === t(label));
   if (!row) { if (tries > 0) setTimeout(() => showSettingAt(app, label, tries - 1), 50); return; }
   row.scrollIntoView({ block: 'center', behavior: anim.enabled ? 'smooth' : 'auto' });
