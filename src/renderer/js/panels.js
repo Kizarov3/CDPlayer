@@ -1578,6 +1578,7 @@ const CHANGELOG = [
     '<b>Each output its own sound</b>: the EQ, mono and spatial audio set on your headphones come back when they&rsquo;re plugged in, the speakers&rsquo; when they&rsquo;re the output again',
     '<b>A backup by itself each day</b>, the last 7 kept; <b>COPY REPORT</b> in Settings &rarr; HELP puts what a bug report needs in one paste',
     '<b>KARAOKE</b> counts you in: three dots lit one by one before the first line and through each break; the next line comes up a moment early, and the album&rsquo;s cover breathes with the music behind',
+    '<b>Each theme its own Now Playing card</b> (P): a jewel case, a disc out of it, a polaroid, a planet, a sunset, a reflection in the sea, a terminal, a ticket, snow, a streaming app\'s; and <b>Settings</b> a section at a time, opened with <kbd>,</kbd> (HISTORY with <kbd>H</kbd>), each panel coming out of its button',
   ], changesIn: { ru: [
     '<b>YouTube Music и SoundCloud</b>: включите в Настройках &rarr; БИБЛИОТЕКА &mdash; поиск находит их альбомы и песни, и они играют как ваши диски, в лучшем качестве, которое сайт даёт без входа',
     '<b>ВИД ПЛЕЕРА</b> в Настройках &rarr; ВИД: КЛАССИКА, ПУЛЬТ, СЦЕНА, СТЕКЛО, ПАНЕЛЬ или ОБЛОЖКА; и мягкие анимации повсюду &mdash; название песни выплывает, дисплей мерцает, маленькие лампочки на включённом',
@@ -1585,6 +1586,7 @@ const CHANGELOG = [
     '<b>У каждого выхода свой звук</b>: эквалайзер, моно и пространственный звук, настроенные для наушников, возвращаются, когда их подключают, а для колонок &mdash; когда звук снова идёт в них',
     '<b>Резервная копия каждый день сама</b>, хранятся последние 7; <b>СКОПИРОВАТЬ ОТЧЁТ</b> в Настройках &rarr; ПОМОЩЬ собирает всё нужное для сообщения об ошибке',
     '<b>КАРАОКЕ</b> отсчитывает вступление: три точки загораются по одной перед первой строкой и в каждом проигрыше; следующая строка появляется чуть заранее, а позади дышит в такт музыке обложка альбома',
+    '<b>У каждой темы своя карточка &laquo;Сейчас играет&raquo;</b> (P): коробка диска, выехавший диск, полароид, планета, закат, отражение в море, терминал, билет, снег, как в стриминговом приложении; а <b>Настройки</b> &mdash; по разделам, открываются клавишей <kbd>,</kbd> (ИСТОРИЯ &mdash; <kbd>H</kbd>), и каждое окно выходит из своей кнопки',
   ] } },
   { version: '2.19.0', changes: [
     '<b>Dividers of your own</b>: + DIVIDER in an album&rsquo;s case files it behind one (&ldquo;For the car&rdquo;, &ldquo;Sunday&rdquo;); SORT &rarr; MY DIVIDERS stands the shelf by them, SHOW shows one',
