@@ -262,6 +262,7 @@ handle('stream:search', (query, where) => streaming.search(String(query || ''), 
 handle('stream:album', (page) => streaming.album(page));
 handle('stream:prepare', (page) => streaming.prepare(page));
 handle('stream:available', () => streaming.available());
+handle('stream:install', () => streaming.install());
 // Play counts, kept in memory and written a moment after the last change.
 let playCounts = null, playsTimer = null;
 const plays = () => (playCounts = playCounts || store.readPlayCounts());

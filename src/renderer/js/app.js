@@ -1010,7 +1010,12 @@ function flushFoundSoon() {
 }
 // YOUTUBE MUSIC & SOUNDCLOUD: on only with yt-dlp there to stream with.
 async function setStreaming(on) {
-  if (on && !(await cdp.stream.available().catch(() => null))) { setStatus(t('STREAMING NEEDS YT-DLP · SEE SETTINGS')); return false; }
+  // (turned on the first time: yt-dlp is got for it, unless the user has one)
+  if (on && !(await cdp.stream.available().catch(() => null))) {
+    setStatus(t('GETTING YT-DLP…'));
+    if (!(await cdp.stream.install().catch(() => null))) { setStatus(t('COULDN’T GET YT-DLP · CHECK THE CONNECTION')); return false; }
+    setStatus(t('YT-DLP IS READY · SEARCH WITH /'));
+  }
   state.streaming = !!on; saveSettingsSoon();
   return true;
 }

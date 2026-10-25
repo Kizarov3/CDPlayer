@@ -13,22 +13,66 @@ const CHUNK = 1024 * 1024; // what's asked of the server at a time
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const CANDIDATES = ['/opt/homebrew/bin/yt-dlp', '/usr/local/bin/yt-dlp', '/usr/bin/yt-dlp'];
 
+// yt-dlp: the app's own copy (got from yt-dlp's releases when streaming is first turned on, and got again when it's a
+// few days old: YouTube changes, yt-dlp follows), or one the user installed.
+const OWN = { darwin: 'yt-dlp_macos', win32: 'yt-dlp.exe', linux: process.arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux' }[process.platform];
+const RELEASES = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/';
+const STALE = 3 * 24 * 60 * 60 * 1000;
+const ownPath = () => (store && OWN ? path.join(store.dataDir(), 'bin', OWN) : null);
 function ytDlpPath() {
-  return CANDIDATES.find((p) => fs.existsSync(p)) || 'yt-dlp';
+  const own = ownPath();
+  if (own && fs.existsSync(own)) return own;
+  return CANDIDATES.find((p) => fs.existsSync(p)) || (process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
 }
 
 /** Whether yt-dlp is there to stream with: its version, or null. */
 function available() {
   return new Promise((resolve) => {
-    execFile(ytDlpPath(), ['--version'], { timeout: 10000 }, (err, stdout) => resolve(err ? null : String(stdout).trim()));
+    execFile(ytDlpPath(), ['--version'], { timeout: 30000 }, (err, stdout) => resolve(err ? null : String(stdout).trim()));
   });
 }
 
+/** yt-dlp's latest release into the app's own folder, checked against the sums it's published with. */
+let installing = null;
+function install() {
+  if (installing) return installing;
+  installing = (async () => {
+    if (!ownPath()) throw new Error('No yt-dlp for this system');
+    const get = async (name) => {
+      const res = await fetch(RELEASES + name, { redirect: 'follow' });
+      if (!res.ok) throw new Error(`${name}: ${res.status}`);
+      return res;
+    };
+    const sums = await (await get('SHA2-256SUMS')).text();
+    const want = (new RegExp(`^([0-9a-f]{64})\\s+\\*?${OWN.replace(/\./g, '\\.')}$`, 'm').exec(sums) || [])[1];
+    if (!want) throw new Error('No checksum');
+    const bytes = Buffer.from(await (await get(OWN)).arrayBuffer());
+    if (require('crypto').createHash('sha256').update(bytes).digest('hex') !== want) throw new Error('Checksum mismatch');
+    const target = ownPath(), part = `${target}.part`;
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(part, bytes, { mode: 0o755 });
+    fs.renameSync(part, target);
+    return available();
+  })();
+  installing.finally(() => { installing = null; }).catch(() => {});
+  return installing;
+}
+// The app's own copy got again in the background once it's a few days old (the one being used meanwhile).
+let freshened = false;
+function freshen() {
+  if (freshened) return;
+  freshened = true;
+  try { if (Date.now() - fs.statSync(ownPath()).mtimeMs > STALE) install().catch(() => {}); } catch { /* none of its own */ }
+}
+
 function run(args, timeout = 30000) {
+  freshen();
   return new Promise((resolve, reject) => {
-    // (Homebrew's yt-dlp finds deno, for YouTube's checks, on the PATH a Finder-opened app doesn't have)
-    const env = { ...process.env, PATH: [path.dirname(ytDlpPath()), process.env.PATH || ''].join(path.delimiter) };
-    execFile(ytDlpPath(), args, { timeout, maxBuffer: 64 * 1024 * 1024, env }, (err, stdout, stderr) => {
+    // YouTube's checks are puzzles in JavaScript: the app itself (Electron, run as Node) solves them for yt-dlp, so no
+    // other JavaScript runtime (deno) is needed. (Homebrew's yt-dlp is given its own folder on the PATH too.)
+    const env = { ...process.env, ELECTRON_RUN_AS_NODE: '1', PATH: [path.dirname(ytDlpPath()), process.env.PATH || ''].join(path.delimiter) };
+    const js = ['--no-js-runtimes', '--js-runtimes', `node:${process.execPath}`];
+    execFile(ytDlpPath(), [...js, ...args], { timeout, maxBuffer: 64 * 1024 * 1024, env }, (err, stdout, stderr) => {
       if (err) { reject(new Error(String(stderr || err.message).trim().split('\n').pop())); return; }
       try { resolve(JSON.parse(stdout)); } catch (e) { reject(e); }
     });
@@ -66,11 +110,12 @@ function expiry(url) {
 }
 const asking = new Map();
 async function resolve(page, { fresh = false } = {}) {
+  if (!isStreamPage(page)) throw new Error('Not a stream page');
   const had = found.get(page);
   if (had && !fresh && had.until > Date.now()) return had;
   if (!fresh && asking.has(page)) return asking.get(page);
   const job = (async () => {
-    const info = await run(['-f', 'bestaudio', '-J', '--no-playlist', page]);
+    const info = await run(['-f', 'bestaudio', '-J', '--no-playlist', '--', page]);
     const entry = {
       url: info.url, headers: info.http_headers || {}, size: info.filesize || info.filesize_approx || null,
       type: info.ext === 'webm' ? 'audio/webm' : info.ext === 'm4a' ? 'audio/mp4' : info.ext === 'mp3' ? 'audio/mpeg' : 'application/octet-stream',
@@ -134,7 +179,7 @@ const bestThumb = (list) => {
 const ALBUMS_NAMED = 8;
 async function search(query, where = 'youtube') {
   if (where === 'soundcloud') {
-    const r = await run(['--flat-playlist', '-J', `scsearch12:${query}`]);
+    const r = await run(['--flat-playlist', '-J', '--', `scsearch12:${query}`]);
     return (r.entries || []).map((e) => {
       const page = e.url;
       const song = { kind: 'song', page, title: songTitle(e.title), artist: e.uploader || null, duration: e.duration || null, cover: bestThumb(e.thumbnails) };
@@ -142,7 +187,7 @@ async function search(query, where = 'youtube') {
       return song;
     });
   }
-  const r = await run(['--flat-playlist', '-J', `https://music.youtube.com/search?q=${encodeURIComponent(query)}#albums`]);
+  const r = await run(['--flat-playlist', '-J', '--', `https://music.youtube.com/search?q=${encodeURIComponent(query)}#albums`]);
   const pages = (r.entries || []).map((e) => e.url).filter(Boolean).slice(0, ALBUMS_NAMED);
   const named = await Promise.all(pages.map((pg) => album(pg).catch(() => null)));
   return named.filter((a) => a && a.tracks.length).map((a) => ({ kind: 'album', ...a, count: a.tracks.length }));
@@ -150,7 +195,8 @@ async function search(query, where = 'youtube') {
 
 /** An album (or playlist) page → { title, artist, cover, page, tracks: [{ page, title, artist, duration }] }. */
 async function album(page) {
-  const r = await run(['--flat-playlist', '-J', page]);
+  if (!isStreamPage(page)) throw new Error('Not a stream page');
+  const r = await run(['--flat-playlist', '-J', '--', page]);
   const title = String(r.title || '').replace(/^Album - /, '');
   const tracks = (r.entries || []).map((e) => ({
     page: e.url && /^https?:/.test(e.url) ? e.url.replace('https://www.youtube.com/watch', 'https://music.youtube.com/watch') : `https://music.youtube.com/watch?v=${e.id}`,
@@ -252,4 +298,4 @@ async function serveStream(request, page) {
   return new Response(body, { status: 206, headers: { ...headers, 'Content-Range': `bytes ${start}-${end}/${total}` } });
 }
 
-module.exports = { available, isStreamPage, setStore, remember, songInfo, resolve, prepare, search, album, details, coverData, serveStream, ytDlpPath };
+module.exports = { available, install, isStreamPage, setStore, remember, songInfo, resolve, prepare, search, album, details, coverData, serveStream, ytDlpPath };

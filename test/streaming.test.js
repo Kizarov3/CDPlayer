@@ -23,9 +23,14 @@ global.fetch = async (url, { headers = {} } = {}) => {
   const start = Number(m[1]), last = Math.min(Number(m[2]), body.length - 1);
   return new Response(body.subarray(start, last + 1), { status: 206, headers: { 'Content-Range': `bytes ${start}-${last}/${body.length}` } });
 };
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const crypto = require('crypto');
 const streaming = require('../src/main/streaming');
 const written = new Map();
-streaming.setStore({ readText: () => null, writeText: (n, s) => written.set(n, s) });
+const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cdplayer-stream-test-')); // never a real ~/.cdplayer
+streaming.setStore({ readText: () => null, writeText: (n, s) => written.set(n, s), dataDir: () => home });
 
 const bytes = (n, seed = 7) => Buffer.from(Array.from({ length: n }, (_, i) => (i * seed + (i >> 8)) & 255));
 const ask = (page, range) => streaming.serveStream(new Request('cdp://app/stream', { headers: range ? { Range: range } : {} }), page);
@@ -115,4 +120,24 @@ test("a streamed song's names: no file extension, no YouTube \"- Topic\", the al
   const sc = await streaming.details('https://soundcloud.com/someone/long-song', { withCover: false });
   assert.strictEqual(sc.title, 'Long Song');
   assert.strictEqual(sc.stream, 'SOUNDCLOUD');
+});
+
+test('an album asked for by something not a stream page is refused before yt-dlp sees it', async () => {
+  await assert.rejects(streaming.album('--exec=touch /tmp/x'), /Not a stream page/);
+  await assert.rejects(streaming.resolve('-o /tmp/x'), /Not a stream page/);
+});
+
+test("yt-dlp is got from its releases and kept only when it matches the published sum", async () => {
+  const own = { darwin: 'yt-dlp_macos', win32: 'yt-dlp.exe', linux: process.arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux' }[process.platform];
+  const base = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/';
+  const exe = bytes(3000, 19), sum = crypto.createHash('sha256').update(exe).digest('hex');
+  files.set(base + own, exe);
+  files.set(base + 'SHA2-256SUMS', `${'0'.repeat(64)}  yt-dlp.tar.gz\n${sum}  ${own}\n`);
+  assert.strictEqual(await streaming.install(), '2026.10.21');
+  const at = path.join(home, 'bin', own);
+  assert.ok(fs.readFileSync(at).equals(exe));
+  assert.strictEqual(streaming.ytDlpPath(), at);
+  files.set(base + own, bytes(3000, 23)); // tampered with
+  await assert.rejects(streaming.install(), /Checksum mismatch/);
+  assert.ok(fs.readFileSync(at).equals(exe), 'the good copy stays');
 });

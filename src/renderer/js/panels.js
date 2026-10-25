@@ -394,7 +394,7 @@ function buildSettings(app) {
     row(t('SAVE FOUND ART & LYRICS'), saveFound),
     hint(t('Covers and lyrics found online are written into the song’s file (once it’s finished playing), so they’re there offline and in other players too.')),
     row(t('YOUTUBE MUSIC & SOUNDCLOUD'), streaming),
-    hint(t('The search (/) finds albums on YouTube Music and songs on SoundCloud too, to play like your own: the EQ, the changer and the history as for a file. Unofficial — through the free yt-dlp, which YouTube’s terms don’t allow; it may stop working for a while when YouTube changes. Songs a label has locked (DRM) can’t be played.')),
+    hint(t('The search (/) finds albums on YouTube Music and songs on SoundCloud too, to play like your own: the EQ, the changer and the history as for a file. Unofficial — through the free yt-dlp (got from its site when this is turned on), which YouTube’s terms don’t allow; it may stop working for a while when YouTube changes. Songs a label has locked (DRM) can’t be played.')),
     row(t('BACKUP'), el('div', { class: 'row-pills' },
       pill(t('SAVE…'), async () => { const r = await app.cdp.saveBackup().catch(() => ({ error: true })); if (r) app.setStatus(r.ok ? t('BACKUP SAVED') : t('UNKNOWN ERROR')); }, t('Save your queue, history, plays, notes, themes and settings to one file')),
       pill(t('RESTORE…'), async () => { const r = await app.cdp.restoreBackup().catch(() => ({ error: 'UNKNOWN ERROR' })); if (r && r.error) app.setStatus(r.error === 'NOT A BACKUP' ? t('NOT A CDPLAYER BACKUP') : t('UNKNOWN ERROR')); }, t('Put back what a backup kept: CDPlayer then starts again')))),
