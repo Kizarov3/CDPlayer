@@ -12,8 +12,11 @@ cp.execFile = (cmd, args, opts, cb) => {
   if (info) cb(null, JSON.stringify(info), ''); else cb(new Error('no'), '', 'ERROR: not found');
 };
 const files = new Map(); // address → bytes (or text)
-let refuse = 0; // the next few asks answered 403
+let refuse = 0, drop = 0; // the next few asks answered 403 / dropped
+const asked = []; // the ranges asked of the servers
 global.fetch = async (url, { headers = {} } = {}) => {
+  asked.push(`${url} ${headers.Range || ''}`);
+  if (drop > 0) { drop--; throw new TypeError('fetch failed'); }
   if (refuse > 0) { refuse--; return new Response('', { status: 403 }); }
   const body = files.get(String(url));
   if (body == null) return new Response('', { status: 404 });
@@ -182,4 +185,45 @@ test('a zip naming a place outside its folder is refused', () => {
     assert.throws(() => unzip.extract(makeZip([{ name, data: bytes(10) }]), path.join(out, 'in')), /Bad name/, name);
   }
   assert.ok(!fs.existsSync(path.join(out, 'escaped')));
+});
+
+test('pieces fetched once are kept: the waveform and a seek back read them from memory', async () => {
+  const page = 'https://soundcloud.com/someone/kept-song';
+  const song = bytes(3 * 1024 * 1024 + 5, 41);
+  files.set('https://cdn.example/kept.mp3', song);
+  infos.set(page, { url: 'https://cdn.example/kept.mp3', ext: 'mp3', title: 'Kept' });
+  await (await ask(page, 'bytes=0-')).arrayBuffer();
+  const before = asked.filter((a) => a.startsWith('https://cdn.example/kept.mp3')).length;
+  const again = Buffer.from(await (await ask(page)).arrayBuffer()); // the waveform's read of the whole song
+  const back = Buffer.from(await (await ask(page, 'bytes=100-199')).arrayBuffer());
+  assert.ok(again.equals(song));
+  assert.ok(back.equals(song.subarray(100, 200)));
+  assert.strictEqual(asked.filter((a) => a.startsWith('https://cdn.example/kept.mp3')).length, before, 'nothing asked of the server again');
+});
+
+test('a read stopped (a seek, the next song) fetches nothing more', async () => {
+  const page = 'https://soundcloud.com/someone/stopped-song';
+  files.set('https://cdn.example/stopped.mp3', bytes(6 * 1024 * 1024, 43));
+  infos.set(page, { url: 'https://cdn.example/stopped.mp3', ext: 'mp3', title: 'Stopped' });
+  const res = await ask(page, 'bytes=0-');
+  const reader = res.body.getReader();
+  await reader.read();
+  await reader.cancel();
+  await new Promise((r) => setTimeout(r, 50));
+  const pieces = asked.filter((a) => a.startsWith('https://cdn.example/stopped.mp3') && !a.endsWith('bytes=0-0'));
+  assert.ok(pieces.length <= 2, `${pieces.length} pieces asked`);
+});
+
+test('a dropped connection is asked again; a range past the end is answered 416', async () => {
+  const page = 'https://soundcloud.com/someone/dropped-song';
+  const song = bytes(4000, 47);
+  files.set('https://cdn.example/dropped.mp3', song);
+  infos.set(page, { url: 'https://cdn.example/dropped.mp3', ext: 'mp3', title: 'Dropped' });
+  await streaming.resolve(page);
+  drop = 1;
+  const r = await ask(page, 'bytes=10-19');
+  assert.ok(Buffer.from(await r.arrayBuffer()).equals(song.subarray(10, 20)));
+  const past = await ask(page, 'bytes=5000-');
+  assert.strictEqual(past.status, 416);
+  assert.strictEqual(past.headers.get('content-range'), 'bytes */4000');
 });

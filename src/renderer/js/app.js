@@ -143,6 +143,12 @@ function setStatus(text) {
   statusTimer = setTimeout(() => { statusHeld = false; if (!state.trayBusy && !disc.reading) { $('status').textContent = STATUS_DOT + stateStatus(); remoteSoon(); } }, 6000);
 }
 let streamReading = null; // the load (its token) a streamed song is being read for
+// Done reading — or the reading left for another song, or for none (a load whose sound never comes never says so).
+function stopStreamReading(token = streamReading) {
+  if (streamReading === null || streamReading !== token) return;
+  streamReading = null; disc.reading = false;
+  if (statusWords() === t('READING…')) { $('status').textContent = STATUS_DOT + stateStatus(); remoteSoon(); }
+}
 const statusWords = () => $('status').textContent.replace(STATUS_DOT, '');
 // A cue sheet track is queued as "<path to .cue>#<track number>" (see src/main/cue.js).
 const cueRef = (p) => /^(.*\.cue)#(\d+)$/i.exec(p);
@@ -669,6 +675,7 @@ function undoEjectSlot() {
 }
 function resetToIdle(message) {
   state.index = -1; state.loadToken++;
+  stopStreamReading();
   engine.stop();
   state.loadedPath = null; state.details = null; state.lyrics = null;
   resetHidden(); // no ? on an empty seek bar, no HIDDEN badge
@@ -737,6 +744,7 @@ async function applyQuality(details, token, path) {
 // what's shown and kept is brought up to date.
 async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0, reload = false, seamless = false } = {}) {
   const token = ++state.loadToken;
+  stopStreamReading();
   // The tray's out: the new song waits on it, and plays when it closes (nothing plays from an open tray).
   if (disc.trayOpen && autoPlay && !seamless) { autoPlay = false; if (trayResume) trayResume.playing = true; }
   preparedNext = null;
@@ -786,11 +794,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   } else {
     // A streamed song takes a few seconds to come (YouTube's more): the disc reads, as when the tray closes.
     if (isStream(path)) { streamReading = token; disc.reading = true; setStatus(t('READING…')); }
-    const doneReading = () => {
-      if (streamReading !== token) return;
-      streamReading = null; disc.reading = false;
-      if (statusWords() === t('READING…')) { $('status').textContent = STATUS_DOT + stateStatus(); remoteSoon(); }
-    };
+    const doneReading = () => stopStreamReading(token);
     try {
       const ok = await engine.load(url, { autoPlay: false, crossfadeSeconds: fade, segment: cue, trim });
       doneReading();
@@ -2493,7 +2497,7 @@ async function setChangerMode(on) {
     clearTimeout(queueTimer); cdp.saveQueue(queueSnapshot());
     stores[modeKey()] = { ...takeStore(), positionMicros: Math.round(positionNow() * 1e6) };
     if (undoClear) { clearTimeout(undoClear.timer); undoClear = null; }
-    state.loadToken++; dropPrepared(); engine.stop(); setPlaying(false);
+    state.loadToken++; stopStreamReading(); dropPrepared(); engine.stop(); setPlaying(false);
     state.playModes = { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } };
     trail.length = 0; shownIndex = -1; // PREVIOUS goes back through this mode's songs only; its list goes to the song
     state.changerMode = on;

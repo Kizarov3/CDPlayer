@@ -966,7 +966,7 @@ function onlineRows(app, query) {
 }
 async function searchOnline(app, where, name, query) {
   const asked = ++search.online; // (a newer search, or the words changed: this one's answer is left)
-  const back = el('div', { class: 'list-row command-row', title: t('Back to what’s yours'), onClick: () => refreshSearchResults(app) },
+  const back = el('div', { class: 'list-row command-row', title: t('Back to what’s yours'), onClick: () => { search.online++; refreshSearchResults(app); } },
     el('span', { class: 'command-kind' }, '←'), el('span', { class: 'entry' }, t('YOUR MUSIC')));
   setSearchStatus(t('LOOKING ON {where}…', { where: name }));
   search.results.replaceChildren(back, el('div', { class: 'list-row plain' }, t('LOOKING…')));
@@ -979,9 +979,11 @@ async function searchOnline(app, where, name, query) {
     const row = f.kind === 'album' ? onlineAlbumRow(app, f) : trackRow(app, f.page, [f.artist, f.title].filter(Boolean).join(' · '), () => {
       app.appendAndPlay(f.page); closePanel('search');
     });
-    // the mouse on it: its (first) song's sound asked for now — it may be clicked in a moment
+    // the mouse resting on it: its (first) song's sound asked for now — it may be clicked in a moment
     const first = f.kind === 'album' ? f.tracks[0] && f.tracks[0].page : f.page;
-    row.addEventListener('mouseenter', () => { if (first) app.cdp.stream.prepare(first); }, { once: true });
+    let resting = null;
+    row.addEventListener('mouseenter', () => { resting = setTimeout(() => { if (first) app.cdp.stream.prepare(first); }, 400); });
+    row.addEventListener('mouseleave', () => clearTimeout(resting));
     return row;
   });
   search.results.replaceChildren(back, ...rows);

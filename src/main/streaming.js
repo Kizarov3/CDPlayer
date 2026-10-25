@@ -45,7 +45,7 @@ function install() {
     if (!OWN || !ownDir()) throw new Error('No yt-dlp for this system');
     const [asset] = OWN;
     const get = async (name) => {
-      const res = await fetch(RELEASES + name, { redirect: 'follow' });
+      const res = await fetch(RELEASES + name, { redirect: 'follow', signal: AbortSignal.timeout(5 * 60 * 1000) });
       if (!res.ok) throw new Error(`${name}: ${res.status}`);
       return res;
     };
@@ -54,19 +54,25 @@ function install() {
     if (!want) throw new Error('No checksum');
     const zip = Buffer.from(await (await get(asset)).arrayBuffer());
     if (require('crypto').createHash('sha256').update(zip).digest('hex') !== want) throw new Error('Checksum mismatch');
-    // unpacked beside the one there is, then put in its place (one in use — Windows won't let it go — stays till next time)
+    // Unpacked beside the one there is, then put in its place. The old one is only moved aside — a search may be running
+    // it this moment — and thrown away at the next launch. (Windows' antivirus holds a file just written for a while,
+    // and won't let a running one go: tried a few times, then the old one stays till next time.)
     const dir = ownDir(), fresh = `${dir}.new`, old = `${dir}.old`;
     for (const d of [fresh, old]) fs.rmSync(d, { recursive: true, force: true });
     require('./unzip').extract(zip, fresh);
+    const move = async (from, to) => {
+      for (let tries = 0; ; tries++) {
+        try { fs.renameSync(from, to); return; } catch (e) { if (tries >= 5) throw e; await wait(500); }
+      }
+    };
     try {
-      if (fs.existsSync(dir)) fs.renameSync(dir, old);
-      fs.renameSync(fresh, dir);
+      if (fs.existsSync(dir)) await move(dir, old);
+      await move(fresh, dir);
     } catch (e) {
       if (!fs.existsSync(dir) && fs.existsSync(old)) fs.renameSync(old, dir);
       fs.rmSync(fresh, { recursive: true, force: true });
       throw e;
     }
-    fs.rmSync(old, { recursive: true, force: true });
     // (its first run, fresh from the internet, waits for the antivirus to look at it: on Windows half a minute and more)
     return available(180000);
   })();
@@ -104,7 +110,10 @@ const sourceOf = (p) => (/soundcloud\.com/.test(p) ? 'SOUNDCLOUD' : 'YOUTUBE MUS
 // What's known of each streamed song — its name, album, length, cover — kept in streams.json, so the queue, the
 // changer and the history still name it after a restart. (store: { readText, writeText }, given by main.js)
 let store = null, known = null, saveTimer = null;
-function setStore(s) { store = s; }
+function setStore(s) {
+  store = s;
+  if (ownDir()) fs.rm(`${ownDir()}.old`, { recursive: true, force: true }, () => {}); // (yt-dlp's last copy, moved aside: see install)
+}
 function songs() {
   if (!known) { try { known = new Map(Object.entries(JSON.parse((store && store.readText('streams.json')) || '{}'))); } catch { known = new Map(); } }
   return known;
@@ -134,17 +143,19 @@ async function resolve(page, { fresh = false } = {}) {
   const job = (async () => {
     const info = await run(['-f', 'bestaudio', '-J', '--no-playlist', '--', page]);
     const entry = {
-      url: info.url, headers: info.http_headers || {}, size: info.filesize || info.filesize_approx || null,
+      chunks: had ? had.chunks : new Map(), used: Date.now(),
+      url: info.url, headers: info.http_headers || {}, size: info.filesize || (had && had.size) || null,
       type: info.ext === 'webm' ? 'audio/webm' : info.ext === 'm4a' ? 'audio/mp4' : info.ext === 'mp3' ? 'audio/mpeg' : 'application/octet-stream',
       codec: String(info.acodec || info.ext || '').toUpperCase(), bitrate: info.abr ? Math.round(info.abr) : null, sampleRate: info.asr || null,
       until: expiry(info.url),
     };
-    if (/m3u8/.test(info.protocol || '')) { entry.whole = await joinPieces(info.url, entry.headers); entry.size = entry.whole.length; keepFew(page); }
+    if (/m3u8/.test(info.protocol || '')) { entry.whole = await joinPieces(info.url, entry.headers); entry.size = entry.whole.length; }
     remember(page, {
       title: songTitle(info.track || info.title), artist: artistName(info.artist || (info.artists && info.artists[0]) || info.uploader), album: info.album,
       year: info.release_year, duration: info.duration, cover: songInfo(page)?.cover || bestThumb(info.thumbnails),
     });
     found.set(page, entry);
+    keepFew();
     return entry;
   })();
   asking.set(page, job);
@@ -154,7 +165,7 @@ async function resolve(page, { fresh = false } = {}) {
 // a few songs' worth at a time. One locked (EXT-X-KEY: DRM) isn't played.
 async function joinPieces(url, headers) {
   const get = async (u) => {
-    const res = await fetch(u, { headers: { 'User-Agent': headers['User-Agent'] || 'Mozilla/5.0' } });
+    const res = await fetch(u, { headers: { 'User-Agent': headers['User-Agent'] || 'Mozilla/5.0' }, signal: AbortSignal.timeout(30000) });
     if (!res.ok) throw new Error(`Upstream ${res.status}`);
     return res;
   };
@@ -164,15 +175,25 @@ async function joinPieces(url, headers) {
   const parts = [...(map ? [map[1]] : []), ...list.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))]
     .map((u) => new URL(u, url).href);
   const out = new Array(parts.length);
-  let next = 0;
-  const worker = async () => { while (next < parts.length) { const i = next++; out[i] = Buffer.from(await (await get(parts[i])).arrayBuffer()); } };
+  let next = 0, size = 0, failed = false;
+  const worker = async () => {
+    while (next < parts.length && !failed) {
+      const i = next++;
+      try { out[i] = Buffer.from(await (await get(parts[i])).arrayBuffer()); } catch (e) { failed = true; throw e; }
+      if ((size += out[i].length) > WHOLE_MAX) { failed = true; throw new Error('Too long a song'); }
+    }
+  };
   await Promise.all(Array.from({ length: 6 }, worker));
   return Buffer.concat(out);
 }
-const WHOLE_KEPT = 4;
-function keepFew(page) {
-  const whole = [...found].filter(([p, e]) => e.whole && p !== page).map(([p]) => p);
-  whole.slice(0, Math.max(0, whole.length - (WHOLE_KEPT - 1))).forEach((p) => found.delete(p));
+// The sound kept in memory: a whole song SoundCloud gave in pieces, or the CHUNKs of one fetched so far (played, and
+// read for its waveform, from the same pieces; seeking back costs nothing) — a few songs' worth, the one being played
+// (served last) never let go.
+const KEPT = 4, WHOLE_MAX = 200 * 1024 * 1024;
+let playing = null;
+function keepFew() {
+  const held = [...found].filter(([p, e]) => p !== playing && (e.whole || e.chunks.size)).sort((a, b) => a[1].used - b[1].used);
+  for (const [p, e] of held.slice(0, Math.max(0, held.length - (KEPT - 1)))) { if (e.whole) found.delete(p); else e.chunks.clear(); }
 }
 // YouTube's address answers only a while after it's given — mostly some 3 s, sometimes at once: asked again and again
 // (a byte) till it does, rather than waited for the longest it may take.
@@ -181,10 +202,11 @@ function ready(entry) {
   if (!entry.readying) {
     entry.readying = (async () => {
       for (const t0 = Date.now(); Date.now() - t0 < 10000; await wait(250)) {
-        const res = await fetch(entry.url, { headers: { 'User-Agent': entry.headers['User-Agent'] || 'Mozilla/5.0', Range: 'bytes=0-0' } }).catch(() => null);
+        const res = await fetch(entry.url, { headers: { 'User-Agent': entry.headers['User-Agent'] || 'Mozilla/5.0', Range: 'bytes=0-0' }, signal: AbortSignal.timeout(5000) }).catch(() => null);
         if (res) await res.arrayBuffer().catch(() => {});
         if (res && res.status < 300) { entry.ready = true; return; }
       }
+      entry.readying = null; // (not yet: tried again by the next one to ask)
     })();
   }
   return entry.readying;
@@ -269,57 +291,71 @@ async function details(page, { withCover = true } = {}) {
   };
 }
 
-// One piece of the sound, `start`–`last`: the server's answer (asked again while it isn't answering yet, and for a new
-// address once that has run out), and the whole song's size.
-async function fetchPiece(page, start, last) {
+// The sound's `i`th CHUNK (and the whole song's size): from memory, or from the server — asked again while it isn't
+// answering yet, for a new address once that has run out, and after a dropped connection.
+async function chunk(page, i) {
   let entry = await resolve(page);
-  if (entry.whole) return { res: new Response(entry.whole.subarray(start, last + 1), { status: 206 }), total: entry.whole.length };
-  await ready(entry);
-  const ask = () => fetch(entry.url, { headers: { 'User-Agent': entry.headers['User-Agent'] || 'Mozilla/5.0', Range: `bytes=${start}-${last}` } });
-  let res = await ask();
-  for (let tries = 0; (res.status === 403 || res.status === 410) && tries < 4; tries++) {
-    await res.arrayBuffer().catch(() => {});
-    if (tries >= 2) { entry = await resolve(page, { fresh: true }); await ready(entry); } else await wait(500);
-    res = await ask();
+  entry.used = Date.now();
+  if (entry.whole) return { data: entry.whole.subarray(i * CHUNK, (i + 1) * CHUNK), total: entry.whole.length };
+  const kept = entry.chunks;
+  if (!kept.has(i)) {
+    const job = (async () => {
+      await ready(entry);
+      for (let tries = 0; ; tries++) {
+        let res = null, data = null;
+        try {
+          res = await fetch(entry.url, { headers: { 'User-Agent': entry.headers['User-Agent'] || 'Mozilla/5.0', Range: `bytes=${i * CHUNK}-${(i + 1) * CHUNK - 1}` }, signal: AbortSignal.timeout(30000) });
+          if (res.ok) data = Buffer.from(await res.arrayBuffer()); else await res.arrayBuffer().catch(() => {});
+        } catch { /* dropped: asked again */ }
+        if (data) {
+          const total = Number((/\/(\d+)$/.exec(res.headers.get('content-range') || '') || [])[1]) || null;
+          if (total) entry.size = total;
+          return data;
+        }
+        const refused = res && (res.status === 403 || res.status === 410);
+        if (res && !refused) throw new Error(`Upstream ${res.status}`);
+        if (tries >= 4) throw new Error(`Upstream ${res ? res.status : 'gone'}`);
+        if (refused && tries >= 2) { entry = await resolve(page, { fresh: true }); await ready(entry); } else await wait(500);
+      }
+    })();
+    kept.set(i, job);
+    job.catch(() => kept.delete(i));
+    keepFew();
   }
-  const total = Number((/\/(\d+)$/.exec(res.headers.get('content-range') || '') || [])[1]) || null;
-  if (total) entry.size = total;
-  return { res, total };
+  const data = await kept.get(i);
+  return { data, total: (found.get(page) || entry).size || entry.size };
 }
 
 /**
  * cdp://app/stream?u=<page>: the song's sound. The player is answered with all it asks for (a piece shorter than that
- * it takes for the whole song), fetched from the server a CHUNK at a time, one after another as it's read.
+ * it takes for the whole song), a CHUNK at a time as it's read; nothing more is fetched once it stops reading.
  */
 async function serveStream(request, page) {
   if (!isStreamPage(page)) return new Response('Bad page', { status: 400 });
+  playing = page;
   const m = /^bytes=(\d+)-(\d*)$/.exec(request.headers.get('range') || '');
   const start = m ? Number(m[1]) : 0;
-  let first, total;
-  try { ({ res: first, total } = await fetchPiece(page, start, start + CHUNK - 1)); } catch (e) { return new Response(`Not found: ${e.message}`, { status: 404 }); }
-  if (!first.ok || !total) return new Response(`Upstream ${first.status}`, { status: 502 });
+  let first;
+  try { first = await chunk(page, Math.floor(start / CHUNK)); } catch (e) { return new Response(`Not found: ${e.message}`, { status: 404 }); }
+  const total = first.total;
+  if (!total || start >= total) return new Response('', { status: 416, headers: { 'Content-Range': `bytes */${total || 0}` } });
   const end = Math.min(m && m[2] ? Number(m[2]) : total - 1, total - 1);
-  let at = start, reader = first.body.getReader();
+  let at = start, next = first, cancelled = false;
   const body = new ReadableStream({
     async pull(controller) {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (!done) {
-          const take = value.subarray(0, Math.max(0, end + 1 - at));
-          at += take.length;
-          if (take.length) controller.enqueue(take);
-          if (at > end) { reader.cancel().catch(() => {}); controller.close(); }
-          return;
-        }
-        if (at > end) { controller.close(); return; }
-        try {
-          const { res } = await fetchPiece(page, at, Math.min(end, at + CHUNK - 1));
-          if (!res.ok) throw new Error(String(res.status));
-          reader = res.body.getReader();
-        } catch (e) { controller.error(e); return; }
-      }
+      try {
+        const piece = next || await chunk(page, Math.floor(at / CHUNK));
+        next = null;
+        if (cancelled) return;
+        const from = at % CHUNK;
+        const take = piece.data.subarray(from, from + (end + 1 - at));
+        if (!take.length) { controller.close(); return; } // (the server's song shorter than it said)
+        at += take.length;
+        controller.enqueue(take);
+        if (at > end) controller.close();
+      } catch (e) { if (!cancelled) controller.error(e); }
     },
-    cancel() { reader.cancel().catch(() => {}); },
+    cancel() { cancelled = true; },
   });
   const type = (found.get(page) || {}).type || 'application/octet-stream';
   const headers = { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store', 'Content-Length': String(end - start + 1) };
