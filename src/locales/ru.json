@@ -318,6 +318,7 @@
   "EQUALIZER": "ЭКВАЛАЙЗЕР",
   "EXIT CD VIEW": "ВЫЙТИ ИЗ ВИДА CD",
   "EXPORT…": "ЭКСПОРТ…",
+  "Each output keeps its own EQ, mono and spatial audio: headphones and speakers each sound as you set them.": "У каждого выхода свои эквалайзер, моно и пространственный звук: наушники и колонки звучат так, как их настроили.",
   "Each song follows the last with no gap, as on a CD — the silence that’s in the files stays.": "Песни идут одна за другой без пауз, как на CD, — тишина, записанная в файлах, остаётся.",
   "Edit, share or delete": "Изменить, поделиться или удалить",
   "Electronic": "Электроника",
@@ -1109,6 +1110,7 @@
   "{artist}: releases you don’t have — click to close": "{artist}: альбомы, которых у тебя нет — нажми, чтобы закрыть",
   "{artist}: releases you don’t have — click to show them": "{artist}: альбомы, которых у тебя нет — нажми, чтобы показать",
   "{decade}s": "{decade}-е",
+  "{device}: ITS OWN SOUND": "{device}: СВОЙ ЗВУК",
   "{disc} ON THE TRAY": "{disc} В ЛОТКЕ",
   "{found} OF {n} TRACKS FOUND IN YOUR LIBRARY AND ADDED": {
     "one": "НАЙДЕНО В БИБЛИОТЕКЕ И ДОБАВЛЕНО {found} ИЗ {n} ТРЕКА",

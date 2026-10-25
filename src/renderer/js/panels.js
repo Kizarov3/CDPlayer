@@ -368,6 +368,7 @@ function buildSettings(app) {
     ...(s.transition === 'CROSSFADE' ? [unavailable(sliderRow(t('LENGTH'), crossfade, crossfadeValue))] : []),
     hint(TRANSITION_HINTS[s.transition] || TRANSITION_HINTS.OFF),
     unavailable(row(t('OUTPUT'), outputButton)),
+    quietHint(t('Each output keeps its own EQ, mono and spatial audio: headphones and speakers each sound as you set them.')),
     unavailable(row(t('QUALITY'), qualityButton)),
     hint(document.body.dataset.platform === 'linux' // no output-rate helper there
       ? t('Lossless plays each song at its own sample rate. On Linux, set your output’s rate in your sound settings (PipeWire can follow it by itself).')

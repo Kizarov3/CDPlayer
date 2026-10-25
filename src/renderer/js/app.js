@@ -33,6 +33,7 @@ import { frameGap, glowSize } from './render-budget.js';
 import { detectHidden, hiddenPhase, countdown, hiddenName, displayTitle, shownTitle, splitTitle } from './hidden-track.js';
 import { measureEdges, continuesAlbum, nextPlan, prepareWindow, skipSilence, MAX_OVERLAP } from './automix.js';
 import { pickOutput, outputName } from './output.js';
+import { soundOf, sameSound, deviceKey } from './device-sound.js';
 import { phoneTagTitle, phoneJoined } from './remote-settings.js';
 import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
@@ -1756,6 +1757,10 @@ async function listOutputs() {
 // Plays through the chosen output when it's there, the system default when it isn't; `announce` says so when that
 // changes by itself (headphones unplugged, AirPods back out of their case).
 async function applyOutput(announce) {
+  await applyOutputDevice(announce);
+  await followDeviceSound();
+}
+async function applyOutputDevice(announce) {
   const devices = await listOutputs(), id = pickOutput(devices, state.output);
   // The rate known may be for another device: with OUTPUT = SYSTEM DEFAULT, plugging in headphones changes the OS default
   // while Chromium's id stays '', so this runs before the early return; the next song switches the output afresh.
@@ -1764,6 +1769,30 @@ async function applyOutput(announce) {
   if (!(await engine.setOutput(id)) || !announce) return;
   const device = devices.find((d) => d.deviceId === id);
   setStatus(device ? t('PLAYING ON {device}', { device: outputName(device) }) : t('OUTPUT: SYSTEM DEFAULT'));
+}
+// Each output's own sound (device-sound.js): what's set is kept for the output playing, and an output played on before
+// brings its own back.
+let soundDevice = null, applyingSound = false, deviceSoundsTimer = null;
+function keepDeviceSound() {
+  if (!soundDevice || applyingSound) return;
+  state.deviceSounds[soundDevice] = soundOf(state);
+  clearTimeout(deviceSoundsTimer);
+  deviceSoundsTimer = setTimeout(() => cdp.saveDeviceSounds(state.deviceSounds).catch(() => {}), 1000);
+}
+async function followDeviceSound() {
+  const key = deviceKey(await navigator.mediaDevices.enumerateDevices().catch(() => []), engine.outputId || '');
+  if (!key || key === soundDevice) return;
+  const before = soundDevice;
+  soundDevice = key;
+  const kept = state.deviceSounds[key];
+  if (!kept) { keepDeviceSound(); return; } // a new one starts from the sound there is
+  if (sameSound(kept, soundOf(state))) return;
+  applyingSound = true;
+  try {
+    state.spatialAmount = kept.spatialAmount;
+    setEq(kept.eq); setMono(kept.mono); setSpatial(kept.spatial);
+  } finally { applyingSound = false; }
+  if (before) setStatus(t('{device}: ITS OWN SOUND', { device: key }));
 }
 /** Settings → OUTPUT: a device ({ deviceId, label }), or null for the system default. */
 async function setOutput(device) {
@@ -2018,15 +2047,15 @@ function toggleMute() {
   if (state.volumeBeforeMute >= 0) { setVolume(state.volumeBeforeMute); state.volumeBeforeMute = -1; }
   else { state.volumeBeforeMute = state.volume; setVolume(0); }
 }
-function setMono(on) { state.mono = on; engine.setMono(on); updateQualityBadge(); saveSettingsSoon(); }
+function setMono(on) { state.mono = on; engine.setMono(on); updateQualityBadge(); saveSettingsSoon(); keepDeviceSound(); }
 /** Settings → SPATIAL AUDIO (spatial.js): on or off, and how much room, 0–100. */
-function setSpatial(on) { state.spatial = on; engine.setSpatial(on, state.spatialAmount / 100); updateQualityBadge(); saveSettingsSoon(); }
-function setSpatialAmount(v) { state.spatialAmount = v; engine.setSpatial(state.spatial, v / 100); saveSettingsSoon(); }
+function setSpatial(on) { state.spatial = on; engine.setSpatial(on, state.spatialAmount / 100); updateQualityBadge(); saveSettingsSoon(); keepDeviceSound(); }
+function setSpatialAmount(v) { state.spatialAmount = v; engine.setSpatial(state.spatial, v / 100); saveSettingsSoon(); keepDeviceSound(); }
 function setWaveform(on) { state.waveform = on; progress.setWaveformEnabled(on); saveSettingsSoon(); }
 function setAmbient(on) { state.ambient = on; onCoverChanged(); saveSettingsSoon(); }
 function setAnimations(on) { anim.enabled = on; document.body.classList.toggle('no-anim', !on); saveSettingsSoon(); }
 function setCrossfade(v) { state.crossfade = v; saveSettingsSoon(); }
-function setEq(gains) { state.eq = gains.slice(); engine.setEq(state.eq); updateQualityBadge(); saveSettingsSoon(); }
+function setEq(gains) { state.eq = gains.slice(); engine.setEq(state.eq); updateQualityBadge(); saveSettingsSoon(); keepDeviceSound(); }
 
 let sleepTimer = null;
 function armSleepTimer(minutes) {
@@ -3035,7 +3064,8 @@ async function start() {
   setDisplay(s.display, { save: false });
   state.taskbarDisc = !!s.taskbarDisc; // its default is the system's (main/store.js)
   state.output = s.output || null;
-  applyOutput(false);
+  state.deviceSounds = {};
+  cdp.deviceSounds().catch(() => null).then((kept) => { if (kept && typeof kept === 'object') state.deviceSounds = kept; applyOutput(false); });
   navigator.mediaDevices.addEventListener('devicechange', () => applyOutput(true));
   state.saveFound = !!s.saveFound;
   state.streaming = !!s.streaming;

@@ -640,6 +640,9 @@ handle('backup:restore', async () => {
   app.quit();
   return { ok: true };
 });
+// Each output's own sound (renderer/js/device-sound.js), by the device's name.
+handle('sound:devices', () => { try { return JSON.parse(store.readText('device-sound.json') || '{}'); } catch { return {}; } });
+handle('sound:saveDevices', (kept) => { if (kept && typeof kept === 'object') store.writeText('device-sound.json', JSON.stringify(kept)); });
 // IMPORT PLAYS (import-plays.js): plays from Last.fm, ListenBrainz, Spotify or Apple Music added to the songs on the shelf.
 const importPlays = require('./import-plays');
 handle('plays:import', async () => {
