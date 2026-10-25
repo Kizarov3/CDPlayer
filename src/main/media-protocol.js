@@ -178,6 +178,7 @@ function handle(request) {
   const url = new URL(request.url);
   if (url.host !== 'app') return new Response('Not found', { status: 404 });
   if (url.pathname === '/media') return serveMedia(request, url.searchParams.get('p'));
+  if (url.pathname === '/stream') return require('./streaming').serveStream(request, url.searchParams.get('u'));
   return serveUi(url.pathname);
 }
 

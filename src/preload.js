@@ -149,7 +149,8 @@ contextBridge.exposeInMainWorld('cdp', {
   setDiscordTrack: (track) => ipcRenderer.send('discord:track', track),
 
   pathForFile: (file) => webUtils.getPathForFile(file),
-  mediaUrl: (p) => `cdp://app/media?p=${encodeURIComponent(p)}`,
+  // (a streamed song is its page's address: its sound comes through streaming.js)
+  mediaUrl: (p) => (/^https:\/\//.test(p) ? `cdp://app/stream?u=${encodeURIComponent(p)}` : `cdp://app/media?p=${encodeURIComponent(p)}`),
 
   onOpenFiles: on('open-files'),
   onFullscreenChanged: on('fullscreen-changed'),
