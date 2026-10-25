@@ -107,6 +107,7 @@ contextBridge.exposeInMainWorld('cdp', {
   importPlays: invoke('plays:import'),
   deviceSounds: invoke('sound:devices'),
   scrobbleStatus: invoke('scrobble:status'),
+  reportInfo: invoke('app:reportInfo'),
   scrobbleSignIn: invoke('scrobble:signIn'),
   scrobbleSignOut: invoke('scrobble:signOut'),
   openListenBrainz: invoke('scrobble:openTokenPage'),

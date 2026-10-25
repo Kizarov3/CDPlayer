@@ -34,6 +34,7 @@ import { detectHidden, hiddenPhase, countdown, hiddenName, displayTitle, shownTi
 import { measureEdges, continuesAlbum, nextPlan, prepareWindow, skipSilence, MAX_OVERLAP } from './automix.js';
 import { pickOutput, outputName } from './output.js';
 import { soundOf, sameSound, deviceKey } from './device-sound.js';
+import { note as noteForReport, buildReport } from './report.js';
 import { phoneTagTitle, phoneJoined } from './remote-settings.js';
 import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke } from './karaoke.js';
@@ -135,6 +136,7 @@ function stateStatus() {
 }
 function setStatus(text) {
   const node = $('status'), said = STATUS_DOT + text;
+  noteForReport('status', text);
   // A new word fades in over the old (the same one said again stays still).
   if (anim.enabled && node.textContent !== said) node.animate([{ opacity: 0.25 }, { opacity: 1 }], { duration: 220, easing: EASE.out });
   node.textContent = said;
@@ -1794,6 +1796,22 @@ async function followDeviceSound() {
   } finally { applyingSound = false; }
   if (before) setStatus(t('{device}: ITS OWN SOUND', { device: key }));
 }
+// COPY REPORT (report.js): the errors that happen kept with what was said, and all of it copied for a bug report.
+window.addEventListener('error', (e) => noteForReport('error', `${e.message}${e.filename ? ` at ${e.filename}:${e.lineno}` : ''}`));
+window.addEventListener('unhandledrejection', (e) => noteForReport('error', String((e.reason && (e.reason.stack || e.reason.message)) || e.reason).split('\n').slice(0, 2).join(' ')));
+async function copyReport() {
+  const info = await cdp.reportInfo(state.streaming).catch(() => ({}));
+  const p = state.loadedPath, d = state.details && state.detailsPath === p ? state.details : null;
+  const kind = !p ? null : isSpotifyUri(p) ? 'Spotify' : isStream(p) ? 'stream' : isAudioCdTrack(p) ? 'audio CD' : 'file';
+  const text = buildReport({
+    ...info, version: state.version, language: state.language, output: await currentOutputName().catch(() => '?'), rate: state.rateInfo,
+    quality: state.quality, transition: state.transition, eq: state.eq.some((g) => g !== 0), mono: state.mono, spatial: state.spatial,
+    spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, discNoise: state.discNoise, streaming: state.streaming,
+    playing: kind && { kind, format: d && [d.ext, d.quality].filter(Boolean).join(' · '), state: engine.playing ? 'playing' : 'paused' },
+  });
+  await cdp.copyText(text);
+  setStatus(t('REPORT COPIED · PASTE IT INTO THE ISSUE'));
+}
 /** Settings → OUTPUT: a device ({ deviceId, label }), or null for the system default. */
 async function setOutput(device) {
   state.output = device ? { id: device.deviceId, label: device.label } : null;
@@ -2918,7 +2936,7 @@ export const app = {
   onFullChanger: (c) => panels.pickDiscToTakeOut(app, c),
   coverSource: () => state.coverFrom || null,
   switchTheme, previewTheme, restoreTheme, shownTheme: () => shownTheme, saveTheme, importTheme, pasteThemeCode, exportTheme, copyThemeCode, deleteTheme,
-  setQuality, setSoundCheck, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setAnimations, setCrossfade, setTransition, setEq, armSleepTimer, armSleepAtEnd, setDisplay, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setTaskbarDisc, setOutput, listOutputs, currentOutputName,
+  copyReport, setQuality, setSoundCheck, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setAnimations, setCrossfade, setTransition, setEq, armSleepTimer, armSleepAtEnd, setDisplay, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setTaskbarDisc, setOutput, listOutputs, currentOutputName,
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
   menu: (anchor, items, opts) => panels.menu(anchor, items, opts),

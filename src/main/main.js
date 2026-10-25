@@ -640,6 +640,12 @@ handle('backup:restore', async () => {
   app.quit();
   return { ok: true };
 });
+// COPY REPORT (renderer/js/report.js): what the main process knows of the system.
+handle('app:reportInfo', async (streamingOn) => ({
+  os: `${process.platform} ${process.getSystemVersion()} ${process.arch}`, electron: process.versions.electron, chrome: process.versions.chrome,
+  gpu: softwareRendering() ? 'software' : 'hardware', folders: store.musicFolders().length,
+  ytdlp: streamingOn ? await streaming.available(10000) : null,
+}));
 // Scrobbling to ListenBrainz (scrobble.js): songs heard, and the one playing now; what waited sent every 10 minutes too.
 const scrobbler = require('./scrobble').createScrobbler({ store, version: APP_VERSION });
 handle('scrobble:status', () => scrobbler.status());
@@ -1199,7 +1205,7 @@ handle('updates:install', async () => {
   return true;
 });
 // Text for the user to paste elsewhere (the Spotify dashboard's Redirect URI). Only short plain text.
-handle('clipboard:write', async (text) => { if (typeof text === 'string' && text.length <= 2000) await clipboard.writeText(text); return true; });
+handle('clipboard:write', async (text) => { if (typeof text === 'string' && text.length <= 20000) await clipboard.writeText(text); return true; });
 handle('shell:openGitHub', (user) => { if (/^[A-Za-z0-9-]+$/.test(user)) shell.openExternal(`https://github.com/${user}`); });
 
 // ---- Audio CDs ---------------------------------------------------------------------------------------------------
