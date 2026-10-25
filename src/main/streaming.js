@@ -31,9 +31,9 @@ function ytDlpPath() {
 }
 
 /** Whether yt-dlp is there to stream with: its version, or null. */
-function available() {
+function available(timeout = 30000) {
   return new Promise((resolve) => {
-    execFile(ytDlpPath(), ['--version'], { timeout: 30000 }, (err, stdout) => resolve(err ? null : String(stdout).trim()));
+    execFile(ytDlpPath(), ['--version'], { timeout }, (err, stdout) => resolve(err ? null : String(stdout).trim()));
   });
 }
 
@@ -67,7 +67,8 @@ function install() {
       throw e;
     }
     fs.rmSync(old, { recursive: true, force: true });
-    return available();
+    // (its first run, fresh from the internet, waits for the antivirus to look at it: on Windows half a minute and more)
+    return available(180000);
   })();
   installing.finally(() => { installing = null; }).catch(() => {});
   return installing;
