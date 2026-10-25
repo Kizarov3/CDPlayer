@@ -1118,7 +1118,7 @@ function shareCard() {
   const song = { cover: state.cover, title: state.titleText, artist: state.artistText, subtitle: cardSubtitle(state.details),
     backdrop: themeImage && themeImage.complete ? { image: themeImage, blur: shownTheme.blur, dim: shownTheme.dim } : null };
   const choices = lyricChoices(state.hiddenPhase === 'hidden' ? null : state.lyrics, lyricsPosition()); // a hidden song: not the main song's lines
-  const png = (picked) => drawCard({ ...song, quote: quoteLines(choices.lines, picked) }, { ...colors }, shownTheme.name);
+  const png = (picked) => drawCard({ ...song, quote: quoteLines(choices.lines, picked) }, { ...colors }, shownTheme.name, state.look);
   const attempt = (work, done) => async (picked) => {
     try { if (!(await work(await png(picked)))) return false; setStatus(done); return true; } catch { setStatus(t("COULDN'T MAKE THE CARD")); return false; }
   };

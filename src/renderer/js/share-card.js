@@ -1,6 +1,6 @@
 // The "now playing" card (P, or right-click the disc): a picture of what's on, to paste into a chat or save — the album
 // in its jewel case, the song, its artist and album, and a quote from its lyrics (up to ten lines picked, or none), in
-// the theme's colours on a wash of the cover.
+// the theme's colours on a wash of the cover. Each theme draws it its own way, and so does each PLAYER LOOK but CLASSIC.
 import { rgb, FONT, drawThemeImage } from './theme.js';
 import { currentLineIndex, parseLrc } from './lyrics.js';
 import { t } from './i18n.js';
@@ -93,11 +93,12 @@ export function layoutQuote(entries, measure, maxWidth, maxHeight) {
 
 /**
  * The card as PNG bytes. `song`: { cover (image or null), title, artist, subtitle, quote (lines, or null), backdrop };
- * `colors`: the theme's; `theme`: its name — each built-in theme has a card of its own (STYLES), others the jewel case.
+ * `colors`: the theme's; `theme`: its name — each built-in theme has a card of its own (STYLES), others the jewel case;
+ * `look`: the PLAYER LOOK — all but CLASSIC have a card of their own (LOOK_STYLES), in the theme's colours.
  */
-export async function drawCard(song, colors, theme = 'RED') {
+export async function drawCard(song, colors, theme = 'RED', look = 'CLASSIC') {
   const canvas = new OffscreenCanvas(W, H), g = canvas.getContext('2d');
-  const style = STYLES[theme] || jewelCase;
+  const style = LOOK_STYLES[look] || STYLES[theme] || jewelCase;
   const words = style(g, song, colors, seeded(`${song.title}|${song.artist}`));
   drawWords(g, song, colors, words);
   // Where it's from, small in the corner.
@@ -370,16 +371,123 @@ function streamApp(g, song, colors) {
   return { x: cx + cs + 70, top: cy, height: cs, label: null, bar: true, font: SYSTEM };
 }
 
+// ---- each PLAYER LOOK's card (but CLASSIC's: the theme's), in the theme's colours ----
+
+// DOCK: the cover and the words above a bar along the bottom, as the look has its keys — the song part-way along it.
+function dockBar(g, song, colors) {
+  wash(g, song, colors, { alpha: 0.5 });
+  const cs = 320, cx = 80, cy = 56, bx = 60, by = 440, bw = W - 120, bh = 104;
+  shadowed(g, 36, 12, 0.55, () => { g.fillStyle = '#16161a'; g.beginPath(); g.roundRect(cx, cy, cs, cs, 12); g.fill(); });
+  g.save(); g.beginPath(); g.roundRect(cx, cy, cs, cs, 12); g.clip(); art(g, song, cx, cy, cs); g.restore();
+  shadowed(g, 30, 10, 0.45, () => { g.fillStyle = rgb(colors.card || colors.bg, 0.86); g.beginPath(); g.roundRect(bx, by, bw, bh, 22); g.fill(); });
+  g.strokeStyle = 'rgba(255,255,255,0.12)'; g.lineWidth = 1.5; g.beginPath(); g.roundRect(bx + 0.75, by + 0.75, bw - 1.5, bh - 1.5, 22); g.stroke();
+  const px = bx + 40, pw = bw - 80, py = by + 26, done = 0.38;
+  g.fillStyle = 'rgba(255,255,255,0.16)'; g.beginPath(); g.roundRect(px, py, pw, 5, 2.5); g.fill();
+  g.fillStyle = rgb(colors.accent); g.beginPath(); g.roundRect(px, py, pw * done, 5, 2.5); g.fill();
+  g.beginPath(); g.arc(px + pw * done, py + 2.5, 8, 0, Math.PI * 2); g.fill();
+  const mid = W / 2, ky = by + 68, ink = rgb(colors.text, 0.85);
+  const tri = (x, dir, s) => { g.beginPath(); g.moveTo(x - dir * s / 2, ky - s / 2); g.lineTo(x + dir * s / 2, ky); g.lineTo(x - dir * s / 2, ky + s / 2); g.closePath(); g.fill(); };
+  g.fillStyle = ink;
+  tri(mid - 96, -1, 18); g.fillRect(mid - 110, ky - 9, 3, 18); // ⏮
+  tri(mid + 96, 1, 18); g.fillRect(mid + 107, ky - 9, 3, 18); // ⏭
+  g.fillStyle = rgb(colors.accent); g.beginPath(); g.arc(mid, ky, 26, 0, Math.PI * 2); g.fill();
+  g.fillStyle = rgb(colors.bg); g.fillRect(mid - 9, ky - 10, 6, 20); g.fillRect(mid + 3, ky - 10, 6, 20); // ⏸
+  return { x: cx + cs + 64, top: 36, height: by - 36 - 24, fit: true }; // (above the bar, never on it)
+}
+
+// STAGE: the cover under a spotlight on an empty stage, the words below it, as the look puts them.
+function spotlight(g, song, colors) {
+  g.fillStyle = rgb(colors.bg); g.fillRect(0, 0, W, H);
+  g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(0, 0, W, H);
+  const cs = 236, cx = (W - cs) / 2, cy = 40, floor = cy + cs + 30;
+  for (const [x, c] of [[W * 0.12, colors.accent2], [W * 0.88, colors.accent2]]) { // the coloured lights from the sides
+    const beam = g.createLinearGradient(x, 0, W / 2, floor);
+    beam.addColorStop(0, rgb(c, 0.28)); beam.addColorStop(1, rgb(c, 0));
+    g.fillStyle = beam; g.beginPath(); g.moveTo(x - 20, 0); g.lineTo(x + 20, 0); g.lineTo(W / 2 + 160, floor); g.lineTo(W / 2 - 160, floor); g.closePath(); g.fill();
+  }
+  const cone = g.createLinearGradient(0, 0, 0, H);
+  cone.addColorStop(0, 'rgba(255,255,255,0.22)'); cone.addColorStop(0.6, rgb(colors.accent, 0.1)); cone.addColorStop(1, 'rgba(255,255,255,0.02)');
+  g.fillStyle = cone; g.beginPath(); g.moveTo(W / 2 - 40, 0); g.lineTo(W / 2 + 40, 0); g.lineTo(W / 2 + 330, H); g.lineTo(W / 2 - 330, H); g.closePath(); g.fill();
+  const pool = g.createRadialGradient(W / 2, floor, 10, W / 2, floor, 360);
+  pool.addColorStop(0, rgb(colors.accent, 0.35)); pool.addColorStop(1, 'rgba(0,0,0,0)');
+  g.save(); g.translate(0, floor); g.scale(1, 0.22); g.fillStyle = pool; g.beginPath(); g.arc(W / 2, 0, 360, 0, Math.PI * 2); g.fill(); g.restore();
+  shadowed(g, 50, 24, 0.7, () => { g.fillStyle = '#111'; g.fillRect(cx, cy, cs, cs); });
+  art(g, song, cx, cy, cs);
+  return { x: 140, w: W - 280, top: floor + 6, height: H - floor - 46, align: 'center', label: null, fit: true };
+}
+
+// GLASS: a pane of frosted glass over the cover blown up behind it.
+function glassPane(g, song, colors) {
+  g.fillStyle = rgb(colors.bg); g.fillRect(0, 0, W, H);
+  if (song.cover) { g.save(); g.filter = 'blur(40px) saturate(1.5)'; g.drawImage(song.cover, -160, -160, W + 320, W + 320); g.restore(); }
+  else wash(g, song, colors, { alpha: 0.6 });
+  g.fillStyle = 'rgba(12,12,14,0.42)'; g.fillRect(0, 0, W, H);
+  const px = 50, py = 50, pw = W - 100, ph = H - 100;
+  shadowed(g, 40, 14, 0.35, () => { g.fillStyle = 'rgba(255,255,255,0.1)'; g.beginPath(); g.roundRect(px, py, pw, ph, 30); g.fill(); });
+  const edge = g.createLinearGradient(px, py, px + pw, py + ph);
+  edge.addColorStop(0, 'rgba(255,255,255,0.42)'); edge.addColorStop(0.5, 'rgba(255,255,255,0.08)'); edge.addColorStop(1, 'rgba(255,255,255,0.22)');
+  g.strokeStyle = edge; g.lineWidth = 1.5; g.beginPath(); g.roundRect(px + 0.75, py + 0.75, pw - 1.5, ph - 1.5, 30); g.stroke();
+  const cs = ph - 80, cx = px + 40, cy = py + 40;
+  shadowed(g, 30, 10, 0.45, () => { g.fillStyle = '#000'; g.beginPath(); g.roundRect(cx, cy, cs, cs, 18); g.fill(); });
+  g.save(); g.beginPath(); g.roundRect(cx, cy, cs, cs, 18); g.clip(); art(g, song, cx, cy, cs); g.restore();
+  return { x: cx + cs + 56, w: px + pw - (cx + cs + 56) - 40, top: cy, height: cs, mark: 'rgba(255,255,255,0.6)',
+    ink: { text: [255, 255, 255], accent: [255, 255, 255], accent2: [236, 236, 242], muted: [205, 205, 215] } }; // (white on the glass, whatever the cover)
+}
+
+// PANEL: the front of a hi-fi deck — brushed metal, screws in its corners, the words lit up in its display.
+function faceplate(g, song, colors, rnd) {
+  const metal = g.createLinearGradient(0, 0, 0, H);
+  metal.addColorStop(0, '#3a3c40'); metal.addColorStop(0.5, '#2a2b2f'); metal.addColorStop(1, '#1d1e21');
+  g.fillStyle = metal; g.fillRect(0, 0, W, H);
+  for (let y = 0; y < H; y += 2) { g.fillStyle = `rgba(255,255,255,${rnd() * 0.035})`; g.fillRect(0, y, W, 1); } // (brushed)
+  g.fillStyle = rgb(colors.accent, 0.05); g.fillRect(0, 0, W, H);
+  for (const [x, y] of [[26, 26], [W - 26, 26], [26, H - 26], [W - 26, H - 26]]) {
+    const head = g.createRadialGradient(x - 3, y - 3, 1, x, y, 10);
+    head.addColorStop(0, '#8a8d93'); head.addColorStop(1, '#3b3d42');
+    g.fillStyle = head; g.beginPath(); g.arc(x, y, 9, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineWidth = 2; g.beginPath(); g.moveTo(x - 6, y - 2); g.lineTo(x + 6, y + 2); g.stroke();
+  }
+  const cs = 400, cx = 80, cy = (H - cs) / 2;
+  shadowed(g, 20, 6, 0.6, () => { g.fillStyle = '#111'; g.fillRect(cx - 6, cy - 6, cs + 12, cs + 12); });
+  art(g, song, cx, cy, cs);
+  const vx = cx + cs + 50, vy = cy, vw = W - vx - 70, vh = cs; // the display: a window sunk into the metal, its glass ruled
+  g.fillStyle = '#050607'; g.beginPath(); g.roundRect(vx, vy, vw, vh, 10); g.fill();
+  g.strokeStyle = 'rgba(0,0,0,0.8)'; g.lineWidth = 3; g.stroke();
+  g.strokeStyle = 'rgba(255,255,255,0.1)'; g.lineWidth = 1; g.beginPath(); g.roundRect(vx - 2, vy - 2, vw + 4, vh + 4, 12); g.stroke();
+  g.fillStyle = rgb(colors.accent, 0.035);
+  for (let y = vy + 3; y < vy + vh; y += 4) g.fillRect(vx + 4, y, vw - 8, 1);
+  const vfd = rgb(colors.accent);
+  return { x: vx + 32, w: vw - 64, top: vy + 24, height: vh - 48, font: MONO, glow: vfd, titleColor: vfd, artistColor: rgb(colors.accent, 0.85),
+    ink: { text: colors.accent, accent: colors.accent, accent2: colors.accent, muted: colors.accent.map((c) => Math.round(c * 0.75)) }, fit: true, mark: 'rgba(255,255,255,0.35)' };
+}
+
+// COVER: as a streaming app's full-screen player — the cover edge to edge down the left, fading into its own colours.
+function fullBleed(g, song, colors) {
+  wash(g, song, colors, { alpha: 0.85, shade: [0.3, 0.45] });
+  const layer = new OffscreenCanvas(W, H), l = layer.getContext('2d');
+  if (song.cover) art(l, song, 0, 0, H);
+  else { l.fillStyle = rgb(colors.accent, 0.2); l.fillRect(0, 0, H, H); art(l, song, 80, 80, H - 160); }
+  const fade = l.createLinearGradient(H - 280, 0, H, 0);
+  fade.addColorStop(0, '#000'); fade.addColorStop(1, 'rgba(0,0,0,0)');
+  l.globalCompositeOperation = 'destination-in'; l.fillStyle = fade; l.fillRect(0, 0, W, H);
+  g.drawImage(layer, 0, 0);
+  return { x: H + 50, w: W - H - 100, top: 60, height: H - 120, font: SYSTEM, label: null, titleStyle: '800' };
+}
+
+const LOOK_STYLES = { DOCK: dockBar, STAGE: spotlight, GLASS: glassPane, PANEL: faceplate, COVER: fullBleed };
+
 const STYLES = { RED: jewelCase, BLUE: discOut, SUNSET: sunset, FOREST: polaroid, GALAXY: planet, OCEAN: reflection, MATRIX: terminal, AUTUMN: ticket, SNOW: frost, AUTO: streamApp };
 const MONO = '"SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace';
 const SYSTEM = '-apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif';
 
 // The words, at `w.x`, centred on the artwork (`top`, `height`) while shorter than it: NOW PLAYING, the title, the
 // artist, the album, and the quote. A long quote gets smaller type, and a two-line title gives up its second line if
-// the quote would get too small.
+// the quote would get too small. `fit`: kept inside `height`; `align: 'center'`: each line centred; `glow`: lit, as a
+// display's.
 function drawWords(g, song, colors, w) {
   const font = w.font || FONT, tx = w.x, tw = w.w || W - tx - 80, room = H - 100, QUOTE_GAP = 30;
-  const ink = w.ink ? { text: [40, 28, 20], accent: colors.accent, accent2: colors.accent2, muted: [120, 96, 80] } : colors; // (on paper)
+  const ink = w.ink === true ? { text: [40, 28, 20], accent: colors.accent, accent2: colors.accent2, muted: [120, 96, 80] } : w.ink || colors; // (on paper)
+  const centred = w.align === 'center', cx = centred ? tx + tw / 2 : tx;
   const quoteMeasure = (t, size) => { g.font = `italic ${size}px ${font}`; return g.measureText(t).width; };
   const layout = (titleLines) => {
     const parts = []; // [font, colour, lines, line height, gap after]
@@ -390,17 +498,19 @@ function drawWords(g, song, colors, w) {
     if (song.artist) { g.font = `30px ${font}`; parts.push([g.font, w.artistColor || rgb(ink.accent2), wrap(g, song.artist, tw, 1), 40, 0]); }
     if (song.subtitle) { g.font = `22px ${font}`; parts.push([g.font, rgb(ink.muted), wrap(g, song.subtitle, tw, 1), 32, 0]); }
     const headH = parts.reduce((h, [, , lines, lh, after]) => h + lines.length * lh + after, 0) + (w.bar ? 40 : 0);
-    const quote = song.quote ? layoutQuote(song.quote, quoteMeasure, tw - 24, Math.min(room, w.height + 60) - headH - QUOTE_GAP) : null;
+    const quote = song.quote ? layoutQuote(song.quote, quoteMeasure, tw - 24, Math.min(room, w.height + (w.fit ? 0 : 60)) - headH - QUOTE_GAP) : null;
     return { parts, quote, height: headH + (quote ? QUOTE_GAP + quote.rows.length * quote.lineHeight : 0) };
   };
   let words = layout(2);
   const titleAt = words.parts.length && (w.label === undefined || w.label) ? 1 : 0;
   if (words.quote && words.quote.size < 20 && words.parts[titleAt][2].length > 1) words = layout(1);
-  let y = words.height < w.height ? w.top + (w.height - words.height) / 2 : Math.max(50, (H - words.height) / 2);
-  g.textBaseline = 'top'; g.textAlign = 'left';
+  let y = words.height < w.height ? w.top + (w.height - words.height) / 2 : w.fit ? w.top : Math.max(50, (H - words.height) / 2);
+  g.save();
+  if (w.glow) { g.shadowColor = w.glow; g.shadowBlur = 14; }
+  g.textBaseline = 'top'; g.textAlign = centred ? 'center' : 'left';
   for (const [f, color, lines, lh, after] of words.parts) {
     g.font = f; g.fillStyle = color;
-    for (const l of lines) { g.fillText(l, tx, y + (lh - parseInt(f.match(/(\d+)px/)[1], 10)) / 2); y += lh; }
+    for (const l of lines) { g.fillText(l, cx, y + (lh - parseInt(f.match(/(\d+)px/)[1], 10)) / 2); y += lh; }
     y += after;
   }
   if (w.cursor) { g.fillStyle = rgb(colors.accent); g.fillRect(tx, y + 4, 16, 28); y += 36; }
@@ -414,11 +524,12 @@ function drawWords(g, song, colors, w) {
   if (words.quote) {
     const q = words.quote;
     y += QUOTE_GAP;
-    g.fillStyle = rgb(ink.accent); g.fillRect(tx, y + 2, 4, q.rows.length * q.lineHeight - 4);
+    if (!centred) { g.fillStyle = rgb(ink.accent); g.fillRect(tx, y + 2, 4, q.rows.length * q.lineHeight - 4); }
     g.font = `italic ${q.size}px ${font}`;
     q.rows.forEach((r, i) => {
       g.fillStyle = r.skipped ? rgb(ink.muted) : rgb(ink.text);
-      g.fillText(r.text, tx + 24, y + (q.lineHeight - q.size) / 2 + i * q.lineHeight);
+      g.fillText(r.text, centred ? cx : tx + 24, y + (q.lineHeight - q.size) / 2 + i * q.lineHeight);
     });
   }
+  g.restore();
 }
