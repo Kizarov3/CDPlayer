@@ -996,7 +996,7 @@ function onlineAlbumRow(app, a) {
   for (const b of [now, add]) b.classList.add('small');
   return el('div', { class: 'list-row', title: t('Play {song}', { song: a.title }), onClick: () => { put(true); closePanel('search'); } },
     el('span', { class: 'entry' }, [a.artist, a.title].filter(Boolean).join(' · ')),
-    el('span', { class: 'when' }, t('{n} SONGS', { n: a.count })), now, add);
+    el('span', { class: 'when count' }, t('{n} SONGS', { n: a.count })), now, add);
 }
 // An action or a setting the search found, above the songs: an action is done (the search closed first), a setting
 // shown — Settings opened at its row.
