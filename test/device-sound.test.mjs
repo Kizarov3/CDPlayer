@@ -17,6 +17,17 @@ test('the device the sound reaches: the one picked, or the system default as it 
   assert.strictEqual(deviceKey([], ''), null);
 });
 
+test('Windows in another language: the default is known by its twin, not by "Default - " in English', () => {
+  const ru = [
+    { kind: 'audiooutput', deviceId: 'default', groupId: 'g1', label: 'По умолчанию - Наушники (Realtek(R) Audio)' },
+    { kind: 'audiooutput', deviceId: 'communications', groupId: 'g1', label: 'Связь - Наушники (Realtek(R) Audio)' },
+    { kind: 'audiooutput', deviceId: 'r1', groupId: 'g1', label: 'Наушники (Realtek(R) Audio)' },
+    { kind: 'audiooutput', deviceId: 'r2', groupId: 'g2', label: 'Динамики (USB Audio)' },
+  ];
+  assert.strictEqual(deviceKey(ru, ''), 'Наушники (Realtek(R) Audio)');
+  assert.strictEqual(deviceKey(ru, 'r1'), 'Наушники (Realtek(R) Audio)'); // picked by hand: the same sound
+});
+
 test('the sound an output keeps, and whether two are the same', () => {
   const state = { eq: [1, 2], mono: false, spatial: true, spatialAmount: 40, volume: 0.3 };
   const kept = soundOf(state);

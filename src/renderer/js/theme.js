@@ -30,6 +30,8 @@ export function onColorsChanged(fn) { listeners.add(fn); }
 function applyColors() {
   const style = document.documentElement.style;
   for (const k of KEYS) style.setProperty(`--${k}`, colors[k].join(', '));
+  // the words on a key in the theme's colour: white or the background's dark, whichever stands out more on it
+  style.setProperty('--on-accent', contrast(colors.accent, [255, 255, 255]) >= contrast(colors.accent, colors.bg) ? '255, 255, 255' : colors.bg.join(', '));
   for (const fn of listeners) fn();
 }
 

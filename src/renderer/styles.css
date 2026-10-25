@@ -8,6 +8,7 @@
   --text: 232, 233, 236;
   --muted: 138, 142, 148;
   --hint: 120, 122, 126;
+  --on-accent: 255, 255, 255;
   --font: "Lucida Grande", "Segoe UI", "DejaVu Sans", "Helvetica Neue", Arial, sans-serif;
   /* Motion, one set for the whole app: things arrive quickly and settle (ease-out), leave a little faster
      (ease-in), and move between places with both (in-out). widgets.js has the same curves for JS animations. */
@@ -257,7 +258,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 .pill:disabled:hover { background: rgba(255, 255, 255, .047); }
 .pill.on:disabled::before { opacity: 0; }
 /* A panel's main button (SAVE, NEXT, PLAY): a key in the theme's colour, lit along its top like PLAY */
-.pill.go { color: #fff; background: rgb(var(--accent)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), inset 0 -2px 5px rgba(0, 0, 0, .15); }
+.pill.go { color: rgb(var(--on-accent)); background: rgb(var(--accent)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), inset 0 -2px 5px rgba(0, 0, 0, .15); }
 .pill.go:hover { background: rgb(var(--accent)); filter: brightness(1.1); }
 .pill.go:disabled { color: rgba(var(--muted), .6); background: rgba(255, 255, 255, .047); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .10); filter: none; } /* can't be pressed yet: plain, not lit */
 .unavailable { opacity: .4; }

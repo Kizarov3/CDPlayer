@@ -12,6 +12,9 @@ export const sameSound = (a, b) => JSON.stringify(a) === JSON.stringify(b);
  */
 export function deviceKey(devices, outputId) {
   const outs = devices.filter((d) => d.kind === 'audiooutput' && d.label);
-  const device = (outputId && outs.find((d) => d.deviceId === outputId)) || outs.find((d) => d.deviceId === 'default');
+  let device = (outputId && outs.find((d) => d.deviceId === outputId)) || outs.find((d) => d.deviceId === 'default');
+  // the default is its device's twin (same group): that one's own name, as "Default - " may be in the system's language
+  const twin = device && device.deviceId === 'default' && device.groupId && outs.find((d) => d.groupId === device.groupId && d.deviceId !== 'default' && d.deviceId !== 'communications');
+  if (twin) device = twin;
   return device ? device.label.replace(/^Default - /, '') : null;
 }
