@@ -1090,15 +1090,16 @@ function onlineSongRow(app, f) {
   if (f.duration) row.insertBefore(el('span', { class: 'when count' }, minutes(f.duration)), buttons[0]);
   row.append(buttons[0]); // PLAY at the right edge, where it always is; NEXT and ADD come up beside it
   if (f.locked) markLocked(row);
+  else if (f.preview) markLocked(row, t('PREVIEW'), t('Only a 30-second preview: the whole song is for SoundCloud’s subscribers'));
   return row;
 }
-// A label's song (DRM), known once it's been tried: no buttons, DRM where they were.
-function markLocked(row) {
+// A label's song (DRM), known once it's been tried: no buttons, DRM where they were (or PREVIEW: only 30 s of it).
+function markLocked(row, label = t('DRM'), why = t('Locked by its label (DRM): it doesn’t play')) {
   if (row.classList.contains('locked')) return;
   row.classList.add('locked');
   row.querySelectorAll('button').forEach((b) => b.remove());
-  row.title = t('Locked by its label (DRM): it doesn’t play');
-  row.append(el('span', { class: 'when count' }, t('DRM')));
+  row.title = why;
+  row.append(el('span', { class: 'when count' }, label));
 }
 // An album found: PLAY puts it in (a disc in the changer) and plays it, ADD only puts it in.
 function onlineAlbumRow(app, a) {
@@ -1499,6 +1500,19 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.20.0', changes: [
+    '<b>YouTube Music &amp; SoundCloud</b>: turned on in Settings &rarr; LIBRARY, the search finds their albums and songs, and they play like your own discs &mdash; in the best sound each gives without signing in',
+    '<b>PLAYER LOOK</b> in Settings &rarr; LOOK: CLASSIC, DOCK, STAGE, GLASS, PANEL or COVER; and gentler motion all round &mdash; the song&rsquo;s name rising in, the display&rsquo;s flicker, small lamps on what&rsquo;s on',
+    '<b>IMPORT PLAYS</b> from Spotify, Last.fm, ListenBrainz or Apple Music, counted on the same songs; <b>scrobbling</b> sends what you play here to Last.fm and ListenBrainz',
+    '<b>Each output its own sound</b>: the EQ, mono and spatial audio set on your headphones come back when they&rsquo;re plugged in, the speakers&rsquo; when they&rsquo;re the output again',
+    '<b>A backup by itself each day</b>, the last 7 kept; <b>COPY REPORT</b> in Settings &rarr; HELP puts what a bug report needs in one paste',
+  ], changesIn: { ru: [
+    '<b>YouTube Music и SoundCloud</b>: включите в Настройках &rarr; БИБЛИОТЕКА &mdash; поиск находит их альбомы и песни, и они играют как ваши диски, в лучшем качестве, которое сайт даёт без входа',
+    '<b>ВИД ПЛЕЕРА</b> в Настройках &rarr; ВИД: КЛАССИКА, ПУЛЬТ, СЦЕНА, СТЕКЛО, ПАНЕЛЬ или ОБЛОЖКА; и мягкие анимации повсюду &mdash; название песни выплывает, дисплей мерцает, маленькие лампочки на включённом',
+    '<b>ИМПОРТ ПРОСЛУШИВАНИЙ</b> из Spotify, Last.fm, ListenBrainz или Apple Music &mdash; засчитываются тем же песням; <b>скробблинг</b> отправляет то, что играет здесь, в Last.fm и ListenBrainz',
+    '<b>У каждого выхода свой звук</b>: эквалайзер, моно и пространственный звук, настроенные для наушников, возвращаются, когда их подключают, а для колонок &mdash; когда звук снова идёт в них',
+    '<b>Резервная копия каждый день сама</b>, хранятся последние 7; <b>СКОПИРОВАТЬ ОТЧЁТ</b> в Настройках &rarr; ПОМОЩЬ собирает всё нужное для сообщения об ошибке',
+  ] } },
   { version: '2.19.0', changes: [
     '<b>Dividers of your own</b>: + DIVIDER in an album&rsquo;s case files it behind one (&ldquo;For the car&rdquo;, &ldquo;Sunday&rdquo;); SORT &rarr; MY DIVIDERS stands the shelf by them, SHOW shows one',
     '<b>Editions stand together</b>: an album and its deluxe edition or remaster are one spine, the one you played last in front; its case switches between them',

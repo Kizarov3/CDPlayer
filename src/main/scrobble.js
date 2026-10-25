@@ -75,7 +75,7 @@ function createScrobbler({ store, fetch = globalThis.fetch, version = '', wait =
     async lastfm(batch, c) {
       const r = await lfCall('track.scrobble', { sk: c.key, ...Object.assign({}, ...batch.map((x, i) => lfSong(x, i))) });
       const e = r.body.error;
-      return e === 9 ? 'dropped' : LASTFM_RETRY.includes(e) || r.status >= 500 ? 'later' : e ? 'refused' : 'sent';
+      return e === 9 ? 'dropped' : e && !LASTFM_RETRY.includes(e) && r.status < 500 ? 'refused' : r.body.scrobbles ? 'sent' : 'later'; // (no answer read: not taken as sent)
     },
   };
   const tellPlaying = {
@@ -180,7 +180,7 @@ function createScrobbler({ store, fetch = globalThis.fetch, version = '', wait =
         if (result === 'dropped') { c.dropped = true; save(); return false; } // signed out there: asked to sign in again
         if (result === 'later') return false;
         if (result === 'refused' && batch.length > 1) { size = 1; continue; } // one of them it won't take: the rest go one by one
-        q.splice(0, batch.length);
+        for (const x of batch) { const at = q.indexOf(x); if (at >= 0) q.splice(at, 1); } // (by which: the oldest may have been let go meanwhile)
         saveQueue();
       }
       return true;

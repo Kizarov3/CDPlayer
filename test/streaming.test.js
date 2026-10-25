@@ -124,6 +124,7 @@ test("a streamed song's names: no file extension, no YouTube \"- Topic\", the al
   const sc = await streaming.details('https://soundcloud.com/someone/long-song', { withCover: false });
   assert.strictEqual(sc.title, 'Long Song');
   assert.strictEqual(sc.stream, 'SOUNDCLOUD');
+  assert.strictEqual((await streaming.details('https://music.youtube.com/watch?v=unknown', { withCover: false })).title, 'YOUTUBE MUSIC'); // (not its address)
 });
 
 test('an album asked for by something not a stream page is refused before yt-dlp sees it', async () => {
@@ -155,6 +156,11 @@ test('yt-dlp is got from its releases (the folder build) and kept only when it m
   await streaming.install();
   assert.ok(fs.readFileSync(at).equals(newer));
   assert.ok(!fs.existsSync(path.join(home, 'bin', 'yt-dlp', '_internal')), 'the old folder is gone');
+  // looked for again a few days on: the same release isn't downloaded again
+  files.delete(base + asset);
+  assert.strictEqual(await streaming.install({ ifNew: true }), '2026.10.21');
+  assert.ok(fs.readFileSync(at).equals(newer));
+  files.set(base + asset, zip2);
   files.set(base + asset, makeZip([{ name: exe, data: bytes(3000, 37) }])); // tampered with
   await assert.rejects(streaming.install(), /Checksum mismatch/);
   assert.ok(fs.readFileSync(at).equals(newer), 'the good copy stays');

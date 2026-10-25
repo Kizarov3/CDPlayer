@@ -13,6 +13,7 @@ test('paths and web addresses go; CDPlayer’s own code keeps its file and line'
   assert.strictEqual(scrub('RIP FAILED · /USERS/SAM/MUSIC/SOME ARTIST/A.FLAC'), 'RIP FAILED · <path>');
   assert.strictEqual(scrub('read /data/Music/Some Artist/Song.mp3 · then'), 'read <path>· then');
   assert.strictEqual(scrub('\\\\nas\\music\\a.flac'), '<path>');
+  assert.strictEqual(scrub("ENOENT: open '/Users/sam/Music/Guns N' Roses/01 Welcome.flac'"), "ENOENT: open '<path>'");
   assert.strictEqual(scrub('TRACK 1 / 14 · J/L'), 'TRACK 1 / 14 · J/L');
 });
 
@@ -35,4 +36,11 @@ test('the report: the system, the sound, what is in, and the last things said', 
     'In: file · FLAC · 16-BIT · 44.1 KHZ · playing',
     '', 'Lately:', '10:00:00 NOW SPINNING', '10:00:02 ERROR Error at audio.js:10',
   ].join('\n'));
+});
+
+test("the person's names — an output's, who's signed in where — are taken out", () => {
+  const text = buildReport({ output: 'system default', names: ["Sam's AirPods", 'sam_listens', null] },
+    [{ at: 0, kind: 'status', text: "PLAYING ON SAM'S AIRPODS" }, { at: 0, kind: 'status', text: 'SCROBBLING TO LAST.FM AS sam_listens' }]);
+  assert.ok(text.includes('PLAYING ON <name>') && text.includes('LAST.FM AS <name>'), text);
+  assert.ok(!/sam/i.test(text), text);
 });

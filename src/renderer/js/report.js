@@ -10,7 +10,7 @@ export function scrub(text) {
   return String(text)
     .replace(/(?:cdp|file|https?):\/\/[^\s'"()]*\/((?:[\w-]+\.)+m?js):(\d+)(?::\d+)?/g, '$1:$2')
     .replace(/(?:https?|cdp|file|spotify):\/?\/?[^\s'"()]+/gi, '<address>')
-    .replace(/(['"])(?:\/|~\/|[a-z]:\\|\\\\)[^'"]*\1/gi, '$1<path>$1') // (a quoted one may have spaces in it)
+    .replace(/(['"])(?:\/|~\/|[a-z]:\\|\\\\)[^\n]*\1/gi, '$1<path>$1') // (a quoted one may have spaces in it, or the quote: to the last)
     // any other: from where it begins to the next · or the end — a path with spaces in it taken whole, and more with it
     .replace(/(?:~\/|\/(?=[^\s/]+\/)|[a-z]:\\|\\\\)[^'"()·\n]*/gi, '<path>');
 }
@@ -29,7 +29,9 @@ export const recent = () => trail.slice();
 const onOff = (on) => (on ? 'on' : 'off');
 const khz = (hz) => (hz ? `${+(hz / 1000).toFixed(1)} kHz` : '?');
 
-/** The report's text, from what app.js gathers (`info`) and what was noted. */
+// (names in it: an output's — "Sam's AirPods" — or who's signed in where, as `<name>`)
+const unnamed = (text, names) => names.reduce((s, n) => s.split(n).join('<name>').split(n.toUpperCase()).join('<name>'), text);
+/** The report's text, from what app.js gathers (`info`: `names` are the person's, taken out) and what was noted. */
 export function buildReport(info, notes = recent()) {
   const i = info || {}, r = i.rate;
   const lines = [
@@ -43,5 +45,6 @@ export function buildReport(info, notes = recent()) {
     lines.push('', 'Lately:');
     for (const n of notes) lines.push(`${new Date(n.at).toISOString().slice(11, 19)} ${n.kind === 'error' ? 'ERROR ' : ''}${n.text}`);
   }
-  return lines.join('\n');
+  const names = [...new Set((i.names || []).filter((n) => typeof n === 'string' && n.trim().length > 1))].sort((a, b) => b.length - a.length);
+  return unnamed(lines.join('\n'), names);
 }

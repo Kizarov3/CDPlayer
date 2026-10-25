@@ -820,6 +820,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
       doneReading();
       if (!ok || token !== state.loadToken) return;
       state.deckToken = token; // the engine holds this load's track now: its next one may be prepared
+      passedOver = 0;
     } catch {
       doneReading();
       if (token !== state.loadToken) return;
@@ -829,6 +830,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
       if (token !== state.loadToken) return;
       showUnplayed(path, await detailsPromise);
       setStatus(why);
+      passOver(token);
       return;
     }
     if (startAt > 0) engine.seek(Math.min(startAt, engine.duration));
@@ -1389,8 +1391,20 @@ function trackFinished(deck) {
   // A cue sheet track ends mid-file: unless the next track carries straight on from here, stop the file right now
   // rather than let the following song start playing underneath.
   if (next < 0 || !continuesCurrent(state.queue[next])) engine.pause();
-  if (next >= 0) { goTo(next, automixStart(next)); return; }
+  if (next >= 0) { movingOn = state.loadToken + 1; goTo(next, automixStart(next)); return; }
   setPlaying(false);
+}
+// The music moving on came to a song that won't play (gone, broken, a stream that failed): on past it after a moment,
+// as a CD player skips a bad track — once round the queue at most. One picked by hand stays, saying why.
+let movingOn = 0, passedOver = 0;
+function passOver(token) {
+  if (movingOn !== token || passedOver >= state.queue.length) return;
+  passedOver++;
+  setTimeout(() => {
+    if (token !== state.loadToken) return;
+    const next = upcomingIndex();
+    if (next >= 0) { movingOn = state.loadToken + 1; goTo(next); }
+  }, 1500);
 }
 function seek(delta) { if (engine.deck) seekTo(engine.position + delta); }
 function seekTo(seconds) {
@@ -1828,8 +1842,12 @@ async function copyReport() {
   const info = await cdp.reportInfo(state.streaming).catch(() => ({}));
   const p = state.loadedPath, d = state.details && state.detailsPath === p ? state.details : null;
   const kind = !p ? null : isSpotifyUri(p) ? 'Spotify' : isStream(p) ? 'stream' : isAudioCdTrack(p) ? 'audio CD' : 'file';
+  // The outputs' names ("Sam's AirPods") and who's signed in where are the person's: not in a report made to be posted.
+  const outs = (await navigator.mediaDevices.enumerateDevices().catch(() => [])).filter((d) => d.label);
+  const signed = await cdp.scrobbleStatus().catch(() => null);
+  const names = [...outs.flatMap((d) => [d.label, outputName(d)]), ...Object.values(signed || {}).map((s) => s && s.user)];
   const text = buildReport({
-    ...info, version: state.version, language: state.language, output: await currentOutputName().catch(() => '?'), rate: state.rateInfo,
+    ...info, version: state.version, language: state.language, output: state.output ? 'one chosen' : 'system default', rate: state.rateInfo, names,
     quality: state.quality, transition: state.transition, eq: state.eq.some((g) => g !== 0), mono: state.mono, spatial: state.spatial,
     spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, discNoise: state.discNoise, streaming: state.streaming,
     playing: kind && { kind, format: d && [d.ext, d.quality].filter(Boolean).join(' · '), state: engine.playing ? 'playing' : 'paused' },
@@ -2516,6 +2534,7 @@ function escape() {
   if (isKaraokeOpen()) closeKaraoke();
   else if (state.visualizerMode) toggleVisualizerMode();
   else if (state.cdView) toggleCdView();
+  else if (document.body.classList.contains('queue-open')) showQueueDrawer(false);
   else if (state.fullscreen) toggleFullscreen();
   else if (disc.trayOpen) closeTray({ play: false });
 }

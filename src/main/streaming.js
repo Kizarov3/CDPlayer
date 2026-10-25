@@ -39,7 +39,7 @@ function available(timeout = 30000) {
 
 /** yt-dlp's latest release into the app's own folder, checked against the sums it's published with. */
 let installing = null;
-function install() {
+function install({ ifNew = false } = {}) {
   if (installing) return installing;
   installing = (async () => {
     if (!OWN || !ownDir()) throw new Error('No yt-dlp for this system');
@@ -52,6 +52,13 @@ function install() {
     const sums = await (await get('SHA2-256SUMS')).text();
     const want = (new RegExp(`^([0-9a-f]{64})\\s+\\*?${asset.replace(/\./g, '\\.')}$`, 'm').exec(sums) || [])[1];
     if (!want) throw new Error('No checksum');
+    // (asked a few days on: the one there is still the latest — its sum kept beside it — isn't fetched again)
+    const kept = path.join(ownDir(), 'SHA256');
+    if (ifNew && fs.existsSync(ownPath()) && (() => { try { return fs.readFileSync(kept, 'utf8').trim(); } catch { return null; } })() === want) {
+      const now = new Date();
+      fs.utimesSync(ownPath(), now, now);
+      return available();
+    }
     const zip = Buffer.from(await (await get(asset)).arrayBuffer());
     if (require('crypto').createHash('sha256').update(zip).digest('hex') !== want) throw new Error('Checksum mismatch');
     // Unpacked beside the one there is, then put in its place. The old one is only moved aside — a search may be running
@@ -60,6 +67,7 @@ function install() {
     const dir = ownDir(), fresh = `${dir}.new`, old = `${dir}.old`;
     for (const d of [fresh, old]) fs.rmSync(d, { recursive: true, force: true });
     require('./unzip').extract(zip, fresh);
+    fs.writeFileSync(path.join(fresh, 'SHA256'), want);
     const move = async (from, to) => {
       for (let tries = 0; ; tries++) {
         try { fs.renameSync(from, to); return; } catch (e) { if (tries >= 5) throw e; await wait(500); }
@@ -84,7 +92,7 @@ let freshened = false;
 function freshen() {
   if (freshened) return;
   freshened = true;
-  try { if (Date.now() - fs.statSync(ownPath()).mtimeMs > STALE) install().catch(() => {}); } catch { /* none of its own */ }
+  try { if (Date.now() - fs.statSync(ownPath()).mtimeMs > STALE) install({ ifNew: true }).catch(() => {}); } catch { /* none of its own */ }
 }
 
 function run(args, timeout = 30000) {
@@ -118,15 +126,27 @@ function songs() {
   if (!known) { try { known = new Map(Object.entries(JSON.parse((store && store.readText('streams.json')) || '{}'))); } catch { known = new Map(); } }
   return known;
 }
-function remember(page, info) {
-  const had = songs().get(page) || {};
+// What a search found is only held in memory: it goes into streams.json once the song is put to use (queued, played,
+// its details asked for), or the file would grow with every song ever searched for.
+const seen = new Map(), SEEN_MAX = 2000;
+const merged = (had, info) => {
   const next = { ...had };
   for (const [k, v] of Object.entries(info)) if (v != null && v !== '') next[k] = v;
-  songs().set(page, next);
+  return next;
+};
+function glimpse(page, info) {
+  if (songs().has(page)) { remember(page, info); return; }
+  seen.delete(page); // (to the end: the oldest let go first)
+  seen.set(page, merged(seen.get(page) || {}, info));
+  if (seen.size > SEEN_MAX) seen.delete(seen.keys().next().value);
+}
+function remember(page, info) {
+  songs().set(page, merged(songs().get(page) || seen.get(page) || {}, info));
+  seen.delete(page);
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => store && store.writeText('streams.json', JSON.stringify(Object.fromEntries(songs()))), 1000);
 }
-const songInfo = (page) => songs().get(page) || null;
+const songInfo = (page) => songs().get(page) || seen.get(page) || null;
 
 // A song's page → where its sound is, kept till a little before the address runs out (YouTube's say when: expire=).
 const found = new Map();
@@ -254,8 +274,9 @@ async function search(query, where = 'youtube') {
     const r = await run(['--flat-playlist', '-J', '--', `scsearch12:${query}`]);
     return Promise.all((r.entries || []).map((e) => {
       const page = e.url;
-      const song = { kind: 'song', page, title: songTitle(e.title), artist: e.uploader || null, duration: e.duration || null, cover: bestThumb(e.thumbnails), locked: isLocked(page) };
-      remember(page, { title: song.title, artist: song.artist, duration: song.duration, cover: song.cover });
+      // (a song only SoundCloud's subscribers hear whole is 30 s exactly, a preview: a whole one is timed to the ms)
+      const song = { kind: 'song', page, title: songTitle(e.title), artist: e.uploader || null, duration: e.duration || null, cover: bestThumb(e.thumbnails), locked: isLocked(page), preview: e.duration === 30 };
+      glimpse(page, { title: song.title, artist: song.artist, duration: song.duration, cover: song.cover });
       return withThumb(song, e.thumbnails);
     }));
   }
@@ -276,7 +297,7 @@ async function album(page) {
   }));
   const artist = tracks.length && tracks.every((t) => t.artist === tracks[0].artist) ? tracks[0].artist : (tracks[0] && tracks[0].artist) || null;
   const cover = bestThumb(r.thumbnails);
-  tracks.forEach((t, i) => remember(t.page, { title: t.title, artist: t.artist, albumArtist: artist, album: title, duration: t.duration, cover, track: i + 1, of: tracks.length }));
+  tracks.forEach((t, i) => glimpse(t.page, { title: t.title, artist: t.artist, albumArtist: artist, album: title, duration: t.duration, cover, track: i + 1, of: tracks.length }));
   return { title, artist, cover, thumbnails: r.thumbnails || [], page: r.webpage_url || page, tracks };
 }
 
@@ -299,10 +320,12 @@ async function coverData(url) {
 
 /** A streamed song's details, shaped as metadata.getDetails' are for a file. */
 async function details(page, { withCover = true } = {}) {
+  if (seen.has(page)) remember(page, {}); // (in the queue or played: kept from now on)
   const k = songInfo(page) || {}, f = found.get(page);
   const ext = f ? (f.codec === 'OPUS' ? 'OPUS' : f.codec || '') : '';
   return {
-    path: page, title: k.title || page, artist: k.artist || null, album: k.album || null, nameGuessed: false, unnamed: false,
+    path: page, title: k.title || sourceOf(page), // (never the page's address: a song not found says only where it was from)
+    artist: k.artist || null, album: k.album || null, nameGuessed: false, unnamed: false,
     credits: { ...(k.albumArtist ? { albumArtist: k.albumArtist } : {}), ...(k.year ? { released: String(k.year) } : {}), ...(k.track ? { track: { no: k.track, of: k.of || null } } : {}) },
     lyrics: null, duration: k.duration || 0, ext, stream: sourceOf(page),
     quality: [sourceOf(page), f && f.bitrate ? `${f.bitrate} KBPS` : null].filter(Boolean).join(' · '),
