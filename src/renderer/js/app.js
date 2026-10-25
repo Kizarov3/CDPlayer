@@ -2745,6 +2745,10 @@ function onKeyDown(e) {
   const key = shortcutKey(e);
   if (key === 'm') { e.preventDefault(); setMiniMode(!state.miniMode); return; }
   if (key === 'p' && panels.closeCardPanel()) { e.preventDefault(); return; } // P again: the card goes
+  // , (where ⌘, is, without ⌘) and H: Settings and HISTORY — and again, they go
+  const panel = e.code === 'Comma' ? 'settings' : key === 'h' ? 'history' : null;
+  if (panel && panels.isOpen(panel)) { e.preventDefault(); panels.closeNamed(panel); return; }
+  if (panel && !anyOverlayOpen()) { e.preventDefault(); if (!e.repeat) $(panel === 'settings' ? 'settings-button' : 'history-button').click(); return; }
   if (anyOverlayOpen()) return;
   // The shelf open: the arrows are the shelf's (scrolling it), not the volume and the song's position.
   if (isShelfOpen() && key.startsWith('Arrow')) return;

@@ -23,8 +23,28 @@ const panels = new Map(); // name -> { overlay, card, build }
 // Escape closes the closest thing first, in this order.
 const ESC_ORDER = ['changer-full', 'onboarding', 'guide', 'features', 'faq', 'shortcuts', 'changelog', 'tags', 'check', 'card', 'booklet', 'menu', 'theme', 'lyrics', 'eq', 'rip', 'history', 'spotify', 'search', 'settings'];
 
+// A panel comes out of the button that opened it, and goes back into it: the one just pressed, or — opened by a key —
+// the header's button for it. (Without one, it rises in as before.)
+const ORIGINS = { settings: 'settings-button', history: 'history-button', spotify: 'spotify-button', lyrics: 'lyrics-button', tags: 'tags-button', search: 'search-button' };
+let pressed = null;
+document.addEventListener('pointerdown', (e) => { const b = e.target.closest && e.target.closest('button'); pressed = b ? { b, at: performance.now() } : null; }, true);
+document.addEventListener('keydown', () => { pressed = null; }, true);
+function originOf(name) {
+  const b = pressed && performance.now() - pressed.at < 1500 && pressed.b.isConnected ? pressed.b : document.getElementById(ORIGINS[name] || '');
+  return b && b.offsetParent && !b.closest('.overlay.closing') ? b : null;
+}
+function morph(card, from, back) {
+  const a = from.getBoundingClientRect(), c = card.getBoundingClientRect();
+  if (!a.width || !c.width) return null;
+  const at = `translate(${a.left + a.width / 2 - (c.left + c.width / 2)}px, ${a.top + a.height / 2 - (c.top + c.height / 2)}px) scale(${a.width / c.width}, ${a.height / c.height})`;
+  const frames = [{ transform: at, opacity: 0, offset: 0 }, { opacity: 1, offset: back ? 0.65 : 0.35 }, { transform: 'none', opacity: 1, offset: 1 }];
+  return card.animate(back ? frames.reverse().map((f) => ({ ...f, offset: 1 - f.offset })) : frames,
+    { duration: back ? 240 : 380, easing: back ? EASE.in : EASE.out, fill: back ? 'forwards' : 'none' });
+}
+
 function openPanel(name, build, { width } = {}) {
   let p = panels.get(name);
+  const opening = !p;
   if (!p) {
     const card = el('div', { class: 'card' });
     if (width) card.style.width = `${width}px`;
@@ -39,6 +59,9 @@ function openPanel(name, build, { width } = {}) {
     layer().append(p.overlay); // bring to front
   }
   p.card.replaceChildren(...[build()].flat(Infinity));
+  const from = opening && anim.enabled ? originOf(name) : null;
+  pressed = null;
+  if (from) { p.card.classList.add('morph'); p.origin = from; morph(p.card, from, false); }
   return p;
 }
 function closePanel(name) {
@@ -48,8 +71,10 @@ function closePanel(name) {
   if (p.onClose) p.onClose();
   if (!anim.enabled) { p.overlay.remove(); return; }
   p.overlay.classList.add('closing');
-  p.card.addEventListener('animationend', () => p.overlay.remove(), { once: true });
-  setTimeout(() => p.overlay.remove(), 300);
+  const back = p.origin && p.origin.isConnected && p.origin.offsetParent ? morph(p.card, p.origin, true) : null;
+  if (back) back.onfinish = () => p.overlay.remove();
+  else { p.card.classList.remove('morph'); p.card.addEventListener('animationend', () => p.overlay.remove(), { once: true }); }
+  setTimeout(() => p.overlay.remove(), 400);
 }
 function refreshPanel(name) {
   const p = panels.get(name);
@@ -59,6 +84,7 @@ function refreshPanel(name) {
   p.card.querySelectorAll('.scroll').forEach((s, i) => { s.scrollTop = scrollers[i] || 0; });
 }
 export const isOpen = (name) => panels.has(name);
+export const closeNamed = (name) => closePanel(name);
 export const anyOpen = () => panels.size > 0 || !!menuLayer || isBookletOpen();
 /** The LYRICS panel goes when karaoke takes the window (it would stand over it otherwise). */
 export function closeCardPanel() { if (!isOpen('card')) return false; closePanel('card'); return true; }
