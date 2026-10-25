@@ -166,6 +166,7 @@ contextBridge.exposeInMainWorld('cdp', {
 
   onOpenFiles: on('open-files'),
   onFullscreenChanged: on('fullscreen-changed'),
+  onWindowShown: on('window-shown'),
   onAppClosing: on('app-closing'),
 
   // Mini player <-> main window

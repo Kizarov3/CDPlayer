@@ -2933,12 +2933,16 @@ function playbackTick() {
   if (state.remoteListening && now - remoteTickAt >= 1000) { remoteTickAt = now; cdp.sendRemoteState({ playing: true, position: pos, duration: dur }); }
 }
 
-let last = performance.now(), idleCheck = 0;
+let last = performance.now(), idleCheck = 0, windowShown = true;
+cdp.onWindowShown((shown) => { windowShown = shown; });
 // While you're in another app, the window only needs to look alive: drawing it at 30 frames a second instead of 60
 // roughly halves what the spinning disc and visualizer cost. Watched — CDPlayer in front, or CD View, Visualizer Mode
 // or Karaoke on screen — it stays at full rate.
 // Drawn without the graphics card, it's 30 always (render-budget.js).
 function frame(now) {
+  // Hidden (the mini player up, or the window minimised or on another space): nothing to draw. The window keeps
+  // running in the background for the music, so its frames would still come 60 a second: looked in on 4 times instead.
+  if (state.miniMode || !windowShown) { setTimeout(() => requestAnimationFrame(frame), 250); last = now; return; }
   const watched = document.hasFocus() || state.cdView || state.visualizerMode || isKaraokeOpen() || !!discMorph;
   const gap = discMorph ? 0 : frameGap({ watched, software: state.softwareRendering, playing: engine.playing || !!jog }); // (CD View coming or going: every frame)
   if (gap && now - last < gap - 2) { requestAnimationFrame(frame); return; }

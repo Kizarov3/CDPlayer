@@ -131,6 +131,10 @@ function createWindow() {
   if (saved) normalBounds = saved;
   win.on('resize', captureNormalBounds);
   win.on('move', captureNormalBounds);
+  // (whether there's anything of it to see: with background throttling off, a hidden window never hears it's hidden)
+  for (const [event, shown] of [['hide', false], ['minimize', false], ['show', true], ['restore', true]]) {
+    win.on(event, () => win.webContents.send('window-shown', shown && !win.isMinimized()));
+  }
   win.on('enter-full-screen', () => win.webContents.send('fullscreen-changed', true));
   win.on('leave-full-screen', () => win.webContents.send('fullscreen-changed', false));
   win.on('close', () => {
@@ -927,7 +931,7 @@ handle('win:setMiniMode', async (enabled) => {
   } else {
     win.show();
     win.focus();
-    if (miniWin) miniWin.hide();
+    if (miniWin) { miniWin.webContents.send('mini-state', { hidden: true }); miniWin.hide(); }
   }
   persistSettings();
 });

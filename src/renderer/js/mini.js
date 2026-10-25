@@ -100,7 +100,8 @@ cdp.onMiniState(async (s) => {
     }
   }
   if ('animations' in s) document.body.classList.toggle('no-anim', !s.animations);
-  if (s.appear) appear();
+  if (s.appear) { shown = true; appear(); }
+  if (s.hidden) shown = false;
   if ('shine' in s) disc.setShine(s.shine);
   if (s.track) {
     const track = s.track;
@@ -159,8 +160,9 @@ window.addEventListener('keydown', (e) => {
 // The mini player floats over whatever you're doing: unless you're using it, 30 frames a second is plenty (and costs
 // about half what 60 does), as in the main window.
 const BACKGROUND_FRAME_MS = 1000 / 30;
-let last = performance.now();
+let last = performance.now(), shown = true;
 function frame(now) {
+  if (!shown) { setTimeout(() => requestAnimationFrame(frame), 250); last = now; return; } // (put away: the full player is up)
   if (!document.hasFocus() && now - last < BACKGROUND_FRAME_MS - 2) { requestAnimationFrame(frame); return; }
   const dt = Math.min(100, now - last); last = now;
   disc.frame(now, dt);
