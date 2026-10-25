@@ -296,7 +296,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 }
 /* …and a lamp under it, as under a deck's SHUFFLE key */
 .round.mode::after {
-  content: ""; position: absolute; left: 50%; bottom: -7px; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%;
+  content: ""; position: absolute; left: 50%; bottom: -8px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%;
   background: rgb(var(--accent)); box-shadow: 0 0 8px 2px rgba(var(--accent), .7);
   opacity: 0; transition: opacity 200ms ease;
 }
