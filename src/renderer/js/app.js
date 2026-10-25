@@ -2761,7 +2761,7 @@ function setDisplay(kind, { save = true } = {}) {
   if (save) saveSettingsSoon();
 }
 function showDeckFlags() {
-  deckDisplay.setFlags({ playing: engine.playing, paused: !!engine.deck && !engine.playing, shuffle: state.shuffle !== 'OFF', repeat: state.repeat !== 'OFF', repeatOne: state.repeat === 'TRACK' });
+  deckDisplay.setFlags({ playing: engine.playing, paused: !!engine.deck && !engine.playing, shuffle: state.shuffle !== 'OFF', repeat: state.repeat !== 'OFF', repeatOne: state.repeat === 'TRACK', net: isStream(state.loadedPath) }); // (NET: streamed, as a tuner's ST)
 }
 // Writing a label's text, even the same text, makes the page restyle and repaint it — every frame, for the clock.
 function setText(node, text) { if (node.textContent !== text) node.textContent = text; }

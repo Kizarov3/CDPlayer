@@ -133,7 +133,7 @@ body.cd-view #cd-info { display: block !important; }
 /* The deck's display (deck-display.js): a window sunk into the panel, its glass faintly ruled like a VFD's mesh; what's
    on it glows in the theme's colour, what's off is there faintly. */
 #deck-display {
-  margin-top: 12px; height: 60px; padding: 0 18px; border-radius: 8px;
+  position: relative; margin-top: 12px; height: 60px; padding: 0 18px; border-radius: 8px;
   display: flex; align-items: center; gap: 18px;
   background: repeating-linear-gradient(0deg, rgba(255, 255, 255, .022) 0 1px, transparent 1px 3px), linear-gradient(rgba(0, 0, 0, .66), rgba(0, 0, 0, .52));
   box-shadow: inset 0 2px 7px rgba(0, 0, 0, .75), inset 0 0 0 1px rgba(0, 0, 0, .6), 0 1px 0 rgba(255, 255, 255, .07);
@@ -148,6 +148,8 @@ body.cd-view #cd-info { display: block !important; }
 .vfd-flag { color: rgba(var(--accent), .22); transition: color 160ms ease, text-shadow 160ms ease; }
 .vfd-flag.lit { color: rgb(var(--accent)); text-shadow: 0 0 6px rgba(var(--accent), .8); }
 .vfd-flag[data-flag="one"] { margin-left: -8px; }
+/* NET, on the labels' line between TRACK and TOTAL, where the flags below have no room left: a tuner's ST light */
+.vfd-flag[data-flag="net"] { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); font-size: 10px; line-height: 12px; letter-spacing: .12em; }
 .vfd-time { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; cursor: pointer; }
 .vfd-time:hover .vfd-label { color: rgb(var(--accent)); } /* it's a button: TIME */
 #vfd-total { font-variant-numeric: tabular-nums; }

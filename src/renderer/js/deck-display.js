@@ -80,8 +80,8 @@ export class DeckDisplay {
     setText(this.lengthNode, left && duration > 0 ? `−${clock(duration - position)}` : clock(duration));
     this.draw();
   }
-  setFlags({ playing, paused, shuffle, repeat, repeatOne }) {
-    const on = { play: playing, pause: paused, shuffle, repeat, one: repeatOne };
+  setFlags({ playing, paused, shuffle, repeat, repeatOne, net }) {
+    const on = { play: playing, pause: paused, shuffle, repeat, one: repeatOne, net };
     for (const node of this.flags) node.classList.toggle('lit', !!on[node.dataset.flag]);
   }
   // The theme's colour moved (a theme change fades): drawn again in it.
