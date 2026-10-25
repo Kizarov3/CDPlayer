@@ -102,7 +102,11 @@ function fromLibraryXml(text) {
     const count = Number(f['Play Count']) || 0;
     if (!count || !f.Name) continue;
     let file = null;
-    try { if (/^file:/i.test(f.Location || '')) file = fileURLToPath(f.Location.replace(/^file:\/\/localhost\//i, 'file:///')); } catch { /* not a path here */ }
+    if (/^file:/i.test(f.Location || '')) {
+      // read as the system that wrote it: file:///C:/… is Windows' (iTunes), file:///Users/… a Mac's — whichever this one is
+      const url = f.Location.replace(/^file:\/\/localhost\//i, 'file:///');
+      try { file = fileURLToPath(url, { windows: /^file:\/\/\/[a-z]:/i.test(url) }); } catch { /* not a path */ }
+    }
     totals.push({ artist: f.Artist || f['Album Artist'], title: f.Name, album: f.Album, count, at: Date.parse(f['Play Date UTC']) || null, file });
     if (/^\s*<\/dict>/.test(text.slice(songs.lastIndex))) break; // the end of Tracks
   }

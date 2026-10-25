@@ -108,6 +108,11 @@ test("Apple Music's Library.xml: a song's total, by its file when it's the same 
   assert.deepStrictEqual([same.added, same.already], [0, 10]);
 });
 
+test("Windows' iTunes Library.xml: its file:// addresses are Windows paths, wherever it's read", () => {
+  const xml = libraryXml(3).replace(/<key>Location<\/key><string>[^<]*<\/string>/, '<key>Location</key><string>file://localhost/C:/Users/Sam/Music/iTunes/Radiohead/OK%20Computer/02%20Paranoid%20Android.m4a</string>');
+  assert.strictEqual(read(file('Library.xml', xml))[0].totals[0].file, 'C:\\Users\\Sam\\Music\\iTunes\\Radiohead\\OK Computer\\02 Paranoid Android.m4a');
+});
+
 test('the plays maps stay with the most recently played last; files that are none of these give nothing', () => {
   const plays = empty();
   plays.counts.set('/m/hits/01.mp3', 1); plays.last.set('/m/hits/01.mp3', T('2024-01-01T00:00:00Z'));
