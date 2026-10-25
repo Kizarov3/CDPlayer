@@ -76,6 +76,7 @@ const title = (text) => el('h1', {}, text);
 const closeRow = (onClick, caption = t('CLOSE')) => el('div', { class: 'close-row' }, pill(caption, onClick));
 const gap = (h = 22) => { const d = el('div', { class: 'gap-22' }); d.style.height = `${h}px`; return d; };
 const hint = (text) => el('div', { class: 'setting-hint' }, text);
+const quietHint = (text) => el('div', { class: 'setting-hint quiet' }, text); // the small print under a hint
 function row(label, control) { return el('div', { class: 'setting-row' }, el('span', {}, label), control); }
 function sliderRow(label, slider, valueLabel) {
   const wrap = el('div', { class: 'slider' });
@@ -402,7 +403,8 @@ function buildSettings(app) {
     row(t('SAVE FOUND ART & LYRICS'), saveFound),
     hint(t('Covers and lyrics found online are written into the song’s file (once it’s finished playing), so they’re there offline and in other players too.')),
     row(t('YOUTUBE MUSIC & SOUNDCLOUD'), streaming),
-    hint(t('The search (/) also finds albums on YouTube Music and songs on SoundCloud, played like your own: EQ, changer, history. Unofficial — through the free yt-dlp, downloaded when this is turned on. YouTube’s terms don’t allow it, and it may stop working for a while when YouTube changes. Songs a label has locked (DRM) don’t play.')),
+    hint(t('The search (/) also finds albums on YouTube Music and songs on SoundCloud — they play like your own discs.')),
+    quietHint(t('Unofficial: through the free yt-dlp, downloaded when this is turned on. YouTube’s terms don’t allow it, and it may stop working for a while when YouTube changes. Songs a label has locked (DRM) don’t play.')),
     streamingNote,
     row(t('BACKUP'), el('div', { class: 'row-pills' },
       pill(t('SAVE…'), async () => { const r = await app.cdp.saveBackup().catch(() => ({ error: true })); if (r) app.setStatus(r.ok ? t('BACKUP SAVED') : t('UNKNOWN ERROR')); }, t('Save your queue, history, plays, notes, themes and settings to one file')),
@@ -856,7 +858,7 @@ function buildRip(app) {
 
 // ---- Search ------------------------------------------------------------------------------------------------------
 
-const search = { index: [], labels: {}, tags: {}, folder: null, scanning: false, generation: 0, lastSpotifyUrl: null, field: null, results: null, status: null, online: 0 };
+const search = { index: [], labels: {}, tags: {}, folder: null, scanning: false, generation: 0, lastSpotifyUrl: null, field: null, results: null, status: null, online: 0, source: 'library' };
 const SEARCH_LIMIT = 100;
 const basename = (p) => p.split(/[\\/]/).pop();
 // What a search shows: "Artist · Title" from the tags the shelf read, else the filename, or for a cue sheet track
@@ -893,10 +895,9 @@ async function startLibraryScan(app) {
 export function showSearch(app) {
   search.lastSpotifyUrl = null;
   startLibraryScan(app);
+  search.source = 'library'; search.online++;
   openPanel('search', () => buildSearch(app), { width: 600 });
-  search.instructions.textContent = app.state.streaming
-    ? t('Type to find a song in your library, something to do or a setting — or albums on YouTube Music and songs on SoundCloud, at the end of the list')
-    : t('Type to find a song in your library, something to do or a setting — or paste a Spotify track/playlist link to add the matching songs you already have');
+  paintSource(app);
   refreshSearchResults(app);
   setTimeout(() => search.field && search.field.focus(), 50);
 }
@@ -913,6 +914,8 @@ function buildSearch(app) {
     // no song found, the first thing to do or setting is (a song called "Stop" isn't PLAY / PAUSE).
     // (Nothing typed, or a word still being composed in an input method: Enter isn't a choice yet.)
     if (e.key === 'Enter' && !e.isComposing && search.results && search.field.value.trim()) {
+      // (online: the words typed since the last look are looked for at once; then Enter plays the first found)
+      if (search.source !== 'library' && search.onlineQuery !== search.field.value.trim().toLowerCase()) { e.preventDefault(); searchOnline(app); return; }
       const first = search.results.querySelector('.list-row:not(.plain):not(.command-row)') || search.results.querySelector('.command-row');
       if (first) { e.preventDefault(); first.click(); }
     }
@@ -922,11 +925,19 @@ function buildSearch(app) {
   const importButton = pill(t('IMPORT LIBRARY…'), () => importLibrary(app), t('Import an iTunes/Music "Library.xml", or a Spotify "Liked Songs" export (CSV or YourLibrary.json)'));
   const instructions = search.instructions = el('div', { class: 'tip' });
   Object.assign(instructions.style, { fontSize: '11px', fontWeight: 'bold', marginTop: '12px', lineHeight: '1.35' });
-  const importRow = el('div', {}, importButton);
+  const importRow = search.importRow = el('div', {}, importButton);
   importRow.style.margin = '10px 0';
   const fieldRow = el('div', {}, search.field);
   fieldRow.style.margin = '6px 0 10px';
-  return [title(t('SEARCH LIBRARY')), instructions, importRow, search.status, fieldRow, search.results, closeRow(() => closePanel('search'))];
+  // Where to look, as an amplifier's input selector: your music, YouTube Music, SoundCloud (with streaming on)
+  search.sourceButtons = new Map([['library', t('YOUR MUSIC')], ...ONLINE].map(([k, name]) => {
+    const b = pill(name, () => setSource(app, k));
+    b.classList.add('small', 'source-pill');
+    return [k, b];
+  }));
+  search.sourceRow = el('div', { class: 'row-pills source-row' }, ...search.sourceButtons.values());
+  search.title = title(t('SEARCH LIBRARY'));
+  return [search.title, instructions, importRow, search.sourceRow, search.status, fieldRow, search.results, closeRow(() => closePanel('search'))];
 }
 function setSearchStatus(text) { if (search.status) search.status.textContent = text; }
 function refreshSearchResults(app) {
@@ -935,7 +946,7 @@ function refreshSearchResults(app) {
   const commands = findCommands(query, app.commands()).map((c) => commandRow(app, c));
   if (!search.folder && !search.scanning) {
     setSearchStatus(t('LOAD A TRACK FIRST TO SET A FOLDER TO SEARCH'));
-    search.results.replaceChildren(...commands, ...onlineRows(app, query));
+    search.results.replaceChildren(...commands);
     return;
   }
   const matches = [], words = query.split(/\s+/).filter(Boolean);
@@ -945,40 +956,66 @@ function refreshSearchResults(app) {
   setSearchStatus(search.scanning ? t('SCANNING YOUR MUSIC FOLDER…') : !words.length ? t('{n} SONGS IN {folder} · TYPE TO FIND ONE', { n: search.index.length, folder: search.folder })
     : matches.length >= SEARCH_LIMIT ? t('{n}+ MATCHES IN {folder}', { n: matches.length, folder: search.folder })
     : matches.length === 1 ? t('1 MATCH IN {folder}', { folder: search.folder })
+    : !matches.length && app.state.streaming ? t('NOTHING LIKE THAT IN {folder} · LOOK ON YOUTUBE MUSIC OR SOUNDCLOUD ↑', { folder: search.folder })
     : !matches.length && commands.length ? t('NO SONGS LIKE THAT IN {folder}', { folder: search.folder }) : t('{n} MATCHES IN {folder}', { n: matches.length, folder: search.folder }));
   search.results.replaceChildren(...commands, ...(matches.length
     ? matches.map((p) => trackRow(app, p, searchName(p), async () => {
       if (!(await app.cdp.exists(p))) { app.setStatus(t('FILE NO LONGER FOUND')); startLibraryScan(app); return; }
       app.appendAndPlay(p); closePanel('search');
     }))
-    : commands.length || onlineRows(app, query).length ? [] : [el('div', { class: 'list-row plain' }, search.scanning ? t('SCANNING…') : t('NO MATCHES'))]),
-  ...onlineRows(app, query));
+    : commands.length ? [] : [el('div', { class: 'list-row plain' }, search.scanning ? t('SCANNING…') : t('NO MATCHES'))]));
 }
 
 // ---- YouTube Music and SoundCloud (Settings → YOUTUBE MUSIC & SOUNDCLOUD; streaming.js) ----------------------------
-// Under what's yours: the same words looked for there — albums on YouTube Music, songs on SoundCloud.
+// The search switched to YouTube Music (albums) or SoundCloud (songs): the words typed looked for there.
 const ONLINE = [['youtube', 'YOUTUBE MUSIC'], ['soundcloud', 'SOUNDCLOUD']];
-function onlineRows(app, query) {
-  if (!app.state.streaming || query.length < 2) return [];
-  return ONLINE.map(([where, name]) => el('div', { class: 'list-row command-row online-row', title: t('Look for it on {where}', { where: name }), onClick: () => searchOnline(app, where, name, query) },
-    el('span', { class: 'command-kind' }, '♪'),
-    el('span', { class: 'entry' }, t('{where}: “{query}”', { where: name, query }))));
+const onlineName = (k) => (ONLINE.find(([w]) => w === k) || [])[1] || null;
+function setSource(app, source) {
+  if (search.source === source) return;
+  search.source = source; search.online++; search.onlineQuery = null;
+  clearTimeout(search.onlineTimer);
+  paintSource(app);
+  if (source === 'library') refreshSearchResults(app); else searchOnline(app);
+  search.field.focus();
 }
-async function searchOnline(app, where, name, query) {
-  const asked = ++search.online; // (a newer search, or the words changed: this one's answer is left)
-  const back = el('div', { class: 'list-row command-row', title: t('Back to what’s yours'), onClick: () => { search.online++; refreshSearchResults(app); } },
-    el('span', { class: 'command-kind' }, '←'), el('span', { class: 'entry' }, t('YOUR MUSIC')));
+// The selector lit at the source in use; the title, the words above and the field say where it looks.
+function paintSource(app) {
+  if (!search.sourceRow) return;
+  if (!app.state.streaming && search.source !== 'library') search.source = 'library';
+  search.sourceRow.hidden = !app.state.streaming;
+  for (const [k, b] of search.sourceButtons) b.classList.toggle('on', k === search.source);
+  const name = onlineName(search.source);
+  search.title.textContent = name ? t('SEARCH · {where}', { where: name }) : t('SEARCH LIBRARY');
+  search.importRow.hidden = !!name;
+  search.instructions.textContent = search.source === 'youtube' ? t('Albums on YouTube Music — one played goes into the changer as a disc of your own')
+    : search.source === 'soundcloud' ? t('Songs on SoundCloud — after each title, who put it there')
+    : app.state.streaming ? t('Type to find a song in your library, something to do or a setting — or look on YouTube Music or SoundCloud')
+    : t('Type to find a song in your library, something to do or a setting — or paste a Spotify track/playlist link to add the matching songs you already have');
+}
+// A song's (or an album's) small cover at the start of its row, or an empty square where it would be.
+const rowCover = (src) => (src ? el('img', { class: 'row-cover', src, alt: '' }) : el('span', { class: 'row-cover' }));
+const minutes = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+async function searchOnline(app) {
+  const where = search.source, name = onlineName(where);
+  const query = search.field.value.trim().toLowerCase();
+  const asked = ++search.online; // (a newer search, the words changed, or back to your music: this one's answer is left)
+  clearTimeout(search.onlineTimer);
+  if (query.length < 2) { search.onlineQuery = null; setSearchStatus(t('TYPE WHAT TO LOOK FOR ON {where}', { where: name })); search.results.replaceChildren(); return; }
+  search.onlineQuery = query;
   setSearchStatus(t('LOOKING ON {where}…', { where: name }));
-  search.results.replaceChildren(back, el('div', { class: 'list-row plain' }, t('LOOKING…')));
+  // (rows waiting for what's found: a square for the cover, a bar for the name)
+  search.results.replaceChildren(...Array.from({ length: 5 }, () => el('div', { class: 'list-row plain waiting-row' }, el('span', { class: 'row-cover' }), el('span', { class: 'waiting-bar' }))));
   let found;
   try { found = await app.cdp.stream.search(query, where); } catch { found = null; }
-  if (asked !== search.online || !isOpen('search') || search.field.value.trim().toLowerCase() !== query) return;
-  if (!found) { setSearchStatus(t('{where} DIDN’T ANSWER · TRY AGAIN IN A MOMENT', { where: name })); search.results.replaceChildren(back); return; }
+  if (asked !== search.online || !isOpen('search')) return;
+  if (!found) {
+    setSearchStatus(t('{where} DIDN’T ANSWER', { where: name }));
+    search.results.replaceChildren(el('div', { class: 'list-row plain' }, pill(t('TRY AGAIN'), () => searchOnline(app))));
+    return;
+  }
   setSearchStatus(found.length ? t('{n} FOUND ON {where}', { n: found.length, where: name }) : t('NOTHING LIKE THAT ON {where}', { where: name }));
   const rows = found.map((f) => {
-    const row = f.kind === 'album' ? onlineAlbumRow(app, f) : trackRow(app, f.page, [f.artist, f.title].filter(Boolean).join(' · '), () => {
-      app.appendAndPlay(f.page); closePanel('search');
-    });
+    const row = f.kind === 'album' ? onlineAlbumRow(app, f) : onlineSongRow(app, f);
     // the mouse resting on it: its (first) song's sound asked for now — it may be clicked in a moment
     const first = f.kind === 'album' ? f.tracks[0] && f.tracks[0].page : f.page;
     let resting = null;
@@ -986,7 +1023,19 @@ async function searchOnline(app, where, name, query) {
     row.addEventListener('mouseleave', () => clearTimeout(resting));
     return row;
   });
-  search.results.replaceChildren(back, ...rows);
+  search.results.replaceChildren(...rows);
+}
+// A song on SoundCloud: its title first, then (quieter) who put it there, and its length — a 30 s preview, a
+// "slowed" copy, told apart at a glance. NEXT and ADD show on the row the mouse is on.
+function onlineSongRow(app, f) {
+  const row = trackRow(app, f.page, f.title || '', () => { app.appendAndPlay(f.page); closePanel('search'); });
+  const buttons = row.querySelectorAll('button');
+  buttons.forEach((b, i) => { if (i) b.classList.add('on-hover'); });
+  row.querySelector('.entry').replaceChildren(f.title || '', f.artist ? el('span', { class: 'by' }, ` · ${f.artist}`) : '');
+  row.prepend(rowCover(f.thumb));
+  if (f.duration) row.insertBefore(el('span', { class: 'when count' }, minutes(f.duration)), buttons[0]);
+  row.append(buttons[0]); // PLAY at the right edge, where it always is; NEXT and ADD come up beside it
+  return row;
 }
 // An album found: PLAY puts it in (a disc in the changer) and plays it, ADD only puts it in.
 function onlineAlbumRow(app, a) {
@@ -996,9 +1045,11 @@ function onlineAlbumRow(app, a) {
   const add = pill(t('ADD'), (e) => { e.stopPropagation(); put(false); e.currentTarget.textContent = t('✓ DONE'); e.currentTarget.disabled = true; },
     app.changerMode() ? t('Into the changer') : t('Add to queue'));
   for (const b of [now, add]) b.classList.add('small');
+  add.classList.add('on-hover');
   return el('div', { class: 'list-row', title: t('Play {song}', { song: a.title }), onClick: () => { put(true); closePanel('search'); } },
+    rowCover(a.thumb),
     el('span', { class: 'entry' }, [a.artist, a.title].filter(Boolean).join(' · ')),
-    el('span', { class: 'when count' }, t('{n} SONGS', { n: a.count })), now, add);
+    el('span', { class: 'when count' }, t('{n} SONGS', { n: a.count })), add, now);
 }
 // An action or a setting the search found, above the songs: an action is done (the search closed first), a setting
 // shown — Settings opened at its row.
@@ -1021,6 +1072,12 @@ export function showSettingAt(app, label, tries = 20) {
   row.classList.add('found');
 }
 async function onSearchInput(app) {
+  if (search.source !== 'library') {
+    search.online++; // (what's shown is for other words now)
+    clearTimeout(search.onlineTimer);
+    search.onlineTimer = setTimeout(() => searchOnline(app), 700);
+    return;
+  }
   const text = search.field.value.trim();
   const link = await app.cdp.classifySpotifyLink(text);
   if (link) {

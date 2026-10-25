@@ -218,6 +218,13 @@ function prepare(page) { if (isStreamPage(page)) resolve(page).then(ready).catch
 // (a song uploaded as a file is often named after it: "Xtal.mp3")
 const songTitle = (s) => (s ? String(s).replace(/\.(mp3|wav|flac|m4a|aiff?|ogg)$/i, '') : null);
 const artistName = (s) => (s ? String(s).replace(/ - Topic$/, '') : null);
+// The smallest picture still sharp at a list's 34 px (×2): what the search's results show — as data, the page loads no
+// picture from outside.
+const smallThumb = (list) => {
+  const l = (list || []).filter((x) => x && x.url).sort((a, b) => (a.width || 0) - (b.width || 0));
+  return (l.find((x) => (x.width || 0) >= 68) || l[l.length - 1] || {}).url || null;
+};
+const withThumb = async (r, list) => ({ ...r, thumb: await coverData(smallThumb(list)) });
 const bestThumb = (list) => {
   const l = (list || []).filter((x) => x && x.url);
   return l.length ? l.reduce((a, b) => ((b.width || 0) > (a.width || 0) ? b : a)).url : null;
@@ -232,17 +239,17 @@ const ALBUMS_NAMED = 8;
 async function search(query, where = 'youtube') {
   if (where === 'soundcloud') {
     const r = await run(['--flat-playlist', '-J', '--', `scsearch12:${query}`]);
-    return (r.entries || []).map((e) => {
+    return Promise.all((r.entries || []).map((e) => {
       const page = e.url;
       const song = { kind: 'song', page, title: songTitle(e.title), artist: e.uploader || null, duration: e.duration || null, cover: bestThumb(e.thumbnails) };
       remember(page, { title: song.title, artist: song.artist, duration: song.duration, cover: song.cover });
-      return song;
-    });
+      return withThumb(song, e.thumbnails);
+    }));
   }
   const r = await run(['--flat-playlist', '-J', '--', `https://music.youtube.com/search?q=${encodeURIComponent(query)}#albums`]);
   const pages = (r.entries || []).map((e) => e.url).filter(Boolean).slice(0, ALBUMS_NAMED);
   const named = await Promise.all(pages.map((pg) => album(pg).catch(() => null)));
-  return named.filter((a) => a && a.tracks.length).map((a) => ({ kind: 'album', ...a, count: a.tracks.length }));
+  return Promise.all(named.filter((a) => a && a.tracks.length).map((a) => withThumb({ kind: 'album', ...a, count: a.tracks.length }, a.thumbnails)));
 }
 
 /** An album (or playlist) page → { title, artist, cover, page, tracks: [{ page, title, artist, duration }] }. */
@@ -257,7 +264,7 @@ async function album(page) {
   const artist = tracks.length && tracks.every((t) => t.artist === tracks[0].artist) ? tracks[0].artist : (tracks[0] && tracks[0].artist) || null;
   const cover = bestThumb(r.thumbnails);
   tracks.forEach((t, i) => remember(t.page, { title: t.title, artist: t.artist, albumArtist: artist, album: title, duration: t.duration, cover, track: i + 1, of: tracks.length }));
-  return { title, artist, cover, page: r.webpage_url || page, tracks };
+  return { title, artist, cover, thumbnails: r.thumbnails || [], page: r.webpage_url || page, tracks };
 }
 
 // A cover's picture, as a data: URL (as a file's own cover is), kept for the session.

@@ -335,6 +335,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
 .setting-row.slider-row { justify-content: flex-start; }
 .setting-row.slider-row .slider { width: 150px; height: 20px; }
 .setting-hint { margin-top: 10px; width: 336px; font-size: 10px; font-weight: normal; color: rgb(var(--muted)); line-height: 1.35; }
+.setting-hint.quiet { margin-top: 4px; font-size: 9px; opacity: .75; }
 .gap-22 { height: 22px; flex: 0 0 auto; }
 /* Settings: SOUND / LOOK / PLAYBACK sections, each headed by a small label and a hairline. */
 .settings-jumps { display: flex; flex-wrap: wrap; gap: 4px 12px; }
@@ -1079,3 +1080,13 @@ body.no-anim .tour-spot, body.no-anim .tour-bubble { transition: none; }
 @media (max-height: 860px) {
   body.changer-mode #hint { text-align: right; }
 }
+
+/* The search's YouTube Music / SoundCloud: the source selector, covers in the rows, NEXT and ADD on the row the mouse is on */
+.source-row { margin: 10px 0 8px; }
+.source-row[hidden] { display: none; }
+.list-row .row-cover { flex: none; width: 34px; height: 34px; margin-right: 10px; border-radius: 3px; object-fit: cover; background: rgba(var(--muted), 0.15); box-shadow: 0 0 0 1px rgba(var(--muted), 0.25); }
+.list-row .entry .by { color: rgb(var(--muted)); font-weight: normal; }
+.list-row:not(:hover):not(:focus-within) .on-hover { display: none; } /* (the name has the room till then) */
+.waiting-row .waiting-bar { flex: 1; max-width: 55%; height: 10px; border-radius: 5px; background: rgba(var(--muted), 0.18); animation: waiting 1.2s ease-in-out infinite alternate; }
+@keyframes waiting { from { opacity: 0.45; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .waiting-row .waiting-bar { animation: none; } }
