@@ -45,3 +45,17 @@ test('a file that is not a backup, or names a path outside the data folder, is r
   assert.strictEqual(backup.read(evil('themes/../../x.cdtheme')), null);
   assert.strictEqual(backup.read(evil('spotify.txt')), null);
 });
+
+test('a backup by itself once a day, the last 7 kept, none while there is nothing yours yet', () => {
+  const dir = tmp(), DAY = 24 * 3600e3, start = Date.parse('2026-10-01T09:00:00Z');
+  assert.strictEqual(backup.keepDaily(dir, { now: start }), null);
+  put(dir, 'plays.txt', '7\t/a.flac\n');
+  const first = backup.keepDaily(dir, { version: '2.20.0', now: start });
+  assert.strictEqual(path.basename(first), 'CDPlayer 2026-10-01.cdbackup');
+  assert.strictEqual(backup.read(fs.readFileSync(first, 'utf8')).files['plays.txt'].toString(), '7\t/a.flac\n');
+  assert.strictEqual(backup.keepDaily(dir, { now: start + 3 * 3600e3 }), null); // the same day: one is enough
+  for (let d = 1; d <= 9; d++) backup.keepDaily(dir, { now: start + d * DAY });
+  const kept = fs.readdirSync(backup.dailyDir(dir)).sort();
+  assert.deepStrictEqual(kept, ['04', '05', '06', '07', '08', '09', '10'].map((d) => `CDPlayer 2026-10-${d}.cdbackup`));
+  assert.ok(!('backups' in backup.read(backup.make(dir)).files)); // backups aren't backed up
+});

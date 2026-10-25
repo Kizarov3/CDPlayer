@@ -420,6 +420,7 @@ function buildSettings(app) {
       pill(t('SAVE…'), async () => { const r = await app.cdp.saveBackup().catch(() => ({ error: true })); if (r) app.setStatus(r.ok ? t('BACKUP SAVED') : t('UNKNOWN ERROR')); }, t('Save your queue, history, plays, notes, themes and settings to one file')),
       pill(t('RESTORE…'), async () => { const r = await app.cdp.restoreBackup().catch(() => ({ error: 'UNKNOWN ERROR' })); if (r && r.error) app.setStatus(r.error === 'NOT A BACKUP' ? t('NOT A CDPLAYER BACKUP') : t('UNKNOWN ERROR')); }, t('Put back what a backup kept: CDPlayer then starts again')))),
     hint(t('For a new computer, or after reinstalling: everything that’s yours in CDPlayer, but not your music, nor Spotify and Discogs sign-ins.')),
+    quietHint(t('One is also made by itself each day, and the last 7 kept: RESTORE… opens where they are.')),
     row(t('IMPORT PLAYS'), el('div', { class: 'row-pills' }, pill(t('CHOOSE FILES…'), () => importPlays(app), t('The export from Last.fm, ListenBrainz, Spotify or Apple Music')))),
     hint(t('What you played on Last.fm, ListenBrainz, Spotify or Apple Music counts on the same songs here: their plays, dust and HISTORY. Imported again, nothing’s counted twice.')),
     quietHint(t('Spotify: Account → Privacy → Download your data (its .zip). Apple Music: File → Library → Export Library. Last.fm: a CSV from an exporter such as lastfm.ghan.nl. ListenBrainz: Settings → Export.')), gap(18),

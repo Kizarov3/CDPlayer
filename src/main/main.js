@@ -612,8 +612,15 @@ handle('backup:save', async () => {
   const target = /\.cdbackup$/i.test(r.filePath) ? r.filePath : `${r.filePath}.cdbackup`;
   try { fs.writeFileSync(target, backup.make(store.dataDir(), { version: APP_VERSION })); return { ok: true }; } catch { return { error: true }; }
 });
+// Once a day by itself as well (backup.keepDaily), a minute after starting and then every few hours it stays open.
+function dailyBackup() {
+  if (smokeDir || !gotLock) return;
+  if (playsTimer) { clearTimeout(playsTimer); writePlays(); }
+  try { backup.keepDaily(store.dataDir(), { version: APP_VERSION }); } catch { /* a full disk: tomorrow */ }
+}
 handle('backup:restore', async () => {
-  const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: BACKUP_FILTER() });
+  const daily = backup.dailyDir(store.dataDir());
+  const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: BACKUP_FILTER(), ...(fs.existsSync(daily) ? { defaultPath: daily } : {}) });
   const p = !r.canceled && r.filePaths && r.filePaths[0];
   if (!p) return null;
   let b = null;
@@ -1325,6 +1332,8 @@ app.whenReady().then(() => {
   buildMenu();
   createWindow();
   watchMusicFolder(); // (also, the first time, makes the old music folder the list — before any dialog can move it)
+  setTimeout(dailyBackup, 60e3);
+  setInterval(dailyBackup, 4 * 3600e3);
   if (remoteConf.on && !smokeDir && gotLock) remoteDo(turnRemoteOn); // (a second launch, handing over to the first, never)
   if (!smokeDir && (process.platform === 'darwin' || process.platform === 'linux' || process.platform === 'win32' || process.env.CDPLAYER_CD_ROOT)) {
     setTimeout(pollDiscs, 1500);

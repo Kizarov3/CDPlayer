@@ -70,4 +70,23 @@ function restore(dir, backup) {
   for (const [name, bytes] of Object.entries(backup.files)) write(path.join(dir, ...name.split('/')), bytes);
 }
 
-module.exports = { make, read, restore, FILES };
+// A backup made by itself once a day, into backups/ in the data folder: the newest KEEP kept, so a song history cleared,
+// a restore regretted or a file broken can be undone from the day before — RESTORE… opens there.
+const DAILY = 'backups', KEEP = 7, DAY = 20 * 3600e3; // (a day, give or take: CDPlayer started each morning makes one each)
+const dailyDir = (dir) => path.join(dir, DAILY);
+/** Makes today's backup in `dir`/backups/ if the newest there is older than a day; → its path, or null. */
+function keepDaily(dir, { version, now = Date.now() } = {}) {
+  if (!ownFiles(dir).length) return null;
+  const to = dailyDir(dir);
+  let kept = [];
+  try { kept = fs.readdirSync(to).filter((f) => /^CDPlayer \d{4}-\d{2}-\d{2}\.cdbackup$/.test(f)).sort(); } catch { /* none yet */ }
+  const newest = kept.length ? fs.statSync(path.join(to, kept[kept.length - 1])).mtimeMs : 0;
+  if (now - newest < DAY) return null;
+  const name = `CDPlayer ${new Date(now).toISOString().slice(0, 10)}.cdbackup`, target = path.join(to, name);
+  write(target, make(dir, { version, now }));
+  fs.utimesSync(target, now / 1000, now / 1000);
+  for (const old of [...new Set([...kept, name])].sort().slice(0, -KEEP)) fs.rmSync(path.join(to, old), { force: true });
+  return target;
+}
+
+module.exports = { make, read, restore, keepDaily, dailyDir, FILES };

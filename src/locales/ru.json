@@ -620,6 +620,7 @@
   "OUTPUT: {rate} — RESAMPLED (THE DEVICE CAN'T PLAY {file})": "ВЫХОД: {rate} — ПЕРЕСЭМПЛИРОВАН (УСТРОЙСТВО НЕ МОЖЕТ ВОСПРОИЗВОДИТЬ {file})",
   "Oct": "окт",
   "On your app’s page on the dashboard, open Settings. Copy the Client ID, and the Client Secret (under View client secret), and paste them here.": "На странице своего приложения в дашборде открой Settings. Скопируй Client ID и Client Secret (под View client secret) и вставь их сюда.",
+  "One is also made by itself each day, and the last 7 kept: RESTORE… opens where they are.": "А ещё копия делается сама каждый день, последние 7 хранятся: ВОССТАНОВИТЬ… откроет их папку.",
   "Online": "Онлайн",
   "Only lookups: covers and lyrics by artist and title, album details from MusicBrainz, an album’s pressing and price from Discogs when you open its case or appraise the shelf, and a check for a new version on GitHub. No account, no tracking, nothing about you. Spotify talks to Spotify only if you connect it.": "Только запросы: обложки и тексты по исполнителю и названию, данные альбомов с MusicBrainz, прессинг и цена альбома с Discogs, когда открываешь его коробку или оцениваешь полку, и проверка новой версии на GitHub. Ни аккаунта, ни слежки, ничего о тебе. Spotify общается со Spotify, только если ты его подключишь.",
   "Open / close the disc tray": "Открыть / закрыть лоток",
