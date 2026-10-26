@@ -20,8 +20,8 @@ disc.setMode('mini');
 disc.onMiniClick = () => send('toggle');
 const vis = new Visualizer($('vis'), { spectrum: false }); // five plain bars — a tiny live "now playing" indicator
 
-$('prev').append(glyphSvg('PREVIOUS_TRACK', 24));
-$('next').append(glyphSvg('NEXT_TRACK', 24));
+$('prev').append(glyphSvg('PREVIOUS_TRACK', 28));
+$('next').append(glyphSvg('NEXT_TRACK', 28));
 $('shuffle').append(glyphSvg('SHUFFLE', 18));
 $('repeat').prepend(glyphSvg('REPEAT', 18));
 let playGlyph = null;
