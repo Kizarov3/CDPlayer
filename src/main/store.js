@@ -63,7 +63,7 @@ const safePath = (p) => typeof p === 'string' && !/[\r\n]/.test(p);
 
 // settings.txt — one value per line, in the Java app's order: volume, crossfade, mono, animations, theme, EQ
 // gains, waveform, mini mode, window bounds, ambient background, then Discord status, disc noise and saving found
-// art & lyrics into files, the lyrics offset in ms, how the shelf is sorted, disc wear, the audio output ("id<TAB>name") and the language (AUTO, en or a locale code), then the sound quality (HIGH, LOSSLESS or HIRES), spatial audio (1/0) and its amount (0–100), the disc's shine (1/0) and the disc on the app's icon (1/0; on unless turned off, but off on Windows unless turned on) and Sound Check (OFF, TRACK or ALBUM), then the CD changer mode (ON/OFF), then SHUFFLE and REPEAT for the queue and for the changer ("OFF ALL DISC TRACK"), then the display under the seek bar (DECK or CLASSIC), then TRANSITION (OFF, AUTOMIX or CROSSFADE) and the crossfade's seconds, kept while another is picked, then streaming (ON/OFF), then the player's LOOK (CLASSIC, DOCK, STAGE, GLASS, PANEL or COVER), then how the ambient background is drawn (COVER or GRADIENT)
+// art & lyrics into files, the lyrics offset in ms, how the shelf is sorted, disc wear, the audio output ("id<TAB>name") and the language (AUTO, en or a locale code), then the sound quality (HIGH, LOSSLESS or HIRES), spatial audio (1/0) and its amount (0–100), the disc's shine (1/0) and the disc on the app's icon (1/0; on unless turned off, but off on Windows unless turned on) and Sound Check (OFF, TRACK or ALBUM), then the CD changer mode (ON/OFF), then SHUFFLE and REPEAT for the queue and for the changer ("OFF ALL DISC TRACK"), then the display under the seek bar (DECK or CLASSIC), then TRANSITION (OFF, AUTOMIX or CROSSFADE) and the crossfade's seconds, kept while another is picked, then streaming (ON/OFF), then the player's LOOK (CLASSIC, VISUALIZER, LYRICS, HIFI or ALBUM), then how the ambient background is drawn (COVER or GRADIENT)
 // (CDPlayer 2 only; the second line still holds the crossfade's seconds while it's the one picked, else 0, as the Java app reads it). Missing trailing
 // lines keep their defaults.
 const DEFAULT_SETTINGS = {
@@ -75,7 +75,9 @@ const QUALITIES = ['HIGH', 'LOSSLESS', 'HIRES'];
 const SOUND_CHECKS = ['OFF', 'TRACK', 'ALBUM'];
 const TRANSITIONS = ['OFF', 'AUTOMIX', 'CROSSFADE'];
 const DISPLAYS = ['DECK', 'CLASSIC'];
-const LOOKS = ['CLASSIC', 'DOCK', 'STAGE', 'GLASS', 'PANEL', 'COVER'];
+const LOOKS = ['CLASSIC', 'VISUALIZER', 'LYRICS', 'HIFI', 'ALBUM'];
+// (the looks' older names: the same looks, done again; GLASS is gone)
+const OLD_LOOKS = { DOCK: 'VISUALIZER', STAGE: 'LYRICS', PANEL: 'HIFI', COVER: 'ALBUM' };
 // SHUFFLE and REPEAT: each mode keeps its own.
 const SHUFFLES = { QUEUE: ['OFF', 'ALL'], CHANGER: ['OFF', 'DISC', 'ALL'] }, REPEATS = { QUEUE: ['OFF', 'TRACK', 'ALL'], CHANGER: ['OFF', 'TRACK', 'DISC', 'ALL'] };
 function defaultPlayModes() { return { QUEUE: { shuffle: 'OFF', repeat: 'OFF' }, CHANGER: { shuffle: 'OFF', repeat: 'OFF' } }; }
@@ -130,7 +132,8 @@ function readSettings() {
   s.transition = TRANSITIONS.includes(mode) ? mode : mode === '1' ? 'AUTOMIX' : seconds > 0 ? 'CROSSFADE' : 'OFF';
   s.crossfade = keptSeconds >= 1 && keptSeconds <= 15 ? keptSeconds : seconds > 0 ? seconds : 5;
   s.streaming = String(l[28] || '').trim() === 'ON';
-  s.look = LOOKS.includes(String(l[29] || '').trim()) ? String(l[29]).trim() : 'CLASSIC';
+  const look = String(l[29] || '').trim();
+  s.look = LOOKS.includes(look) ? look : OLD_LOOKS[look] || 'CLASSIC';
   s.ambientStyle = String(l[30] || '').trim() === 'GRADIENT' ? 'GRADIENT' : 'COVER';
   return s;
 }

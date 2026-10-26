@@ -116,6 +116,7 @@ state.systemRate = engine.rate; // the device's rate as CDPlayer found it, befor
 const disc = new Disc($('disc'));
 const visualizer = new Visualizer($('visualizer'));
 const bigVisualizer = new Visualizer($('big-visualizer'), { big: true });
+const lookVisualizer = new Visualizer($('look-visualizer'), { big: true }); // (the VISUALIZER look's, behind the player)
 const particles = new Particles($('particles'));
 const noise = new DiscNoise(engine);
 const shake = new ShakeDetector();
@@ -1192,7 +1193,7 @@ function setPlaying(playing) {
   playButton.setGlyph(playing ? 'PAUSE' : 'PLAY'); pulse(playButton, true);
   if (playing) spotifyTrouble = null;
   setStatus(playing ? (state.volume === 0 ? t('NOW SPINNING · SOUND OFF') : t('NOW SPINNING')) : spotifyActive() && spotifyTrouble ? spotifyTrouble : state.loadedPath ? t('PAUSED') : t('READY TO PLAY'));
-  visualizer.setActive(playing); bigVisualizer.setActive(playing);
+  visualizer.setActive(playing); bigVisualizer.setActive(playing); lookVisualizer.setActive(playing);
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = state.loadedPath ? (playing ? 'playing' : 'paused') : 'none';
   pushMini(true);
   pushDiscord();
@@ -1969,6 +1970,7 @@ function applyThemeModes(theme) {
   particles.setMode(particleModeFor(theme));
   visualizer.setMode(visualizerModeFor(theme));
   bigVisualizer.setMode(visualizerModeFor(theme));
+  lookVisualizer.setMode(visualizerModeFor(theme));
   panels.updateThemeButton(app, theme.name);
 }
 let shownTheme = THEMES[0]; // the theme on screen: the one chosen, or the one being made in the editor
@@ -2683,7 +2685,7 @@ function buildStaticUi() {
   $('lyrics-button').addEventListener('click', () => panels.showLyrics(app));
   $('karaoke-button').addEventListener('click', toggleKaraoke);
   $('tray-button').addEventListener('click', toggleTray);
-  // STAGE: the queue and the changer slide in at the side, and away again with a click anywhere else
+  // LYRICS and VISUALIZER: the queue and the changer slide in at the side, and away again with a click anywhere else
   $('queue-toggle').addEventListener('click', (e) => { e.stopPropagation(); showQueueDrawer(!document.body.classList.contains('queue-open')); });
   document.addEventListener('click', (e) => { if (document.body.classList.contains('queue-open') && !e.target.closest('#queue-card, #overlays')) showQueueDrawer(false); });
   $('cd-button').addEventListener('click', playAudioCd);
@@ -2903,7 +2905,7 @@ function setDisplay(kind, { save = true } = {}) {
   document.body.classList.toggle('classic-display', state.display === 'CLASSIC');
   if (save) saveSettingsSoon();
 }
-const LOOKS = ['CLASSIC', 'DOCK', 'STAGE', 'GLASS', 'PANEL', 'COVER'];
+const LOOKS = ['CLASSIC', 'VISUALIZER', 'LYRICS', 'HIFI', 'ALBUM'];
 function setLook(kind, { save = true } = {}) {
   state.look = LOOKS.includes(kind) ? kind : 'CLASSIC';
   for (const k of LOOKS) document.body.classList.toggle(`look-${k.toLowerCase()}`, state.look === k);
@@ -3002,6 +3004,10 @@ function frame(now) {
   if (state.visualizerMode) bigVisualizer.setSpectrum(engine.playing ? engine.spectrum(bigVisualizer.n) : null, dt);
   visualizer.draw(now);
   if (state.visualizerMode) bigVisualizer.draw(now);
+  if (state.look === 'VISUALIZER' && !state.cdView && !state.visualizerMode) {
+    lookVisualizer.setSpectrum(engine.playing ? engine.spectrum(lookVisualizer.n) : null, dt);
+    lookVisualizer.draw(now);
+  }
   if (isKaraokeOpen()) updateKaraoke(lyricsPosition());
   watchForShake(now);
   stepDiscMorph(now);

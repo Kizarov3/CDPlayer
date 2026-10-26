@@ -416,24 +416,6 @@ function spotlight(g, song, colors) {
   return { x: 140, w: W - 280, top: floor + 6, height: H - floor - 46, align: 'center', label: null, fit: true };
 }
 
-// GLASS: a pane of frosted glass over the cover blown up behind it.
-function glassPane(g, song, colors) {
-  g.fillStyle = rgb(colors.bg); g.fillRect(0, 0, W, H);
-  if (song.cover) { g.save(); g.filter = 'blur(40px) saturate(1.5)'; g.drawImage(song.cover, -160, -160, W + 320, W + 320); g.restore(); }
-  else wash(g, song, colors, { alpha: 0.6 });
-  g.fillStyle = 'rgba(12,12,14,0.42)'; g.fillRect(0, 0, W, H);
-  const px = 50, py = 50, pw = W - 100, ph = H - 100;
-  shadowed(g, 40, 14, 0.35, () => { g.fillStyle = 'rgba(255,255,255,0.1)'; g.beginPath(); g.roundRect(px, py, pw, ph, 30); g.fill(); });
-  const edge = g.createLinearGradient(px, py, px + pw, py + ph);
-  edge.addColorStop(0, 'rgba(255,255,255,0.42)'); edge.addColorStop(0.5, 'rgba(255,255,255,0.08)'); edge.addColorStop(1, 'rgba(255,255,255,0.22)');
-  g.strokeStyle = edge; g.lineWidth = 1.5; g.beginPath(); g.roundRect(px + 0.75, py + 0.75, pw - 1.5, ph - 1.5, 30); g.stroke();
-  const cs = ph - 80, cx = px + 40, cy = py + 40;
-  shadowed(g, 30, 10, 0.45, () => { g.fillStyle = '#000'; g.beginPath(); g.roundRect(cx, cy, cs, cs, 18); g.fill(); });
-  g.save(); g.beginPath(); g.roundRect(cx, cy, cs, cs, 18); g.clip(); art(g, song, cx, cy, cs); g.restore();
-  return { x: cx + cs + 56, w: px + pw - (cx + cs + 56) - 40, top: cy, height: cs, mark: 'rgba(255,255,255,0.6)',
-    ink: { text: [255, 255, 255], accent: [255, 255, 255], accent2: [236, 236, 242], muted: [205, 205, 215] } }; // (white on the glass, whatever the cover)
-}
-
 // PANEL: the front of a hi-fi deck — brushed metal, screws in its corners, the words lit up in its display.
 function faceplate(g, song, colors, rnd) {
   const metal = g.createLinearGradient(0, 0, 0, H);
@@ -474,7 +456,7 @@ function fullBleed(g, song, colors) {
   return { x: H + 50, w: W - H - 100, top: 60, height: H - 120, font: SYSTEM, label: null, titleStyle: '800' };
 }
 
-const LOOK_STYLES = { DOCK: dockBar, STAGE: spotlight, GLASS: glassPane, PANEL: faceplate, COVER: fullBleed };
+const LOOK_STYLES = { VISUALIZER: dockBar, LYRICS: spotlight, HIFI: faceplate, ALBUM: fullBleed };
 
 const STYLES = { RED: jewelCase, BLUE: discOut, SUNSET: sunset, FOREST: polaroid, GALAXY: planet, OCEAN: reflection, MATRIX: terminal, AUTUMN: ticket, SNOW: frost, AUTO: streamApp };
 const MONO = '"SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace';

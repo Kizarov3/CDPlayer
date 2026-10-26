@@ -333,7 +333,7 @@ function buildSettings(app) {
     pick: () => app.setQuality(level).then(() => refreshSettingsIfOpen(app)),
   }))), t('How the sound leaves CDPlayer'));
   const SOUND_CHECK_NAMES = { OFF: t('OFF'), ALBUM: t('ALBUM'), TRACK: t('TRACK') };
-  const LOOK_NAMES = { CLASSIC: t('CLASSIC|look'), DOCK: t('DOCK|look'), STAGE: t('STAGE|look'), GLASS: t('GLASS|look'), PANEL: t('PANEL|look'), COVER: t('COVER|look') };
+  const LOOK_NAMES = { CLASSIC: t('CLASSIC|look'), VISUALIZER: t('VISUALIZER|look'), LYRICS: t('LYRICS|look'), HIFI: t('HI-FI|look'), ALBUM: t('ALBUM|look') };
   const lookButton = pill(LOOK_NAMES[s.look] || LOOK_NAMES.CLASSIC, () => showMenu(lookButton, Object.keys(LOOK_NAMES).map((kind) => ({
     label: LOOK_NAMES[kind], current: kind === (s.look || 'CLASSIC'), pick: () => { app.setLook(kind); refreshSettingsIfOpen(app); },
   }))));

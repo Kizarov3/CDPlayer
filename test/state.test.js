@@ -379,9 +379,14 @@ test('YOUTUBE MUSIC & SOUNDCLOUD: off unless turned on, kept on its own line', (
 test("the player's LOOK: CLASSIC unless another is picked, kept on its own line; one it doesn't know is CLASSIC", () => {
   fs.writeFileSync(path.join(home, 'settings.txt'), '70\n0\n1\n0\nOCEAN\n0,0,0,0,0,0,0,0,0,0\n0\n0\n\n0\n1\n');
   assert.strictEqual(store.readSettings().look, 'CLASSIC', 'an older file');
-  store.writeSettings({ ...store.readSettings(), look: 'STAGE' });
-  assert.strictEqual(store.readSettings().look, 'STAGE');
-  assert.strictEqual(fs.readFileSync(path.join(home, 'settings.txt'), 'utf8').split('\n')[29], 'STAGE');
+  store.writeSettings({ ...store.readSettings(), look: 'LYRICS' });
+  assert.strictEqual(store.readSettings().look, 'LYRICS');
+  assert.strictEqual(fs.readFileSync(path.join(home, 'settings.txt'), 'utf8').split('\n')[29], 'LYRICS');
+  const lines = fs.readFileSync(path.join(home, 'settings.txt'), 'utf8').split('\n');
+  for (const [old, now] of [['STAGE', 'LYRICS'], ['DOCK', 'VISUALIZER'], ['PANEL', 'HIFI'], ['COVER', 'ALBUM'], ['GLASS', 'CLASSIC']]) {
+    lines[29] = old; fs.writeFileSync(path.join(home, 'settings.txt'), lines.join('\n'));
+    assert.strictEqual(store.readSettings().look, now, `${old}, its older name`);
+  }
   store.writeSettings({ ...store.readSettings(), look: 'NEON' });
   assert.strictEqual(store.readSettings().look, 'CLASSIC');
 });
