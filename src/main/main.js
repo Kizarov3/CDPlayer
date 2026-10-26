@@ -874,20 +874,36 @@ handle('dialog:importLibrary', async () => {
 function miniPositionOnScreen(p) {
   return p && screen.getAllDisplays().some(({ workArea: a }) => p.x >= a.x - MINI.width / 2 && p.x <= a.x + a.width - MINI.width / 2 && p.y >= a.y && p.y <= a.y + a.height - 40);
 }
+// Its size: dragged by an edge or a corner, bigger or smaller, the same shape (the page scaled to it, mini.js).
+const MINI_WIDTHS = [260, 460];
+const miniSize = (width) => {
+  const w = Math.round(Math.min(MINI_WIDTHS[1], Math.max(MINI_WIDTHS[0], width || MINI.width)));
+  return { width: w, height: Math.round(w * MINI.height / MINI.width) };
+};
+function readMiniSize() {
+  const parts = (store.readText(store.FILES.miniPosition) || '').trim().split(',').map((v) => parseInt(v, 10));
+  return miniSize(parts[2]);
+}
 function readMiniPosition() {
   const parts = (store.readText(store.FILES.miniPosition) || '').trim().split(',').map((v) => parseInt(v, 10));
-  const saved = parts.length === 2 && parts.every(Number.isFinite) ? { x: parts[0], y: parts[1] } : null;
+  const saved = parts.length >= 2 && parts.slice(0, 2).every(Number.isFinite) ? { x: parts[0], y: parts[1] } : null;
   if (miniPositionOnScreen(saved)) return saved;
   // First time: top-right corner of whichever display the main window is on.
   const { workArea: a } = screen.getDisplayMatching(win ? win.getBounds() : { x: 0, y: 0, width: 1, height: 1 });
-  return { x: a.x + a.width - MINI.width - 24, y: a.y + 24 };
+  return { x: a.x + a.width - readMiniSize().width - 24, y: a.y + 24 };
+}
+function saveMiniPlace() {
+  const [x, y] = miniWin.getPosition();
+  store.writeText(store.FILES.miniPosition, `${x},${y},${miniWin.getSize()[0]}`);
 }
 
 function createMiniWindow() {
   miniWin = new BrowserWindow({
-    ...MINI, ...readMiniPosition(),
+    ...readMiniSize(), ...readMiniPosition(),
     frame: false,
-    resizable: false, maximizable: false, fullscreenable: false,
+    resizable: true, maximizable: false, fullscreenable: false,
+    minWidth: MINI_WIDTHS[0], minHeight: miniSize(MINI_WIDTHS[0]).height,
+    maxWidth: MINI_WIDTHS[1], maxHeight: miniSize(MINI_WIDTHS[1]).height,
     alwaysOnTop: true,
     show: false,
     hasShadow: true,
@@ -904,10 +920,9 @@ function createMiniWindow() {
   miniWin.setAlwaysOnTop(true, 'floating');
   // (On macOS this would make CDPlayer a background app with no Dock icon — for good, even after the mini player: kept.)
   miniWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
-  miniWin.on('moved', () => {
-    const [x, y] = miniWin.getPosition();
-    store.writeText(store.FILES.miniPosition, `${x},${y}`);
-  });
+  miniWin.setAspectRatio(MINI.width / MINI.height);
+  miniWin.on('moved', saveMiniPlace);
+  miniWin.on('resized', saveMiniPlace);
   // Closing the mini player (Cmd+W, or from the taskbar) goes back to the full window rather than quitting.
   miniWin.on('close', (e) => {
     if (quitting) return;

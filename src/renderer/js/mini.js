@@ -47,6 +47,10 @@ function rise(node, text) {
   node.classList.remove('rise'); void node.offsetWidth; node.classList.add('rise');
 }
 setPlayGlyph(false);
+// Made bigger or smaller (by an edge, the same shape): all of it scaled to the window, laid out as at 340 px wide.
+const fitToWindow = () => { document.documentElement.style.zoom = String(innerWidth / 340); };
+fitToWindow();
+window.addEventListener('resize', fitToWindow);
 
 $('close').addEventListener('click', () => send('exit'));
 $('prev').addEventListener('click', () => send('prev'));

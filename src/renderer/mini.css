@@ -21,7 +21,7 @@ button { font-family: inherit; outline: none; }
 
 #panel {
   position: relative;
-  height: 100vh;
+  height: 100%;
   padding: 16px 16px 14px;
   display: flex; flex-direction: column;
   border-radius: 12px;
