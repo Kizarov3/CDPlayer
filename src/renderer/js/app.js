@@ -20,7 +20,7 @@ import { createChangerView } from './changer-view.js';
 import { pointAtDrawn } from './tour-view.js';
 import { dockIcon } from './dock-disc.js';
 import { drawCard, lyricChoices, cardSubtitle, quoteLines, MAX_QUOTE_LINES } from './share-card.js';
-import { recordVideo, videoSpan, sceneFor, VIDEO_SECONDS } from './share-video.js';
+import { recordVideo, videoSpan, VIDEO_SECONDS } from './share-video.js';
 import * as panels from './panels.js';
 import { t, locale, translatePage } from './i18n.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
@@ -1144,8 +1144,7 @@ function shareCard() {
       try {
         const made = await recordVideo({ format, audio: withSound ? engine.recordingStream() : null, onTick, begin, playing: withSound ? stillGoing() : () => true,
           seconds: span ? span.end - span.start : VIDEO_SECONDS, song: {
-            ...song, face: disc.renderFace(512, 1).canvas, colors: { ...colors }, timed, duration: engine.duration,
-            scene: sceneFor(state.look, shownTheme.name), // (each design its own, as the card)
+            ...song, face: disc.renderFace(512, 1).canvas, colors: { ...colors }, timed,
             // Where the song is as each frame is drawn: what's recorded is taken before the output, so no delay for it.
             position: () => heardPosition(engine.position, 0, state.lyricsOffset),
           } });
@@ -2014,6 +2013,7 @@ function paintCoverGlow() {
 // and drift round each other (styles.css: each drawn small, already blurred, and scaled up: only moved, on the card).
 function paintFlow(cover) {
   const iw = cover.naturalWidth, ih = cover.naturalHeight, m = Math.min(iw, ih);
+  let light = 0;
   $('backdrop-flow').querySelectorAll('i').forEach((blob, k) => {
     const c = Object.assign(document.createElement('canvas'), { width: 96, height: 96 }), g = c.getContext('2d');
     g.filter = 'blur(5px) saturate(2) brightness(1.2)';
@@ -2024,7 +2024,23 @@ function paintFlow(cover) {
     round.addColorStop(0, '#000'); round.addColorStop(1, 'rgba(0,0,0,0)');
     g.globalCompositeOperation = 'destination-in'; g.fillStyle = round; g.fillRect(0, 0, 96, 96);
     blob.style.backgroundImage = `url(${c.toDataURL()})`;
+    if (k === 0) light = lightOf(g.getImageData(0, 0, 96, 96).data);
   });
+  // A bright cover (a desert at noon) washes the words out: the veil over it darker, till the light behind them is
+  // what a dull cover's is.
+  const veil = Math.min(0.6, Math.max(0.14, 1 - 0.13 / Math.max(light, 0.01)));
+  $('backdrop').style.setProperty('--flow-veil', veil.toFixed(2));
+  $('backdrop').style.setProperty('--flow-veil-low', Math.min(0.7, veil + 0.26).toFixed(2));
+}
+// How light a picture is, on average (its relative luminance, 0–1; its see-through rim left out).
+function lightOf(px) {
+  const lin = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  let sum = 0, weight = 0;
+  for (let i = 0; i < px.length; i += 16) {
+    const a = px[i + 3] / 255;
+    sum += a * (0.2126 * lin(px[i]) + 0.7152 * lin(px[i + 1]) + 0.0722 * lin(px[i + 2])); weight += a;
+  }
+  return weight ? sum / weight : 0;
 }
 // The window resized while the glow is stretched here: stretched again once it has settled (not on every step).
 function paintCoverGlowSoon() { clearTimeout(glowResize); glowResize = setTimeout(paintCoverGlow, 200); }

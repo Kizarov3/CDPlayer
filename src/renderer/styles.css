@@ -68,7 +68,7 @@ button { font-family: inherit; outline: none; }
 #backdrop-flow { position: absolute; inset: 0; overflow: hidden; opacity: 0; transition: opacity 800ms; background: rgb(var(--bg)); }
 #backdrop.has-flow #backdrop-flow { opacity: 1; }
 #backdrop.has-flow #backdrop-art { opacity: 0; }
-#backdrop.has-flow::before { background: linear-gradient(to bottom, rgba(10, 10, 12, .14), rgba(8, 8, 9, .4)); }
+#backdrop.has-flow::before { background: linear-gradient(to bottom, rgba(10, 10, 12, var(--flow-veil, .14)), rgba(8, 8, 9, var(--flow-veil-low, .4))); } /* (darker over a bright cover: paintFlow) */
 #backdrop.has-flow { --top-shade: .5; --top-shade-height: 18%; }
 #backdrop-flow i {
   position: absolute; left: 50%; top: 50%; width: 100px; height: 100px; margin: -50px 0 0 -50px;
