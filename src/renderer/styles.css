@@ -795,6 +795,7 @@ body.no-anim .queue-row.active .num::after { animation: none; }
   padding: 4px 6px; outline: none;
 }
 .text-input:focus { border-color: rgba(var(--accent), .8); }
+.text-input:disabled { opacity: .45; }
 
 .tip-row { display: flex; gap: 10px; margin-bottom: 10px; width: 400px; }
 .tip-row .dot { color: rgb(var(--accent2)); font-size: 9px; padding-top: 3px; }

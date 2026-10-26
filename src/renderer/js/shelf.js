@@ -265,10 +265,13 @@ async function load({ quiet = false } = {}) {
   if (quiet) $('shelf-body').scrollTop = scroll;
 }
 
+// With no folder yet, or nothing in it, there's nothing for these to work on: they're off until there is.
+function dimTools(idle) { for (const id of ['shelf-filter', 'shelf-check', 'shelf-pull', 'shelf-appraise', 'shelf-show', 'shelf-sort']) $(id).disabled = idle; }
 function render() {
   const body = $('shelf-body');
   if (shelf.observer) shelf.observer.disconnect();
   if (!shelf.folderName) {
+    dimTools(true);
     $('shelf-count').textContent = '';
     body.replaceChildren(el('div', { class: 'shelf-empty' },
       el('div', {}, t('Which folder is your music in?')),
@@ -281,6 +284,7 @@ function render() {
     && showsAlbum(a, shelf.show, nowShow));
   // An album's editions behind one spine, and counted as one (first all of them, then the ones shown: each sets them)
   const n = groupEditions(shelf.albums).length;
+  dimTools(!n);
   const shown = groupEditions(found);
   $('shelf-show').textContent = showing ? `${t('SHOW|shelf')}: ${shelf.showLabel}` : t('SHOW: ALL');
   $('shelf-show').classList.toggle('on', showing);
