@@ -9,8 +9,8 @@ import { discLayout, radiusAt, trackAt, R0 } from './disc-data.js';
 import { t } from './i18n.js';
 
 const SIZES = {
-  normal: { cap: 720, margin: 40 },
-  enlarged: { cap: 960, margin: 40 },
+  normal: { cap: 520, margin: 40 },
+  enlarged: { cap: 800, margin: 40 },
   mini: { cap: 84, margin: 4 },
 };
 const EJECT_OUT = 300, EJECT_HOLD = 180, EJECT_BACK = 320;
