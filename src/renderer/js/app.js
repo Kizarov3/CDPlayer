@@ -9,7 +9,7 @@ import { Visualizer } from './visualizer.js';
 import { Particles } from './particles.js';
 import { anim, EASE, el, pill, roundButton, modeButton, Slider, fitText, pulse, followPlaying } from './widgets.js';
 import { openBooklet, closeBooklet } from './booklet.js';
-import { setLookLyrics, followLookLyrics } from './look-lyrics.js';
+import { setLookLyrics, showLookSongs, followLookLyrics } from './look-lyrics.js';
 import { VuMeters } from './vu-meters.js';
 import { withoutHeader, parseLrc, currentLineIndex, heardPosition, playbackTimeFor, looksOnlineFor, takesOnline } from './lyrics.js';
 import { shortcutKey } from './keys.js';
@@ -69,6 +69,7 @@ const state = {
   queue: [], index: -1, shuffle: 'OFF', repeat: 'OFF', playModes: null, // playModes: the other mode's SHUFFLE / REPEAT, kept for it; SHUFFLE OFF / DISC / ALL, REPEAT OFF / TRACK / DISC / ALL
   changer: { slots: Array(changer.SLOTS).fill(null), nextDisc: null }, // the slots over queue and index (changer.js)
   changerMode: false,  // Settings → CHANGER: the five-disc changer instead of the queue (each keeps its own music)
+  lyricsLooking: null, // the load token of the song whose words are being looked up online (lookUpLyrics)
   hidden: null, hiddenPhase: null, // the playing file's hidden track and where the position is in it (hidden-track.js)
   softwareRendering: false, // the window put together without the graphics card (gpu-status.js, render-budget.js)
   skipped: new Set(),  // songs (paths) marked SKIP in their case: passed over as the music moves on, still played when picked
@@ -323,6 +324,10 @@ function updateAlbumHead() {
     .filter(Boolean).join(' · ');
 }
 function renderQueue() {
+  drawQueue();
+  refreshLookSongs(); // (a song without words: the list of the disc's songs)
+}
+function drawQueue() {
   if (!changerView) return; // not built yet
   syncRev();
   updateAlbumHead();
@@ -1023,7 +1028,10 @@ async function lookUpCover(details, path, token) {
   }
 }
 async function lookUpLyrics(details, token) {
+  state.lyricsLooking = token; // (shown in the LYRICS look, where a song without words lists the disc's songs)
+  refreshLookSongs();
   const found = await cdp.findLyrics({ ...lookupName(details), album: details.album, duration: details.duration || engine.duration }).catch(() => null);
+  if (state.lyricsLooking === token) { state.lyricsLooking = null; refreshLookSongs(); }
   if (!found || token !== state.loadToken || !takesOnline(details.lyrics, found.lyrics)) return;
   // (lrclib's entries are user-submitted and some have artist and title swapped, so unlike a cover, the name lyrics
   // were found under never corrects the displayed name.)
@@ -1091,8 +1099,23 @@ function lyricsChanged() {
   $('karaoke-button').hidden = !canKaraoke(state.lyrics);
   panels.refreshLyricsIfOpen(app);
   refreshKaraoke();
-  setLookLyrics($('look-lyrics'), state.lyrics, seekToLyric);
+  showLookWords();
+}
+function showLookWords() {
+  setLookLyrics($('look-lyrics'), state.lyrics, seekToLyric, lookSongs());
   if (state.look === 'LYRICS') followLookLyrics($('look-lyrics'), lyricsPosition(), true);
+}
+function refreshLookSongs() { if (state.look === 'LYRICS') showLookSongs($('look-lyrics'), lookSongs()); }
+// What the LYRICS look lists where the words would be, when there are none: the songs of the disc playing (the changer's
+// disc, or the queue), the one playing lit.
+function lookSongs() {
+  const base = { looking: state.lyricsLooking === state.loadToken, play: (i) => goTo(i), empty: t('OPEN THE SHELF (S) AND PICK AN ALBUM — OR DROP SONGS HERE') };
+  if (!state.queue.length || state.index < 0) return { ...base, tracks: [] };
+  if (state.changerMode && shownChanger && shownChanger.tracks.length) {
+    return { ...base, heading: shownChanger.heading, tracks: shownChanger.tracks.filter((track) => !track.ghost) };
+  }
+  const tracks = state.queue.map((p, i) => { const d = detailsCache.get(p); return { index: i, no: i + 1, title: queueDisplay(p), time: formatDuration(d ? d.duration : 0), current: i === state.index, skipped: isSkipped(i) }; });
+  return { ...base, heading: (state.details && state.details.album) || '', tracks };
 }
 function toggleKaraoke() {
   if (isKaraokeOpen()) { closeKaraoke(); return; }
@@ -2766,6 +2789,8 @@ function buildStaticUi() {
   engine.onCrossfadeDone = () => { if (engine.playing) setStatus(stateStatus()); };
   drawDivider();
   new ResizeObserver(drawDivider).observe($('divider'));
+  // The window resized (or the look came on screen): the lit line goes back to where it sits in the new room.
+  new ResizeObserver(() => { if (state.look === 'LYRICS') followLookLyrics($('look-lyrics'), lyricsPosition(), true); }).observe($('look-lyrics'));
 }
 function spacer(w) { const s = el('span'); s.style.width = `${w}px`; s.style.flex = `0 0 ${w}px`; return s; }
 
@@ -2929,7 +2954,7 @@ function setLook(kind, { save = true } = {}) {
   state.look = LOOKS.includes(kind) ? kind : 'CLASSIC';
   for (const k of LOOKS) document.body.classList.toggle(`look-${k.toLowerCase()}`, state.look === k);
   showQueueDrawer(false);
-  if (state.look === 'LYRICS') requestAnimationFrame(() => followLookLyrics($('look-lyrics'), lyricsPosition(), true)); // (once it's laid out)
+  if (state.look === 'LYRICS') { showLookWords(); requestAnimationFrame(showLookWords); } // (again once it's laid out: where a line or song sits needs the room)
   if (save) saveSettingsSoon();
 }
 function showQueueDrawer(open) {
@@ -3013,8 +3038,9 @@ function frame(now) {
   if (engine.deck && engine.playing && !jog) { // turning the disc, the seek bar shows where it has got to (turnJog)
     updateProgressUi();
     panels.updateLyricsSync(app);
-    if (state.look === 'LYRICS' && !state.cdView) followLookLyrics($('look-lyrics'), lyricsPosition());
   }
+  // (also paused: a seek, or the disc turned by hand, moves the lit line too)
+  if (state.look === 'LYRICS' && !state.cdView && engine.deck) followLookLyrics($('look-lyrics'), lyricsPosition());
   // Both visualizers draw from the frequency spectrum (Visualizer Mode's only while it's showing); paused, they
   // settle back down.
   // The shelf covers the player (unless a spine is being carried over it): nothing of the player is drawn under it —

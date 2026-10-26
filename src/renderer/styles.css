@@ -297,19 +297,40 @@ body.look-lyrics:not(.cd-view) #player { grid-column: 1; grid-row: 2; }
 body.look-lyrics:not(.cd-view) #look-lyrics {
   display: block; grid-column: 2; grid-row: 1 / 3; min-height: 0; overflow-y: auto; scrollbar-width: none;
   padding: 18vh 8px 50vh 0;
-  -webkit-mask-image: linear-gradient(transparent, #000 14%, #000 72%, transparent);
+  -webkit-mask-image: linear-gradient(transparent, #000 12%, #000 80%, transparent);
 }
 #look-lyrics::-webkit-scrollbar { display: none; }
+/* (the lines grow with the window, and keep a width that reads well rather than running right across it) */
 #look-lyrics p {
-  margin: 0 0 22px; font-size: clamp(22px, 2.4vw, 34px); font-weight: bold; line-height: 1.22; letter-spacing: -.01em;
+  margin: 0 0 .65em; max-width: 28em; font-size: clamp(22px, 2.6vw, 56px); font-weight: bold; line-height: 1.22; letter-spacing: -.01em;
   color: rgba(var(--text), .3); transform-origin: 0 50%; transition: color 400ms, transform 400ms var(--spring, ease-out);
 }
 #look-lyrics.timed p { cursor: pointer; }
 #look-lyrics.timed p:hover { color: rgba(var(--text), .55); }
 #look-lyrics.timed p.sung { color: rgba(var(--text), .22); }
 #look-lyrics.timed p.now { color: rgb(var(--text)); transform: scale(1.03); }
-#look-lyrics:not(.timed) p { color: rgba(var(--text), .75); font-size: clamp(18px, 1.8vw, 26px); margin-bottom: 10px; }
-#look-lyrics .none { margin-top: 12vh; font-size: 13px; letter-spacing: .1em; color: rgb(var(--muted)); }
+#look-lyrics:not(.timed) p { color: rgba(var(--text), .75); font-size: clamp(18px, 1.9vw, 36px); margin-bottom: .4em; }
+/* No words: the songs of the disc fill the side, centred (and scrolled, if there are many), the one playing lit. */
+body.look-lyrics:not(.cd-view) #look-lyrics.songs {
+  display: flex; flex-direction: column; justify-content: safe center; padding: 10vh 8px 10vh 0;
+  -webkit-mask-image: linear-gradient(transparent, #000 8%, #000 92%, transparent);
+}
+#look-lyrics.songs > * { flex: none; max-width: 36em; }
+#look-lyrics .note { margin-bottom: 20px; font-size: 13px; letter-spacing: .1em; color: rgb(var(--muted)); }
+#look-lyrics .note.empty { font-size: 15px; line-height: 1.5; }
+#look-lyrics .note.looking { animation: looking-for-words 1.8s ease-in-out infinite; }
+@keyframes looking-for-words { 50% { opacity: .35; } }
+#look-lyrics .heading { margin-bottom: 12px; font-size: clamp(14px, 1.2vw, 20px); letter-spacing: .08em; color: rgba(var(--text), .6); }
+#look-lyrics .song {
+  display: flex; align-items: baseline; gap: 14px; padding: 8px 0; font-size: clamp(18px, 1.8vw, 32px); font-weight: bold;
+  color: rgba(var(--text), .38); cursor: pointer; transition: color 300ms;
+}
+#look-lyrics .song:hover { color: rgba(var(--text), .7); }
+#look-lyrics .song.current { color: rgb(var(--text)); }
+#look-lyrics .song.skipped .name { text-decoration: line-through; }
+#look-lyrics .song .no { flex: 0 0 2em; text-align: right; font-weight: normal; opacity: .6; font-variant-numeric: tabular-nums; }
+#look-lyrics .song .name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#look-lyrics .song .time { flex: none; font-size: .7em; font-weight: normal; opacity: .7; font-variant-numeric: tabular-nums; }
 body.look-lyrics #now-row { justify-content: center; }
 body.look-lyrics #now-row .grow, body.look-lyrics #now-playing-label, body.look-lyrics #visualizer, body.look-lyrics #deck-display,
 body.look-lyrics #lyrics-button, body.look-lyrics #volume-row .row-label { display: none; }
