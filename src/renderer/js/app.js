@@ -20,7 +20,7 @@ import { createChangerView } from './changer-view.js';
 import { pointAtDrawn } from './tour-view.js';
 import { dockIcon } from './dock-disc.js';
 import { drawCard, lyricChoices, cardSubtitle, quoteLines, MAX_QUOTE_LINES } from './share-card.js';
-import { recordVideo, videoSpan, VIDEO_SECONDS } from './share-video.js';
+import { recordVideo, videoSpan, sceneFor, VIDEO_SECONDS } from './share-video.js';
 import * as panels from './panels.js';
 import { t, locale, translatePage } from './i18n.js';
 import { DiscNoise, ShakeDetector } from './disc-noise.js';
@@ -1144,7 +1144,8 @@ function shareCard() {
       try {
         const made = await recordVideo({ format, audio: withSound ? engine.recordingStream() : null, onTick, begin, playing: withSound ? stillGoing() : () => true,
           seconds: span ? span.end - span.start : VIDEO_SECONDS, song: {
-            ...song, face: disc.renderFace(512, 1).canvas, colors: { ...colors }, timed,
+            ...song, face: disc.renderFace(512, 1).canvas, colors: { ...colors }, timed, duration: engine.duration,
+            scene: sceneFor(state.look, shownTheme.name), // (each design its own, as the card)
             // Where the song is as each frame is drawn: what's recorded is taken before the output, so no delay for it.
             position: () => heardPosition(engine.position, 0, state.lyricsOffset),
           } });
