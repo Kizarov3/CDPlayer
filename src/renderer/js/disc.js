@@ -537,10 +537,6 @@ export class Disc {
   /** Returns the drawn disc's bounds (CSS px, relative to the canvas) — used to keep theme particles off it. */
   frame(now, dt) {
     const cnv = this.canvas, dpr = window.devicePixelRatio || 1;
-    const r = cnv.getBoundingClientRect();
-    if (!r.width || !r.height) return null;
-    const pw = Math.round(r.width * dpr), ph = Math.round(r.height * dpr);
-    if (cnv.width !== pw || cnv.height !== ph) { cnv.width = pw; cnv.height = ph; }
     const tau = this.reading ? SPIN_TAU_MS * 3 : this.spinning ? SPIN_TAU_MS : WIND_DOWN_TAU_MS;
     this.speed += ((this.spinning ? 1 : 0) - this.speed) * (1 - Math.exp(-dt / tau));
     if (this.speed < 0.002 && !this.spinning) this.speed = 0;
@@ -553,6 +549,12 @@ export class Disc {
     } else if (!this.jogging) this.angle += 0.045 * this.speed * (dt / 16);
     this.stepTray(dt);
     this.flipT = Math.max(0, Math.min(1, this.flipT + (this.flipped ? 1 : -1) * (dt / FLIP_MS)));
+    // Not on screen (a PLAYER LOOK without the disc), or not to be drawn (`offstage`: ALBUM's, hidden under its cover):
+    // it still turns and its tray still runs — E waits on the tray — but nothing is drawn.
+    const r = this.offstage ? null : cnv.getBoundingClientRect();
+    if (!r || !r.width || !r.height) { this.lastLook = null; return null; }
+    const pw = Math.round(r.width * dpr), ph = Math.round(r.height * dpr);
+    if (cnv.width !== pw || cnv.height !== ph) { cnv.width = pw; cnv.height = ph; }
 
     const mini = this.mode === 'mini';
     const tray = mini ? 0 : easeInOutCubic(this.trayT);
