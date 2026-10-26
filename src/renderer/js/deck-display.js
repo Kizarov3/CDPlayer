@@ -36,7 +36,7 @@ function segmentPaths(w, h) {
   };
 }
 
-function drawCells(g, text, h, lit, ghost) {
+export function drawCells(g, text, h, lit, ghost) {
   const w = h * 0.56, step = w + h * 0.16, colonW = h * 0.32, paths = segmentPaths(w, h);
   const shape = (pts, x) => { g.beginPath(); pts.forEach(([px, py], i) => g[i ? 'lineTo' : 'moveTo'](x + px + (h - py) * SLANT, py)); g.closePath(); };
   const dot = (x, y) => { g.beginPath(); g.arc(x + (h - y) * SLANT, y, h * 0.065, 0, Math.PI * 2); };

@@ -1,7 +1,10 @@
 // The Now Playing card as a video (the card's VIDEO 9:16 and VIDEO 1:1): the disc sliding out of its case and turning,
 // the song's name, the lines of its lyrics as they're sung — and the song itself, for as long as the lines picked on
 // the card are sung (eight seconds from where it's playing, with none). Recorded as it happens, from a canvas and the audio engine, as MP4 (or WebM where MP4 can't be made).
+// Each PLAYER LOOK has its own, quietly, as its player is (ART): the cover with its disc peeking out for ALBUM, a deck's
+// front for HI-FI, the music's bars under the cover for VISUALIZER, the words taking the room for LYRICS.
 import { rgb, lerpColor, FONT, drawThemeImage } from './theme.js';
+import { drawCells, clock } from './deck-display.js';
 import { t } from './i18n.js';
 
 export const VIDEO_SECONDS = 8, MIN_VIDEO_SECONDS = 2, MAX_VIDEO_SECONDS = 60;
@@ -11,10 +14,10 @@ const FPS = 30, SLIDE_S = 0.8, TURNS_PER_S = 0.35, LINE_S = 0.35;
 export function videoLayout(format) {
   if (format === '9:16') {
     return { w: 1080, h: 1920, case: { x: 110, y: 230, w: 660, h: 660 }, disc: { x0: 440, x1: 700, y: 560, r: 310 },
-      names: { x: 90, y: 1010, w: 900, h: 360 }, lyrics: { x: 90, y: 1420, w: 900, h: 400 } };
+      art: { x: 90, y: 150, w: 900, h: 800 }, names: { x: 90, y: 1010, w: 900, h: 360 }, lyrics: { x: 90, y: 1420, w: 900, h: 400 } };
   }
   return { w: 1080, h: 1080, case: { x: 70, y: 80, w: 440, h: 440 }, disc: { x0: 290, x1: 470, y: 300, r: 205 },
-    names: { x: 70, y: 590, w: 940, h: 190 }, lyrics: { x: 70, y: 800, w: 940, h: 220 } };
+    art: { x: 70, y: 50, w: 940, h: 500 }, names: { x: 70, y: 590, w: 940, h: 190 }, lyrics: { x: 70, y: 800, w: 940, h: 220 } };
 }
 
 /**
@@ -82,22 +85,41 @@ function backdrop(L, song, colors) {
 
 function drawFrame(g, L, back, s, at) {
   g.drawImage(back, 0, 0);
-  // The disc, sliding out from behind its case, then turning.
-  const d = L.disc, x = d.x0 + (d.x1 - d.x0) * ease(at / SLIDE_S);
+  if (s.look === 'LYRICS') { wordsFirst(g, L, s); return; }
+  (ART[s.look] || jewelCase)(g, L, s, at);
+  drawWords(g, L, s, L.names);
+}
+
+// A disc at (x, y), r across, turned by `at`, with a glint across it that stays put while it turns.
+function disc(g, s, x, y, r, at) {
   g.save();
   g.shadowColor = 'rgba(0,0,0,0.55)'; g.shadowBlur = 30;
-  g.beginPath(); g.arc(x, d.y, d.r, 0, Math.PI * 2); g.fillStyle = '#111'; g.fill();
+  g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fillStyle = '#111'; g.fill();
   g.restore();
   g.save();
-  g.beginPath(); g.arc(x, d.y, d.r, 0, Math.PI * 2); g.clip();
-  g.translate(x, d.y); g.rotate(at * TURNS_PER_S * Math.PI * 2);
-  g.drawImage(s.face, -d.r, -d.r, d.r * 2, d.r * 2);
-  g.restore();
-  // A glint across it, staying put while it turns.
-  const glint = g.createLinearGradient(x - d.r, d.y - d.r, x + d.r, d.y + d.r);
+  g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.clip();
+  g.save(); g.translate(x, y); g.rotate(at * TURNS_PER_S * Math.PI * 2); g.drawImage(s.face, -r, -r, r * 2, r * 2); g.restore();
+  const glint = g.createLinearGradient(x - r, y - r, x + r, y + r);
   glint.addColorStop(0.35, 'rgba(255,255,255,0)'); glint.addColorStop(0.5, 'rgba(255,255,255,0.18)'); glint.addColorStop(0.65, 'rgba(255,255,255,0)');
-  g.save(); g.beginPath(); g.arc(x, d.y, d.r, 0, Math.PI * 2); g.clip(); g.fillStyle = glint; g.fillRect(x - d.r, d.y - d.r, d.r * 2, d.r * 2); g.restore();
-  // The case over it: the cover under the plastic, its hinge down the left.
+  g.fillStyle = glint; g.fillRect(x - r, y - r, r * 2, r * 2);
+  g.restore();
+}
+// The cover, square, its corners rounded, in a soft shadow (the disc's face when there's none).
+function cover(g, s, x, y, size, radius = 12) {
+  g.save(); g.shadowColor = 'rgba(0,0,0,0.55)'; g.shadowBlur = size * 0.09; g.shadowOffsetY = size * 0.03;
+  g.beginPath(); g.roundRect(x, y, size, size, radius); g.fillStyle = '#16161a'; g.fill(); g.restore();
+  g.save(); g.beginPath(); g.roundRect(x, y, size, size, radius); g.clip();
+  if (s.cover) {
+    const iw = s.cover.naturalWidth || s.cover.width, ih = s.cover.naturalHeight || s.cover.height, m = Math.min(iw, ih);
+    g.drawImage(s.cover, (iw - m) / 2, (ih - m) / 2, m, m, x, y, size, size);
+  } else g.drawImage(s.face, x + size * 0.1, y + size * 0.1, size * 0.8, size * 0.8);
+  g.restore();
+}
+
+// CLASSIC: the disc sliding out from behind its case, then turning; the cover under the case's plastic.
+function jewelCase(g, L, s, at) {
+  const d = L.disc;
+  disc(g, s, d.x0 + (d.x1 - d.x0) * ease(at / SLIDE_S), d.y, d.r, at);
   const c = L.case;
   g.save(); g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = 40; g.shadowOffsetY = 14; g.fillStyle = '#16161a'; g.fillRect(c.x, c.y, c.w, c.h); g.restore();
   if (s.cover) {
@@ -110,11 +132,75 @@ function drawFrame(g, L, back, s, at) {
   const gloss = g.createLinearGradient(c.x, c.y, c.x + c.w * 0.7, c.y + c.h * 0.9);
   gloss.addColorStop(0, 'rgba(255,255,255,0.16)'); gloss.addColorStop(0.45, 'rgba(255,255,255,0)');
   g.fillStyle = gloss; g.fillRect(c.x, c.y, c.w, c.h);
-  // The song's name.
-  const n = L.names, big = L.w === L.h ? 58 : 84;
+}
+
+// ALBUM: the cover, plain and big, its disc (printed with it) a third of the way out from behind it and turning.
+function albumPage(g, L, s, at) {
+  const a = L.art, size = Math.min(a.h, a.w * 0.62), r = size * 0.47, peek = size * 0.3 * ease(at / SLIDE_S);
+  const x = a.x + (a.w - size - peek) / 2, y = a.y + (a.h - size) / 2;
+  disc(g, s, x + size - r + peek, y + size / 2, r, at);
+  cover(g, s, x, y, size);
+}
+
+// HI-FI: a deck's front — dark brushed metal, a black glass display with the time running in its lit digits, the disc
+// turning in a well under it.
+function deckFront(g, L, s, at) {
+  const a = L.art, k = L.w === L.h ? 0.62 : 1;
+  g.save();
+  g.shadowColor = 'rgba(0,0,0,0.5)'; g.shadowBlur = 40; g.shadowOffsetY = 14;
+  const metal = g.createLinearGradient(0, a.y, 0, a.y + a.h);
+  metal.addColorStop(0, rgb(lerpColor(s.colors.card, [70, 70, 74], 0.5))); metal.addColorStop(1, rgb(lerpColor(s.colors.bg, [22, 22, 24], 0.5)));
+  g.beginPath(); g.roundRect(a.x, a.y, a.w, a.h, 22); g.fillStyle = metal; g.fill();
+  g.restore();
+  g.save(); g.beginPath(); g.roundRect(a.x, a.y, a.w, a.h, 22); g.clip(); // (the brushing: fine lines across)
+  for (let yy = a.y; yy < a.y + a.h; yy += 3) { g.fillStyle = `rgba(255,255,255,${0.012 + 0.012 * ((yy * 7) % 5) / 5})`; g.fillRect(a.x, yy, a.w, 1); }
+  g.restore();
+  // The display: the song's number and the time, lit in the theme's colour over the segments not lit.
+  const pad = 40 * k, dh = 150 * k, dx = a.x + pad, dy = a.y + pad, dw = a.w - pad * 2;
+  g.beginPath(); g.roundRect(dx, dy, dw, dh, 10); g.fillStyle = '#060606'; g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.08)'; g.lineWidth = 2; g.stroke();
+  const lit = rgb(s.colors.accent), ghost = 'rgba(255,255,255,0.05)', digits = 80 * k;
+  g.save(); g.translate(dx + 30 * k, dy + (dh - digits) / 2); g.shadowColor = lit; g.shadowBlur = 18; drawCells(g, String(s.track || 1).padStart(2, '0'), digits, lit, ghost); g.restore();
+  const time = clock(s.position()).padStart(5, ' ');
+  g.save(); g.translate(dx + dw - 30 * k - digits * 0.72 * time.length, dy + (dh - digits) / 2); g.shadowColor = lit; g.shadowBlur = 18; drawCells(g, time, digits, lit, ghost); g.restore();
+  // The disc in its well.
+  const wy = dy + dh + (a.y + a.h - dy - dh) / 2, r = Math.min(dw * 0.3, (a.y + a.h - dy - dh) / 2 - pad * 0.6);
+  g.beginPath(); g.arc(a.x + a.w / 2, wy, r + 14 * k, 0, Math.PI * 2); g.fillStyle = 'rgba(0,0,0,0.45)'; g.fill();
+  disc(g, s, a.x + a.w / 2, wy, r, at);
+}
+
+// VISUALIZER: the cover, and under it the music's own bars, moving with it.
+function bars(g, L, s, at) {
+  const a = L.art, size = a.h * 0.62, x = a.x + (a.w - size) / 2;
+  cover(g, s, x, a.y + 10, size);
+  const n = 40, step = a.w / n, base = a.y + a.h - 40, tall = a.h - size - 90;
+  const spec = (s.spectrum && s.spectrum(n)) || [];
+  for (let i = 0; i < n; i++) {
+    const h = Math.max(4, (spec[i] || 0) * tall);
+    g.fillStyle = rgb(lerpColor(s.colors.accent, s.colors.accent2, i / n)); g.globalAlpha = 0.85;
+    g.beginPath(); g.roundRect(a.x + i * step + step * 0.18, base - h, step * 0.64, h, 3); g.fill();
+  }
+  g.globalAlpha = 1;
+}
+
+const ART = { ALBUM: albumPage, HIFI: deckFront, VISUALIZER: bars };
+
+// LYRICS: the words take the room — the cover small at the top with the song's name beside it, the lines big under them.
+function wordsFirst(g, L, s) {
+  const square = L.w === L.h, size = square ? 170 : 230, x = L.art.x, y = square ? 70 : 170;
+  cover(g, s, x, y, size, 10);
+  const end = drawWords(g, L, s, { x: x + size + 40, y: y + 6, w: L.w - x * 2 - size - 40 }, { small: true, lyrics: false });
+  const top = Math.max(end, y + size) + (square ? 70 : 0) + (square ? 0 : Math.max(120, L.h * 0.36 - y - size)); // (the words a little above the middle)
+  drawLyrics(g, { x, y: top, w: L.w - x * 2, h: L.h - top - 110 }, s, lyricsAt(s.timed, s.position()), square ? 58 : 76, 3);
+  mark(g, L, s);
+}
+
+// The song's name, artist and album in `n` (and its lyrics under them, unless not) → where the name ended.
+function drawWords(g, L, s, n, { small = false, lyrics = true } = {}) {
+  const big = (L.w === L.h ? 58 : 84) * (small ? 0.72 : 1);
   g.textBaseline = 'top'; g.textAlign = 'left';
   let y = n.y;
-  g.font = `bold ${L.w === L.h ? 24 : 30}px ${FONT}`; g.fillStyle = rgb(s.colors.accent); g.fillText(t('NOW PLAYING'), n.x, y); y += L.w === L.h ? 44 : 56;
+  if (!small) { g.font = `bold ${L.w === L.h ? 24 : 30}px ${FONT}`; g.fillStyle = rgb(s.colors.accent); g.fillText(t('NOW PLAYING'), n.x, y); y += L.w === L.h ? 44 : 56; }
   g.font = `bold ${big}px ${FONT}`; g.fillStyle = rgb(s.colors.text);
   for (const line of wrap(g, s.title, n.w, 2)) { g.fillText(line, n.x, y); y += big * 1.12; }
   g.font = `${Math.round(big * 0.6)}px ${FONT}`; g.fillStyle = rgb(s.colors.accent2);
@@ -122,26 +208,32 @@ function drawFrame(g, L, back, s, at) {
   g.font = `${Math.round(big * 0.45)}px ${FONT}`; g.fillStyle = rgb(s.colors.muted);
   if (s.subtitle) { g.fillText(wrap(g, s.subtitle, n.w, 1)[0], n.x, y + 10); y += big * 0.45 + 10; }
   // A name on two lines runs past where the lyrics start (in the square video): they start below it instead.
+  if (!lyrics) return y;
   const top = Math.max(L.lyrics.y, Math.round(y + 30));
   drawLyrics(g, { ...L.lyrics, y: top, h: L.lyrics.h - (top - L.lyrics.y) }, s, lyricsAt(s.timed, s.position()), L.w === L.h ? 44 : 64);
+  mark(g, L, s);
+  return y;
+}
+function mark(g, L, s) {
   g.font = `bold 22px ${FONT}`; g.fillStyle = rgb(s.colors.muted); g.textAlign = 'right'; g.textBaseline = 'alphabetic';
   g.fillText('CDPlayer', L.w - 40, L.h - 40);
 }
 
 // The lines as they're sung: the one now, bright, and the next, faint. When the line changes, the one that was sung
 // drifts up and fades, the next rises into its place as it grows and brightens, and the one after fades in below.
-function drawLyrics(g, l, s, lyr, size) {
+function drawLyrics(g, l, s, lyr, size, lines = 2) {
   const p = ease(lyr.since / LINE_S), lead = size * 1.25, width = l.w - 30;
   const font = (px, bold) => `italic ${bold ? 'bold ' : ''}${Math.round(px)}px ${FONT}`;
-  const heightOf = (text) => { if (!text) return 0; g.font = font(size, true); return wrap(g, text, width, 2).length * lead; };
+  const heightOf = (text) => { if (!text) return 0; g.font = font(size, true); return wrap(g, text, width, lines).length * lead; };
   const from = l.y + heightOf(lyr.previous) + 14; // where the line now sung was, as the next one
   g.save();
   g.beginPath(); g.rect(l.x, l.y - 20, l.w, l.h + 20); g.clip();
   g.textBaseline = 'top'; g.textAlign = 'left';
   if (lyr.previous && p < 0.5) {
-    g.globalAlpha = 1 - p * 2; // gone before the next is halfway up, so the two don't run into each other g.font = font(size, true); g.fillStyle = rgb(s.colors.text);
+    g.globalAlpha = 1 - p * 2; // gone before the next is halfway up, so the two don't run into each other
+    g.font = font(size, true); g.fillStyle = rgb(s.colors.text);
     let y = l.y - size * 0.4 * p;
-    for (const line of wrap(g, lyr.previous, width, 2)) { g.fillText(line, l.x + 30, y); y += lead; }
+    for (const line of wrap(g, lyr.previous, width, lines)) { g.fillText(line, l.x + 30, y); y += lead; }
   }
   let y = l.y;
   if (lyr.current) {
@@ -149,11 +241,12 @@ function drawLyrics(g, l, s, lyr, size) {
     y = from + (l.y - from) * p;
     g.globalAlpha = p; g.fillStyle = rgb(s.colors.accent); g.fillRect(l.x, l.y + 4, 5, size * 1.2 * p);
     g.globalAlpha = 1; g.font = font(px, true); g.fillStyle = rgb(lerpColor(s.colors.muted, s.colors.text, p));
-    for (const line of wrap(g, lyr.current, width, 2)) { g.fillText(line, l.x + 30, y); y += px * 1.25; }
+    for (const line of wrap(g, lyr.current, width, lines)) { g.fillText(line, l.x + 30, y); y += px * 1.25; }
   } else y = (from - 14) * (1 - p) + l.y * p; // a break: the next line rises to the top
   if (lyr.next && y + size < l.y + l.h) {
     g.globalAlpha = lyr.current ? p : 1; g.font = font(size * 0.75, false); g.fillStyle = rgb(s.colors.muted);
-    g.fillText(wrap(g, lyr.next, width, 1)[0], l.x + 30, y + 14 + (lyr.current ? 24 * (1 - p) : 0));
+    let ny = y + 14 + (lyr.current ? 24 * (1 - p) : 0);
+    for (const line of wrap(g, lyr.next, width, lines - 1)) { g.fillText(line, l.x + 30, ny); ny += size * 0.75 * 1.25; }
   }
   g.restore();
 }
@@ -205,4 +298,11 @@ export async function recordVideo({ format, song, audio, seconds = VIDEO_SECONDS
   if (failed || !chunks.length) return null; // the encoder wouldn't start: nothing to save
   const blob = new Blob(chunks, { type: type.mime });
   return { bytes: new Uint8Array(await blob.arrayBuffer()), ext: type.ext, stoppedEarly };
+}
+
+/** One frame of the video, `at` seconds in, on a canvas of its own (to look at one without recording). */
+export function videoFrame(format, song, at) {
+  const L = videoLayout(format), c = new OffscreenCanvas(L.w, L.h);
+  drawFrame(c.getContext('2d'), L, backdrop(L, song, song.colors), song, at);
+  return c;
 }
