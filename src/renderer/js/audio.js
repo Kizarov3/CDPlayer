@@ -155,6 +155,7 @@ export class AudioEngine {
       gain.connect(this.input);
     }
     const deck = { el, source, trim: trimNode, filter, gain, url, start: 0, end: null, endFired: false };
+    el.addEventListener('play', () => this.wake()); // (however it was started: a crossfade's, a gapless seam's)
     el.addEventListener('ended', () => { if (this.onEnded && deck === this.deck && deck !== this.seaming) this.onEnded(deck); }); // a deck left behind (crossfade, gapless) ends unheard
     return deck;
   }
@@ -383,11 +384,22 @@ export class AudioEngine {
 
   async play() {
     if (!this.deck) return;
+    clearTimeout(this.sleepTimer);
     if (this.ctx.state !== 'running') await this.ctx.resume();
     try { await this.deck.el.play(); } catch { /* interrupted by a newer load */ }
   }
   // A song still fading out (a crossfade, a mix) is let go of: it mustn't play on, unheard of, under a paused one.
-  pause() { if (this.fadingOut) this.cancelCrossfade(); if (this.deck) this.deck.el.pause(); }
+  pause() { if (this.fadingOut) this.cancelCrossfade(); if (this.deck) this.deck.el.pause(); this.sleepSoon(); }
+  // Paused a few seconds, the audio graph is put to sleep: running, it works through silence all the while (the EQ,
+  // spatial audio, the meters) — a third of what the paused player cost. Anything that sounds wakes it (wake()).
+  sleepSoon(ms = 4000) {
+    clearTimeout(this.sleepTimer);
+    this.sleepTimer = setTimeout(() => {
+      const sounding = (this.deck && !this.deck.el.paused) || this.fadingOut;
+      if (!sounding && this.ctx.state === 'running' && this.ctx.suspend) this.ctx.suspend().catch(() => {});
+    }, ms);
+  }
+  wake() { clearTimeout(this.sleepTimer); if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {}); }
 
   /**
    * A snatch of the song from where it is now — the way a CD player sounds while it searches — faded in and out over

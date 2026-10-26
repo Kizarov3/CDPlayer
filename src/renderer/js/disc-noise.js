@@ -44,6 +44,7 @@ export class DiscNoise {
   setEnabled(on) { this.enabled = on; if (!on) this.setPlaying(false); }
   /** The hiss follows playback: it's the disc's surface, so it's only there while the disc turns. */
   setPlaying(playing) {
+    if (playing && this.enabled) this.engine.wake();
     const now = this.ctx.currentTime;
     this.hiss.gain.cancelScheduledValues(now);
     this.hiss.gain.setTargetAtTime(this.enabled && playing ? HISS_GAIN : 0, now, 0.15);
@@ -52,6 +53,7 @@ export class DiscNoise {
   // A burst of filtered noise with an envelope: the building block of the mechanical sounds.
   burst({ buffer = this.brown, type = 'bandpass', freq = 200, q = 1, gain = 0.1, attack = 0.02, hold = 0.2, release = 0.1, sweepTo = null }) {
     if (!this.enabled) return;
+    this.engine.wake(); this.engine.sleepSoon(); // (heard while the music's paused: the audio graph awake for it, then asleep again)
     const ctx = this.ctx, t = ctx.currentTime;
     const src = ctx.createBufferSource(); src.buffer = buffer; src.loop = true;
     const filter = ctx.createBiquadFilter(); filter.type = type; filter.frequency.value = freq; filter.Q.value = q;
