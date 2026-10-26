@@ -2016,7 +2016,7 @@ function paintFlow(cover) {
   const iw = cover.naturalWidth, ih = cover.naturalHeight, m = Math.min(iw, ih);
   $('backdrop-flow').querySelectorAll('i').forEach((blob, k) => {
     const c = Object.assign(document.createElement('canvas'), { width: 96, height: 96 }), g = c.getContext('2d');
-    g.filter = 'blur(5px) saturate(1.7)';
+    g.filter = 'blur(5px) saturate(2) brightness(1.2)';
     g.translate(48, 48); g.rotate(k * Math.PI / 2); g.scale(1.25, 1.25); // (past the blur's soft edge)
     g.drawImage(cover, (iw - m) / 2, (ih - m) / 2, m, m, -48, -48, 96, 96);
     g.setTransform(1, 0, 0, 1, 0, 0); g.filter = 'none';
