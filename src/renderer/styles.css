@@ -372,31 +372,85 @@ body.look-lyrics #queue-card, body.look-visualizer #queue-card {
 }
 body.look-lyrics.queue-open #queue-card, body.look-visualizer.queue-open #queue-card { transform: none; visibility: visible; transition: transform var(--anim-in) var(--ease-out); }
 
-/* HI-FI: a deck's front — the header's buttons as words, the song's name big, and on one panel two VU meters (vu-meters.js)
-   over the seek bar, the display, the keys and the volume */
+/* HI-FI: the front of a hi-fi CD player — one faceplate of dark brushed metal (in the theme's card colour) with a
+   display window sunk into it holding the song's name, the deck's digits and two level meters (vu-meters.js), and
+   under the window the seek bar, a row of metal keys and the volume. Laid out on a grid so the window (::before) can
+   sit behind the rows it holds. */
 #vu-meters { display: none; }
-body.look-hifi #vu-meters { display: block; width: 100%; height: 100px; margin-bottom: 12px; }
-body.look-hifi #divider { display: none; }
-body.look-hifi #status-pill { background: none; border: none; box-shadow: none; }
-body.look-hifi #header .pill { background: none; box-shadow: none; padding: 7px 6px; font-size: 11.5px; letter-spacing: .06em; }
-body.look-hifi #header .pill:hover { background: none; color: rgb(var(--text)); }
-body.look-hifi #header .pill.on { padding-left: 20px; }
-body.look-hifi #header .pill::before { left: 6px; }
-body.look-hifi #now-playing-label, body.look-hifi #visualizer { display: none; }
-body.look-hifi #now-row .pill, body.look-hifi #volume-row .pill, body.look-hifi #queue-actions .pill { background: none; box-shadow: none; }
-body.look-hifi #now-row .pill:hover, body.look-hifi #volume-row .pill:hover, body.look-hifi #queue-actions .pill:hover { background: rgba(255, 255, 255, .06); color: rgb(var(--text)); }
-body.look-hifi #track-title { margin-top: 6px; height: 60px; line-height: 60px; font-size: 48px; letter-spacing: -.02em; }
-body.look-hifi #track-artist { margin-top: 2px; height: 26px; line-height: 26px; font-size: 19px; }
 body.look-hifi #faceplate {
-  display: block; margin: 20px -20px 0; padding: 18px 20px 12px; border-radius: 14px;
-  background: linear-gradient(rgba(255, 255, 255, .065), rgba(255, 255, 255, .025));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .11), inset 0 0 0 1px rgba(255, 255, 255, .07), 0 18px 40px rgba(0, 0, 0, .3);
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "top" "title" "artist" "source" "deck" "meters" "seek" "times" "keys" "volume";
+  margin: 2px -22px 0; padding: 8px 22px 14px; border-radius: 12px;
+  /* brushed: fine streaks of three widths that don't line up, over a light falling from the top edge */
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, .022) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, .07) 0 1px, transparent 1px 7px),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, .03) 0 2px, transparent 2px 11px),
+    linear-gradient(rgba(255, 255, 255, .11), rgba(255, 255, 255, .035) 38%, rgba(0, 0, 0, .12)),
+    rgb(var(--card));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .2), inset 0 -1px 0 rgba(0, 0, 0, .45), inset 1px 0 0 rgba(255, 255, 255, .05), inset -1px 0 0 rgba(255, 255, 255, .05),
+    0 0 0 1px rgba(0, 0, 0, .55), 0 3px 8px rgba(0, 0, 0, .3), 0 24px 50px rgba(0, 0, 0, .42);
 }
-body.look-hifi #progress-row { margin-top: 0; }
-body.look-hifi #controls { margin-top: 12px; }
-body.look-hifi #volume-row { margin-top: 8px; }
-body.look-hifi .round:not(.primary):not(.on) { background: none; box-shadow: none; }
-body.look-hifi .round:not(.primary):not(.on):hover { background: rgba(255, 255, 255, .07); }
+/* The window: black glass, faintly ruled like a VFD's mesh, a sheen across its top, its edge cut into the metal */
+body.look-hifi #faceplate::before {
+  content: ""; grid-area: title-start / 1 / meters-end / 2; border-radius: 7px;
+  background:
+    linear-gradient(172deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, 0) 32%),
+    repeating-linear-gradient(0deg, rgba(var(--accent), .028) 0 1px, transparent 1px 3px),
+    linear-gradient(rgb(5, 5, 6), rgb(11, 11, 13));
+  box-shadow: inset 0 2px 9px rgba(0, 0, 0, .9), inset 0 0 0 1px rgba(0, 0, 0, .8), 0 -1px 0 rgba(0, 0, 0, .45), 0 1px 0 rgba(255, 255, 255, .12);
+}
+body.look-hifi #player { margin-top: 10px; }
+body.look-hifi #now-row { grid-area: top; min-height: 28px; margin-bottom: 7px; }
+body.look-hifi #now-playing-label { color: rgba(var(--text), .5); font-size: 9.5px; letter-spacing: .2em; }
+body.look-hifi #visualizer { display: none; }
+body.look-hifi #track-title { grid-area: title; margin: 10px 20px 0; color: rgb(var(--accent)); text-shadow: 0 0 14px rgba(var(--accent), .45); }
+body.look-hifi #track-artist { grid-area: artist; margin: 2px 20px 0; color: rgba(var(--accent), .78); }
+body.look-hifi #source-row { grid-area: source; margin: 6px 20px 0; }
+body.look-hifi #track-source { color: rgba(var(--accent), .5); }
+body.look-hifi #hidden-badge, body.look-hifi #quality-badge, body.look-hifi #soundcheck-badge { color: rgba(var(--accent), .9); background: none; box-shadow: inset 0 0 0 1px rgba(var(--accent), .4); }
+body.look-hifi #faceplate > #deck-display {
+  grid-area: deck; margin: 10px 20px 0; padding: 10px 0 0; height: auto; border-radius: 0;
+  background: none; box-shadow: none; border-top: 1px solid rgba(var(--accent), .12);
+}
+body.look-hifi #faceplate > #deck-display .vfd-flag[data-flag="net"] { top: 10px; }
+body.look-hifi #vu-meters { display: block; grid-area: meters; width: calc(100% - 40px); height: 32px; margin: 10px 20px 12px; }
+body.look-hifi #progress-row { grid-area: seek; margin: 12px 2px 0; }
+body.look-hifi #times { grid-area: times; }
+body.look-hifi #controls { grid-area: keys; margin-top: 12px; min-height: 0; }
+body.look-hifi #volume-row { grid-area: volume; margin-top: 10px; }
+body.look-hifi #queue-card { margin-top: 16px; }
+/* The keys: metal, lit from above, sat a little proud of the plate; pressed, they sink. PLAY the widest, its mark lit. */
+body.look-hifi #faceplate .pill, body.look-hifi #transport .round {
+  border-radius: 6px; color: rgba(var(--text), .78);
+  background: linear-gradient(rgba(255, 255, 255, .15), rgba(255, 255, 255, .05) 50%, rgba(0, 0, 0, .1)), rgb(var(--card));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), inset 0 -1px 0 rgba(0, 0, 0, .3), 0 0 0 1px rgba(0, 0, 0, .6), 0 2px 4px rgba(0, 0, 0, .35);
+  transition: color var(--hover) ease, filter var(--hover) ease, transform 90ms ease;
+}
+body.look-hifi #faceplate .pill:hover:not(:disabled), body.look-hifi #transport .round:hover { background: linear-gradient(rgba(255, 255, 255, .15), rgba(255, 255, 255, .05) 50%, rgba(0, 0, 0, .1)), rgb(var(--card)); color: rgb(var(--text)); filter: brightness(1.18); }
+body.look-hifi #faceplate .pill:active:not(:disabled), body.look-hifi #transport .round:active {
+  transform: translateY(1px); filter: brightness(.92);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .45), 0 0 0 1px rgba(0, 0, 0, .6);
+}
+body.look-hifi #faceplate .pill.on { color: rgb(var(--text)); }
+body.look-hifi #transport { gap: 8px; }
+body.look-hifi #transport > span { display: none; } /* (the keys' own gap instead) */
+body.look-hifi #transport .round { width: 50px !important; height: 36px !important; }
+body.look-hifi #transport .round svg { width: 30px; height: 30px; }
+body.look-hifi #transport .round.primary { width: 92px !important; margin: 0 6px; color: rgb(var(--accent)); }
+body.look-hifi #transport .round.primary svg { width: 40px; height: 40px; filter: drop-shadow(0 0 5px rgba(var(--accent), .6)); }
+body.look-hifi #transport .round.mode { margin: 0 6px; }
+body.look-hifi #transport .round.mode::before { display: none; }
+body.look-hifi #transport .round.mode::after { bottom: -9px; width: 5px; height: 5px; margin-left: -2.5px; }
+body.look-hifi #transport .round.mode.on { color: rgb(var(--text)); }
+@media (max-width: 900px) { /* (the column can be 420px: the keys narrower to fit) */
+  body.look-hifi #faceplate { margin-left: -12px; margin-right: -12px; padding-left: 12px; padding-right: 12px; }
+  body.look-hifi #transport { gap: 6px; }
+  body.look-hifi #transport .round { width: 42px !important; }
+  body.look-hifi #transport .round.primary { width: 72px !important; }
+  body.look-hifi #transport .round.mode { margin: 0 2px; }
+}
 
 /* COVER: as a streaming app has it — the album's cover, flat and big, instead of the disc; plain keys, the times, colour behind */
 #cover-art { display: none; }

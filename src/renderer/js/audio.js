@@ -74,7 +74,7 @@ export class AudioEngine {
     node.connect(this.spatial.input);
     this.spatial.output.connect(this.analyser);
     this.analyser.connect(this.master);
-    // Each side heard on its own too, for HI-FI's two VU meters.
+    // Each side heard on its own too, for HI-FI's two level meters.
     const split = ctx.createChannelSplitter(2);
     this.spatial.output.connect(split);
     this.sides = [0, 1].map((ch) => { const a = ctx.createAnalyser(); a.fftSize = 2048; split.connect(a, ch); return a; });
