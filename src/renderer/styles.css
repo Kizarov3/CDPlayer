@@ -224,6 +224,7 @@ body.classic-display #deck-display { display: none; }
 }
 #queue-head { margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 #queue-text { flex: 1 1 220px; min-width: 200px; display: flex; flex-direction: column; gap: 5px; }
+#clear-queue-button { min-width: 94px; } /* (as wide as UNDO CLEAR, the longer of its two names in English, so the buttons beside it stay put when it turns into that) */
 #queue-actions { flex: 0 1 auto; margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; }
 #queue-info { font-size: 10px; color: rgb(var(--muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #queue-next { font-size: 9px; color: rgb(var(--muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -265,7 +266,7 @@ body.cursor-hidden #cd-exit.noted { opacity: 1; }
 /* ---- PLAYER LOOK (Settings → LOOK): CLASSIC is the layout above; the others rearrange it (app.js setLook, body.look-…) ---- */
 #faceplate { display: contents; } /* (a panel of its own only in PANEL) */
 #faceplate > * { flex-shrink: 0; }
-#queue-toggle { display: none; }
+#queue-toggle, #more-button { display: none; }
 
 /* VISUALIZER: the music drawn across the window (the theme's own scene, as Visualizer Mode's), the song's name over it,
    the seek bar, the keys and the volume in a bar along the bottom; the queue slides in at the side (QUEUE) */
@@ -281,7 +282,7 @@ body.look-visualizer #now-row, body.look-visualizer #source-row { justify-conten
 body.look-visualizer #track-title, body.look-visualizer #track-artist { text-align: center; margin-left: auto; margin-right: auto; }
 body.look-visualizer #track-title { font-size: 48px; height: 62px; line-height: 62px; letter-spacing: -.01em; }
 body.look-visualizer #track-artist { font-size: 20px; }
-body.look-visualizer #queue-toggle { display: inline-block; }
+body.look-visualizer #queue-toggle, body.look-visualizer #more-button { display: inline-block; }
 body.look-visualizer #cd-view-button { display: none; }
 /* (VISUALIZER's bar, as DOCK had it:) the seek bar, the keys and the volume in a bar along the bottom, as in a music app */
 body.look-visualizer:not(.cd-view)::after {
@@ -376,7 +377,7 @@ body.look-lyrics #times { display: flex; }
 body.look-lyrics #progress-row { margin-top: 12px; }
 body.look-lyrics #controls { margin-top: 6px; }
 body.look-lyrics #hint { padding-top: 4px; }
-body.look-lyrics #queue-toggle { display: inline-block; }
+body.look-lyrics #queue-toggle, body.look-lyrics #more-button { display: inline-block; }
 body.look-lyrics #cd-view-button { display: none; } /* (QUEUE in its place, the header as wide as in the other looks; CD VIEW is C, and in the menu) */
 body.look-lyrics #volume-row { margin-bottom: 8px; }
 body.look-lyrics #queue-card, body.look-visualizer #queue-card {
@@ -551,6 +552,7 @@ body.look-album .round.primary { background: rgb(var(--text)); color: rgb(var(--
   body.look-album:not(.cd-view) #body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 28px; }
   body.look-album #transport > span { flex-basis: 4px !important; width: 4px !important; } /* (the spacers' widths are set inline) */
   body.look-album #load-button { display: none; }
+  body.look-album #more-button { display: inline-block; } /* (LOAD A TRACK is in its menu) */
 }
 /* Down the right: the album's page. */
 body.look-album:not(.cd-view) #queue-card {
@@ -847,6 +849,7 @@ body.no-anim .queue-row.active .num::after { animation: none; }
 .theme-item:hover { background: rgba(255, 255, 255, .06); }
 .theme-item.current { color: rgb(var(--accent)); }
 .theme-item.current .grow::after { content: "  ✓"; }
+.menu-key { color: rgb(var(--muted)); font-size: 10px; letter-spacing: .06em; padding-left: 14px; }
 .menu-divider { height: 1px; margin: 4px 0; background: rgba(255, 255, 255, .118); }
 .menu-more { opacity: 0; padding: 0 2px 0 10px; color: rgb(var(--muted)); }
 .theme-item:hover .menu-more { opacity: 1; }

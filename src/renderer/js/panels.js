@@ -545,7 +545,7 @@ function buildSettings(app) {
 let menuLayer = null;
 /**
  * A small menu under `anchor` (an element, or where one was); items are { label, swatch (CSS background, optional),
- * current, pick, more (optional: ✎ and right-click, given where the item is) } or { divider: true }.
+ * current, pick, key (a key's hint, optional), more (optional: ✎ and right-click, given where the item is) } or { divider: true }.
  */
 function showMenu(anchor, items, { alignEnd = false } = {}) {
   const box = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;
@@ -557,7 +557,7 @@ function showMenu(anchor, items, { alignEnd = false } = {}) {
     const openMore = (e) => { e.preventDefault(); e.stopPropagation(); item.more(node.getBoundingClientRect()); };
     const node = el('div', { class: `theme-item${item.current ? ' current' : ''}`, onClick: () => { closeMenu(); item.pick(); },
       onContextmenu: (e) => { if (item.more) openMore(e); } },
-    swatch, el('span', { class: 'grow' }, item.label),
+    swatch, el('span', { class: 'grow' }, item.label), item.key ? el('span', { class: 'menu-key' }, item.key) : null,
     item.more ? el('span', { class: 'menu-more', title: t('Edit, share or delete'), onClick: openMore }, '✎') : null);
     return node;
   }));

@@ -546,13 +546,41 @@ function queueAdd(songs, { play = false, next = false, startPlayback = true } = 
 }
 function removeFromQueue(i) {
   if (i < 0 || i >= state.queue.length) return;
+  const gone = { path: state.queue[i], at: i, nextUp: state.nextUp, wasPlaying: i === state.index, position: engine.position, playing: engine.playing };
   state.queue.splice(i, 1);
   state.nextUp = afterRemove(state.nextUp, i);
+  const said = () => setStatus(t('SONG REMOVED · {key} BRINGS IT BACK', { key: state.platform === 'darwin' ? '⌘Z' : 'CTRL+Z' }));
+  let loading = null;
   if (!state.queue.length) resetToIdle(t('QUEUE EMPTY'));
-  else if (i === state.index) { state.index = Math.min(i, state.queue.length - 1); load(state.queue[state.index], { autoPlay: engine.playing }); } // (paused, it stays paused)
+  else if (i === state.index) { state.index = Math.min(i, state.queue.length - 1); loading = load(state.queue[state.index], { autoPlay: engine.playing }); } // (paused, it stays paused)
   else if (i < state.index) state.index--;
+  // (successor: the song that took over when the playing one went — undo goes back to the removed one only while that one's still on)
+  clearTimeout(undoRemoveTimer);
+  undoRemove = { ...gone, after: state.nextUp, successor: gone.wasPlaying && state.index >= 0 ? state.queue[state.index] : null };
+  undoRemoveTimer = setTimeout(() => { undoRemove = null; }, UNDO_CLEAR_SECONDS * 1000);
+  if (loading) Promise.resolve(loading).then(said); else said(); // after the next song's own news
   spotifyResync();
   renderQueue(); saveQueueSoon();
+}
+// A song taken out with its ×: ⌘Z / Ctrl+Z puts it back at its place for a few seconds (the latest one only) — as the
+// song playing, from where it was and playing if it was, when it was the one playing and nothing else has come on since.
+let undoRemove = null, undoRemoveTimer = null;
+function dropUndoRemove() { clearTimeout(undoRemoveTimer); undoRemove = null; }
+function undoRemoveSong() {
+  const u = undoRemove;
+  if (!u) return;
+  dropUndoRemove();
+  const at = Math.min(u.at, state.queue.length);
+  const resume = u.wasPlaying && (state.index < 0 || (state.index === at && u.successor != null && state.queue[at] === u.successor));
+  state.queue.splice(at, 0, u.path);
+  upcomingCache = null;
+  // PLAY NEXT's run comes back as it was, when it has stayed as removing the song left it.
+  const same = (a, b) => (!a && !b) || (a && b && a.start === b.start && a.end === b.end);
+  if (u.nextUp && same(state.nextUp, u.after)) state.nextUp = u.nextUp;
+  if (resume) state.index = at; else if (state.index >= at) state.index++;
+  renderQueue(); saveQueueSoon(); spotifyResync();
+  const said = () => setStatus(t('SONG BACK IN THE QUEUE'));
+  if (resume) Promise.resolve(load(u.path, { autoPlay: u.playing, startAt: u.position })).then(said); else said();
 }
 // `remote`: the phone's — never onto the tray, and a full changer answers { full: true } instead of asking here (the
 // phone asks, and sends the disc again with the `slot` to take out, used only if the changer is still full).
@@ -689,6 +717,7 @@ function dropPaths(gone) {
 function clearQueue() {
   if (!state.queue.length) return;
   if (undoClear) clearTimeout(undoClear.timer);
+  dropUndoRemove();
   clearTimeout(refillTimer);
   undoClear = { store: takeStore(), position: engine.position, playing: engine.playing, timer: setTimeout(() => { undoClear = null; renderQueue(); }, UNDO_CLEAR_SECONDS * 1000) };
   putStore(state.changerMode ? { changer: changer.clear() } : { queue: [], index: -1, nextUp: null });
@@ -2598,7 +2627,7 @@ async function remoteCommand(cmd) {
       renderQueue(); saveQueueSoon(); spotifyResync();
       break;
     case 'clear': clearQueue(); break;
-    case 'undo': if (undoClear) undoClearQueue(); else if (undoEject) undoEjectSlot(); break; // as ⌘Z
+    case 'undo': if (undoClear) undoClearQueue(); else if (undoRemove) undoRemoveSong(); else if (undoEject) undoEjectSlot(); break; // as ⌘Z
     case 'playSlot': playSlot(v); break;
     case 'discSkip': discSkip(); break;
     case 'album': return remoteAlbum(v);
@@ -2768,6 +2797,7 @@ async function setChangerMode(on) {
     clearTimeout(queueTimer); cdp.saveQueue(queueSnapshot());
     stores[modeKey()] = { ...takeStore(), positionMicros: Math.round(positionNow() * 1e6) };
     if (undoClear) { clearTimeout(undoClear.timer); undoClear = null; }
+    dropUndoRemove();
     state.loadToken++; stopStreamReading(); dropPrepared(); engine.stop(); setPlaying(false);
     state.playModes = { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } };
     trail.length = 0; shownIndex = -1; // PREVIOUS goes back through this mode's songs only; its list goes to the song
@@ -2843,6 +2873,7 @@ function buildStaticUi() {
   $('settings-button').addEventListener('click', () => panels.showSettings(app));
   $('phone-tag').addEventListener('click', () => panels.showSettings(app));
   $('cd-view-button').addEventListener('click', toggleCdView);
+  $('more-button').addEventListener('click', () => showMoreMenu());
   $('update-button').addEventListener('click', onUpdateClick);
   cdp.onUpdateProgress((fraction) => { if (updateState.phase === 'downloading') { updateState.progress = fraction; showUpdatePill(); } });
   $('sleep-indicator').addEventListener('click', () => { armSleepTimer(0); armSleepAtEnd(false); panels.refreshSettingsIfOpen(app); });
@@ -2909,8 +2940,8 @@ function isTyping(e) { const target = e.target; return target && (target.tagName
 function onKeyDown(e) {
   state.lastActivity = Date.now();
   if (e.key === 'Escape') { e.preventDefault(); escape(); return; }
-  if ((undoClear || undoEject) && (e.metaKey || e.ctrlKey) && e.code === 'KeyZ' && !e.shiftKey && !e.altKey && !isTyping(e)) {
-    e.preventDefault(); if (undoClear) undoClearQueue(); else undoEjectSlot(); return;
+  if ((undoClear || undoRemove || undoEject) && (e.metaKey || e.ctrlKey) && e.code === 'KeyZ' && !e.shiftKey && !e.altKey && !isTyping(e)) {
+    e.preventDefault(); if (undoClear) undoClearQueue(); else if (undoRemove) undoRemoveSong(); else undoEjectSlot(); return;
   }
   if (state.changerMode && (e.metaKey || e.ctrlKey) && e.code === 'KeyZ' && !e.shiftKey && !isTyping(e)) { e.preventDefault(); setStatus(t('NOTHING TO BRING BACK')); return; }
   // ⌘/Ctrl+O opens songs, ⌘/Ctrl+, the settings, ⌘/Ctrl+K the search (as /, the key other apps use for it): a
@@ -2938,6 +2969,13 @@ function onKeyDown(e) {
     d: discSkip, 1: () => playSlot(0), 2: () => playSlot(1), 3: () => playSlot(2), 4: () => playSlot(3), 5: () => playSlot(4), // changer mode only
   };
   if (actions[key]) { e.preventDefault(); cdKeyUntil = Date.now() + 600; if (!e.repeat || key.startsWith('Arrow')) { actions[key](); if (!e.repeat) noteKeyUsed(); } }
+}
+// ⋯ in the header (PLAYER LOOK: VISUALIZER and LYRICS, which leave CD VIEW out of it, and VISUALIZER and a narrow ALBUM,
+// LOAD A TRACK): what isn't a button in the look, with its key.
+function showMoreMenu() {
+  const wanted = [t('CD VIEW'), t('LOAD A TRACK'), t('VISUALIZER MODE'), t('MINI MODE')];
+  const items = commands().filter((c) => wanted.includes(c.label)).sort((a, b) => wanted.indexOf(a.label) - wanted.indexOf(b.label));
+  panels.menu($('more-button'), items.map((c) => ({ label: c.label, key: c.key, pick: c.run })), { alignEnd: true });
 }
 // What "/" finds besides songs (search-commands.js): what the keys and the header's buttons do, by name — those that
 // can be done now (a button that's hidden can't).
