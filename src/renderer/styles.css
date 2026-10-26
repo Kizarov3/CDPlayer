@@ -14,6 +14,7 @@
      (ease-in), and move between places with both (in-out). widgets.js has the same curves for JS animations. */
   --anim-in: 240ms;
   --anim-out: 170ms;
+  --vis-fade: 420ms; /* (the VISUALIZER look's chrome going and coming at V) */
   --hover: 140ms;
   --ease-out: cubic-bezier(.22, 1, .36, 1);
   --ease-in: cubic-bezier(.4, 0, 1, 1);
@@ -253,7 +254,7 @@ body.cursor-hidden #cd-exit { opacity: 0; }
    the seek bar, the keys and the volume in a bar along the bottom; the queue slides in at the side (QUEUE) */
 #look-visualizer { display: none; }
 body.look-visualizer:not(.cd-view) #look-visualizer {
-  display: block; position: fixed; left: 0; top: 190px; width: 100%; height: calc(100vh - 190px - 112px); z-index: 0; pointer-events: none;
+  display: block; position: fixed; left: 0; top: 0; width: 100%; height: 100vh; z-index: 0; pointer-events: none; /* (the scene is drawn between the title and the bar, and over all of it at V: lookInset, app.js) */
 }
 body.look-visualizer:not(.cd-view) #body { grid-template-columns: 1fr; }
 body.look-visualizer:not(.cd-view) #disc-column, body.look-visualizer #deck-display,
@@ -282,7 +283,24 @@ body.look-visualizer #track-title { font-size: 40px; height: 52px; line-height: 
 body.look-visualizer #deck-display { margin-top: 18px; }
 body.look-visualizer #queue-card { margin-top: 22px; }
 body.look-visualizer #volume-row .row-label, body.look-visualizer #load-button { display: none; } /* (room for the keys; LOAD A TRACK is on the shelf and ⌘O) */
+/* V here is the same visualizer, let out: the header, the keys and the bar fade away (the scene grows to the window's
+   edges as they go), the song's name stays a few seconds and softens away; a move of the mouse, V or Esc bring it all back */
+body.look-visualizer #header-block, body.look-visualizer #now-row, body.look-visualizer #source-row, body.look-visualizer #track-title, body.look-visualizer #track-artist,
+body.look-visualizer #progress-row, body.look-visualizer #times, body.look-visualizer #controls, body.look-visualizer #volume-row {
+  transition: opacity var(--vis-fade) var(--ease-out), transform var(--vis-fade) var(--ease-out);
+}
+body.look-visualizer:not(.cd-view)::after { transition: opacity var(--vis-fade) var(--ease-out), transform var(--vis-fade) var(--ease-out); }
+body.look-visualizer.vis-immersive #header-block, body.look-visualizer.vis-immersive #now-row, body.look-visualizer.vis-immersive #source-row,
+body.look-visualizer.vis-immersive #progress-row, body.look-visualizer.vis-immersive #times, body.look-visualizer.vis-immersive #controls,
+body.look-visualizer.vis-immersive #volume-row { opacity: 0; pointer-events: none; }
+body.look-visualizer.vis-immersive #header-block { transform: translateY(-14px); }
+body.look-visualizer.vis-immersive #progress-row, body.look-visualizer.vis-immersive #times, body.look-visualizer.vis-immersive #volume-row { transform: translateY(18px); }
+body.look-visualizer.vis-immersive #controls { transform: translate(-50%, 18px); }
+body.look-visualizer.vis-immersive:not(.cd-view)::after { opacity: 0; transform: translateY(40px); }
+body.look-visualizer.vis-immersive #track-title, body.look-visualizer.vis-immersive #track-artist { transform: translateY(calc(100vh - 340px)); text-shadow: 0 2px 28px rgba(0, 0, 0, .65); } /* (the name slides down under the scene's reflection) */
+body.look-visualizer.vis-immersive.vis-title-gone #track-title, body.look-visualizer.vis-immersive.vis-title-gone #track-artist { opacity: 0; transition-duration: 1400ms; }
 @media (max-width: 960px) { /* (the keys, centred, would reach the volume) */
+  body.look-visualizer.vis-immersive #controls { transform: translateY(18px); }
   body.look-visualizer #controls { left: 24px; transform: none; }
   body.look-visualizer #volume-row { right: 24px; }
   body.look-visualizer #volume-slider { width: 80px; }

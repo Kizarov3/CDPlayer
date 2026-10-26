@@ -31,6 +31,7 @@ export class Visualizer {
     this.peaks = new Float32Array(this.n);  // the bars' falling peak markers
     this.ref = 0.5;                         // loudest recent band, for auto-gain
     this.scene = null;                      // cached layout of the current scene: { key, ... }
+    this.inset = { top: 0, bottom: 0 };     // px of the canvas the scene keeps out of (the VISUALIZER look's title above it, its bar below)
   }
   setMode(mode) { this.mode = mode; }
   setActive(on) { this.active = on; if (!on) this.levels.fill(0); }
@@ -84,26 +85,32 @@ export class Visualizer {
 
   draw(now) {
     const c = this.canvas, dpr = window.devicePixelRatio || 1;
-    const { width: w, height: h } = c.getBoundingClientRect();
-    if (!w || !h) return;
-    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+    const { width: w, height: full } = c.getBoundingClientRect();
+    const { top, bottom } = this.inset, h = full - top - bottom;
+    if (!w || !(h > 0)) return;
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(full * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(full * dpr); }
     // The bars, settled flat with nothing playing, don't move: drawn once, then left (the themes' scenery keeps moving).
     let quiet = null;
     if (!this.active && (this.mode === 'BARS' || !this.useSpectrum)) {
-      let top = 0;
-      for (let i = 0; i < this.n; i++) top = Math.max(top, this.spec[i], this.peaks[i]);
-      if (top < 0.001) quiet = `${c.width}x${c.height}|${this.mode}|${colors.accent}|${colors.accent2}`;
+      let peak = 0;
+      for (let i = 0; i < this.n; i++) peak = Math.max(peak, this.spec[i], this.peaks[i]);
+      if (peak < 0.001) quiet = `${c.width}x${c.height}|${top}|${bottom}|${this.mode}|${colors.accent}|${colors.accent2}`;
     }
     if (quiet && quiet === this.quietDrawn) return;
     this.quietDrawn = quiet;
     const g = c.getContext('2d');
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.clearRect(0, 0, w, h);
+    g.clearRect(0, 0, w, full);
     if (!this.useSpectrum) { this.levelBars(g, w, h); return; }
     const scene = this.big
       ? { TREE: this.tree, CONSTELLATION: this.constellation, WAVES: this.waves, MATRIX_RAIN: this.matrix, LEAVES: this.leaves }[this.mode] || this.bars
       : { TREE: this.miniTree, CONSTELLATION: this.miniConstellation, WAVES: this.miniWaves, MATRIX_RAIN: this.miniMatrix, LEAVES: this.miniLeaves }[this.mode] || this.miniBars;
+    // (the scene sees a canvas of its own size, `h` tall: clipped to it, so a glow doesn't spill under the title or the bar)
+    g.save();
+    if (top || bottom) { g.beginPath(); g.rect(0, top, w, h); g.clip(); }
+    g.translate(0, top);
     scene.call(this, g, w, h, now);
+    g.restore();
   }
 
   // The Mini Mode window's indicator: five bars from five loudness levels.
@@ -221,7 +228,7 @@ export class Visualizer {
   // trails longer and glows brighter.
   matrix(g, w, h, now) {
     const size = Math.max(14, Math.round(Math.min(w, h) / 42)), cols = Math.floor(w / (size * 0.95));
-    const sc = this.sceneFor(`m${cols}x${Math.round(h)}`, () => rainLayout(cols, h, now));
+    const sc = this.sceneFor(`m${cols}`, () => rainLayout(cols, h, now)); // (not by height too: the scene grows and shrinks with the inset, and the rain mustn't start over)
     const dt = Math.min(100, now - sc.last); sc.last = now;
     g.font = `bold ${size}px ui-monospace, Menlo, Consolas, monospace`;
     g.textAlign = 'center';

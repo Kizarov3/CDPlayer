@@ -2322,9 +2322,38 @@ function stepDiscMorph(now, finish = false) {
   m.resolve();
 }
 
+// In the VISUALIZER look, V doesn't open a second visualizer over the one that's already drawn: that one is let out to
+// the window's edges, the header, the keys and the bar fading away around it (body.vis-immersive, styles.css) and the
+// song's name softening away a few seconds later. The same ways out as the overlay's: a move of the mouse, V, Esc.
+const VIS_TITLE_MS = 3500;
+let titleFadeTimer = null;
+const inImmersive = () => state.visualizerMode && state.look === 'VISUALIZER';
+function showImmersive(on) {
+  const body = document.body;
+  clearTimeout(titleFadeTimer);
+  body.classList.remove('vis-title-gone');
+  body.classList.toggle('vis-immersive', on);
+  if (on) {
+    showQueueDrawer(false);
+    body.classList.add('cursor-hidden'); state.cursorHidden = true; // (as CD View's, till the mouse moves)
+    titleFadeTimer = setTimeout(() => body.classList.add('vis-title-gone'), VIS_TITLE_MS);
+  } else showCursor();
+}
+// Without the fade: for what takes the window away (Mini Mode) or changes the look under it.
+function leaveVisualizerMode() {
+  if (!state.visualizerMode) return;
+  state.visualizerMode = false;
+  $('vis-mode').hidden = true;
+  showImmersive(false);
+}
 function toggleVisualizerMode() {
   if (!state.visualizerMode && (state.miniMode || state.cdView || isKaraokeOpen() || isShelfOpen())) return;
   state.visualizerMode = !state.visualizerMode;
+  if (state.look === 'VISUALIZER') {
+    if (state.visualizerMode) state.visualizerEnteredAt = Date.now();
+    showImmersive(state.visualizerMode);
+    return;
+  }
   const node = $('vis-mode');
   if (state.visualizerMode) {
     state.visualizerEnteredAt = Date.now();
@@ -2341,7 +2370,7 @@ async function setMiniMode(enabled) {
   if (enabled) {
     stepDiscMorph(0, true); // a CD View transition still running finishes first
     if (state.cdView) { state.cdView = false; applyCdViewState(); }
-    if (state.visualizerMode) { state.visualizerMode = false; $('vis-mode').hidden = true; }
+    leaveVisualizerMode();
   }
   state.miniMode = enabled;
   panels.closeMenu();
@@ -2951,7 +2980,9 @@ function setDisplay(kind, { save = true } = {}) {
 }
 const LOOKS = ['CLASSIC', 'VISUALIZER', 'LYRICS', 'HIFI', 'ALBUM'];
 function setLook(kind, { save = true } = {}) {
+  leaveVisualizerMode(); // (the overlay is for the other looks, the immersive one for this)
   state.look = LOOKS.includes(kind) ? kind : 'CLASSIC';
+  lookInsetSet = false;
   for (const k of LOOKS) document.body.classList.toggle(`look-${k.toLowerCase()}`, state.look === k);
   showQueueDrawer(false);
   if (state.look === 'LYRICS') { showLookWords(); requestAnimationFrame(showLookWords); } // (again once it's laid out: where a line or song sits needs the room)
@@ -3021,6 +3052,21 @@ function playbackTick() {
   if (state.remoteListening && now - remoteTickAt >= 1000) { remoteTickAt = now; cdp.sendRemoteState({ playing: true, position: pos, duration: dur }); }
 }
 
+// The VISUALIZER look's scene is drawn between the song's name and the bar — and, at V, over the whole window: the
+// margins are drawn in or out over a moment (a canvas's size can't be eased by CSS without squeezing what's drawn).
+const LOOK_BAR_PX = 112, LOOK_TITLE_GAP_PX = 10; // (the bar: styles.css; the gap: from the last line of the song's name)
+let lookInsetSet = false;
+function stepLookInset(dt) {
+  const inset = lookVisualizer.inset;
+  const want = inImmersive() ? { top: 0, bottom: 0 } : { top: Math.round($('source-row').getBoundingClientRect().bottom) + LOOK_TITLE_GAP_PX, bottom: LOOK_BAR_PX };
+  const k = anim.enabled && lookInsetSet ? 1 - Math.exp(-dt / 100) : 1;
+  lookInsetSet = true;
+  for (const side of ['top', 'bottom']) {
+    const gap = want[side] - inset[side];
+    inset[side] = Math.abs(gap) < 0.5 ? want[side] : inset[side] + gap * k;
+  }
+}
+
 let last = performance.now(), idleCheck = 0, windowShown = true;
 cdp.onWindowShown((shown) => { windowShown = shown; });
 // While you're in another app, the window only needs to look alive: drawing it at 30 frames a second instead of 60
@@ -3048,11 +3094,13 @@ function frame(now) {
   const underShelf = isShelfOpen() && !$('shelf').classList.contains('carrying');
   if (underShelf) { requestAnimationFrame(frame); return; }
   visualizer.setSpectrum(engine.playing ? engine.spectrum(visualizer.n) : null, dt);
-  if (state.visualizerMode) bigVisualizer.setSpectrum(engine.playing ? engine.spectrum(bigVisualizer.n) : null, dt);
+  const overlayShown = state.visualizerMode && !inImmersive();
+  if (overlayShown) bigVisualizer.setSpectrum(engine.playing ? engine.spectrum(bigVisualizer.n) : null, dt);
   visualizer.draw(now);
-  if (state.visualizerMode) bigVisualizer.draw(now);
+  if (overlayShown) bigVisualizer.draw(now);
   if (state.look === 'HIFI' && !state.cdView) { vuMeters.set(engine.stereo(), dt); vuMeters.draw(); }
-  if (state.look === 'VISUALIZER' && !state.cdView && !state.visualizerMode) {
+  if (state.look === 'VISUALIZER' && !state.cdView) {
+    stepLookInset(dt);
     lookVisualizer.setSpectrum(engine.playing ? engine.spectrum(lookVisualizer.n) : null, dt);
     lookVisualizer.draw(now);
   }
