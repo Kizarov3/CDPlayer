@@ -134,12 +134,19 @@ function jewelCase(g, L, s, at) {
   g.fillStyle = gloss; g.fillRect(c.x, c.y, c.w, c.h);
 }
 
-// ALBUM: the cover, plain and big, its disc (printed with it) a third of the way out from behind it and turning.
+// ALBUM: the cover big in its jewel case, its disc (a CD's, smaller than the case) out past the case's edge and turning.
 function albumPage(g, L, s, at) {
-  const a = L.art, size = Math.min(a.h, a.w * 0.62), r = size * 0.47, peek = size * 0.3 * ease(at / SLIDE_S);
+  const a = L.art, size = Math.min(a.h, a.w * 0.62), r = size * 0.4, peek = size * 0.3 * ease(at / SLIDE_S);
   const x = a.x + (a.w - size - peek) / 2, y = a.y + (a.h - size) / 2;
   disc(g, s, x + size - r + peek, y + size / 2, r, at);
-  cover(g, s, x, y, size);
+  cover(g, s, x, y, size, 5);
+  // The case: its hinge down the left, the plastic's sheen.
+  const hinge = g.createLinearGradient(x, 0, x + size * 0.06, 0);
+  hinge.addColorStop(0, 'rgba(0,0,0,0.45)'); hinge.addColorStop(0.25, 'rgba(255,255,255,0.18)'); hinge.addColorStop(0.5, 'rgba(0,0,0,0.25)'); hinge.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = hinge; g.fillRect(x, y, size * 0.06, size);
+  const gloss = g.createLinearGradient(x, y, x + size * 0.7, y + size * 0.9);
+  gloss.addColorStop(0, 'rgba(255,255,255,0.18)'); gloss.addColorStop(0.45, 'rgba(255,255,255,0)');
+  g.fillStyle = gloss; g.fillRect(x, y, size, size);
 }
 
 // HI-FI: a deck's front — dark brushed metal, a black glass display with the time running in its lit digits, the disc

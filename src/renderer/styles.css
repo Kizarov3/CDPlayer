@@ -482,23 +482,31 @@ body.look-album:not(.cd-view) #player > *, body.look-album:not(.cd-view) #facepl
 body.look-album:not(.cd-view) #disc-column { grid-column: 1; grid-row: 1; margin: 6px 0 4px; min-height: 120px; }
 body.look-album #disc-column { container-type: size; }
 body.look-album #disc-column > canvas { visibility: hidden; }
-/* The cover and the disc as one picture, centred: the disc reaches a third of itself past the cover's right edge. */
+/* The cover in its jewel case and the disc as one picture, centred: the disc (a CD's, smaller than its case) reaches out
+   past the case's right edge. */
 body.look-album #cover-art, body.look-album #album-disc { --s: min(94cqh, 74cqw); display: block; position: absolute; }
 body.look-album #cover-art {
   z-index: 1; left: calc(50% - var(--s) * .655); top: calc(50% - var(--s) / 2); width: var(--s); height: var(--s);
-  border-radius: 8px; background: center / cover no-repeat rgba(255, 255, 255, .06);
+  border-radius: 4px; background: center / cover no-repeat rgba(255, 255, 255, .06);
   box-shadow: 0 30px 70px rgba(0, 0, 0, .5), 10px 0 24px rgba(0, 0, 0, .35), 0 0 0 1px rgba(255, 255, 255, .06);
   transition: background-image 400ms ease;
+}
+/* The case: its hinge down the left, the plastic's sheen across, a clear edge round it. */
+body.look-album #cover-art::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(90deg, rgba(0, 0, 0, .5), rgba(255, 255, 255, .2) 1.4%, rgba(0, 0, 0, .3) 2.8%, rgba(255, 255, 255, .1) 4.4%, transparent 6%),
+    linear-gradient(128deg, rgba(255, 255, 255, .2), rgba(255, 255, 255, .04) 38%, transparent 46%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .22), inset 0 0 0 4px rgba(255, 255, 255, .05);
 }
 body.look-album #cover-art.none { background: linear-gradient(150deg, rgb(58, 59, 64), rgb(30, 31, 35)); } /* (solid: the disc is behind it) */
 body.look-album #cover-art.none::after { content: "♪"; position: absolute; inset: 0; display: grid; place-items: center; font-size: calc(var(--s) * .34); color: rgba(var(--text), .18); font-weight: normal; }
 body.look-album #album-disc {
-  left: calc(50% - var(--s) * .625); top: calc(50% - var(--s) * .47); width: calc(var(--s) * .94); height: calc(var(--s) * .94);
+  left: calc(50% - var(--s) * .555); top: calc(50% - var(--s) * .4); width: calc(var(--s) * .8); height: calc(var(--s) * .8);
   border-radius: 50%; box-shadow: 0 16px 36px rgba(0, 0, 0, .45);
   background: conic-gradient(from 30deg, #b4b8bf, #e6e8ec, #a9aeb6, #d6dae0, #b1b6be, #eceef1, #b4b8bf); /* (the silver; its hole is behind the cover) */
   transition: transform 1100ms var(--ease-out);
 }
-body.look-album #album-disc.out { transform: translateX(36%); }
+body.look-album #album-disc.out { transform: translateX(50%); }
 /* Its label, printed with the middle of the cover from the silver ring to the edge, turning. */
 #album-disc::before {
   content: ""; position: absolute; inset: 0; border-radius: 50%;
@@ -513,7 +521,8 @@ body.playing #album-disc::before { animation-play-state: running; }
   content: ""; position: absolute; inset: 0; border-radius: 50%;
   background:
     radial-gradient(circle closest-side, rgba(30, 32, 36, .55) 0 27%, rgba(255, 255, 255, .35) 27.5% 28.5%, rgba(30, 32, 36, .3) 29% 33%, rgba(0, 0, 0, .25) 35.5% 36%, transparent 36.5% 97%, rgba(255, 255, 255, .4) 98%, rgba(0, 0, 0, .35) 99.5%),
-    conic-gradient(from 210deg, transparent, rgba(255, 255, 255, .24) 28deg, transparent 64deg 180deg, rgba(255, 255, 255, .14) 212deg, transparent 250deg);
+    conic-gradient(from 200deg, transparent, rgba(255, 130, 200, .2) 18deg, rgba(120, 200, 255, .24) 36deg, rgba(160, 255, 170, .18) 54deg, transparent 80deg 180deg,
+      rgba(255, 220, 120, .16) 204deg, rgba(140, 180, 255, .2) 224deg, transparent 252deg); /* (a CD's rainbow where the light falls) */
 }
 body.no-anim #album-disc { transition: none; }
 body.no-anim #album-disc::before { animation: none; }
