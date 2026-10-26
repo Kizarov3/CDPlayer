@@ -22,12 +22,13 @@ test('every scene: its visualizer and what falls behind the player', () => {
     { visualizer: 'BARS', particles: 'NONE' }, { visualizer: 'TREE', particles: 'SNOW' },
     { visualizer: 'CONSTELLATION', particles: 'GALAXY' }, { visualizer: 'WAVES', particles: 'OCEAN' },
     { visualizer: 'MATRIX_RAIN', particles: 'MATRIX' }, { visualizer: 'LEAVES', particles: 'AUTUMN' },
+    { visualizer: 'BARS', particles: 'FOREST' },
   ]);
 });
 
 test('built-in themes keep their scenes; a theme of your own has the one you picked', () => {
   const byName = (n) => THEMES.find((t) => t.name === n);
-  assert.deepStrictEqual(['RED', 'SNOW', 'AUTO', 'OCEAN'].map((n) => sceneOf(byName(n))), ['BARS', 'SNOW', 'BARS', 'OCEAN']);
+  assert.deepStrictEqual(['RED', 'SNOW', 'AUTO', 'OCEAN', 'FOREST'].map((n) => sceneOf(byName(n))), ['BARS', 'SNOW', 'BARS', 'OCEAN', 'FOREST']);
   assert.strictEqual(visualizerModeFor({ name: 'SNOW 2', scene: 'MATRIX' }), 'MATRIX_RAIN');
   assert.strictEqual(particleModeFor({ name: 'MINE', scene: 'BARS' }), 'NONE');
 });

@@ -1,10 +1,11 @@
 // Whole-window theme particles: SNOW (falling snow), OCEAN (rising bubbles), AUTUMN (tumbling leaves), GALAXY
-// (twinkling stars + shooting stars), MATRIX (code rain). Drawn over everything but kept off the disc and any
-// open panel, like the Java version's clipped glass pane. Motion is tuned to the original 35ms tick.
+// (twinkling stars + shooting stars), MATRIX (code rain), FOREST (a few fireflies). Drawn over the background, under
+// the player, and kept off the disc and any open panel. Motion is tuned to the original 35ms tick.
 import { colors, rgb } from './theme.js';
 
 const COUNT = 140;
-const MATRIX_COL = 16;
+const MATRIX_COL = 16, MATRIX_TRAIL = 10;
+const FIREFLIES = 18;
 const LEAF_PALETTE = [[224, 122, 40], [200, 60, 46], [230, 176, 60], [180, 90, 40], [214, 140, 70]].map((c) => rgb(c, 210 / 255));
 
 export class Particles {
@@ -17,6 +18,8 @@ export class Particles {
     this.shooting = [];
     this.clock = 0;
     this.w = 0; this.h = 0;
+    this.glyphs = new Uint8Array(COUNT * MATRIX_TRAIL); // each column's digits, a few changed now and then
+    this.sprites = null; // the digits (or a firefly's glow) drawn once, then copied: fillText 1400 times a frame cost
   }
   setMode(mode) {
     if (mode === this.mode) return;
@@ -34,10 +37,14 @@ export class Particles {
         case 'OCEAN': this.speed[i] = 0.3 + R() * 0.9; this.size[i] = 1.4 + R() * 2.8; break;
         case 'AUTUMN': this.speed[i] = 0.4 + R() * 1.0; this.size[i] = 2.6 + R() * 2.6; this.spin[i] = R() * Math.PI * 2; break;
         case 'GALAXY': this.speed[i] = 0.4 + R() * 1.6; this.size[i] = 0.6 + R() * 1.6; break;
-        case 'MATRIX': this.x[i] = i * MATRIX_COL; this.y[i] = -R() * h - 20; this.speed[i] = 2 + R() * 4; break;
+        // (spread wider than 16 px apart on a screen too wide for the columns there are)
+        case 'MATRIX': this.x[i] = i * Math.max(MATRIX_COL, w / COUNT); this.y[i] = -R() * h - 20; this.speed[i] = 2 + R() * 4; break;
+        // Fireflies keep low, under the trees: each wanders its own way and lights up now and then, for a moment.
+        case 'FOREST': this.y[i] = h * (0.35 + 0.65 * R()); this.spin[i] = R() * Math.PI * 2; this.speed[i] = 0.35 + R() * 0.5; this.size[i] = 0.7 + R() * 0.6; break;
         default: break;
       }
     }
+    for (let i = 0; i < this.glyphs.length; i++) this.glyphs[i] = Math.floor(R() * 10);
   }
   advance(k) {
     const w = this.w, h = this.h;
@@ -57,6 +64,17 @@ export class Particles {
       case 'AUTUMN': fall(1); for (let i = 0; i < COUNT; i++) this.spin[i] += (0.02 + this.speed[i] * 0.015) * k; break;
       case 'MATRIX':
         for (let i = 0; i < COUNT; i++) { this.y[i] += this.speed[i] * k; if (this.y[i] > h + 160) this.y[i] = -Math.random() * h * 0.6 - 20; }
+        for (let n = Math.round(12 * k); n > 0; n--) this.glyphs[Math.floor(Math.random() * this.glyphs.length)] = Math.floor(Math.random() * 10);
+        break;
+      case 'FOREST':
+        for (let i = 0; i < FIREFLIES; i++) {
+          this.spin[i] += (Math.sin(this.clock * 0.7 + this.phase[i] * 3) * 0.05) * k; // a slow, wavering heading
+          this.x[i] += Math.cos(this.spin[i]) * this.speed[i] * 0.5 * k;
+          this.y[i] += Math.sin(this.spin[i]) * this.speed[i] * 0.3 * k;
+          if (this.x[i] < -20) this.x[i] = w + 20; else if (this.x[i] > w + 20) this.x[i] = -20;
+          if (this.y[i] < h * 0.3) this.spin[i] = Math.abs(this.spin[i]) % Math.PI; // back down, under the canopy
+          else if (this.y[i] > h + 10) this.spin[i] = -(Math.abs(this.spin[i]) % Math.PI);
+        }
         break;
       case 'GALAXY':
         if (this.shooting.length < 2 && Math.random() < 0.012 * k) {
@@ -87,6 +105,19 @@ export class Particles {
     this.paint(g, w, h);
     // Punch the disc and any open card back out (clearing, rather than clipping, so overlapping areas stay clear).
     for (const r of exclusions) g.clearRect(r.x, r.y, r.w, r.h);
+  }
+  // A sheet of `cols`×`rows` cells drawn once by `draw` at the screen's sharpness (again when `key` changes: the
+  // theme's colour moving), and a way to copy cell (col, row) to x, y.
+  sprite(name, key, draw, cell, cols, rows) {
+    const dpr = window.devicePixelRatio || 1, full = `${name}|${key}|${dpr}`;
+    if (!this.sprites || this.sprites.key !== full) {
+      const c = new OffscreenCanvas(Math.ceil(cell.w * cols * dpr), Math.ceil(cell.h * rows * dpr)), s = c.getContext('2d');
+      s.scale(dpr, dpr);
+      draw(s, cell);
+      const sw = cell.w * dpr, sh = cell.h * dpr;
+      this.sprites = { key: full, draw: (g, col, row, x, y, w = cell.w, h = cell.h) => g.drawImage(c, col * sw, row * sh, sw, sh, x, y, w, h) };
+    }
+    return this.sprites;
   }
   paint(g, w, h) {
     const dot = (x, y, r) => { g.moveTo(x + r, y); g.arc(x, y, r, 0, Math.PI * 2); };
@@ -119,19 +150,43 @@ export class Particles {
         }
         break;
       case 'MATRIX': {
-        g.font = 'bold 14px monospace';
-        g.textAlign = 'left';
-        const trail = [];
-        for (let j = 1; j < 10; j++) trail[j] = rgb(colors.accent, Math.max(0, 200 - j * 22) / 255);
+        // Each column's first digit pale, the ones trailing it in the theme's colour, fading.
+        const sheet = this.sprite('matrix', colors.accent.join(), (s, cell) => {
+          s.font = 'bold 14px monospace'; s.textBaseline = 'alphabetic';
+          for (let d = 0; d < 10; d++) {
+            s.fillStyle = 'rgb(224,255,224)'; s.fillText(String(d), d * cell.w, 14);
+            s.fillStyle = rgb(colors.accent); s.fillText(String(d), d * cell.w, 14 + cell.h);
+          }
+        }, { w: MATRIX_COL, h: 18 }, 10, 2);
         for (let i = 0; i < COUNT; i++) {
           if (this.x[i] > w) continue;
-          for (let j = 0; j < 10; j++) {
+          for (let j = 0; j < MATRIX_TRAIL; j++) {
             const gy = this.y[i] - j * 16;
             if (gy < -16 || gy > h + 16) continue;
-            g.fillStyle = j === 0 ? 'rgb(224,255,224)' : trail[j];
-            g.fillText(String(Math.floor(Math.random() * 10)), this.x[i], gy);
+            g.globalAlpha = j === 0 ? 1 : Math.max(0, 200 - j * 22) / 255;
+            sheet.draw(g, this.glyphs[i * MATRIX_TRAIL + j], j === 0 ? 0 : 1, this.x[i], gy - 14);
           }
         }
+        g.globalAlpha = 1;
+        break;
+      }
+      case 'FOREST': {
+        const glow = this.sprite('firefly', '', (s, cell) => {
+          const c = cell.w / 2, grad = s.createRadialGradient(c, c, 0, c, c, c);
+          grad.addColorStop(0, 'rgba(250,255,210,1)'); grad.addColorStop(0.12, 'rgba(214,246,120,0.9)');
+          grad.addColorStop(0.4, 'rgba(178,224,70,0.28)'); grad.addColorStop(1, 'rgba(160,214,60,0)');
+          s.fillStyle = grad; s.fillRect(0, 0, cell.w, cell.h);
+        }, { w: 28, h: 28 }, 1, 1);
+        for (let i = 0; i < FIREFLIES; i++) {
+          // lit a moment in every few seconds, at its own pace: a quick glow up, a slower fade
+          const t = (this.clock * this.speed[i] * 2.2 + this.phase[i]) % (Math.PI * 2), on = t < 1.4 ? Math.sin((t / 1.4) * Math.PI) : 0;
+          const a = 0.06 + 0.94 * on * on;
+          if (a < 0.02) continue;
+          const r = 14 * this.size[i] * (0.75 + 0.25 * on);
+          g.globalAlpha = a;
+          glow.draw(g, 0, 0, this.x[i] - r, this.y[i] - r, r * 2, r * 2);
+        }
+        g.globalAlpha = 1;
         break;
       }
       default: break;

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { deriveAutoTheme } from '../src/renderer/js/theme.js';
+import { deriveAutoTheme, contrast } from '../src/renderer/js/theme.js';
 
 // A cover of `size`×`size` pixels painted by `paint(x, y)` → [r, g, b], handed to deriveAutoTheme through a stand-in
 // for the canvas it reads the pixels from.
@@ -30,4 +30,13 @@ test('a cover that is mostly one colour gives that colour', () => {
   const blue = deriveAutoTheme(cover(600, (x, y) => (x < 540 ? [30, 90, 200] : [220, 40, 40])));
   const h = hueOf(blue.accent);
   assert.ok(h > 190 && h < 240, `accent hue ${Math.round(h)}°`);
+});
+
+test('a deep blue or violet cover still gives an accent that reads on the background, in its own hue', () => {
+  for (const paint of [[20, 20, 200], [90, 20, 190], [190, 20, 30]]) {
+    const theme = deriveAutoTheme(cover(200, () => paint));
+    assert.ok(contrast(theme.accent, theme.bg) >= 4, `${paint}: accent ${theme.accent} on ${theme.bg}`);
+    assert.ok(contrast(theme.accent2, theme.bg) >= 4, `${paint}: accent 2 ${theme.accent2}`);
+    assert.ok(Math.abs(hueOf(theme.accent) - hueOf(paint)) < 12 || Math.abs(hueOf(theme.accent) - hueOf(paint)) > 348, `${paint}: hue moved`);
+  }
 });

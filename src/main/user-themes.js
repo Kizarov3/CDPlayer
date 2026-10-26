@@ -10,7 +10,7 @@ const crypto = require('crypto');
 const store = require('./store');
 
 const BUILTIN = ['RED', 'BLUE', 'SUNSET', 'FOREST', 'GALAXY', 'OCEAN', 'MATRIX', 'AUTUMN', 'SNOW', 'AUTO'];
-const SCENES = ['BARS', 'SNOW', 'GALAXY', 'OCEAN', 'MATRIX', 'AUTUMN'];
+const SCENES = ['BARS', 'SNOW', 'GALAXY', 'OCEAN', 'MATRIX', 'AUTUMN', 'FOREST']; // (a new one at the end: older codes keep their numbers)
 const COLOR_KEYS = ['bg', 'card', 'accent', 'accent2', 'text', 'muted'];
 const MAX_IMAGE = 1.5 * 1024 * 1024;
 const IMAGE_URL = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/;

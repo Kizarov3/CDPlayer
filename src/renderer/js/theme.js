@@ -165,19 +165,32 @@ export function deriveAutoTheme(image) {
     } else { monochrome = true; sat = 0.05; }
   }
   const accent2Hue = hue2 != null ? hue2 : (hue + 0.06) % 1;
+  const bg = hsbToRgb(hue, Math.min(0.55, sat * 0.6), 0.06);
   return palette('AUTO',
-    hsbToRgb(hue, Math.min(0.55, sat * 0.6), 0.06),
+    bg,
     hsbToRgb(hue, Math.min(0.5, sat * 0.55), 0.12),
-    hsbToRgb(hue, sat, 0.72),
-    hsbToRgb(accent2Hue, monochrome ? sat : Math.max(0.25, sat * 0.55), 0.85),
+    readableOn(bg, hue, sat, 0.72),
+    readableOn(bg, accent2Hue, monochrome ? sat : Math.max(0.25, sat * 0.55), 0.85),
     hsbToRgb(hue, 0.04, 0.93),
     hsbToRgb(hue, 0.1, 0.58));
+}
+// A deep blue or violet at full colour all but vanishes on the dark background (the status, the song playing in the
+// queue, the display's digits): brighter, then paler, until it reads (4:1), its hue kept.
+const READABLE = 4;
+function readableOn(bg, h, s, v) {
+  let c = hsbToRgb(h, s, v);
+  for (let i = 0; i < 24 && contrast(c, bg) < READABLE; i++) {
+    if (v < 1) v = Math.min(1, v + 0.05); else s = Math.max(0, s - 0.05);
+    c = hsbToRgb(h, s, v);
+  }
+  return c;
 }
 
 // ---- Scenes: the visualizer's shape and what falls behind the player ----------------------------------------------
 
-export const SCENES = ['BARS', 'SNOW', 'GALAXY', 'OCEAN', 'MATRIX', 'AUTUMN'];
-const VISUALIZERS = { BARS: 'BARS', SNOW: 'TREE', GALAXY: 'CONSTELLATION', OCEAN: 'WAVES', MATRIX: 'MATRIX_RAIN', AUTUMN: 'LEAVES' };
+// (FOREST: fireflies over the plain bars)
+export const SCENES = ['BARS', 'SNOW', 'GALAXY', 'OCEAN', 'MATRIX', 'AUTUMN', 'FOREST'];
+const VISUALIZERS = { BARS: 'BARS', SNOW: 'TREE', GALAXY: 'CONSTELLATION', OCEAN: 'WAVES', MATRIX: 'MATRIX_RAIN', AUTUMN: 'LEAVES', FOREST: 'BARS' };
 export const sceneModes = (scene) => ({ visualizer: VISUALIZERS[scene] || 'BARS', particles: scene in VISUALIZERS && scene !== 'BARS' ? scene : 'NONE' });
 /** A theme's scene: the one picked for a theme of your own, the built-in theme's by its name. */
 export const sceneOf = (theme) => theme.scene || (SCENES.includes(theme.name) ? theme.name : 'BARS');

@@ -2,7 +2,7 @@
 // What's New dialogs). Each is a dimmed full-window layer that blocks clicks/drops/shortcuts to the player behind it,
 // with a centered card that grows and fades in, and shrinks and fades out.
 import { THEMES, draftFrom } from './theme.js';
-import { buildThemeEditor } from './theme-editor.js';
+import { buildThemeEditor, themeLabel } from './theme-editor.js';
 import { t, locale } from './i18n.js';
 import { historyDays } from './history-days.js';
 import { EQ_FREQUENCIES } from './audio.js';
@@ -192,9 +192,6 @@ export function showCard(app, { choices, maxLines, render, copy, save, video }) 
 // ---- Settings ----------------------------------------------------------------------------------------------------
 
 let themeButton = null, presetButton = null;
-// The built-in themes' names in the interface's language (a theme of one's own keeps the name it was given).
-const THEME_NAMES = { RED: t('RED|theme'), BLUE: t('BLUE|theme'), SUNSET: t('SUNSET|theme'), FOREST: t('FOREST|theme'), GALAXY: t('GALAXY|theme'), OCEAN: t('OCEAN|theme'), MATRIX: t('MATRIX|theme'), AUTUMN: t('AUTUMN|theme'), SNOW: t('SNOW|theme'), AUTO: t('AUTO') };
-const themeLabel = (theme) => (theme.user ? theme.name : THEME_NAMES[theme.name] || theme.name);
 export function updateThemeButton(app, name) { if (themeButton) themeButton.lastChild.textContent = themeLabel(THEMES.find((x) => x.name === name) || { name }); }
 
 let discogsSettings = null, scrobbleSettings = null;

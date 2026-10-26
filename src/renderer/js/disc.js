@@ -191,6 +191,12 @@ export class Disc {
   drop() { this.press = null; if (this.held) { this.held = null; this.canvas.style.cursor = ''; } this.endJog(); }
 
   setShine(on) { this.shineOn = !!on; this.lastLook = ''; }
+  /** The built-in theme on (null for one of yours): SUNSET lights the disc low and warm, BLUE rings it in light. */
+  setTheme(name) {
+    if (name === this.theme) return;
+    if ((name === 'SUNSET') !== (this.theme === 'SUNSET')) this.shine = null; // its fans drawn again, in the other light
+    this.theme = name; this.lastLook = '';
+  }
 
   aimLight(x, y) {
     const c = this.center;
@@ -237,7 +243,10 @@ export class Disc {
     s.globalCompositeOperation = 'source-over';
     s.clearRect(0, 0, px, px);
     const cone = s.createConicGradient(angle - Math.PI / 2, c, c);
-    const RAINBOW = ['255,70,70', '255,190,60', '120,255,120', '70,220,255', '110,120,255', '220,110,255'];
+    // SUNSET: a low sun's light, split only into its own warm end of the rainbow — gold through amber to rose.
+    const warm = this.theme === 'SUNSET';
+    const RAINBOW = warm ? ['255,214,120', '255,170,70', '255,120,60', '255,86,96', '255,90,150', '255,150,120']
+      : ['255,70,70', '255,190,60', '120,255,120', '70,220,255', '110,120,255', '220,110,255'];
     for (const mid of [0.25, 0.75]) { // the fan on the light's side, and its twin opposite
       const w = 0.075;
       cone.addColorStop(mid - w * 1.6, 'rgba(255,255,255,0)');
@@ -257,7 +266,7 @@ export class Disc {
     s.globalCompositeOperation = 'lighter';
     const gx = c + Math.cos(angle) * c * 0.5, gy = c + Math.sin(angle) * c * 0.5;
     const glare = s.createRadialGradient(gx, gy, 0, gx, gy, c * 0.7);
-    glare.addColorStop(0, 'rgba(255,255,255,0.35)'); glare.addColorStop(1, 'rgba(255,255,255,0)');
+    glare.addColorStop(0, warm ? 'rgba(255,196,140,0.42)' : 'rgba(255,255,255,0.35)'); glare.addColorStop(1, 'rgba(255,255,255,0)');
     s.fillStyle = glare;
     s.fillRect(0, 0, px, px);
   }
@@ -474,6 +483,25 @@ export class Disc {
     this.dataFace = { key, canvas: face, side };
     return this.dataFace;
   }
+  // BLUE: a ring of blue light under the disc's edge, as round the tray of a 2000s player, coming up as it spins up
+  // and going as it winds down. Drawn once per size and colour, then only copied.
+  drawRing(g, cx, cy, side, dpr) {
+    const key = `${side}|${dpr}|${colors.accent}`, R = side / 2, outer = R * 1.14;
+    if (!this.ring || this.ring.key !== key) {
+      const px = Math.ceil(outer * 2 * dpr), canvas = new OffscreenCanvas(px, px), s = canvas.getContext('2d');
+      s.scale(dpr, dpr);
+      const glow = s.createRadialGradient(outer, outer, R * 0.94, outer, outer, outer), [r, gr, b] = colors.accent;
+      glow.addColorStop(0, `rgba(${r},${gr},${b},0)`); glow.addColorStop(0.3, `rgba(${r},${gr},${b},0.55)`);
+      glow.addColorStop(0.42, `rgba(${Math.round((r + 255) / 2)},${Math.round((gr + 255) / 2)},255,0.5)`);
+      glow.addColorStop(1, `rgba(${r},${gr},${b},0)`);
+      s.fillStyle = glow; s.fillRect(0, 0, outer * 2, outer * 2);
+      this.ring = { key, canvas };
+    }
+    g.save();
+    g.globalAlpha *= 0.6 * Math.min(1, this.speed);
+    g.drawImage(this.ring.canvas, cx - outer, cy - outer, outer * 2, outer * 2);
+    g.restore();
+  }
   // The laser under the disc, where it's reading: a red point on the radius to the right, glowing.
   drawLaser(g, cx, cy, side) {
     if (!this.position) return;
@@ -584,7 +612,7 @@ export class Disc {
     const l = this.light;
     const look = [pw, ph, side, x, y, this.angle, this.speed, this.shineOn && l.angle, this.shineOn && l.strength, tray, art, eject, wobble, this.mode,
       this.faceKey, this.coverVersion, this.lookingUp, this.label && this.label.title, this.label && this.label.artist,
-      this.discPresent, colors.accent, colors.accent2, colors.bg, dpr, this.flipT, this.data && this.data.key,
+      this.discPresent, colors.accent, colors.accent2, colors.bg, dpr, this.flipT, this.data && this.data.key, this.theme,
       this.flipT > 0 && this.data && this.position ? Math.round(radiusAt(this.data.layout, this.position()) * 2000) : 0].join('|');
     if (look === this.lastLook) return bounds;
     this.lastLook = look;
@@ -666,6 +694,7 @@ export class Disc {
     const pad = Math.max(4, side / 90);
     g.fillStyle = 'rgba(0,0,0,0.35)';
     g.beginPath(); g.arc(cx, cy, side / 2 + pad, 0, Math.PI * 2); g.fill();
+    if (this.theme === 'BLUE' && !mini && this.speed > 0.01) this.drawRing(g, cx, cy, side, dpr);
     const face = dataSide ? this.renderDataFace(side, dpr) : this.renderFace(side, dpr);
     g.save();
     g.translate(cx, cy); g.rotate(this.angle); g.translate(-cx, -cy);

@@ -5,7 +5,10 @@ import { t } from './i18n.js';
 import { THEMES, SCENES, contrast, hex, fromHex, startFrom, deriveAutoTheme, typedName } from './theme.js';
 
 const COLOR_ROWS = [[t('BACKGROUND'), 'bg'], [t('CARDS'), 'card'], [t('ACCENT'), 'accent'], [t('ACCENT 2'), 'accent2'], [t('TEXT'), 'text'], [t('MUTED'), 'muted']];
-const SCENE_NAMES = { BARS: t('BARS'), SNOW: t('SNOW|scene'), GALAXY: t('GALAXY|scene'), OCEAN: t('OCEAN|scene'), MATRIX: t('MATRIX|scene'), AUTUMN: t('AUTUMN|scene') };
+const SCENE_NAMES = { BARS: t('BARS'), SNOW: t('SNOW|scene'), GALAXY: t('GALAXY|scene'), OCEAN: t('OCEAN|scene'), MATRIX: t('MATRIX|scene'), AUTUMN: t('AUTUMN|scene'), FOREST: t('FIREFLIES') };
+// The built-in themes' names in the interface's language (a theme of one's own keeps the name it was given).
+const THEME_NAMES = { RED: t('RED|theme'), BLUE: t('BLUE|theme'), SUNSET: t('SUNSET|theme'), FOREST: t('FOREST|theme'), GALAXY: t('GALAXY|theme'), OCEAN: t('OCEAN|theme'), MATRIX: t('MATRIX|theme'), AUTUMN: t('AUTUMN|theme'), SNOW: t('SNOW|theme'), AUTO: t('AUTO') };
+export const themeLabel = (theme) => (theme.user ? theme.name : THEME_NAMES[theme.name] || theme.name);
 const MAX_SIDE = 1920, MAX_BYTES = 1024 * 1024, QUALITIES = [0.85, 0.75, 0.65, 0.55];
 
 const asDataUrl = (blob) => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(blob); });
@@ -32,7 +35,7 @@ export function buildThemeEditor(app, ctx, ui) {
   const swatchOf = (theme) => `linear-gradient(135deg, rgb(${theme.accent}), rgb(${theme.accent2}))`;
 
   const startButton = pill(t('START FROM…'), () => ui.menu(startButton, [
-    ...THEMES.filter((theme) => !theme.user && theme.name !== 'AUTO').map((theme) => ({ label: theme.name, swatch: swatchOf(theme), pick: () => { startFrom(d, theme); ui.refresh(); preview(); } })),
+    ...THEMES.filter((theme) => !theme.user && theme.name !== 'AUTO').map((theme) => ({ label: themeLabel(theme), swatch: swatchOf(theme), pick: () => { startFrom(d, theme); ui.refresh(); preview(); } })),
     { label: t('THIS ALBUM'), pick: () => { startFrom(d, deriveAutoTheme(app.state.cover)); ui.refresh(); preview(); } },
   ]), t('Take the colors and scene of a theme, or the colors of the album playing'));
 

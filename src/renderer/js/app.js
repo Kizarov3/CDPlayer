@@ -2145,6 +2145,9 @@ function onCoverChanged() {
 function showTheme(theme, animate) {
   const hadImage = !!shownTheme.image;
   shownTheme = theme;
+  // (a built-in theme's own touches: RED's display glass in styles.css; BLUE's and SUNSET's light on the disc)
+  document.body.dataset.theme = theme.user ? '' : theme.name;
+  disc.setTheme(theme.user ? null : theme.name);
   applyThemeModes(theme);
   applyBackdrop(theme);
   paintCoverGlow();
