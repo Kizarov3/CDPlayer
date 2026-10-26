@@ -288,17 +288,37 @@ body.look-visualizer #volume-row .row-label, body.look-visualizer #load-button {
   body.look-visualizer #volume-slider { width: 80px; }
 }
 
-/* STAGE: the disc in the middle, the song and the keys under it; the queue and the changer slide in at the side (QUEUE) */
-body.look-lyrics #body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
-body.look-lyrics #disc-column { margin: 0; min-height: 220px; }
-body.look-lyrics #player { margin: 6px auto 0; width: min(620px, 100%); }
+/* LYRICS: the song's words down the right, as Apple Music shows them (look-lyrics.js) — the line sung now big and
+   bright; the disc, the song and the keys at the left; the queue and the changer slide in at the side (QUEUE) */
+#look-lyrics { display: none; }
+body.look-lyrics:not(.cd-view) #body { grid-template-columns: minmax(320px, 440px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; column-gap: 64px; }
+body.look-lyrics:not(.cd-view) #disc-column { grid-column: 1; grid-row: 1; margin: 0; min-height: 160px; }
+body.look-lyrics:not(.cd-view) #player { grid-column: 1; grid-row: 2; }
+body.look-lyrics:not(.cd-view) #look-lyrics {
+  display: block; grid-column: 2; grid-row: 1 / 3; min-height: 0; overflow-y: auto; scrollbar-width: none;
+  padding: 18vh 8px 50vh 0;
+  -webkit-mask-image: linear-gradient(transparent, #000 14%, #000 72%, transparent);
+}
+#look-lyrics::-webkit-scrollbar { display: none; }
+#look-lyrics p {
+  margin: 0 0 22px; font-size: clamp(22px, 2.4vw, 34px); font-weight: bold; line-height: 1.22; letter-spacing: -.01em;
+  color: rgba(var(--text), .3); transform-origin: 0 50%; transition: color 400ms, transform 400ms var(--spring, ease-out);
+}
+#look-lyrics.timed p { cursor: pointer; }
+#look-lyrics.timed p:hover { color: rgba(var(--text), .55); }
+#look-lyrics.timed p.sung { color: rgba(var(--text), .22); }
+#look-lyrics.timed p.now { color: rgb(var(--text)); transform: scale(1.03); }
+#look-lyrics:not(.timed) p { color: rgba(var(--text), .75); font-size: clamp(18px, 1.8vw, 26px); margin-bottom: 10px; }
+#look-lyrics .none { margin-top: 12vh; font-size: 13px; letter-spacing: .1em; color: rgb(var(--muted)); }
 body.look-lyrics #now-row { justify-content: center; }
-body.look-lyrics #now-row .grow, body.look-lyrics #now-playing-label, body.look-lyrics #visualizer { display: none; }
-body.look-lyrics #track-title, body.look-lyrics #track-artist { text-align: center; margin-left: auto; margin-right: auto; }
-body.look-lyrics #track-title { font-size: 36px; }
+body.look-lyrics #now-row .grow, body.look-lyrics #now-playing-label, body.look-lyrics #visualizer, body.look-lyrics #deck-display,
+body.look-lyrics #lyrics-button, body.look-lyrics #volume-row .row-label { display: none; }
+body.look-lyrics #track-title, body.look-lyrics #track-artist, body.look-lyrics #track-source { text-align: center; margin-left: auto; margin-right: auto; }
 body.look-lyrics #source-row { justify-content: center; }
-body.look-lyrics #progress-row { margin-top: 14px; }
-body.look-lyrics #controls { margin-top: 10px; }
+body.look-lyrics #track-title { font-size: 28px; }
+body.look-lyrics #times { display: flex; }
+body.look-lyrics #progress-row { margin-top: 12px; }
+body.look-lyrics #controls { margin-top: 6px; }
 body.look-lyrics #hint { padding-top: 4px; }
 body.look-lyrics #queue-toggle { display: inline-block; }
 body.look-lyrics #cd-view-button { display: none; } /* (QUEUE in its place, the header as wide as in the other looks; CD VIEW is C, and in the menu) */

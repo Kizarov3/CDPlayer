@@ -9,6 +9,7 @@ import { Visualizer } from './visualizer.js';
 import { Particles } from './particles.js';
 import { anim, EASE, el, pill, roundButton, modeButton, Slider, fitText, pulse, followPlaying } from './widgets.js';
 import { openBooklet, closeBooklet } from './booklet.js';
+import { setLookLyrics, followLookLyrics } from './look-lyrics.js';
 import { withoutHeader, parseLrc, currentLineIndex, heardPosition, playbackTimeFor, looksOnlineFor, takesOnline } from './lyrics.js';
 import { shortcutKey } from './keys.js';
 import { jogSeconds } from './jog.js';
@@ -1074,6 +1075,8 @@ function lyricsChanged() {
   $('karaoke-button').hidden = !canKaraoke(state.lyrics);
   panels.refreshLyricsIfOpen(app);
   refreshKaraoke();
+  setLookLyrics($('look-lyrics'), state.lyrics, seekToLyric);
+  if (state.look === 'LYRICS') followLookLyrics($('look-lyrics'), lyricsPosition(), true);
 }
 function toggleKaraoke() {
   if (isKaraokeOpen()) { closeKaraoke(); return; }
@@ -2910,6 +2913,7 @@ function setLook(kind, { save = true } = {}) {
   state.look = LOOKS.includes(kind) ? kind : 'CLASSIC';
   for (const k of LOOKS) document.body.classList.toggle(`look-${k.toLowerCase()}`, state.look === k);
   showQueueDrawer(false);
+  if (state.look === 'LYRICS') requestAnimationFrame(() => followLookLyrics($('look-lyrics'), lyricsPosition(), true)); // (once it's laid out)
   if (save) saveSettingsSoon();
 }
 function showQueueDrawer(open) {
@@ -2993,6 +2997,7 @@ function frame(now) {
   if (engine.deck && engine.playing && !jog) { // turning the disc, the seek bar shows where it has got to (turnJog)
     updateProgressUi();
     panels.updateLyricsSync(app);
+    if (state.look === 'LYRICS' && !state.cdView) followLookLyrics($('look-lyrics'), lyricsPosition());
   }
   // Both visualizers draw from the frequency spectrum (Visualizer Mode's only while it's showing); paused, they
   // settle back down.
