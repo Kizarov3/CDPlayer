@@ -20,10 +20,10 @@ disc.setMode('mini');
 disc.onMiniClick = () => send('toggle');
 const vis = new Visualizer($('vis'), { spectrum: false }); // five plain bars — a tiny live "now playing" indicator
 
-$('prev').append(glyphSvg('REWIND', 30));
-$('next').append(glyphSvg('FAST_FORWARD', 30));
-$('shuffle').append(glyphSvg('SHUFFLE', 24));
-$('repeat').prepend(glyphSvg('REPEAT', 24));
+$('prev').append(glyphSvg('PREVIOUS_TRACK', 24));
+$('next').append(glyphSvg('NEXT_TRACK', 24));
+$('shuffle').append(glyphSvg('SHUFFLE', 18));
+$('repeat').prepend(glyphSvg('REPEAT', 18));
 let playGlyph = null;
 function setPlayGlyph(playing) {
   const name = playing ? 'SOLID_PAUSE' : 'SOLID_PLAY';
@@ -52,6 +52,7 @@ $('close').addEventListener('click', () => send('exit'));
 $('prev').addEventListener('click', () => send('prev'));
 $('next').addEventListener('click', () => send('next'));
 $('play').addEventListener('click', () => send('toggle'));
+$('art').addEventListener('click', () => send('toggle'));
 $('shuffle').addEventListener('click', () => send('shuffle'));
 $('repeat').addEventListener('click', () => send('repeat'));
 // Buttons never keep keyboard focus, so Space always means play/pause.
@@ -116,12 +117,14 @@ cdp.onMiniState(async (s) => {
       if (track.cover) { img = new Image(); img.src = track.cover; try { await img.decode(); } catch { img = null; } }
       if (coverKey === track.coverKey) {
         disc.setCover(img);
+        if (img) $('art').src = img.src;
+        $('disc-wrap').classList.toggle('has-art', !!img);
         if (img) $('wash').style.backgroundImage = `url("${img.src}")`;
         $('wash').classList.toggle('on', !!img);
       }
     }
   }
-  if ('playing' in s) { disc.spinning = s.playing; vis.setActive(s.playing); setPlayGlyph(s.playing); }
+  if ('playing' in s) { document.body.classList.toggle('playing', s.playing); disc.spinning = s.playing; vis.setActive(s.playing); setPlayGlyph(s.playing); }
   // The changer's modes: SHUFFLE OFF / DISC / ALL, REPEAT OFF / TRACK / DISC / ALL.
   if ('shuffle' in s) {
     $('shuffle').classList.toggle('on', s.shuffle !== 'OFF');
@@ -165,7 +168,7 @@ function frame(now) {
   if (!shown) { setTimeout(() => requestAnimationFrame(frame), 250); last = now; return; } // (put away: the full player is up)
   if (now - last < BACKGROUND_FRAME_MS - 2) { requestAnimationFrame(frame); return; }
   const dt = Math.min(100, now - last); last = now;
-  disc.frame(now, dt);
+  if (!$('disc-wrap').classList.contains('has-art')) disc.frame(now, dt); // (the cover shown: no disc to turn)
   vis.draw(now);
   requestAnimationFrame(frame);
 }

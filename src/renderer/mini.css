@@ -1,4 +1,5 @@
-/* The mini player — laid out like Apple Music's mini player, in the full player's own look: its theme, its type, its keys. */
+/* The mini player — laid out like Apple Music's mini player, in the full player's own colours: the cover, the song,
+   light keys and one lit PLAY; the accent only on PLAY and the song's bar. */
 :root {
   --bg: 17, 17, 19;
   --card: 31, 31, 34;
@@ -53,19 +54,25 @@ button { font-family: inherit; outline: none; }
 #top { display: flex; align-items: center; gap: 12px; height: 52px; }
 #disc-wrap { position: relative; width: 52px; height: 52px; flex: 0 0 52px; cursor: pointer; }
 #disc { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* The cover itself, square, when the song has one (the disc, spinning, when it hasn't). */
+#art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 6px; display: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .45), inset 0 0 0 1px rgba(255, 255, 255, .1); }
+#disc-wrap.has-art #art { display: block; }
+#disc-wrap.has-art #disc { display: none; }
 #meta { flex: 1 1 auto; min-width: 0; }
 .line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#title { font-size: 16px; font-weight: bold; line-height: 20px; }
-#subtitle { font-size: 12px; line-height: 17px; color: rgb(var(--accent2)); margin-top: 1px; }
+#title { font-size: 15px; font-weight: 600; line-height: 20px; }
+#subtitle { font-size: 13px; line-height: 17px; color: rgba(var(--text), .6); margin-top: 1px; }
 /* A new song's name rises in, as in the full player. */
 .rise { animation: riseIn 320ms cubic-bezier(.22, 1, .36, 1) backwards; }
 #subtitle.rise { animation-delay: 50ms; }
 @keyframes riseIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-#vis { width: 32px; height: 22px; flex: 0 0 32px; align-self: flex-start; margin-top: 4px; opacity: .9; }
+#vis { width: 32px; height: 22px; flex: 0 0 32px; align-self: flex-start; margin-top: 4px; opacity: .9; display: none; }
+body.playing #vis { display: block; } /* (only while it plays: still, its bars read as a row of dots) */
 
 #bar { position: relative; height: 14px; margin-top: 10px; cursor: pointer; display: flex; align-items: center; }
 #track { position: relative; width: 100%; height: 4px; border-radius: 2px; background: rgba(var(--text), .16); overflow: hidden; transition: height 120ms; }
-#fill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(to right, rgb(var(--accent)), rgb(var(--accent2))); }
+#fill { position: absolute; inset: 0 auto 0 0; width: 0; background: rgb(var(--accent)); }
 #knob {
   position: absolute; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%;
   background: rgb(var(--text)); opacity: 0; transition: opacity 120ms; pointer-events: none;
@@ -73,10 +80,10 @@ button { font-family: inherit; outline: none; }
 #bar:hover #track, #bar.dragging #track { height: 6px; }
 #bar:hover #knob, #bar.dragging #knob { opacity: 1; }
 
-#times { display: flex; justify-content: space-between; margin-top: 2px; font-size: 11px; color: rgb(var(--muted)); font-variant-numeric: tabular-nums; }
+#times { display: flex; justify-content: space-between; margin-top: 2px; font-size: 11px; color: rgba(var(--text), .5); font-variant-numeric: tabular-nums; }
 
 #controls { display: flex; align-items: center; justify-content: space-between; margin-top: 0; flex: 1 1 auto; }
-#center { display: flex; align-items: center; gap: 18px; }
+#center { display: flex; align-items: center; gap: 24px; }
 #controls button {
   border: none; padding: 0; background: transparent; color: rgb(var(--text));
   display: grid; place-items: center; cursor: pointer; border-radius: 50%;
@@ -84,18 +91,22 @@ button { font-family: inherit; outline: none; }
 }
 #controls button:active { transform: scale(.86); transition-duration: 70ms; }
 #controls button svg { display: block; }
-#prev, #next { width: 36px; height: 30px; }
+#prev, #next { width: 32px; height: 32px; color: rgba(var(--text), .85) !important; }
+#prev:hover, #next:hover { color: rgb(var(--text)) !important; }
+#prev svg, #next svg { width: 24px; height: 24px; }
 #play { width: 40px; height: 40px; }
 #controls #play { /* the full player's PLAY: one colour, lit along its top edge like a real key */
   color: rgb(var(--bg)); background: rgb(var(--accent));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), inset 0 -2px 6px rgba(0, 0, 0, .18), 0 4px 14px rgba(var(--accent), .3);
 }
-#play svg { width: 22px; height: 22px; }
+#play svg { width: 20px; height: 20px; }
 #play svg.swap { animation: swapIn 220ms cubic-bezier(.22, 1, .36, 1); }
 @keyframes swapIn { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
-#controls .mode { position: relative; width: 30px; height: 30px; color: rgb(var(--muted)); }
+#controls .mode { position: relative; width: 28px; height: 28px; color: rgba(var(--text), .45); }
 #controls .mode:hover { color: rgb(var(--text)); }
-#controls .mode.on { background: rgba(var(--text), .15); color: rgb(var(--accent)); }
+/* On: lit in the accent, a dot under it, as the full player's keys. */
+#controls .mode.on { color: rgb(var(--accent)); }
+#controls .mode.on::after { content: ''; position: absolute; left: 50%; bottom: -3px; width: 3px; height: 3px; margin-left: -1.5px; border-radius: 50%; background: currentColor; }
 #badge { position: absolute; right: 3px; bottom: 2px; font-size: 8px; font-weight: 700; line-height: 1; }
 
 body.no-anim *, body.no-anim *::before, body.no-anim *::after { transition: none !important; animation: none !important; }
