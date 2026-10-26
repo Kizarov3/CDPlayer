@@ -79,6 +79,7 @@ When a new version is out, an **AVAILABLE** button appears in the player's top-l
 | `1`–`5` | Play the disc in that slot of the changer |
 | `←` / `→` | Skip back / forward 5 seconds |
 | `↑` / `↓` | Volume up / down |
+| `X` / `R` | Shuffle / repeat: each press goes on to the next mode |
 | `U` | Mute / unmute |
 | `F` | Toggle fullscreen |
 | `C` | Toggle CD view |

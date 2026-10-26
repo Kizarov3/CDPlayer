@@ -453,7 +453,7 @@ function buildSettings(app) {
     row(t('THEME'), themeButton),
     row(t('LANGUAGE'), languageButton), languageNote,
     row(t('PLAYER LOOK'), lookButton),
-    hint(t('CLASSIC: as it always was. DOCK: the keys in a bar along the bottom. STAGE: the disc in the middle, the queue at the side. GLASS: the cover bright behind frosted glass. PANEL: the keys and the display on one panel. COVER: the album’s cover instead of the disc, as in a streaming app.')),
+    hint(t('CLASSIC: as it always was. VISUALIZER: the music drawn across the window, the keys in a bar along the bottom, the queue at the side. LYRICS: the song’s words down the side, lit as they’re sung. HI-FI: a CD player’s front, the keys and two level meters on one panel. ALBUM: the album’s cover instead of the disc, as in a streaming app.')),
     row(t('DISPLAY'), displayButton),
     hint(t('DECK: a glowing panel like a CD player’s — the track number and the time in segment digits. CLASSIC: just the times.')),
     row(t('WAVEFORM'), waveform),
@@ -1601,7 +1601,7 @@ export function showShortcuts() {
 const CHANGELOG = [
   { version: '2.20.0', changes: [
     '<b>YouTube Music &amp; SoundCloud</b>: turned on in Settings &rarr; LIBRARY, the search finds their albums and songs, and they play like your own discs &mdash; in the best sound each gives without signing in',
-    '<b>PLAYER LOOK</b> in Settings &rarr; LOOK: CLASSIC; VISUALIZER, the music drawn across the window; LYRICS, the song&rsquo;s words down the side as they&rsquo;re sung; HI-FI, a CD playerHI-FI, a deck&rsquo;s front with two VU meters;rsquo;s brushed-metal front, the song and two level meters lit in its display, metal keys under it; ALBUM, the cover big and the album over the queue &mdash; and each its own Now Playing video, quietly; and gentler motion all round &mdash; the song&rsquo;s name rising in, the display&rsquo;s flicker, small lamps on what&rsquo;s on',
+    '<b>PLAYER LOOK</b> in Settings &rarr; LOOK: CLASSIC; VISUALIZER, the music drawn across the window; LYRICS, the song&rsquo;s words down the side as they&rsquo;re sung; HI-FI, a CD player&rsquo;s brushed-metal front, the song and two level meters lit in its display, metal keys under it; ALBUM, the cover big and the album over the queue &mdash; and each its own Now Playing video, quietly; and gentler motion all round &mdash; the song&rsquo;s name rising in, the display&rsquo;s flicker, small lamps on what&rsquo;s on',
     '<b>IMPORT PLAYS</b> from Spotify, Last.fm, ListenBrainz or Apple Music, counted on the same songs; <b>scrobbling</b> sends what you play here to Last.fm and ListenBrainz',
     '<b>Each output its own sound</b>: the EQ, mono and spatial audio set on your headphones come back when they&rsquo;re plugged in, the speakers&rsquo; when they&rsquo;re the output again',
     '<b>A backup by itself each day</b>, the last 7 kept; <b>COPY REPORT</b> in Settings &rarr; HELP puts what a bug report needs in one paste',

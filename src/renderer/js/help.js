@@ -74,6 +74,7 @@ export const SHORTCUTS = [
   ['`1`–`5`', t('Play the disc in that slot of the changer'), 'changer'],
   ['`←` / `→`', t('Skip back / forward 5 seconds')],
   ['`↑` / `↓`', t('Volume up / down')],
+  ['`X` / `R`', t('Shuffle / repeat: each press goes on to the next mode')],
   ['`U`', t('Mute / unmute')],
   ['`F`', t('Toggle fullscreen')],
   ['`C`', t('Toggle CD view')],

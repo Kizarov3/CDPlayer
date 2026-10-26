@@ -151,7 +151,7 @@ window.addEventListener('keydown', (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === 'Escape') { send('exit'); return; }
   const actions = {
-    ' ': 'toggle', k: 'toggle', j: 'prev', l: 'next', u: 'mute', m: 'exit',
+    ' ': 'toggle', k: 'toggle', j: 'prev', l: 'next', u: 'mute', x: 'shuffle', r: 'repeat', m: 'exit',
     ArrowLeft: ['seekBy', -5], ArrowRight: ['seekBy', 5], ArrowUp: ['volume', 5], ArrowDown: ['volume', -5],
   };
   const key = shortcutKey(e);

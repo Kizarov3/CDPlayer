@@ -258,6 +258,8 @@ body.classic-display #deck-display { display: none; }
 /* How to leave CD View: there while the mouse moves, gone with the cursor when it's left alone. */
 #cd-exit { margin-top: 10px; font-size: 10px; letter-spacing: .12em; color: rgb(var(--muted)); transition: opacity 400ms; }
 body.cursor-hidden #cd-exit { opacity: 0; }
+#cd-exit.noted { color: rgb(var(--text)); }
+body.cursor-hidden #cd-exit.noted { opacity: 1; }
 #cd-artist { margin: 4px auto 0; font-size: 18px; font-weight: normal; color: rgb(var(--accent2)); }
 
 /* ---- PLAYER LOOK (Settings → LOOK): CLASSIC is the layout above; the others rearrange it (app.js setLook, body.look-…) ---- */

@@ -140,12 +140,22 @@ function stateStatus() {
   if (spotifyActive() && spotifyTrouble) return spotifyTrouble;
   return state.loadedPath ? t('PAUSED') : t('READY TO PLAY');
 }
+// CD VIEW has no status line: what a key just did (paused, volume, shuffle…) is said for a moment where its hint is
+// (only what a key press says, not the player's other news: that view is for the music).
+let cdNoteTimer = null, cdKeyUntil = 0;
+function noteInCdView(text) {
+  const node = $('cd-exit');
+  node.textContent = text; node.classList.add('noted');
+  clearTimeout(cdNoteTimer);
+  cdNoteTimer = setTimeout(() => { node.textContent = t('C OR ESC — BACK TO THE PLAYER'); node.classList.remove('noted'); }, 2500);
+}
 function setStatus(text) {
   const node = $('status'), said = STATUS_DOT + text;
   noteForReport('status', text);
   // A new word fades in over the old (the same one said again stays still).
   if (anim.enabled && node.textContent !== said) node.animate([{ opacity: 0.25 }, { opacity: 1 }], { duration: 220, easing: EASE.out });
   node.textContent = said;
+  if (state.cdView && Date.now() < cdKeyUntil) noteInCdView(text);
   remoteSoon(); // the phone shows the same words
   clearTimeout(statusTimer);
   statusHeld = true;
@@ -371,6 +381,7 @@ function drawQueue() {
     : undoClear ? t('Bring the cleared queue back (⌘Z / Ctrl+Z)') : t('Clear the queue');
   clearButton.classList.toggle('on', !!undoClear);
   clearButton.disabled = !state.queue.length && !undoClear;
+  $('save-playlist-button').disabled = state.changerMode ? !playingSlot() : !state.queue.length; // (nothing to save)
   if (!state.changerMode) { renderQueueList(); return; }
   const c = ch(), here = changer.slotOf(c, state.index);
   $('eject-disc-button').disabled = !here;
@@ -538,7 +549,7 @@ function removeFromQueue(i) {
   state.queue.splice(i, 1);
   state.nextUp = afterRemove(state.nextUp, i);
   if (!state.queue.length) resetToIdle(t('QUEUE EMPTY'));
-  else if (i === state.index) { state.index = Math.min(i, state.queue.length - 1); load(state.queue[state.index]); }
+  else if (i === state.index) { state.index = Math.min(i, state.queue.length - 1); load(state.queue[state.index], { autoPlay: engine.playing }); } // (paused, it stays paused)
   else if (i < state.index) state.index--;
   spotifyResync();
   renderQueue(); saveQueueSoon();
@@ -2228,6 +2239,8 @@ function setVolume(v, { fromSlider = false } = {}) {
   remoteSoon(); // the phone's slider follows
   saveSettingsSoon();
 }
+// The keys' volume changes say where it is (the slider isn't always in sight: CD VIEW, the immersive VISUALIZER).
+function sayVolume() { setStatus(state.volume === 0 ? t('SOUND OFF') : t('VOLUME {n}%', { n: state.volume })); }
 function adjustVolume(delta) { state.volumeBeforeMute = -1; setVolume(state.volume + delta); }
 function toggleMute() {
   if (state.volumeBeforeMute >= 0) { setVolume(state.volumeBeforeMute); state.volumeBeforeMute = -1; }
@@ -2701,7 +2714,7 @@ function escape() {
 
 // ---- Build the static UI ---------------------------------------------------------------------------------------
 
-const playButton = roundButton('PLAY', 68, { primary: true, title: t('Play/Pause'), onClick: () => toggle() });
+const playButton = roundButton('PLAY', 68, { primary: true, title: t('Play/Pause (Space)'), onClick: () => toggle() });
 // SHUFFLE and REPEAT, by the mode: the queue's off / on and off / all / track; the changer's off / this disc / all
 // discs and off / all discs / this disc / track.
 const SHUFFLES = { QUEUE: ['OFF', 'ALL'], CHANGER: ['OFF', 'DISC', 'ALL'] }, REPEATS = { QUEUE: ['OFF', 'ALL', 'TRACK'], CHANGER: ['OFF', 'ALL', 'DISC', 'TRACK'] }; // REPEAT: all first, the one song last, as on most players
@@ -2710,12 +2723,17 @@ function showModes() {
   showDeckFlags();
   shuffleButton.setOn(state.shuffle !== 'OFF');
   shuffleButton.setBadge(state.shuffle === 'DISC' ? '◉' : null); // one character fits the badge; the info line says it in words
-  shuffleButton.title = state.changerMode ? { OFF: t('Shuffle'), DISC: t('Shuffle: this disc'), ALL: t('Shuffle: all discs') }[state.shuffle] : t('Shuffle');
+  shuffleButton.title = `${shuffleName()} (X)`;
   repeatButton.setOn(state.repeat !== 'OFF');
   repeatButton.setBadge(state.repeat === 'TRACK' ? '1' : state.repeat === 'DISC' ? '◉' : null);
-  repeatButton.title = state.changerMode ? { OFF: t('Repeat'), TRACK: t('Repeat: this track'), DISC: t('Repeat: this disc'), ALL: t('Repeat: all discs') }[state.repeat]
-    : { OFF: t('Repeat'), TRACK: t('Repeat: this track'), ALL: t('Repeat: whole queue') }[state.repeat];
+  repeatButton.title = `${repeatName()} (R)`;
 }
+// What SHUFFLE and REPEAT are on, in words: the buttons' tooltips, and what a press says in the status (the button only
+// lights, and in some looks the display isn't there).
+const shuffleName = () => (state.changerMode ? { OFF: t('Shuffle'), DISC: t('Shuffle: this disc'), ALL: t('Shuffle: all discs') }[state.shuffle]
+  : state.shuffle === 'OFF' ? t('Shuffle') : t('Shuffle: on'));
+const repeatName = () => (state.changerMode ? { OFF: t('Repeat'), TRACK: t('Repeat: this track'), DISC: t('Repeat: this disc'), ALL: t('Repeat: all discs') }[state.repeat]
+  : { OFF: t('Repeat'), TRACK: t('Repeat: this track'), ALL: t('Repeat: whole queue') }[state.repeat]);
 function modesChanged() { showModes(); upcomingCache = null; dropPrepared(); renderQueue(); pushMini(true); spotifyResync(); saveSettingsSoon(); } // REPEAT TRACK plays this one again; ALL may wrap round
 // The mode in use's SHUFFLE and REPEAT, as last left (OFF for anything it doesn't have).
 function takePlayModes() {
@@ -2727,11 +2745,13 @@ function toggleShuffle() {
   const list = SHUFFLES[modeKey()];
   state.shuffle = list[(list.indexOf(state.shuffle) + 1) % list.length];
   modesChanged();
+  setStatus(state.shuffle === 'OFF' ? t('SHUFFLE OFF') : shuffleName().toUpperCase());
 }
 function cycleRepeat() {
   const list = REPEATS[modeKey()];
   state.repeat = list[(list.indexOf(state.repeat) + 1) % list.length];
   modesChanged();
+  setStatus(state.repeat === 'OFF' ? t('REPEAT OFF') : repeatName().toUpperCase());
 }
 // Settings → CHANGER: the music of the mode in use is put aside (and saved), the other one's comes up at its position.
 // The old song is stopped outright (not paused), so an end it was about to report can't move the new mode on; and the
@@ -2783,9 +2803,9 @@ function buildStaticUi() {
   $('transport').append(
     shuffleButton, spacer(22),
     roundButton('SKIP_BACK', 36, { title: t('Back {n} seconds', { n: SKIP_SECONDS }), onClick: () => seek(-SKIP_SECONDS) }), spacer(10),
-    roundButton('PREVIOUS_TRACK', 44, { title: t('Previous track'), onClick: () => previousTrack() }), spacer(16),
+    roundButton('PREVIOUS_TRACK', 44, { title: t('Previous track (J)'), onClick: () => previousTrack() }), spacer(16),
     playButton, spacer(16),
-    roundButton('NEXT_TRACK', 44, { title: t('Next track'), onClick: () => userNext() }), spacer(10),
+    roundButton('NEXT_TRACK', 44, { title: t('Next track (L)'), onClick: () => userNext() }), spacer(10),
     roundButton('SKIP_FORWARD', 36, { title: t('Forward {n} seconds', { n: SKIP_SECONDS }), onClick: () => seek(SKIP_SECONDS) }), spacer(22),
     repeatButton);
 
@@ -2913,11 +2933,11 @@ function onKeyDown(e) {
   // The shelf open: the arrows are the shelf's (scrolling it), not the volume and the song's position.
   if (isShelfOpen() && key.startsWith('Arrow')) return;
   const actions = {
-    ArrowLeft: () => seek(-SKIP_SECONDS), ArrowRight: () => seek(SKIP_SECONDS), ArrowUp: () => adjustVolume(5), ArrowDown: () => adjustVolume(-5),
-    '/': () => panels.showSearch(app), u: toggleMute, p: shareCard, b: () => disc.flip(), '?': () => panels.showShortcuts(), ' ': toggle, k: toggle, j: previousTrack, l: userNext, f: toggleFullscreen, c: toggleCdView, v: toggleVisualizerMode, y: toggleKaraoke, e: toggleTray, s: toggleShelf,
+    ArrowLeft: () => seek(-SKIP_SECONDS), ArrowRight: () => seek(SKIP_SECONDS), ArrowUp: () => { adjustVolume(5); sayVolume(); }, ArrowDown: () => { adjustVolume(-5); sayVolume(); },
+    '/': () => panels.showSearch(app), u: () => { toggleMute(); sayVolume(); }, x: toggleShuffle, r: cycleRepeat, p: shareCard, b: () => disc.flip(), '?': () => panels.showShortcuts(), ' ': toggle, k: toggle, j: previousTrack, l: userNext, f: toggleFullscreen, c: toggleCdView, v: toggleVisualizerMode, y: toggleKaraoke, e: toggleTray, s: toggleShelf,
     d: discSkip, 1: () => playSlot(0), 2: () => playSlot(1), 3: () => playSlot(2), 4: () => playSlot(3), 5: () => playSlot(4), // changer mode only
   };
-  if (actions[key]) { e.preventDefault(); if (!e.repeat || key.startsWith('Arrow')) { actions[key](); if (!e.repeat) noteKeyUsed(); } }
+  if (actions[key]) { e.preventDefault(); cdKeyUntil = Date.now() + 600; if (!e.repeat || key.startsWith('Arrow')) { actions[key](); if (!e.repeat) noteKeyUsed(); } }
 }
 // What "/" finds besides songs (search-commands.js): what the keys and the header's buttons do, by name — those that
 // can be done now (a button that's hidden can't).
@@ -2935,8 +2955,8 @@ function commands() {
     { label: t('NEXT TRACK'), also: 'next skip forward следующий', key: 'L', run: userNext },
     { label: t('PREVIOUS TRACK'), also: 'previous back предыдущий', key: 'J', run: previousTrack },
     state.changerMode ? { label: t('DISC SKIP'), also: 'next disc changer', key: 'D', run: discSkip } : null,
-    { label: t('SHUFFLE|action'), also: 'shuffle random перемешать', run: toggleShuffle },
-    { label: t('REPEAT|action'), also: 'repeat loop повтор', run: cycleRepeat },
+    { label: t('SHUFFLE|action'), also: 'shuffle random перемешать', key: 'X', run: toggleShuffle },
+    { label: t('REPEAT|action'), also: 'repeat loop повтор', key: 'R', run: cycleRepeat },
     { label: t('MUTE / UNMUTE'), also: 'mute sound звук', key: 'U', run: toggleMute },
     { label: t('THE SHELF'), also: 'shelf albums divider dividers editions полка разделитель разделители издания', key: 'S', run: toggleShelf },
     state.changerMode ? { label: t('FILL'), also: 'fill changer keep full заполнить держать полным чейнджер', run: fillFromShelf } : null,
