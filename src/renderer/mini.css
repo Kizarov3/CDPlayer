@@ -22,7 +22,7 @@ button { font-family: inherit; outline: none; }
 #panel {
   position: relative;
   height: 100vh;
-  padding: 14px 16px 12px;
+  padding: 16px 16px 14px;
   display: flex; flex-direction: column;
   border-radius: 12px;
   overflow: hidden;
@@ -70,7 +70,7 @@ button { font-family: inherit; outline: none; }
 #vis { width: 32px; height: 22px; flex: 0 0 32px; align-self: flex-start; margin-top: 2px; opacity: .6; display: none; }
 body.playing #vis { display: block; } /* (only while it plays: still, its bars read as a row of dots) */
 
-#bar { position: relative; height: 14px; margin-top: 10px; cursor: pointer; display: flex; align-items: center; }
+#bar { position: relative; height: 14px; margin-top: 12px; cursor: pointer; display: flex; align-items: center; }
 #track { position: relative; width: 100%; height: 4px; border-radius: 2px; background: rgba(var(--text), .16); overflow: hidden; transition: height 120ms; }
 #fill { position: absolute; inset: 0 auto 0 0; width: 0; background: rgb(var(--accent)); }
 #knob {
@@ -80,7 +80,7 @@ body.playing #vis { display: block; } /* (only while it plays: still, its bars r
 #bar:hover #track, #bar.dragging #track { height: 6px; }
 #bar:hover #knob, #bar.dragging #knob { opacity: 1; }
 
-#times { display: flex; justify-content: space-between; margin-top: 2px; font-size: 11px; color: rgba(var(--text), .6); font-variant-numeric: tabular-nums; }
+#times { display: flex; justify-content: space-between; margin-top: 4px; font-size: 11px; color: rgba(var(--text), .6); font-variant-numeric: tabular-nums; }
 
 #controls { display: flex; align-items: center; justify-content: space-between; margin-top: 0; flex: 1 1 auto; }
 #center { display: flex; align-items: center; gap: 24px; }
@@ -94,12 +94,12 @@ body.playing #vis { display: block; } /* (only while it plays: still, its bars r
 #prev, #next { width: 32px; height: 32px; color: rgba(var(--text), .85) !important; }
 #prev:hover, #next:hover { color: rgb(var(--text)) !important; }
 #prev svg, #next svg { width: 28px; height: 28px; }
-#play { width: 40px; height: 40px; }
+#play { width: 44px; height: 44px; }
 #controls #play { /* the full player's PLAY: one colour, lit along its top edge like a real key */
   color: rgb(var(--bg)); background: rgb(var(--accent));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), inset 0 -2px 6px rgba(0, 0, 0, .18), 0 4px 14px rgba(var(--accent), .3);
 }
-#play svg { width: 20px; height: 20px; }
+#play svg { width: 22px; height: 22px; }
 #play svg.swap { animation: swapIn 220ms cubic-bezier(.22, 1, .36, 1); }
 @keyframes swapIn { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
 #controls .mode { position: relative; width: 28px; height: 28px; color: rgba(var(--text), .6); }

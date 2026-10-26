@@ -48,7 +48,7 @@ const APP_VERSION = app.getVersion();
 const APP_ID = 'com.kizarov3.cdplayer'; // = build.appId in package.json
 const MAIN_MIN = { width: 760, height: 785 };
 const MAIN_DEFAULT = { width: 1120, height: 820 };
-const MINI = { width: 340, height: 152 };
+const MINI = { width: 340, height: 164 };
 
 // The player is always dark, so the window's title bar should be too (Windows otherwise follows a light system theme).
 nativeTheme.themeSource = 'dark';
