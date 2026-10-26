@@ -309,9 +309,23 @@ function discPosition() {
   return track ? track.start + engine.position : 0;
 }
 
+// ALBUM's heading over the queue: the album playing, its artist and year, and how many of its songs are in the queue
+// and how long they last.
+function updateAlbumHead() {
+  const d = state.details, album = d && d.album;
+  $('album-head').hidden = !album;
+  if (!album) return;
+  const songs = state.queue.map((p) => detailsCache.get(p)).filter((x) => x && x.album === album);
+  const seconds = songs.reduce((sum, x) => sum + (x.duration || 0), 0);
+  $('album-name').textContent = album;
+  $('album-line').textContent = [d.albumArtist || d.artist, yearOf(d),
+    songs.length ? `${songs.length === 1 ? t('1 SONG|single') : t('{n} SONGS', { n: songs.length })}${seconds >= 60 ? `, ${t('{n} MIN', { n: Math.round(seconds / 60) })}` : ''}` : null]
+    .filter(Boolean).join(' · ');
+}
 function renderQueue() {
   if (!changerView) return; // not built yet
   syncRev();
+  updateAlbumHead();
   remoteSoon();
   updateDiscData();
   showChangerSlots();

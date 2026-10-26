@@ -383,6 +383,10 @@ body.look-album #track-title { font-size: 34px; letter-spacing: -.01em; }
 body.look-album #track-artist { font-size: 19px; height: 26px; line-height: 26px; color: rgba(var(--text), .7); }
 body.look-album .round:not(.primary):not(.on) { background: none; box-shadow: none; }
 body.look-album .round.primary { background: rgb(var(--text)); color: rgb(var(--bg)); box-shadow: 0 8px 24px rgba(0, 0, 0, .35); }
+#album-head { display: none; }
+body.look-album #album-head:not([hidden]) { display: block; padding: 12px 0 10px; border-bottom: 1px solid rgba(255, 255, 255, .07); margin-bottom: 6px; }
+#album-name { font-size: 22px; font-weight: bold; letter-spacing: -.01em; color: rgb(var(--text)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#album-line { margin-top: 3px; font-size: 13px; color: rgba(var(--text), .6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 body.look-album #queue-card { border-top: none; margin-top: 18px; padding: 4px 14px 10px; border-radius: 14px; background: rgba(0, 0, 0, .2); }
 
 /* ---- Buttons ---- */
