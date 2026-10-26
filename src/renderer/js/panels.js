@@ -461,7 +461,7 @@ function buildSettings(app) {
     hint(t('DECK: a glowing panel like a CD player’s — the track number and the time in segment digits. CLASSIC: just the times.')),
     row(t('WAVEFORM'), waveform),
     row(t('AMBIENT BACKGROUND'), ambient),
-    hint(t('COVER: the album’s cover, blurred, behind the player. GRADIENT: its colours, flowing slowly round each other.')),
+    hint(t('COVER: the album’s cover, blurred, behind the player. GRADIENT: as Apple Music has it — the cover in big blurred pieces, slowly turning round each other.')),
     app.shownTheme().image ? hint(t('The theme’s own image is the background while it’s on.')) : null,
     row(t('DISC WEAR'), discWear),
     hint(t('A disc played a lot looks it: scratches from ten plays of its album, fingerprints from fifty, chips from a hundred.')),

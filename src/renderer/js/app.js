@@ -2010,17 +2010,20 @@ function paintCoverGlow() {
     backdrop.classList.toggle('has-flow', flowing);
   } else backdrop.classList.remove('has-art', 'has-flow');
 }
-// GRADIENT: four soft lights in the cover's colours — those of its four corners, a little richer — drifting slowly
-// round each other (styles.css: drawn small and scaled up, moved only by the graphics card).
+// GRADIENT, as Apple Music's: the cover itself in four soft, blurred pieces — a quarter of it each, turned — that turn
+// and drift round each other (styles.css: each drawn small, already blurred, and scaled up: only moved, on the card).
 function paintFlow(cover) {
-  const g = Object.assign(document.createElement('canvas'), { width: 2, height: 2 }).getContext('2d', { willReadFrequently: true });
-  g.imageSmoothingQuality = 'high';
-  g.drawImage(cover, 0, 0, 2, 2);
-  const d = g.getImageData(0, 0, 2, 2).data;
+  const iw = cover.naturalWidth, ih = cover.naturalHeight, m = Math.min(iw, ih);
   $('backdrop-flow').querySelectorAll('i').forEach((blob, k) => {
-    const c = [d[k * 4], d[k * 4 + 1], d[k * 4 + 2]], grey = (c[0] + c[1] + c[2]) / 3;
-    const rich = c.map((v) => grey + (v - grey) * 2), top = Math.max(...rich, 1), lift = Math.max(1, 170 / top); // (a dark cover's colours brought up to be seen)
-    blob.style.setProperty('--c', `rgb(${rich.map((v) => Math.round(Math.max(0, Math.min(255, v * lift)))).join(',')})`);
+    const c = Object.assign(document.createElement('canvas'), { width: 96, height: 96 }), g = c.getContext('2d');
+    g.filter = 'blur(5px) saturate(1.7)';
+    g.translate(48, 48); g.rotate(k * Math.PI / 2); g.scale(1.25, 1.25); // (past the blur's soft edge)
+    g.drawImage(cover, (iw - m) / 2, (ih - m) / 2, m, m, -48, -48, 96, 96);
+    g.setTransform(1, 0, 0, 1, 0, 0); g.filter = 'none';
+    const round = g.createRadialGradient(48, 48, 20, 48, 48, 48); // (no edges: each piece fades out round its rim)
+    round.addColorStop(0, '#000'); round.addColorStop(1, 'rgba(0,0,0,0)');
+    g.globalCompositeOperation = 'destination-in'; g.fillStyle = round; g.fillRect(0, 0, 96, 96);
+    blob.style.backgroundImage = `url(${c.toDataURL()})`;
   });
 }
 // The window resized while the glow is stretched here: stretched again once it has settled (not on every step).
