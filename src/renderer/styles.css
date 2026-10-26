@@ -333,7 +333,10 @@ body.look-lyrics #queue-card, body.look-visualizer #queue-card {
 }
 body.look-lyrics.queue-open #queue-card, body.look-visualizer.queue-open #queue-card { transform: none; visibility: visible; transition: transform var(--anim-in) var(--ease-out); }
 
-/* PANEL: the header's buttons as words, the song's name big, the seek bar, display, keys and volume on one panel */
+/* HI-FI: a deck's front — the header's buttons as words, the song's name big, and on one panel two VU meters (vu-meters.js)
+   over the seek bar, the display, the keys and the volume */
+#vu-meters { display: none; }
+body.look-hifi #vu-meters { display: block; width: 100%; height: 100px; margin-bottom: 12px; }
 body.look-hifi #divider { display: none; }
 body.look-hifi #status-pill { background: none; border: none; box-shadow: none; }
 body.look-hifi #header .pill { background: none; box-shadow: none; padding: 7px 6px; font-size: 11.5px; letter-spacing: .06em; }

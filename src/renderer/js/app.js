@@ -10,6 +10,7 @@ import { Particles } from './particles.js';
 import { anim, EASE, el, pill, roundButton, modeButton, Slider, fitText, pulse, followPlaying } from './widgets.js';
 import { openBooklet, closeBooklet } from './booklet.js';
 import { setLookLyrics, followLookLyrics } from './look-lyrics.js';
+import { VuMeters } from './vu-meters.js';
 import { withoutHeader, parseLrc, currentLineIndex, heardPosition, playbackTimeFor, looksOnlineFor, takesOnline } from './lyrics.js';
 import { shortcutKey } from './keys.js';
 import { jogSeconds } from './jog.js';
@@ -118,6 +119,7 @@ const disc = new Disc($('disc'));
 const visualizer = new Visualizer($('visualizer'));
 const bigVisualizer = new Visualizer($('big-visualizer'), { big: true });
 const lookVisualizer = new Visualizer($('look-visualizer'), { big: true }); // (the VISUALIZER look's, behind the player)
+const vuMeters = new VuMeters($('vu-meters')); // (HI-FI's)
 const particles = new Particles($('particles'));
 const noise = new DiscNoise(engine);
 const shake = new ShakeDetector();
@@ -3009,6 +3011,7 @@ function frame(now) {
   if (state.visualizerMode) bigVisualizer.setSpectrum(engine.playing ? engine.spectrum(bigVisualizer.n) : null, dt);
   visualizer.draw(now);
   if (state.visualizerMode) bigVisualizer.draw(now);
+  if (state.look === 'HIFI' && !state.cdView) { vuMeters.set(engine.stereo(), dt); vuMeters.draw(); }
   if (state.look === 'VISUALIZER' && !state.cdView && !state.visualizerMode) {
     lookVisualizer.setSpectrum(engine.playing ? engine.spectrum(lookVisualizer.n) : null, dt);
     lookVisualizer.draw(now);

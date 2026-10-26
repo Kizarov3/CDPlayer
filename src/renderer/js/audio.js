@@ -74,6 +74,10 @@ export class AudioEngine {
     node.connect(this.spatial.input);
     this.spatial.output.connect(this.analyser);
     this.analyser.connect(this.master);
+    // Each side heard on its own too, for HI-FI's two VU meters.
+    const split = ctx.createChannelSplitter(2);
+    this.spatial.output.connect(split);
+    this.sides = [0, 1].map((ch) => { const a = ctx.createAnalyser(); a.fftSize = 2048; split.connect(a, ch); return a; });
     const halve = ctx.createGain(), double = ctx.createGain();
     halve.gain.value = 0.5; double.gain.value = 2;
     this.guard = ctx.createWaveShaper();
@@ -466,6 +470,18 @@ export class AudioEngine {
       out[b] = Math.min(1, Math.sqrt(sum / per) * 3.4);
     }
     return out;
+  }
+
+  /** How loud each side is now — the RMS of its last ~45 ms, scaled as levels() — → [left, right], or null paused. */
+  stereo() {
+    if (!this.playing) return null;
+    if (!this.sideSamples) this.sideSamples = new Float32Array(2048);
+    return this.sides.map((a) => {
+      a.getFloatTimeDomainData(this.sideSamples);
+      let sum = 0;
+      for (const v of this.sideSamples) sum += v * v;
+      return Math.min(1, Math.sqrt(sum / this.sideSamples.length) * 3.4);
+    });
   }
 
   /**
