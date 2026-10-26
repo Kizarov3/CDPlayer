@@ -2020,7 +2020,7 @@ function paintFlow(cover) {
     g.translate(48, 48); g.rotate(k * Math.PI / 2); g.scale(1.25, 1.25); // (past the blur's soft edge)
     g.drawImage(cover, (iw - m) / 2, (ih - m) / 2, m, m, -48, -48, 96, 96);
     g.setTransform(1, 0, 0, 1, 0, 0); g.filter = 'none';
-    const round = g.createRadialGradient(48, 48, 20, 48, 48, 48); // (no edges: each piece fades out round its rim)
+    const round = g.createRadialGradient(48, 48, 32, 48, 48, 48); // (no edges: each piece fades out round its rim)
     round.addColorStop(0, '#000'); round.addColorStop(1, 'rgba(0,0,0,0)');
     g.globalCompositeOperation = 'destination-in'; g.fillStyle = round; g.fillRect(0, 0, 96, 96);
     blob.style.backgroundImage = `url(${c.toDataURL()})`;

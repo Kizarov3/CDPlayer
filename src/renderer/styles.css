@@ -76,10 +76,10 @@ button { font-family: inherit; outline: none; }
   will-change: transform;
   animation: flow 30s linear infinite;
 }
-#backdrop-flow i:nth-child(1) { --x: -22vw; --y: -18vh; --s: 13; --spin: 1turn; }
-#backdrop-flow i:nth-child(2) { --x: 24vw; --y: -14vh; --s: 12; --spin: -1turn; animation-duration: 38s; }
-#backdrop-flow i:nth-child(3) { --x: -18vw; --y: 22vh; --s: 11; --spin: -1turn; animation-duration: 34s; }
-#backdrop-flow i:nth-child(4) { --x: 20vw; --y: 20vh; --s: 14; --spin: 1turn; animation-duration: 42s; }
+#backdrop-flow i:nth-child(1) { --x: -30vw; --y: -18vh; --s: 17; --spin: 1turn; }
+#backdrop-flow i:nth-child(2) { --x: 30vw; --y: -14vh; --s: 16; --spin: -1turn; animation-duration: 38s; }
+#backdrop-flow i:nth-child(3) { --x: -28vw; --y: 22vh; --s: 15; --spin: -1turn; animation-duration: 34s; }
+#backdrop-flow i:nth-child(4) { --x: 28vw; --y: 20vh; --s: 17; --spin: 1turn; animation-duration: 42s; }
 /* Each goes round its own circle, turning as it goes. */
 @keyframes flow {
   0% { transform: translate(var(--x), var(--y)) rotate(0) translateX(9vw) scale(var(--s)); }
