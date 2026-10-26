@@ -82,12 +82,20 @@ function formatM3u(entries) {
   return out;
 }
 
-function parseM3u(text, playlistPath) {
+/**
+ * A playlist's tracks that are there to play: files (and cue tracks) that exist, and — `isStream` given — streamed songs'
+ * pages as they are, their names from the #EXTINF lines in `names` (page → name) when one is passed.
+ */
+function parseM3u(text, playlistPath, { isStream = null, names = null } = {}) {
   const base = path.dirname(playlistPath);
   const tracks = [];
+  let named = null;
   for (const raw of text.replace(/^﻿/, '').split(/\r?\n/)) {
     const line = raw.trim();
+    if (/^#EXTINF:/i.test(line)) { named = line.replace(/^#EXTINF:[^,]*,?/i, '').trim() || null; continue; }
     if (!line || line.startsWith('#')) continue;
+    if (isStream && isStream(line)) { tracks.push(line); if (names && named) names[line] = named; named = null; continue; }
+    named = null;
     let p = line;
     if (/^file:\/\//i.test(p)) { try { p = fileURLToPath(p); } catch { continue; } }
     // Playlists written on another OS may use the other separator style.

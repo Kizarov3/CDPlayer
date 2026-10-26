@@ -395,3 +395,14 @@ test('how the ambient background is drawn is the 31st settings line: COVER unles
   store.writeSettings({ ...store.readSettings(), ambientStyle: 'NEON' });
   assert.strictEqual(store.readSettings().ambientStyle, 'COVER');
 });
+
+test('a playlist keeps streamed songs: saved by their pages, read back with their names', () => {
+  const file = path.join(home, 'streams.m3u');
+  const yt = 'https://music.youtube.com/watch?v=Zi_XLOBDo_Y', sc = 'https://soundcloud.com/someone/a-song';
+  fs.writeFileSync(file, library.formatM3u([{ path: yt, display: 'Michael Jackson - Billie Jean' }, { path: sc, display: 'Someone - A Song' }]));
+  const names = {};
+  const isStream = (p) => /^https:\/\/(music\.youtube\.com|soundcloud\.com)\//.test(p);
+  assert.deepStrictEqual(library.parseM3u(fs.readFileSync(file, 'utf8'), file, { isStream, names }), [yt, sc]);
+  assert.deepStrictEqual(names, { [yt]: 'Michael Jackson - Billie Jean', [sc]: 'Someone - A Song' });
+  assert.deepStrictEqual(library.parseM3u(fs.readFileSync(file, 'utf8'), file), []); // (without streaming: none)
+});

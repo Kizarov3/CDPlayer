@@ -828,8 +828,9 @@ handle('dialog:openTracks', async () => {
   if (store.noMusicFolderYet()) store.writeMusicFolders([dir]); // no music folder yet: the shelf starts with this one
   return r.filePaths;
 });
-handle('dialog:savePlaylist', async (entries) => {
-  const r = await dialog.showSaveDialog(win, { title: t('Save Playlist'), defaultPath: path.join(dialogDefaultPath(), 'playlist.m3u'), filters: [{ name: t('Playlist (M3U)'), extensions: ['m3u', 'm3u8'] }] });
+handle('dialog:savePlaylist', async (entries, name) => {
+  const file = `${String(name || 'playlist').replace(/[\\/:*?"<>|\r\n]+/g, ' ').trim().slice(0, 120) || 'playlist'}.m3u`; // (a streamed playlist: its own name)
+  const r = await dialog.showSaveDialog(win, { title: t('Save Playlist'), defaultPath: path.join(dialogDefaultPath(), file), filters: [{ name: t('Playlist (M3U)'), extensions: ['m3u', 'm3u8'] }] });
   if (r.canceled || !r.filePath) return { ok: false, canceled: true };
   let target = r.filePath;
   if (!/\.m3u8?$/i.test(target)) target += '.m3u';
@@ -844,7 +845,12 @@ handle('dialog:loadPlaylist', async () => {
   if (r.canceled || !r.filePaths.length) return { canceled: true };
   const source = r.filePaths[0];
   store.writeLastPath(path.dirname(source));
-  try { return { tracks: library.parseM3u(fs.readFileSync(source, 'utf8'), source), name: path.basename(source).replace(/\.m3u8?$/i, '') }; } catch { return { error: true }; }
+  try {
+    // Streamed songs come back too, by their pages, named as the playlist named them till they're looked up.
+    const names = {}, tracks = library.parseM3u(fs.readFileSync(source, 'utf8'), source, { isStream: streaming.isStreamPage, names });
+    for (const [page, title] of Object.entries(names)) if (!streaming.songInfo(page)) streaming.remember(page, { title });
+    return { tracks, name: path.basename(source).replace(/\.m3u8?$/i, '') };
+  } catch { return { error: true }; }
 });
 handle('dialog:importLibrary', async () => {
   const r = await dialog.showOpenDialog(win, {

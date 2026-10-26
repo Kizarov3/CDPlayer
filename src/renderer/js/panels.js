@@ -1111,6 +1111,7 @@ async function searchOnline(app) {
   const query = search.field.value.trim().toLowerCase();
   const asked = ++search.online; // (a newer search, the words changed, or back to your music: this one's answer is left)
   clearTimeout(search.onlineTimer);
+  if (STREAM_LINK.test(search.field.value.trim())) { search.onlineQuery = query; openLink(app, search.field.value.trim(), asked); return; }
   if (query.length < 2) { search.onlineQuery = null; setSearchStatus(t('TYPE WHAT TO LOOK FOR ON {where}', { where: name })); search.results.replaceChildren(); return; }
   search.onlineQuery = query;
   setSearchStatus(t('LOOKING ON {where}…', { where: name }));
@@ -1133,6 +1134,29 @@ async function searchOnline(app) {
     search.results.replaceChildren(...found.map((f) => rows.get(f) || rows.set(f, onlineRow(app, f)).get(f)), ...(coming ? waiting(3) : []));
   };
   await Promise.all(parts.map((w, i) => app.cdp.stream.search(query, w).catch(() => null).then((r) => { got[i] = r; draw(); })));
+}
+// A link pasted in: a playlist or an album on YouTube (Music) or SoundCloud, opened to its songs — to play, add or save
+// as a playlist — or a song, to play.
+const STREAM_LINK = /^https:\/\/(music\.youtube\.com|(www\.)?youtube\.com|soundcloud\.com)\/\S+$/i;
+const LIST_LINK = /[?&]list=|\/browse\/|\/playlist|\/sets\//i;
+async function openLink(app, link, asked) {
+  if (!LIST_LINK.test(link)) {
+    setSearchStatus(t('A SONG’S LINK'));
+    search.results.replaceChildren(onlineRow(app, { kind: 'song', page: link, title: link }));
+    return;
+  }
+  setSearchStatus(t('OPENING THE PLAYLIST…'));
+  search.results.replaceChildren(el('div', { class: 'list-row plain waiting-row' }, el('span', { class: 'row-cover' }), el('span', { class: 'waiting-bar' })));
+  const a = await app.cdp.stream.album(link).catch(() => null);
+  if (asked !== search.online || !isOpen('search')) return;
+  if (!a || !a.tracks.length) {
+    setSearchStatus(t('COULDN’T OPEN THAT PLAYLIST'));
+    search.results.replaceChildren(el('div', { class: 'list-row plain' }, pill(t('TRY AGAIN'), () => searchOnline(app))));
+    return;
+  }
+  setSearchStatus(a.tracks.length === 1 ? t('1 SONG|single') : t('{n} SONGS', { n: a.tracks.length }));
+  search.results.replaceChildren(onlineRow(app, { ...a, kind: 'album', count: a.tracks.length }),
+    ...a.tracks.slice(0, 200).map((s) => onlineRow(app, { kind: 'song', page: s.page, title: s.title || s.page, artist: s.artist, duration: s.duration })));
 }
 // One thing found: a song's row or an album's, its sound asked for when the mouse rests on it.
 function onlineRow(app, f) {
@@ -1176,12 +1200,19 @@ function onlineAlbumRow(app, a) {
   const now = pill(t('PLAY'), (e) => { e.stopPropagation(); put(true); closePanel('search'); }, t('Play it now'));
   const add = pill(t('ADD'), (e) => { e.stopPropagation(); put(false); e.currentTarget.textContent = t('✓ DONE'); e.currentTarget.disabled = true; },
     app.changerMode() ? t('Into the changer') : t('Add to queue'));
-  for (const b of [now, add]) b.classList.add('small');
-  add.classList.add('on-hover');
+  // SAVE…: kept as a playlist (M3U) of the songs' pages, to LOAD again another day — streamed, as now.
+  const save = pill(t('SAVE…'), async (e) => {
+    e.stopPropagation();
+    const b = e.currentTarget;
+    const r = await app.cdp.savePlaylistDialog(a.tracks.map((s) => ({ path: s.page, display: [s.artist, s.title].filter(Boolean).join(' - ') || s.page })), [a.artist, a.title].filter(Boolean).join(' - '));
+    if (r && r.ok) { b.textContent = t('✓ DONE'); b.disabled = true; } else if (r && !r.canceled) app.setStatus(t("COULDN'T SAVE PLAYLIST"));
+  }, t('Save it as a playlist (M3U): LOAD in the queue opens it again'));
+  for (const b of [now, add, save]) b.classList.add('small');
+  add.classList.add('on-hover'); save.classList.add('on-hover');
   return el('div', { class: 'list-row', title: t('Play {song}', { song: a.title }), onClick: () => { put(true); closePanel('search'); } },
     rowCover(a.thumb),
     el('span', { class: 'entry' }, [a.artist, a.title].filter(Boolean).join(' · ')),
-    el('span', { class: 'when count' }, a.count === 1 ? t('1 SONG|single') : t('{n} SONGS', { n: a.count })), add, now);
+    el('span', { class: 'when count' }, a.count === 1 ? t('1 SONG|single') : t('{n} SONGS', { n: a.count })), save, add, now);
 }
 // An action or a setting the search found, above the songs: an action is done (the search closed first), a setting
 // shown — Settings opened at its row.
@@ -1212,6 +1243,8 @@ async function onSearchInput(app) {
     return;
   }
   const text = search.field.value.trim();
+  // A YouTube (Music) or SoundCloud link pasted while looking through your music: opened where it's from.
+  if (app.state.streaming && STREAM_LINK.test(text)) { setSource(app, /soundcloud\.com/i.test(text) ? 'soundcloud' : 'youtube'); return; }
   const link = await app.cdp.classifySpotifyLink(text);
   if (link) {
     if (text === search.lastSpotifyUrl) return; // this exact paste was already handled

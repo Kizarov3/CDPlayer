@@ -335,7 +335,7 @@ function youTubeSong(it) {
   };
 }
 
-/** An album (or playlist) page → { title, artist, cover, page, tracks: [{ page, title, artist, duration }] }. */
+/** An album (or playlist) page → { title, artist, cover, thumb, page, tracks: [{ page, title, artist, duration }] }. */
 async function album(page) {
   if (!isStreamPage(page)) throw new Error('Not a stream page');
   const r = await run(['--flat-playlist', '-J', '--', page]);
@@ -347,7 +347,7 @@ async function album(page) {
   const artist = tracks.length && tracks.every((t) => t.artist === tracks[0].artist) ? tracks[0].artist : (tracks[0] && tracks[0].artist) || null;
   const cover = bestThumb(r.thumbnails);
   tracks.forEach((t, i) => glimpse(t.page, { title: t.title, artist: t.artist, albumArtist: artist, album: title, duration: t.duration, cover, track: i + 1, of: tracks.length }));
-  return { title, artist, cover, thumbnails: r.thumbnails || [], page: r.webpage_url || page, tracks };
+  return { title, artist, cover, thumb: await coverData(smallThumb(r.thumbnails)), thumbnails: r.thumbnails || [], page: r.webpage_url || page, tracks };
 }
 
 // A cover's picture, as a data: URL (as a file's own cover is), kept for the session.
