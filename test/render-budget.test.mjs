@@ -14,6 +14,7 @@ test('behind other windows with the music paused: 10 frames a second; watched, p
   assert.strictEqual(frameGap({ watched: false, software: false, playing: false }), 100);
   assert.strictEqual(frameGap({ watched: false, software: true, playing: false }), 100);
   assert.strictEqual(frameGap({ watched: true, software: false, playing: false }), 0);
+  assert.strictEqual(frameGap({ watched: true, software: true, playing: false }), 1000 / 15); // a VM's screen, paused
   assert.strictEqual(frameGap({ watched: false, software: false, playing: true }), BACKGROUND_FRAME_MS);
 });
 
