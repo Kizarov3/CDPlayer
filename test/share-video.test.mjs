@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { videoLayout, lyricsAt, videoSpan, pickVideoType, VIDEO_SECONDS } from '../src/renderer/js/share-video.js';
+import { videoLayout, lyricsAt, lyricLines, videoSpan, pickVideoType, VIDEO_SECONDS } from '../src/renderer/js/share-video.js';
 
 const inside = (box, f) => box.x >= 0 && box.y >= 0 && box.x + box.w <= f.w && box.y + box.h <= f.h;
 const apart = (a, b) => a.y + a.h <= b.y || b.y + b.h <= a.y || a.x + a.w <= b.x || b.x + b.w <= a.x;
@@ -33,6 +33,18 @@ test('what the lines glide from: the line sung before, and how long ago the line
   assert.deepStrictEqual(from(4), { previous: 'Hello', since: 0.5 }); // into a break
   assert.deepStrictEqual(from(5.5), { previous: null, since: 0.5 }); // out of one
   assert.deepStrictEqual(from(7.5), { previous: 'World', since: 0.5 });
+});
+
+test("the words as they're sung: a line timed as a whole shares its time out; enhanced LRC's syllables stay one word", () => {
+  const lines = lyricLines([{ time: 1, text: 'Hello there' }, { time: 3.5, text: '' },
+    { time: 5, text: 'beautiful day', words: [{ time: 5, text: 'beau' }, { time: 5.2, text: 'ti' }, { time: 5.4, text: 'ful ' }, { time: 6, text: 'day', end: 6.5 }] }]);
+  assert.strictEqual(lines.length, 2); // (the break isn't a line)
+  assert.deepStrictEqual(lines[0].words.map((w) => w.text), ['Hello', 'there']);
+  assert.strictEqual(lines[0].end, 3.5);
+  assert.ok(lines[0].words[0].time === 1 && lines[0].words[1].time > 1 && lines[0].words[1].stop <= 3.5);
+  assert.deepStrictEqual(lines[1].words.map((w) => [w.text, w.parts.length, w.time]), [['beautiful', 3, 5], ['day', 1, 6]]);
+  assert.strictEqual(lines[1].words[1].stop, 6.5);
+  assert.deepStrictEqual(lyricLines([]), []);
 });
 
 test('how long a video runs: as long as the picked lines are sung', () => {

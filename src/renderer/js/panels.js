@@ -167,7 +167,7 @@ export function showCard(app, { choices, maxLines, render, copy, save, video }) 
       b.textContent = t('RECORDING…');
       try { if (await video(format, picked, (left) => { b.textContent = t('RECORDING · {left}', { left }); })) closePanel('card'); }
       finally { busy = false; buttons.forEach((x) => { x.disabled = false; }); b.textContent = t('VIDEO {format}', { format }); }
-    }, t('{use} — the disc turning as the picked lines are sung, with the song', { use: tip }));
+    }, t('{use} — the picked lines as they are sung, with the song, filmed as your PLAYER LOOK is', { use: tip }));
     return b;
   };
   const onKey = (e) => {

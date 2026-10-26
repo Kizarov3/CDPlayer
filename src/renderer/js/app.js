@@ -1261,7 +1261,8 @@ function shareCard() {
         const made = await recordVideo({ format, audio: withSound ? engine.recordingStream() : null, onTick, begin, playing: withSound ? stillGoing() : () => true,
           seconds: span ? span.end - span.start : VIDEO_SECONDS, song: {
             ...song, face: disc.renderFace(512, 1).canvas, colors: { ...colors }, timed,
-            look: state.look, track: state.index + 1, spectrum: (n) => engine.spectrum(n), // (each PLAYER LOOK its own, quietly)
+            // (each PLAYER LOOK its own film: VISUALIZER's moves with the spectrum, HI-FI's meters with each side's level)
+            look: state.look, track: state.index + 1, spectrum: (n) => engine.spectrum(n), levels: () => engine.stereo(),
             // Where the song is as each frame is drawn: what's recorded is taken before the output, so no delay for it.
             position: () => heardPosition(engine.position, 0, state.lyricsOffset),
           } });
