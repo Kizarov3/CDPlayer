@@ -452,35 +452,107 @@ body.look-hifi #transport .round.mode.on { color: rgb(var(--text)); }
   body.look-hifi #transport .round.mode { margin: 0 2px; }
 }
 
-/* COVER: as a streaming app has it — the album's cover, flat and big, instead of the disc; plain keys, the times, colour behind */
-#cover-art { display: none; }
+/* ALBUM: an album's page, as a music app has it — the cover big at the left with the song and the keys under it, and
+   down the right, under the album's name, credits and plays, its songs (the queue). Its touch: the disc, printed with
+   the cover, out of its case behind it while a song's in, turning while it plays (app.js showAlbumDisc); the album's
+   colour (--album-tint, app.js tintFromCover) on its artist and the song playing. */
+#cover-art, #album-disc { display: none; }
+body.look-album:not(.cd-view) #body {
+  grid-template-columns: minmax(300px, 1fr) minmax(0, 1.2fr); grid-template-rows: minmax(0, 1fr) repeat(8, auto); column-gap: 56px;
+}
+body.look-album:not(.cd-view) #player { display: contents; } /* (its parts in the left column, its queue in the right) */
+body.look-album:not(.cd-view) #player > *, body.look-album:not(.cd-view) #faceplate > * { grid-column: 1; }
+body.look-album:not(.cd-view) #disc-column { grid-column: 1; grid-row: 1; margin: 6px 0 4px; min-height: 120px; }
 body.look-album #disc-column { container-type: size; }
-body.look-album #disc-column > :not(#cover-art) { visibility: hidden; }
+body.look-album #disc-column > canvas { visibility: hidden; }
+/* The cover and the disc as one picture, centred: the disc reaches a third of itself past the cover's right edge. */
+body.look-album #cover-art, body.look-album #album-disc { --s: min(94cqh, 74cqw); display: block; position: absolute; }
 body.look-album #cover-art {
-  display: block; position: absolute; top: 50%; left: 50%; width: min(88cqw, 88cqh); aspect-ratio: 1; transform: translate(-50%, -50%);
-  border-radius: 14px; background: center / cover no-repeat rgba(255, 255, 255, .06);
-  box-shadow: 0 30px 70px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 255, 255, .06);
+  z-index: 1; left: calc(50% - var(--s) * .655); top: calc(50% - var(--s) / 2); width: var(--s); height: var(--s);
+  border-radius: 8px; background: center / cover no-repeat rgba(255, 255, 255, .06);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, .5), 10px 0 24px rgba(0, 0, 0, .35), 0 0 0 1px rgba(255, 255, 255, .06);
   transition: background-image 400ms ease;
 }
-body.look-album #cover-art.none::after { content: "♪"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 30cqh; color: rgba(var(--text), .18); font-weight: normal; }
+body.look-album #cover-art.none { background: linear-gradient(150deg, rgb(58, 59, 64), rgb(30, 31, 35)); } /* (solid: the disc is behind it) */
+body.look-album #cover-art.none::after { content: "♪"; position: absolute; inset: 0; display: grid; place-items: center; font-size: calc(var(--s) * .34); color: rgba(var(--text), .18); font-weight: normal; }
+body.look-album #album-disc {
+  left: calc(50% - var(--s) * .625); top: calc(50% - var(--s) * .47); width: calc(var(--s) * .94); height: calc(var(--s) * .94);
+  border-radius: 50%; box-shadow: 0 16px 36px rgba(0, 0, 0, .45);
+  background: conic-gradient(from 30deg, #b4b8bf, #e6e8ec, #a9aeb6, #d6dae0, #b1b6be, #eceef1, #b4b8bf); /* (the silver; its hole is behind the cover) */
+  transition: transform 1100ms var(--ease-out);
+}
+body.look-album #album-disc.out { transform: translateX(36%); }
+/* Its label, printed with the middle of the cover from the silver ring to the edge, turning. */
+#album-disc::before {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: var(--art, none) center / 160% no-repeat;
+  -webkit-mask: radial-gradient(circle closest-side, transparent 0 35%, #000 36%);
+  animation: albumDiscTurn 3.6s linear infinite paused;
+}
+body.playing #album-disc::before { animation-play-state: running; }
+@keyframes albumDiscTurn { to { transform: rotate(1turn); } }
+/* What doesn't turn with it: the clear hub and its ring, the rim's edge, and the light on it. */
+#album-disc::after {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background:
+    radial-gradient(circle closest-side, rgba(30, 32, 36, .55) 0 27%, rgba(255, 255, 255, .35) 27.5% 28.5%, rgba(30, 32, 36, .3) 29% 33%, rgba(0, 0, 0, .25) 35.5% 36%, transparent 36.5% 97%, rgba(255, 255, 255, .4) 98%, rgba(0, 0, 0, .35) 99.5%),
+    conic-gradient(from 210deg, transparent, rgba(255, 255, 255, .24) 28deg, transparent 64deg 180deg, rgba(255, 255, 255, .14) 212deg, transparent 250deg);
+}
+body.no-anim #album-disc { transition: none; }
+body.no-anim #album-disc::before { animation: none; }
 body.look-album { --font: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; }
-body.look-album #divider, body.look-album #now-playing-label, body.look-album #visualizer, body.look-album #deck-display { display: none; }
+body.look-album #divider, body.look-album #now-playing-label, body.look-album #visualizer, body.look-album #deck-display, body.look-album #now-row .grow { display: none; }
 body.look-album #times { display: flex; }
 body.look-album #backdrop-art { filter: saturate(1.6) brightness(1.1); }
 body.look-album #backdrop::before { background: linear-gradient(rgba(15, 15, 17, .62), rgba(9, 9, 10, .78)); }
 body.look-album #backdrop::after { background: none; }
 body.look-album #header .pill, body.look-album #status-pill { background: rgba(255, 255, 255, .08); box-shadow: none; border: none; color: rgb(var(--text)); }
 body.look-album #status-pill { background: rgba(0, 0, 0, .38); }
-body.look-album #player { justify-content: center; }
-body.look-album #track-title { font-size: 34px; letter-spacing: -.01em; }
-body.look-album #track-artist { font-size: 19px; height: 26px; line-height: 26px; color: rgba(var(--text), .7); }
+/* Under the cover: the song, centred, and the keys. */
+body.look-album #now-row, body.look-album #source-row { justify-content: center; }
+body.look-album #now-row { min-height: 0; height: 28px; }
+body.look-album #track-title, body.look-album #track-artist { text-align: center; margin-left: auto; margin-right: auto; }
+body.look-album #track-title { margin-top: 4px; font-size: 30px; height: 40px; line-height: 40px; letter-spacing: -.01em; }
+body.look-album #track-artist { font-size: 17px; height: 24px; line-height: 24px; color: rgba(var(--text), .7); }
+body.look-album #progress-row { margin-top: 14px; }
+body.look-album #controls { margin-top: 6px; min-height: 60px; }
+body.look-album #volume-row { margin-top: 4px; justify-content: center; }
+body.look-album #volume-row .row-label { display: none; }
+body.look-album #volume-row .grow { flex: 0 0 24px; }
 body.look-album .round:not(.primary):not(.on) { background: none; box-shadow: none; }
 body.look-album .round.primary { background: rgb(var(--text)); color: rgb(var(--bg)); box-shadow: 0 8px 24px rgba(0, 0, 0, .35); }
+@media (max-width: 960px) { /* (a narrower left column: the keys closer together, LOAD A TRACK left to the shelf and ⌘O) */
+  body.look-album:not(.cd-view) #body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 28px; }
+  body.look-album #transport > span { flex-basis: 4px !important; width: 4px !important; } /* (the spacers' widths are set inline) */
+  body.look-album #load-button { display: none; }
+}
+/* Down the right: the album's page. */
+body.look-album:not(.cd-view) #queue-card {
+  grid-column: 2; grid-row: 1 / -1; margin: 6px 0 4px; padding: 6px 22px 12px; border-top: none; border-radius: 16px; background: rgba(0, 0, 0, .2);
+}
 #album-head { display: none; }
-body.look-album #album-head:not([hidden]) { display: block; padding: 12px 0 10px; border-bottom: 1px solid rgba(255, 255, 255, .07); margin-bottom: 6px; }
-#album-name { font-size: 22px; font-weight: bold; letter-spacing: -.01em; color: rgb(var(--text)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#album-line { margin-top: 3px; font-size: 13px; color: rgba(var(--text), .6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-body.look-album #queue-card { border-top: none; margin-top: 18px; padding: 4px 14px 10px; border-radius: 14px; background: rgba(0, 0, 0, .2); }
+body.look-album #album-head:not([hidden]) { display: block; padding: 16px 0 14px; border-bottom: 1px solid rgba(255, 255, 255, .07); }
+#album-name { font-size: 28px; line-height: 34px; font-weight: bold; letter-spacing: -.015em; color: rgb(var(--text)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#album-artist { font-size: 18px; line-height: 24px; color: rgb(var(--album-tint, var(--accent2))); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#album-artist:empty { display: none; }
+#album-line { margin-top: 6px; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: rgba(var(--text), .5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.look-album #queue-head { margin-top: 10px; }
+/* Its songs, roomier, the one playing in the album's colour, a small disc turning where its number was. */
+body.look-album .queue-row { height: 30px; margin-bottom: 0; font-size: 13px; box-shadow: 0 1px 0 rgba(255, 255, 255, .04); }
+body.look-album .queue-row .num { flex-basis: 24px; font-variant-numeric: tabular-nums; }
+body.look-album .queue-row.active { color: rgb(var(--album-tint, var(--accent))); }
+body.look-album .queue-row.active::before { background: rgba(var(--album-tint, var(--accent)), .12); border-radius: 6px; }
+body.look-album .queue-row.active .duration { color: rgba(var(--album-tint, var(--accent)), .8); }
+body.look-album .queue-row.active .num { position: relative; color: transparent; }
+body.look-album .queue-row.active .num::after {
+  content: ""; position: absolute; right: 1px; top: 50%; width: 13px; height: 13px; margin-top: -6.5px; border-radius: 50%;
+  background: conic-gradient(rgba(255, 255, 255, .75), transparent 22%, transparent 50%, rgba(255, 255, 255, .5) 62%, transparent 84%),
+    radial-gradient(circle, transparent 0 1.8px, rgb(var(--album-tint, var(--accent))) 2.2px 3.2px, rgba(var(--album-tint, var(--accent)), .55) 3.6px);
+  -webkit-mask: radial-gradient(circle, transparent 0 1.8px, #000 2.2px);
+  animation: albumDiscTurn 1.8s linear infinite paused;
+}
+body.look-album.playing .queue-row.active .num::after { animation-play-state: running; }
+body.no-anim .queue-row.active .num::after { animation: none; }
 
 /* ---- Buttons ---- */
 .pill {

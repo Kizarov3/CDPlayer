@@ -171,6 +171,12 @@ function queueDisplay(p) {
   const d = detailsCache.get(p);
   return d && d.artist ? `${d.artist} · ${d.title}` : displayName(p);
 }
+// A queue row's name: who and what — or in ALBUM, a song by the artist of the song playing just by its title, as an
+// album's track list has it.
+function rowName(p) {
+  const d = detailsCache.get(p), now = state.details;
+  return state.look === 'ALBUM' && d && d.title && d.artist && now && d.artist === now.artist ? d.title : queueDisplay(p);
+}
 export function formatTime(seconds) {
   const s = Math.max(0, Math.floor(seconds || 0));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -280,7 +286,7 @@ function scheduleQueueRender() {
   requestAnimationFrame(() => { queueRenderPending = false; renderQueue(); });
 }
 
-const drag = { index: -1, lastY: 0, accumulated: 0, moved: false };
+const drag = { index: -1, lastY: 0, accumulated: 0, moved: false, step: 28 };
 // The disc that's in, for its data side (disc-data.js): the playing changer disc's songs — or, in the queue, the
 // songs of the playing one's album that stand together around it (just the playing song when its album isn't known).
 let discStart = 0;
@@ -310,19 +316,42 @@ function discPosition() {
   return track ? track.start + engine.position : 0;
 }
 
-// ALBUM's heading over the queue: the album playing, its artist and year, and how many of its songs are in the queue
-// and how long they last.
+// ALBUM's heading over the queue: the album playing, who it's by (in its cover's colour), and its small print — the
+// genre, year and label the tags give, how many of its songs are in the queue and how long they last, and how often
+// they've been played (asked once per song, and only while ALBUM shows it).
+const albumPlays = { path: null, n: 0 };
 function updateAlbumHead() {
   const d = state.details, album = d && d.album;
   $('album-head').hidden = !album;
   if (!album) return;
   const songs = state.queue.map((p) => detailsCache.get(p)).filter((x) => x && x.album === album);
-  const seconds = songs.reduce((sum, x) => sum + (x.duration || 0), 0);
+  const seconds = songs.reduce((sum, x) => sum + (x.duration || 0), 0), c = d.credits || {};
+  if (state.look === 'ALBUM' && albumPlays.path !== state.loadedPath && state.loadedPath && !isStream(state.loadedPath)) {
+    const path = albumPlays.path = state.loadedPath;
+    albumPlays.n = 0;
+    cdp.albumPlays(path).then((a) => { if (albumPlays.path === path && a && a.plays) { albumPlays.n = a.plays; updateAlbumHead(); } }).catch(() => {});
+  }
+  const plays = albumPlays.path === state.loadedPath ? albumPlays.n : 0;
   $('album-name').textContent = album;
-  $('album-line').textContent = [d.albumArtist || d.artist, yearOf(d),
-    songs.length ? `${songs.length === 1 ? t('1 SONG|single') : t('{n} SONGS', { n: songs.length })}${seconds >= 60 ? `, ${t('{n} MIN', { n: Math.round(seconds / 60) })}` : ''}` : null]
+  $('album-artist').textContent = d.albumArtist || d.artist || '';
+  $('album-line').textContent = [c.genre, yearOf(d), c.label,
+    songs.length ? `${songs.length === 1 ? t('1 SONG|single') : t('{n} SONGS', { n: songs.length })}${seconds >= 60 ? `, ${t('{n} MIN', { n: Math.round(seconds / 60) })}` : ''}` : null,
+    plays ? (plays === 1 ? t('1 PLAY|single') : t('{n} PLAYS', { n: plays })) : null]
     .filter(Boolean).join(' · ');
 }
+// ALBUM's colour: the cover's (as AUTO's theme finds it, on a small copy), lightened to read on the dark — for the
+// artist's name and the song playing. Worked out as the cover comes, only while ALBUM is the look.
+function tintFromCover() {
+  if (state.look !== 'ALBUM') return;
+  const img = state.cover, style = document.body.style;
+  if (!img) { style.removeProperty('--album-tint'); return; }
+  const small = new OffscreenCanvas(160, 160); // (as many points as AUTO samples of a big cover: the colour it finds)
+  small.getContext('2d').drawImage(img, 0, 0, 160, 160);
+  style.setProperty('--album-tint', deriveAutoTheme(small).accent.map((v) => Math.round(v * 0.72 + 255 * 0.28)).join(', '));
+}
+// ALBUM's disc: out of its case, beside the cover, while there's a song in the player (turning while it plays — the
+// body's .playing); back in when the tray opens, or there's nothing to play.
+function showAlbumDisc() { $('album-disc').classList.toggle('out', !!disc.discPresent && !disc.trayOpen); }
 function renderQueue() {
   drawQueue();
   refreshLookSongs(); // (a song without words: the list of the disc's songs)
@@ -363,7 +392,7 @@ function drawQueue() {
   const tracks = changer.tracksOf(c, here.slot).map((p, k) => {
     ensureDetails(p);
     const det = detailsCache.get(p);
-    return { index: d.start + k, no: k + 1, title: queueDisplay(p), time: formatDuration(det ? det.duration : 0), duration: det ? det.duration : 0, current: d.start + k === state.index, skipped: state.skipped.has(p) };
+    return { index: d.start + k, no: k + 1, title: rowName(p), time: formatDuration(det ? det.duration : 0), duration: det ? det.duration : 0, current: d.start + k === state.index, skipped: state.skipped.has(p) };
   });
   const ghost = ghostRow(), at = tracks.findIndex((tr) => tr.current);
   if (ghost && at >= 0) tracks.splice(at + 1, 0, { ghost });
@@ -392,12 +421,13 @@ function renderQueueList() {
     const next = !!state.nextUp && i > state.index && i >= state.nextUp.start && i < state.nextUp.end;
     const row = el('div', { class: `queue-row${i === state.index ? ' active' : ''}${i === drag.index ? ' dragging' : ''}${isSkipped(i) ? ' skipped' : ''}`, title: isSkipped(i) ? `${t('Play {song}', { song: queueDisplay(p) })}\n${t('Marked SKIP: passed over as the music moves on')}` : t('Play {song}', { song: queueDisplay(p) }) },
       el('span', { class: 'num' }, `${i + 1}.`),
-      el('span', { class: 'entry' }, queueDisplay(p)),
+      el('span', { class: 'entry' }, rowName(p)),
       next ? el('span', { class: 'next-tag', title: t('Plays next') }, t('NEXT')) : null,
       el('span', { class: 'east' }, el('span', { class: 'duration' }, formatDuration(d ? d.duration : 0)), remove));
     row.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || e.target === remove) return;
       drag.index = i; drag.lastY = e.clientY; drag.accumulated = 0; drag.moved = false;
+      drag.step = row.offsetHeight + (parseFloat(getComputedStyle(row).marginBottom) || 0); // a row and the gap under it (26 + 2; taller in ALBUM)
       list.setPointerCapture(e.pointerId);
     });
     return row;
@@ -430,7 +460,7 @@ function setupQueueDrag() {
     if (drag.index < 0) return;
     drag.accumulated += e.clientY - drag.lastY;
     drag.lastY = e.clientY;
-    const step = 28; // 26px row + 2px gap
+    const step = drag.step || 28;
     let changed = false;
     while (Math.abs(drag.accumulated) >= step && state.queue.length > 1) {
       const dir = drag.accumulated > 0 ? 1 : -1, target = drag.index + dir;
@@ -1135,9 +1165,12 @@ async function decodeCover(dataUrl) {
 function applyCover(img) {
   state.cover = img;
   disc.setCover(img);
-  // (PLAYER LOOK: COVER shows it flat, as a streaming app does, instead of on the disc)
+  // (PLAYER LOOK: ALBUM shows it flat, as a streaming app does, its disc peeking out from behind it)
   $('cover-art').style.backgroundImage = img ? `url("${img.src}")` : '';
   $('cover-art').classList.toggle('none', !img);
+  $('album-disc').style.setProperty('--art', img ? `url("${img.src}")` : 'none');
+  tintFromCover();
+  showAlbumDisc();
   karaokeCover();
   onCoverChanged();
   pushMini(true);
@@ -1231,6 +1264,8 @@ function setPlaying(playing) {
     heardTimer = setTimeout(() => { if (state.loadToken === token && state.loadedPath === path && engine.playing) recordHistory(path); else if (state.loadToken === token) recordedFor = -1; }, HEARD_SECONDS * 1000); // (paused before then: counted when it plays on)
   }
   disc.spinning = playing;
+  document.body.classList.toggle('playing', playing);
+  showAlbumDisc();
   noise.setPlaying(playing);
   playButton.setGlyph(playing ? 'PAUSE' : 'PLAY'); pulse(playButton, true);
   if (playing) spotifyTrouble = null;
@@ -1541,7 +1576,9 @@ async function openTray({ eject = false } = {}) {
   if (engine.playing) { engine.pause(); setPlaying(false); }
   setStatus(t('OPENING'));
   noise.tray(TRAY_MS);
-  await disc.setTray(true);
+  const opened = disc.setTray(true);
+  showAlbumDisc();
+  await opened;
   state.trayBusy = false;
   setStatus(state.queue.length ? t('OPEN · DROP IN A NEW DISC, OR PRESS E TO CLOSE') : t('OPEN · DROP MUSIC ON THE TRAY'));
   $('tray-button').classList.add('on');
@@ -1551,7 +1588,9 @@ async function closeTray({ play = true } = {}) {
   state.trayBusy = true;
   setStatus(t('CLOSING'));
   noise.tray(TRAY_MS);
-  await disc.setTray(false);
+  const closed = disc.setTray(false);
+  showAlbumDisc();
+  await closed;
   $('tray-button').classList.remove('on');
   const resume = trayResume || { playing: false };
   trayResume = null;
@@ -2985,6 +3024,8 @@ function setLook(kind, { save = true } = {}) {
   lookInsetSet = false;
   for (const k of LOOKS) document.body.classList.toggle(`look-${k.toLowerCase()}`, state.look === k);
   showQueueDrawer(false);
+  disc.offstage = state.look === 'ALBUM'; // (its canvas hidden under the cover there: not drawn for nothing)
+  tintFromCover(); renderQueue(); // (ALBUM's heading, and its rows by their titles)
   if (state.look === 'LYRICS') { showLookWords(); requestAnimationFrame(showLookWords); } // (again once it's laid out: where a line or song sits needs the room)
   if (save) saveSettingsSoon();
 }
