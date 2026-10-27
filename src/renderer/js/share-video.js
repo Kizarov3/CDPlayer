@@ -11,6 +11,7 @@ import { rgb, lerpColor, FONT, drawThemeImage } from './theme.js';
 import { drawCells, clock } from './deck-display.js';
 import { lineWords, songPace } from './lyrics.js';
 import { t } from './i18n.js';
+import { flattenMp4 } from './mp4-flatten.js';
 
 export const VIDEO_SECONDS = 8, MIN_VIDEO_SECONDS = 2, MAX_VIDEO_SECONDS = 60;
 const FPS = 30;
@@ -831,7 +832,9 @@ export async function recordVideo({ format, song, audio, seconds = VIDEO_SECONDS
   for (const track of stream.getVideoTracks()) track.stop();
   if (failed || !chunks.length) return null; // the encoder wouldn't start: nothing to save
   const blob = new Blob(chunks, { type: type.mime });
-  return { bytes: new Uint8Array(await blob.arrayBuffer()), ext: type.ext, stoppedEarly };
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  // The recorder's MP4 comes in fragments, which some players cut off after the first: made a plain one.
+  return { bytes: type.ext === 'mp4' ? flattenMp4(bytes) : bytes, ext: type.ext, stoppedEarly };
 }
 
 /** A look's film, to draw frames of it by hand (to look at them, or time them): → draw(g, at). */
