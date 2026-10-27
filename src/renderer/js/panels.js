@@ -1599,7 +1599,7 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
-  { version: '2.20.0', changes: [
+  { version: '2.20.1', changes: [
     '<b>YouTube Music &amp; SoundCloud</b>: turned on in Settings &rarr; LIBRARY, the search finds their albums and songs, and they play like your own discs &mdash; in the best sound each gives without signing in; a playlist&rsquo;s link pasted in the search opens it',
     '<b>PLAYER LOOK</b> in Settings &rarr; LOOK: CLASSIC; VISUALIZER, the music drawn across the window; LYRICS, the song&rsquo;s words down the side as they&rsquo;re sung; HI-FI, a CD player&rsquo;s brushed-metal front, the song and two level meters lit in its display, metal keys under it; ALBUM, an album&rsquo;s page, its cover in the jewel case and the disc out of it &mdash; and each its own Now Playing video, a film moved by the music and the words; and gentler motion all round &mdash; the song&rsquo;s name rising in, the display&rsquo;s flicker, small lamps on what&rsquo;s on',
     '<b>IMPORT PLAYS</b> from Spotify, Last.fm, ListenBrainz or Apple Music, counted on the same songs; <b>scrobbling</b> sends what you play here to Last.fm and ListenBrainz',
