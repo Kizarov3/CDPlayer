@@ -77,6 +77,7 @@ const state = {
   volume: 100, volumeBeforeMute: -1, transition: 'OFF', crossfade: 5, mono: false, spatial: false, spatialAmount: 50, waveform: true, ambient: true, ambientStyle: 'COVER', miniMode: false, discord: true, discNoise: false, discWear: true, discShine: true, taskbarDisc: true,
   trayBusy: false, // the tray is moving or the disc is being read: transport presses wait
   saveFound: false, // covers and lyrics found online are written into the song's file
+  ripFormat: 'FLAC', // what RIP saves a CD as: FLAC, MP3 or WAV
   streaming: false, // the search finds albums on YouTube Music and songs on SoundCloud too (streaming.js, through yt-dlp)
   lyricsOffset: 0,  // ms the lyrics are moved by (+ later), on top of the output latency
   shelfSort: 'ARTIST', // how the shelf is sorted (shelf-order.js)
@@ -1780,7 +1781,7 @@ async function playAudioCd() {
   if (isShelfOpen()) closeShelf();
   await insertDisc(cd.tracks, { status: t('{disc} ON THE TRAY', { disc: (cd.album || t('AUDIO CD')).toUpperCase() }), kind: 'audiocd', title: cd.album || t('AUDIO CD') });
 }
-// RIP: the disc saved into the music folder as FLAC. Clicking it again while it rips cancels.
+// RIP: the disc saved into the music folder as FLAC, MP3 or WAV (Settings → RIP FORMAT). Clicking it again while it rips cancels.
 const RIP_STATUS = { cancelled: t('RIP CANCELLED'), 'disc-removed': t('DISC REMOVED'), busy: t('ALREADY RIPPING'), naming: t('STILL NAMING THE DISC — A MOMENT') };
 async function ripAudioCd() {
   const cd = state.audioCd, button = $('rip-button');
@@ -1794,7 +1795,7 @@ async function ripAudioCd() {
   state.ripping = true;
   button.classList.add('ripping');
   button.textContent = t('RIPPING {done}/{total} · {percent}%', { done: 0, total: cd.tracks.length, percent: 0 });
-  const result = await cdp.startRip(cd.mount).catch((e) => ({ ok: false, reason: 'failed', message: e.message }));
+  const result = await cdp.startRip(cd.mount, state.ripFormat).catch((e) => ({ ok: false, reason: 'failed', message: e.message }));
   state.ripping = false;
   button.classList.remove('ripping');
   button.textContent = t('RIP');
@@ -2287,6 +2288,7 @@ function setAmbient(kind) {
   if (kind !== 'OFF') state.ambientStyle = kind === 'GRADIENT' ? 'GRADIENT' : 'COVER';
   onCoverChanged(); saveSettingsSoon();
 }
+function setRipFormat(format) { state.ripFormat = format; saveSettingsSoon(); }
 function setAnimations(on) { anim.enabled = on; document.body.classList.toggle('no-anim', !on); saveSettingsSoon(); }
 function setCrossfade(v) { state.crossfade = v; saveSettingsSoon(); }
 function setEq(gains) { state.eq = gains.slice(); engine.setEq(state.eq); updateQualityBadge(); saveSettingsSoon(); keepDeviceSound(); }
@@ -2713,7 +2715,7 @@ const appendAndPlay = (p) => addToQueue([p], { sorted: true, play: true });
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, transition: state.transition, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, ambientStyle: state.ambientStyle, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, changer: state.changerMode, streaming: state.streaming, playModes: { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } }, display: state.display, look: state.look };
+  return { volume: state.volume, crossfade: state.crossfade, transition: state.transition, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, ambientStyle: state.ambientStyle, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, changer: state.changerMode, streaming: state.streaming, playModes: { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } }, display: state.display, look: state.look, ripFormat: state.ripFormat };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -3255,7 +3257,7 @@ export const app = {
   onFullChanger: (c) => panels.pickDiscToTakeOut(app, c),
   coverSource: () => state.coverFrom || null,
   switchTheme, previewTheme, restoreTheme, shownTheme: () => shownTheme, saveTheme, importTheme, pasteThemeCode, exportTheme, copyThemeCode, deleteTheme,
-  copyReport, noteScrobbling, setQuality, setSoundCheck, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setAnimations, setCrossfade, setTransition, setEq, armSleepTimer, armSleepAtEnd, setDisplay, setLook, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setTaskbarDisc, setOutput, listOutputs, currentOutputName,
+  copyReport, noteScrobbling, setQuality, setSoundCheck, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setRipFormat, setAnimations, setCrossfade, setTransition, setEq, armSleepTimer, armSleepAtEnd, setDisplay, setLook, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setTaskbarDisc, setOutput, listOutputs, currentOutputName,
   insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
   menu: (anchor, items, opts) => panels.menu(anchor, items, opts),
@@ -3410,6 +3412,7 @@ async function start() {
   setWaveform(s.waveform);
   state.ambient = s.ambient;
   state.ambientStyle = s.ambientStyle === 'GRADIENT' ? 'GRADIENT' : 'COVER';
+  state.ripFormat = s.ripFormat || 'FLAC';
   state.discord = s.discord !== false;
   setDiscNoise(!!s.discNoise);
   state.discWear = s.discWear !== false;

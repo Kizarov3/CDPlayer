@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Ripping an audio CD into the music folder as FLAC: each track's audio is read here (on Windows through the same
+ * Ripping an audio CD into the music folder as FLAC (or MP3, or WAV): each track's audio is read here (on Windows through the same
  * drive helper playback uses), encoded and checked in a worker (encoders/worker.js), written, tagged from MusicBrainz
  * and renamed into place; the album's cover goes beside the files as cover.jpg. One track at a time; a cancel or a
  * failure deletes the file being written and keeps the finished ones.
@@ -51,12 +51,12 @@ const jobs = new Map();
 function getWorker() {
   if (worker) return worker;
   const w = worker = new Worker(path.join(__dirname, 'encoders', 'worker.js').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`));
-  w.on('message', ({ id, flac, error }) => {
+  w.on('message', ({ id, file, error }) => {
     const job = jobs.get(id);
     if (!job) return;
     jobs.delete(id);
     if (!jobs.size) w.unref();
-    error ? job.reject(new Error(error)) : job.resolve(Buffer.from(flac));
+    error ? job.reject(new Error(error)) : job.resolve(Buffer.from(file));
   });
   // (Only this worker's own end counts: one stopped for a cancel ends after the next one has started.)
   const lost = (e) => { if (worker !== w) return; worker = null; for (const j of jobs.values()) j.reject(e || new Error('the encoder stopped')); jobs.clear(); };
@@ -66,10 +66,10 @@ function getWorker() {
   return w;
 }
 /**
- * A track's PCM as FLAC — encoded, decoded again and compared in the worker. The PCM is handed over, not copied
+ * A track's PCM as FLAC — encoded, decoded again and compared in the worker — or as MP3 or WAV. The PCM is handed over, not copied
  * (a long track is hundreds of MB). A cancel stops the worker at once; the next encode starts a fresh one.
  */
-function encodeChecked(pcm, signal) {
+function encodeChecked(pcm, signal, format = 'FLAC') {
   if (pcm.byteOffset || pcm.buffer.byteLength !== pcm.byteLength) pcm = pcm.slice();
   return new Promise((resolve, reject) => {
     if (signal && signal.aborted) { reject(stop('cancelled')); return; }
@@ -85,15 +85,18 @@ function encodeChecked(pcm, signal) {
       }, { once: true });
     }
     w.ref();
-    w.postMessage({ id, pcm }, [pcm.buffer]);
+    w.postMessage({ id, pcm, format }, [pcm.buffer]);
   });
 }
 
 // ---- The rip ----------------------------------------------------------------------------------------------------
 
 
-async function ripDisc({ tracks, album, musicFolder, signal, onProgress = () => {}, readPcm = trackPcm, encode = encodeChecked, writeTags = tagWriter.writeTags }) {
-  const folder = albumFolder(musicFolder, album), names = trackFiles(tracks), files = [];
+const EXTENSIONS = { FLAC: 'flac', MP3: 'mp3', WAV: 'wav' };
+const extension = (format) => EXTENSIONS[format] || 'flac';
+
+async function ripDisc({ tracks, album, musicFolder, format = 'FLAC', signal, onProgress = () => {}, readPcm = trackPcm, encode = encodeChecked, writeTags = tagWriter.writeTags }) {
+  const ext = extension(format), folder = albumFolder(musicFolder, album), names = trackFiles(tracks, ext), files = [];
   await fsp.mkdir(folder, { recursive: true });
   if (album.cover) {
     const m = /^data:[^;]+;base64,(.*)$/s.exec(album.cover);
@@ -104,7 +107,7 @@ async function ripDisc({ tracks, album, musicFolder, signal, onProgress = () => 
   report(0);
   for (let i = 0; i < tracks.length; i++) {
     if (signal && signal.aborted) throw stop('cancelled');
-    const t = tracks[i], final = path.join(folder, names[i]), temp = path.join(folder, `.cdplayer-rip-${i + 1}.flac`);
+    const t = tracks[i], final = path.join(folder, names[i]), temp = path.join(folder, `.cdplayer-rip-${i + 1}.${ext}`);
     try {
       let pcm;
       report(i, { current: i, stage: 'reading' });
@@ -113,11 +116,11 @@ async function ripDisc({ tracks, album, musicFolder, signal, onProgress = () => 
         throw signal && signal.aborted ? stop('cancelled') : e.code === 'ENOENT' ? stop('disc-removed') : stop('failed', e.message);
       }
       if (signal && signal.aborted) throw stop('cancelled');
-      let flac;
+      let file;
       report(i, { current: i, stage: 'encoding' });
-      try { flac = await encode(pcm, signal); } catch (e) { throw e.reason ? e : stop('failed', `${e.message} (${t.title || `track ${t.number}`})`); }
+      try { file = await encode(pcm, signal, format); } catch (e) { throw e.reason ? e : stop('failed', `${e.message} (${t.title || `track ${t.number}`})`); }
       if (signal && signal.aborted) throw stop('cancelled');
-      await fsp.writeFile(temp, flac);
+      await fsp.writeFile(temp, file);
       const tagged = await writeTags(temp, {
         title: t.title || `Track ${t.number}`, artist: t.artist || album.artist || null, album: album.album || null,
         albumArtist: album.albumArtist || null, year: album.year || null, track: t.number, trackCount: tracks.length,
@@ -137,9 +140,9 @@ async function ripDisc({ tracks, album, musicFolder, signal, onProgress = () => 
 }
 
 /** The files this rip would write that are already there (a disc ripped before) — not other discs of the same set. */
-function existingTargets(musicFolder, album, tracks) {
+function existingTargets(musicFolder, album, tracks, format = 'FLAC') {
   const folder = albumFolder(musicFolder, album);
-  return trackFiles(tracks).map((f) => path.join(folder, f)).filter((f) => fs.existsSync(f));
+  return trackFiles(tracks, extension(format)).map((f) => path.join(folder, f)).filter((f) => fs.existsSync(f));
 }
 
 module.exports = { ripDisc, trackPcm, encodeChecked, wavPcm, albumFolder, existingTargets };

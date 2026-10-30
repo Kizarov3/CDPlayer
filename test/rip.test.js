@@ -105,3 +105,41 @@ test('progress says which track, and what it\'s doing: reading, encoding, done (
   assert.deepStrictEqual([done.done, done.total, done.percent], [2, 2, 100]);
   fs.rmSync(music, { recursive: true, force: true });
 });
+
+test('a disc ripped as MP3: 320 kbps, tagged, and as long as the disc\'s audio to the sample (LAME\'s delay and padding in its Info frame)', async () => {
+  const music = fs.mkdtempSync(path.join(os.tmpdir(), 'rip-music-'));
+  const { folder } = await ripDisc({ ...disc(2), format: 'MP3', musicFolder: music, readPcm: async () => tone(1.5, 0.03) });
+  assert.deepStrictEqual(fs.readdirSync(folder).sort(), ['01 Song 1.mp3', '02 Pollution.mp3', 'cover.jpg']);
+  const { parseFile } = await import('music-metadata');
+  const m = await parseFile(path.join(folder, '02 Pollution.mp3'));
+  assert.strictEqual(m.common.title, 'Pollution');
+  assert.deepStrictEqual(m.common.track, { no: 2, of: 2 });
+  assert.ok(m.common.picture && m.common.picture.length, 'the cover is inside');
+  assert.strictEqual(m.format.bitrate, 320000);
+  // What players cut off: LAME's delay at the start, the padding at the end — leaving exactly the disc's samples.
+  const file = fs.readFileSync(path.join(folder, '02 Pollution.mp3'));
+  const id3 = file.toString('ascii', 0, 3) === 'ID3' ? 10 + ((file[6] << 21) | (file[7] << 14) | (file[8] << 7) | file[9]) : 0;
+  const mp3 = file.subarray(id3), x = 36;
+  assert.strictEqual(mp3.toString('ascii', x, x + 4), 'Info');
+  assert.strictEqual(mp3.toString('ascii', x + 120, x + 124), 'LAME');
+  const frames = mp3.readUInt32BE(x + 8), delay = (mp3[x + 141] << 4) | (mp3[x + 142] >> 4), padding = ((mp3[x + 142] & 15) << 8) | mp3[x + 143];
+  assert.strictEqual(delay, 576);
+  assert.strictEqual(frames * 1152 - delay - padding, Math.round(44100 * 1.5));
+  const { crc16 } = require('../src/main/encoders/mp3');
+  assert.strictEqual(mp3.readUInt16BE(190), crc16(mp3, 0, 190), 'the tag\'s CRC');
+  fs.rmSync(music, { recursive: true, force: true });
+});
+
+test('a disc ripped as WAV: the disc\'s audio unchanged, tagged', async () => {
+  const music = fs.mkdtempSync(path.join(os.tmpdir(), 'rip-music-'));
+  const pcm = tone(0.5, 0.03);
+  const { folder } = await ripDisc({ ...disc(1), format: 'WAV', musicFolder: music, readPcm: async () => pcm.slice() });
+  const file = path.join(folder, '01 Song 1.wav');
+  const { wavPcm } = require('../src/main/rip');
+  assert.deepStrictEqual(wavPcm(fs.readFileSync(file)), pcm);
+  const { parseFile } = await import('music-metadata');
+  assert.strictEqual((await parseFile(file)).common.title, 'Song 1');
+  assert.deepStrictEqual(existingTargets(music, disc(1).album, disc(1).tracks, 'WAV'), [file]);
+  assert.deepStrictEqual(existingTargets(music, disc(1).album, disc(1).tracks), []);
+  fs.rmSync(music, { recursive: true, force: true });
+});

@@ -24,14 +24,14 @@ function albumFolder(musicFolder, { albumArtist, album, year, discId }) {
   return path.join(musicFolder, safeName(albumArtist || 'Unknown Artist'), safeName(year ? `${album} (${year})` : album));
 }
 
-/** "01 Title.flac" per track ("2-05 …" on a double album), made unique. */
-function trackFiles(tracks) {
+/** "01 Title.flac" (or .mp3, .wav) per track ("2-05 …" on a double album), made unique. */
+function trackFiles(tracks, ext = 'flac') {
   const used = new Set();
   return tracks.map((t) => {
     const no = `${t.discs > 1 && t.disc ? `${t.disc}-` : ''}${String(t.number).padStart(2, '0')}`;
     const base = `${no} ${safeName(t.title || `Track ${t.number}`)}`;
-    let name = `${base}.flac`;
-    for (let k = 2; used.has(name.toLowerCase()); k++) name = `${base} (${k}).flac`;
+    let name = `${base}.${ext}`;
+    for (let k = 2; used.has(name.toLowerCase()); k++) name = `${base} (${k}).${ext}`;
     used.add(name.toLowerCase());
     return name;
   });

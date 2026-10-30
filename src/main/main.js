@@ -1298,11 +1298,12 @@ handle('cd:eject', (mount) => {
 });
 
 // ---- Ripping ------------------------------------------------------------------------------------------------------
-// RIP: the disc in the drive saved into the music folder as FLAC (rip.js). One rip at a time; taking the disc out, or
-// RIP clicked again, stops it.
+// RIP: the disc in the drive saved into the music folder as FLAC, MP3 or WAV (Settings → RIP FORMAT; rip.js). One rip
+// at a time; taking the disc out, or RIP clicked again, stops it.
 let ripping = null; // { mount, controller }
-handle('rip:start', async (mount) => {
+handle('rip:start', async (mount, format) => {
   const entry = discs.get(mount);
+  format = ['FLAC', 'MP3', 'WAV'].includes(format) ? format : 'FLAC';
   if (!entry || ripping) return { ok: false, reason: 'busy' };
   if (entry.naming) return { ok: false, reason: 'naming' }; // (the button waits for this too)
   let musicFolder = store.musicFolders()[0]; // (several: into the first)
@@ -1324,7 +1325,7 @@ handle('rip:start', async (mount) => {
     return { path: p, title: d.title || null, artist: d.artist || null, number: d.track || i + 1, disc: d.disc || 1, discs: d.discs || 1 };
   });
   // Asked only when this rip's own files are there — disc 2 of a set shares disc 1's folder without replacing it.
-  const folder = rip.albumFolder(musicFolder, album), already = rip.existingTargets(musicFolder, album, tracks);
+  const folder = rip.albumFolder(musicFolder, album), already = rip.existingTargets(musicFolder, album, tracks, format);
   if (already.length) {
     const { response } = await dialog.showMessageBox(win, {
       type: 'question', buttons: [t('Replace'), t('Cancel')], defaultId: 1, cancelId: 1,
@@ -1337,7 +1338,7 @@ handle('rip:start', async (mount) => {
   ripping = current;
   try {
     const result = await rip.ripDisc({
-      tracks, album, musicFolder, signal: controller.signal,
+      tracks, album, musicFolder, format, signal: controller.signal,
       onProgress: (p) => { if (win) win.webContents.send('rip-progress', { ...p, folder }); },
     });
     lastRipFolder = result.folder;

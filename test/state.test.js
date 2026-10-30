@@ -21,7 +21,7 @@ test('reads a settings.txt written by the Java version', () => {
     volume: 70, crossfade: 5, mono: true, animations: false, theme: 'OCEAN', eq: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
     waveform: false, miniMode: false, bounds: { x: 10, y: 20, width: 1200, height: 900 }, ambient: false, discord: false,
     discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false,
-    playModes: { QUEUE: { shuffle: 'OFF', repeat: 'OFF' }, CHANGER: { shuffle: 'OFF', repeat: 'OFF' } }, display: 'DECK', transition: 'CROSSFADE', streaming: false, look: 'CLASSIC', ambientStyle: 'COVER',
+    playModes: { QUEUE: { shuffle: 'OFF', repeat: 'OFF' }, CHANGER: { shuffle: 'OFF', repeat: 'OFF' } }, display: 'DECK', transition: 'CROSSFADE', streaming: false, look: 'CLASSIC', ambientStyle: 'COVER', ripFormat: 'FLAC',
   });
 });
 
@@ -410,4 +410,14 @@ test('a playlist keeps streamed songs: saved by their pages, read back with thei
   assert.deepStrictEqual(library.parseM3u(fs.readFileSync(file, 'utf8'), file, { isStream, names }), [yt, sc]);
   assert.deepStrictEqual(names, { [yt]: 'Michael Jackson - Billie Jean', [sc]: 'Someone - A Song' });
   assert.deepStrictEqual(library.parseM3u(fs.readFileSync(file, 'utf8'), file), []); // (without streaming: none)
+});
+
+test('what RIP saves a CD as is the 32nd settings line: FLAC unless MP3 or WAV, and it survives a save', () => {
+  fs.rmSync(path.join(home, 'settings.txt'), { force: true });
+  assert.strictEqual(store.readSettings().ripFormat, 'FLAC');
+  store.writeSettings({ ...store.readSettings(), ripFormat: 'MP3' });
+  assert.strictEqual(fs.readFileSync(path.join(home, 'settings.txt'), 'utf8').split('\n')[31], 'MP3');
+  assert.strictEqual(store.readSettings().ripFormat, 'MP3');
+  store.writeSettings({ ...store.readSettings(), ripFormat: 'OGG' });
+  assert.strictEqual(store.readSettings().ripFormat, 'FLAC');
 });

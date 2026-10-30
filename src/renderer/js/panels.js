@@ -402,6 +402,15 @@ function buildSettings(app) {
   const ambient = pill(AMBIENT_NAMES[ambientNow()], () => showMenu(ambient, Object.keys(AMBIENT_NAMES).map((kind) => ({
     label: AMBIENT_NAMES[kind], current: kind === ambientNow(), pick: () => { app.setAmbient(kind); refreshSettingsIfOpen(app); },
   }))), t('Behind the player: the cover blurred, or its colours flowing'));
+  // RIP FORMAT: what RIP saves an audio CD as.
+  const RIP_HINTS = {
+    FLAC: t('Lossless: exactly what’s on the disc, about half its size.'),
+    MP3: t('320 kbps, for players that don’t take FLAC: less than half FLAC’s size, and an album still plays without gaps.'),
+    WAV: t('The disc’s audio as it is, uncompressed: nearly twice FLAC’s size, and it plays everywhere.'),
+  };
+  const ripFormat = pill(s.ripFormat || 'FLAC', () => showMenu(ripFormat, ['FLAC', 'MP3', 'WAV'].map((format) => ({
+    label: format, current: format === (s.ripFormat || 'FLAC'), pick: () => { app.setRipFormat(format); refreshSettingsIfOpen(app); },
+  }))), t('What RIP saves an audio CD as'));
   const animations = toggle(anim.enabled, () => { app.setAnimations(!anim.enabled); setToggle(animations, anim.enabled); });
   const mini = toggle(s.miniMode, () => app.setMiniMode(!s.miniMode));
   const discord = toggle(s.discord, () => { app.setDiscord(!s.discord); setToggle(discord, s.discord); });
@@ -487,6 +496,8 @@ function buildSettings(app) {
     hint(t('The search (/) also finds albums on YouTube Music and songs on SoundCloud — they play like your own discs.')),
     quietHint(t('Unofficial: through the free yt-dlp, downloaded when this is turned on. YouTube’s terms don’t allow it, and it may stop working for a while when YouTube changes. Songs a label has locked (DRM) don’t play.')),
     streamingNote,
+    row(t('RIP FORMAT'), ripFormat),
+    hint(RIP_HINTS[s.ripFormat] || RIP_HINTS.FLAC),
     row(t('BACKUP'), el('div', { class: 'row-pills' },
       pill(t('SAVE…'), async () => { const r = await app.cdp.saveBackup().catch(() => ({ error: true })); if (r) app.setStatus(r.ok ? t('BACKUP SAVED') : t('UNKNOWN ERROR')); }, t('Save your queue, history, plays, notes, themes and settings to one file')),
       pill(t('RESTORE…'), async () => { const r = await app.cdp.restoreBackup().catch(() => ({ error: 'UNKNOWN ERROR' })); if (r && r.error) app.setStatus(r.error === 'NOT A BACKUP' ? t('NOT A CDPLAYER BACKUP') : t('UNKNOWN ERROR')); }, t('Put back what a backup kept: CDPlayer then starts again')))),

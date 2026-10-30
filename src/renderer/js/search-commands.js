@@ -31,6 +31,7 @@ export const SETTING_ROWS = [
   ['PHONE REMOTE', 'CONTROL FROM A PHONE', 'remote phone qr пульт телефон'],
   ['LIBRARY', 'SAVE FOUND ART & LYRICS', 'covers lyrics write files обложки'],
   ['LIBRARY', 'YOUTUBE MUSIC & SOUNDCLOUD', 'stream streaming youtube soundcloud online стриминг ютуб онлайн'],
+  ['LIBRARY', 'RIP FORMAT', 'rip cd mp3 wav flac encode рип формат диск'],
   ['LIBRARY', 'BACKUP', 'restore export cdbackup резервная копия восстановить бэкап'],
   ['LIBRARY', 'IMPORT PLAYS', 'last.fm lastfm listenbrainz spotify apple music itunes scrobbles history импорт истории скробблы'],
   ['SHARING', 'DISCORD STATUS', 'discord rich presence дискорд'],
