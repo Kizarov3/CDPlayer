@@ -18,7 +18,8 @@ function setup({ down = false, status = 200 } = {}) {
     }
     return { ok: server.status === 200, status: server.status, json: async () => ({}) };
   };
-  return { files, sent, server, s: createScrobbler({ store, fetch, version: '2.20.0' }) };
+  const dropped = [];
+  return { files, sent, server, dropped, s: createScrobbler({ store, fetch, version: '2.20.0', onDropped: (service) => dropped.push(service) }) };
 }
 const SONG = { artist: 'Radiohead', title: 'Airbag', album: 'OK Computer', duration: 284.5, at: 1700000000000 };
 
@@ -47,7 +48,7 @@ test('a song heard goes as a listen, the one starting as playing now; nothing wh
 });
 
 test('offline, listens wait and go together with the next; a reset token stops them till signed in again', async () => {
-  const { s, sent, server, files } = setup();
+  const { s, sent, server, files, dropped } = setup();
   await s.signIn('good');
   server.down = true;
   assert.strictEqual(await s.scrobble(SONG), false);
@@ -61,6 +62,9 @@ test('offline, listens wait and go together with the next; a reset token stops t
   server.status = 401;
   assert.strictEqual(await s.scrobble(SONG), false);
   assert.deepStrictEqual(s.status().listenbrainz, { user: 'sam', dropped: true, waiting: 1 });
+  assert.strictEqual(await s.scrobble({ ...SONG, title: 'Exit Music', at: 1700001000000 }), false);
+  assert.strictEqual(s.status().listenbrainz.waiting, 2, 'heard while signed out: kept for when it\'s connected again');
+  assert.deepStrictEqual(dropped, ['listenbrainz'], 'said once');
   server.status = 200;
   await s.signIn('good');
   assert.strictEqual(s.status().listenbrainz.waiting, 0); // sent once signed in again

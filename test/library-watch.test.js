@@ -91,3 +91,19 @@ test('several folders: each watched, one dropped from the list stops, one that e
   lw.start(['/drive']);
   assert.deepStrictEqual([made[0].closed, made.length, lw.folder], [true, 3, '/drive']);
 });
+
+test('held (a rip writing an album): changes wait, and are one change when let go', () => {
+  const { watch, made } = fakeWatch(), timers = fakeTimers();
+  let changes = 0;
+  const lw = createLibraryWatch({ watch, timers, onChange: () => changes++ });
+  lw.start('/music');
+  made[0].fire('A/01 X.flac');
+  lw.hold(true); // (one already waiting is held too)
+  made[0].fire('A/02 Y.flac');
+  timers.advance(10000);
+  assert.strictEqual(changes, 0);
+  lw.hold(false);
+  assert.strictEqual(changes, 1);
+  lw.hold(true); lw.hold(false);
+  assert.strictEqual(changes, 1, 'nothing changed while held: nothing to say');
+});

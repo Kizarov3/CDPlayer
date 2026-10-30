@@ -22,7 +22,7 @@ const QUEUE_MAX = 5000, BATCH = { listenbrainz: 1000, lastfm: 50 };
 const LASTFM_RETRY = [4, 8, 10, 11, 13, 16, 26, 29];
 const NOT_YET = 14; // the token isn't allowed (yet)
 
-function createScrobbler({ store, fetch = globalThis.fetch, version = '', wait = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+function createScrobbler({ store, fetch = globalThis.fetch, version = '', onDropped = () => {}, wait = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   let conf = null, queues = null, connecting = null;
   const sending = {};
   const json = (name, empty) => { try { return JSON.parse(store.readText(name) || 'null') || empty; } catch { return empty; } };
@@ -152,9 +152,12 @@ function createScrobbler({ store, fetch = globalThis.fetch, version = '', wait =
     }));
     return told.some(Boolean);
   }
-  /** A song heard: { artist, title, album, duration (s), at (ms, when it began) } → whether it (and those waiting) went. */
+  /**
+   * A song heard: { artist, title, album, duration (s), at (ms, when it began) } → whether it (and those waiting) went.
+   * A service that signed CDPlayer out still keeps them: they go once it's connected again.
+   */
   async function scrobble(s) {
-    const to = SERVICES.filter(signedIn);
+    const to = SERVICES.filter((service) => settings()[service]);
     if (!to.length || !named(s)) return false;
     const q = pending(), listen = { artist: s.artist, title: s.title, album: s.album || null, duration: s.duration || 0, at: Math.floor((Number(s.at) || Date.now()) / 1000) };
     for (const service of to) {
@@ -177,7 +180,7 @@ function createScrobbler({ store, fetch = globalThis.fetch, version = '', wait =
         const batch = q.slice(0, size);
         let result;
         try { result = await send[service](batch, c); } catch { return false; }
-        if (result === 'dropped') { c.dropped = true; save(); return false; } // signed out there: asked to sign in again
+        if (result === 'dropped') { c.dropped = true; save(); onDropped(service); return false; } // signed out there: asked to sign in again
         if (result === 'later') return false;
         if (result === 'refused' && batch.length > 1) { size = 1; continue; } // one of them it won't take: the rest go one by one
         for (const x of batch) { const at = q.indexOf(x); if (at >= 0) q.splice(at, 1); } // (by which: the oldest may have been let go meanwhile)

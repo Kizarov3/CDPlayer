@@ -95,8 +95,14 @@ const title = (text) => el('h1', {}, text);
 const closeRow = (onClick, caption = t('CLOSE')) => el('div', { class: 'close-row' }, pill(caption, onClick));
 const gap = (h = 22) => { const d = el('div', { class: 'gap-22' }); d.style.height = `${h}px`; return d; };
 const hint = (text) => el('div', { class: 'setting-hint' }, text);
-// IMPORT PLAYS: the files picked read in the main process; what it added said in the status line.
+// IMPORT PLAYS: the files picked read in the main process, how far it's got and then what it added said in the status line.
+let importWatched = false;
 async function importPlays(app) {
+  if (!importWatched) {
+    importWatched = true;
+    app.cdp.onImportProgress(({ stage, done, total }) => app.setStatus(stage === 'reading' ? t('READING YOUR PLAYS…')
+      : total ? t('MATCHING THEM TO THE SHELF · {done}/{total}', { done, total }) : t('MATCHING THEM TO THE SHELF…')));
+  }
   const r = await app.cdp.importPlays().catch(() => ({ error: true }));
   if (!r) return;
   if (r.error) { app.setStatus(r.error === 'NOT RECOGNISED' ? t('NOT AN EXPORT CDPLAYER CAN READ') : t('UNKNOWN ERROR')); return; }
@@ -969,7 +975,10 @@ function buildRip(app) {
   list.style.height = '340px'; list.style.marginTop = '12px';
   const buttons = el('div', { class: 'close-row split' },
     r.finished
-      ? (r.ok ? pill(t('SHOW IN FOLDER'), () => app.cdp.showRipFolder(), t('Open the album\'s folder')) : el('span', { class: 'rip-result' }, r.message || ''))
+      ? (r.ok ? pill(t('SHOW IN FOLDER'), () => app.cdp.showRipFolder(), t('Open the album\'s folder'))
+        : el('div', { class: 'row-pills' }, el('span', { class: 'rip-result' }, r.message || ''),
+          // (a rip stopped part-way: the tracks it finished are kept, unless they're not wanted as half an album)
+          r.kept ? pill(t('DELETE THE {n} RIPPED', { n: r.kept }), async () => { await app.cdp.deleteRipped(); r.kept = 0; refreshRipIfOpen(app); }, t('Take away the tracks this rip finished before it stopped')) : null))
       : pill(t('CANCEL RIP'), () => app.cdp.cancelRip(), t('Stop ripping; the tracks already done are kept')),
     pill(t('CLOSE'), () => closePanel('rip')));
   return [title([heading, (r.album || t('AUDIO CD')).toUpperCase()].join(' · ')), head, list, buttons];

@@ -115,9 +115,9 @@ test('queue restore drops missing files and keeps pointing at the same track', (
   const a = path.join(home, 'a.mp3'), c = path.join(home, 'c.mp3');
   fs.writeFileSync(a, ''); fs.writeFileSync(c, '');
   fs.writeFileSync(path.join(home, 'queue.txt'), `2,1500000\n${a}\n${path.join(home, 'missing.mp3')}\n${c}\n`);
-  assert.deepStrictEqual(store.readQueue(), { paths: [a, c], index: 1, positionMicros: 1500000, changerText: null, savedPaths: [a, path.join(home, 'missing.mp3'), c], savedIndex: 2, missing: [path.join(home, 'missing.mp3')] });
+  assert.deepStrictEqual(store.readQueue(), { paths: [a, c], index: 1, positionMicros: 1500000, changerText: null, savedPaths: [a, path.join(home, 'missing.mp3'), c], savedIndex: 2, missing: [path.join(home, 'missing.mp3')], away: 0 });
   store.writeQueue({ paths: [c, a], index: 0, positionMicros: 42.4 });
-  assert.deepStrictEqual(store.readQueue(), { paths: [c, a], index: 0, positionMicros: 42, changerText: null, savedPaths: [c, a], savedIndex: 0, missing: [] });
+  assert.deepStrictEqual(store.readQueue(), { paths: [c, a], index: 0, positionMicros: 42, changerText: null, savedPaths: [c, a], savedIndex: 0, missing: [], away: 0 });
 });
 
 test('changer.txt is written beside queue.txt and read back, with the saved list and what went missing', () => {
@@ -420,4 +420,16 @@ test('what RIP saves a CD as is the 32nd settings line: FLAC unless MP3 or WAV, 
   assert.strictEqual(store.readSettings().ripFormat, 'MP3');
   store.writeSettings({ ...store.readSettings(), ripFormat: 'OGG' });
   assert.strictEqual(store.readSettings().ripFormat, 'FLAC');
+});
+
+test('queue restore keeps songs on a drive that isn\'t there just now (a music folder or a volume missing), and says how many', () => {
+  const a = path.join(home, 'a.mp3');
+  fs.writeFileSync(a, '');
+  const unplugged = path.join(home, 'NAS', 'Music'), elsewhere = process.platform === 'win32' ? 'Q:\\Music\\x.flac' : '/Volumes/NO SUCH DRIVE/Music/x.flac';
+  store.writeMusicFolders([home, unplugged]);
+  fs.writeFileSync(path.join(home, 'queue.txt'), `0,0\n${a}\n${path.join(unplugged, 'b.flac')}\n${elsewhere}\n${path.join(home, 'deleted.mp3')}\n`);
+  const q = store.readQueue();
+  assert.deepStrictEqual(q.paths, [a, path.join(unplugged, 'b.flac'), elsewhere]);
+  assert.deepStrictEqual([q.away, q.missing], [2, [path.join(home, 'deleted.mp3')]]);
+  store.writeMusicFolders([]);
 });

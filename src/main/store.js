@@ -160,26 +160,50 @@ function writeSettings(s) {
 }
 
 // queue.txt — "index,positionMicros" then one absolute path per line (a cue sheet track is "<.cue path>#<number>"). Missing files are dropped on restore,
-// remapping the saved index so it still points at the same track.
+// remapping the saved index so it still points at the same track — but not those on a drive that isn't there just now
+// (awayNow): they stay, for when it's plugged in, instead of being gone from the queue for good once it's saved again.
 function readQueueFile(name, changerText) {
   const l = lines(readText(name));
   if (!l.length || !l[0].trim()) return null;
   const [idx, pos] = l[0].trim().split(',');
   const savedIndex = parseInt(idx, 10), savedPosition = parseInt(pos, 10) || 0;
-  const paths = [], savedPaths = [], missing = [];
+  const paths = [], savedPaths = [], missing = [], away = awayNow();
+  let awayCount = 0;
   let mapped = -1, savedAt = -1;
   for (let i = 1; i < l.length; i++) {
     const p = l[i].trim();
     if (!p) continue;
     if (i - 1 === savedIndex) savedAt = savedPaths.length;
     savedPaths.push(p);
-    if (entryExists(p)) { if (i - 1 === savedIndex) mapped = paths.length; paths.push(p); } else missing.push(p);
+    const there = entryExists(p) || (away(p) && ++awayCount);
+    if (there) { if (i - 1 === savedIndex) mapped = paths.length; paths.push(p); } else missing.push(p);
   }
   if (!paths.length) return null;
   const index = mapped >= 0 ? mapped : Math.max(0, Math.min(Number.isFinite(savedIndex) ? savedIndex : 0, paths.length - 1));
   // changer.txt holds the changer's slots as runs of the queue as it was saved: the renderer reads it against
   // savedPaths and takes the missing files out of their discs (changer.js restore).
-  return { paths, index, positionMicros: savedPosition, changerText, savedPaths, savedIndex: savedAt, missing };
+  return { paths, index, positionMicros: savedPosition, changerText, savedPaths, savedIndex: savedAt, missing, away: awayCount };
+}
+/**
+ * Whether a path is on something not there just now → a test: a music folder on the list that's missing, or a drive
+ * (/Volumes/…, /media/…, /run/media/…, /mnt/…, a Windows drive letter or network share) that isn't mounted.
+ */
+function awayNow() {
+  const gone = readMusicFolders().filter((f) => !isDir(f)), cache = new Map();
+  const root = (p) => {
+    const win = /^([a-z]:)[\\/]/i.exec(p) || /^(\\\\[^\\]+\\[^\\]+)/.exec(p);
+    if (win) return `${win[1]}${path.sep}`;
+    const m = /^\/(Volumes\/[^/]+|media\/[^/]+\/[^/]+|run\/media\/[^/]+\/[^/]+|mnt\/[^/]+)/.exec(p);
+    return m ? `/${m[1]}` : null;
+  };
+  return (p) => {
+    const file = String(p).replace(/#\d+$/, ''); // (a cue sheet's track: its sheet)
+    if (gone.some((f) => file.startsWith(f.endsWith(path.sep) ? f : f + path.sep))) return true;
+    const r = root(file);
+    if (!r) return false;
+    if (!cache.has(r)) cache.set(r, !isDir(r));
+    return cache.get(r);
+  };
 }
 /** The queue (queue mode, 2.14's queue.txt). */
 const readQueue = () => readQueueFile(FILES.queue, null);

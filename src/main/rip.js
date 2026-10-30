@@ -130,19 +130,26 @@ async function ripDisc({ tracks, album, musicFolder, format = 'FLAC', signal, on
       if (!tagged.ok) throw stop('failed', tagged.error);
       await fsp.rename(temp, final);
       files.push(final);
+      // The same track ripped before in another format goes (the rip was only started once its replacing was agreed to):
+      // two copies would put every song on the shelf's album twice.
+      for (const other of Object.values(EXTENSIONS)) if (other !== ext) await fsp.rm(final.replace(/\.[^.]+$/, `.${other}`), { force: true });
       report(i + 1, { current: i, stage: 'done', size: (await fsp.stat(final)).size });
     } catch (e) {
       await fsp.rm(temp, { force: true }).catch(() => {});
-      throw e.reason ? e : stop('failed', e.message);
+      throw Object.assign(e.reason ? e : stop('failed', e.message), { files }); // (the tracks finished before it stopped)
     }
   }
   return { folder, files };
 }
 
-/** The files this rip would write that are already there (a disc ripped before) — not other discs of the same set. */
+/**
+ * The files this rip would write, or replace, that are already there (a disc ripped before, in any of the formats) —
+ * not other discs of the same set.
+ */
 function existingTargets(musicFolder, album, tracks, format = 'FLAC') {
-  const folder = albumFolder(musicFolder, album);
-  return trackFiles(tracks, extension(format)).map((f) => path.join(folder, f)).filter((f) => fs.existsSync(f));
+  const folder = albumFolder(musicFolder, album), ext = extension(format);
+  return trackFiles(tracks, ext).flatMap((f) => Object.values(EXTENSIONS).map((e) => path.join(folder, `${f.slice(0, -ext.length)}${e}`)))
+    .filter((f) => fs.existsSync(f));
 }
 
 module.exports = { ripDisc, trackPcm, encodeChecked, wavPcm, albumFolder, existingTargets };

@@ -4,7 +4,8 @@
  * retagged or deleted. Only names that can change the shelf count — audio, cue sheets, covers; never hidden files,
  * which are also what the rip and the tag writer write before their final rename. A burst of changes is one, once the
  * folders have been quiet for `quietMs`. Watching that isn't possible (a network drive, Linux out of inotify watches,
- * a drive unplugged) just stops for that folder: the shelf still reads it each time it's opened.
+ * a drive unplugged) just stops for that folder: the shelf still reads it each time it's opened. While held (a rip
+ * writing an album, one track every few seconds), changes wait, and count as one when it's let go.
  */
 const fs = require('fs');
 const path = require('path');
@@ -24,7 +25,7 @@ function relevant(filename) {
 
 function createLibraryWatch({ watch = fs.watch, quietMs = 3000, onChange, timers = { setTimeout, clearTimeout } }) {
   const watchers = new Map(); // folder → its watcher
-  let timer = null;
+  let timer = null, held = false, missed = false;
   const close = (w) => { try { w.close(); } catch { /* already closed */ } };
   function stop() {
     if (timer) { timers.clearTimeout(timer); timer = null; }
@@ -41,6 +42,7 @@ function createLibraryWatch({ watch = fs.watch, quietMs = 3000, onChange, timers
       try {
         const w = watch(dir, { recursive: true }, (_event, filename) => {
           if (!relevant(filename && filename.toString())) return;
+          if (held) { missed = true; return; }
           if (timer) timers.clearTimeout(timer);
           timer = timers.setTimeout(() => { timer = null; onChange(); }, quietMs);
         });
@@ -49,8 +51,14 @@ function createLibraryWatch({ watch = fs.watch, quietMs = 3000, onChange, timers
       } catch { /* not watchable: read when the shelf opens */ }
     }
   }
+  /** Holds changes back (true) or lets them go (false): those that came meanwhile are one change, at once. */
+  function hold(on) {
+    held = !!on;
+    if (on) { if (timer) { timers.clearTimeout(timer); timer = null; missed = true; } return; }
+    if (missed) { missed = false; onChange(); }
+  }
   // (the folders watched, as one: a single folder's own path; null for none)
-  return { start, stop, get folder() { return watchers.size ? [...watchers.keys()].join('\n') : null; } };
+  return { start, stop, hold, get folder() { return watchers.size ? [...watchers.keys()].join('\n') : null; } };
 }
 
 module.exports = { createLibraryWatch, relevant };

@@ -140,6 +140,25 @@ test('a disc ripped as WAV: the disc\'s audio unchanged, tagged', async () => {
   const { parseFile } = await import('music-metadata');
   assert.strictEqual((await parseFile(file)).common.title, 'Song 1');
   assert.deepStrictEqual(existingTargets(music, disc(1).album, disc(1).tracks, 'WAV'), [file]);
-  assert.deepStrictEqual(existingTargets(music, disc(1).album, disc(1).tracks), []);
+  assert.deepStrictEqual(existingTargets(music, disc(1).album, disc(1).tracks), [file], 'a FLAC rip would replace it too');
+  fs.rmSync(music, { recursive: true, force: true });
+});
+
+test('ripped again in another format: the old format\'s files are replaced, not kept beside (every song twice on the shelf)', async () => {
+  const music = fs.mkdtempSync(path.join(os.tmpdir(), 'rip-music-'));
+  const { folder } = await ripDisc({ ...disc(2), musicFolder: music, readPcm: async () => tone(0.2, 0.03) });
+  assert.deepStrictEqual(existingTargets(music, disc(2).album, disc(2).tracks, 'MP3').map((f) => path.basename(f)), ['01 Song 1.flac', '02 Pollution.flac']);
+  await ripDisc({ ...disc(2), format: 'MP3', musicFolder: music, readPcm: async () => tone(0.2, 0.03) });
+  assert.deepStrictEqual(fs.readdirSync(folder).sort(), ['01 Song 1.mp3', '02 Pollution.mp3', 'cover.jpg']);
+  fs.rmSync(music, { recursive: true, force: true });
+});
+
+test('stopped part-way: the error says which tracks were finished', async () => {
+  const music = fs.mkdtempSync(path.join(os.tmpdir(), 'rip-music-'));
+  const ctl = new AbortController();
+  let reads = 0;
+  const readPcm = async () => { if (++reads === 3) ctl.abort(); return tone(0.2, 0.04); };
+  await assert.rejects(ripDisc({ ...disc(3), musicFolder: music, signal: ctl.signal, readPcm }),
+    (e) => e.reason === 'cancelled' && e.files.map((f) => path.basename(f)).join() === '01 Song 1.flac,02 Pollution.flac');
   fs.rmSync(music, { recursive: true, force: true });
 });

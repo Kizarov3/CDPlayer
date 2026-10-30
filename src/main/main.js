@@ -661,7 +661,8 @@ handle('app:reportInfo', async (streamingOn) => ({
 }));
 // Scrobbling to ListenBrainz and Last.fm (scrobble.js): songs heard, and the one playing now; what waited sent every 10
 // minutes too.
-const scrobbler = require('./scrobble').createScrobbler({ store, version: APP_VERSION });
+const scrobbler = require('./scrobble').createScrobbler({ store, version: APP_VERSION,
+  onDropped: (service) => { if (win && !win.isDestroyed()) win.webContents.send('scrobble-dropped', service); } });
 handle('scrobble:status', () => scrobbler.status());
 handle('scrobble:signIn', (token) => scrobbler.signIn(typeof token === 'string' ? token : ''));
 handle('scrobble:connectLastfm', () => scrobbler.connectLastfm((url) => shell.openExternal(url)));
@@ -681,12 +682,17 @@ handle('plays:import', async () => {
     filters: [{ name: t('Plays from Last.fm, ListenBrainz, Spotify or Apple Music'), extensions: ['zip', 'json', 'jsonl', 'csv', 'xml'] }],
   });
   if (r.canceled || !r.filePaths || !r.filePaths.length) return null;
+  // (a big history takes a while: the status line says what it's doing — reading, then matching against the shelf)
+  const tell = (p) => { if (win && !win.isDestroyed()) win.webContents.send('import-progress', p); };
   const found = [];
   for (const p of r.filePaths) {
+    tell({ stage: 'reading' });
+    await new Promise((done) => setImmediate(done)); // (said before the reading holds things up)
     try { if (fs.statSync(p).size < 1024 * 1024 * 1024) found.push(...importPlays.read({ name: path.basename(p), data: fs.readFileSync(p) })); } catch { /* unreadable */ }
   }
   if (!found.length) return { error: 'NOT RECOGNISED' };
-  const { albums } = await shelf.scanAlbums(() => {});
+  tell({ stage: 'matching', done: 0, total: 0 });
+  const { albums } = await shelf.scanAlbums((done, total) => tell({ stage: 'matching', done, total }));
   let before = {};
   try { before = JSON.parse(store.readText('imports.json') || '{}'); } catch { /* none yet */ }
   clearTimeout(playsTimer);
@@ -1300,7 +1306,7 @@ handle('cd:eject', (mount) => {
 // ---- Ripping ------------------------------------------------------------------------------------------------------
 // RIP: the disc in the drive saved into the music folder as FLAC, MP3 or WAV (Settings → RIP FORMAT; rip.js). One rip
 // at a time; taking the disc out, or RIP clicked again, stops it.
-let ripping = null; // { mount, controller }
+let ripping = null; // { mount, controller, done }
 handle('rip:start', async (mount, format) => {
   const entry = discs.get(mount);
   format = ['FLAC', 'MP3', 'WAV'].includes(format) ? format : 'FLAC';
@@ -1336,22 +1342,41 @@ handle('rip:start', async (mount, format) => {
   }
   const controller = new AbortController(), current = { mount, controller, gone: false };
   ripping = current;
+  libraryWatch.hold(true); // the shelf reads the album once it's all there, not after each track
+  lastRipKept = [];
+  const run = rip.ripDisc({
+    tracks, album, musicFolder, format, signal: controller.signal,
+    onProgress: (p) => { if (win) win.webContents.send('rip-progress', { ...p, folder }); },
+  });
+  current.done = run.catch(() => {});
   try {
-    const result = await rip.ripDisc({
-      tracks, album, musicFolder, format, signal: controller.signal,
-      onProgress: (p) => { if (win) win.webContents.send('rip-progress', { ...p, folder }); },
-    });
+    const result = await run;
     lastRipFolder = result.folder;
     return { ok: true, folder: result.folder, album: album.album };
   } catch (e) {
     const reason = current.gone ? 'disc-removed' : e.reason || 'failed';
-    return { ok: false, reason, message: reason === 'failed' ? e.message : null };
-  } finally { ripping = null; }
+    lastRipKept = e.files || [];
+    return { ok: false, reason, message: reason === 'failed' ? e.message : null, kept: lastRipKept.length };
+  } finally { ripping = null; libraryWatch.hold(false); }
 });
 handle('rip:cancel', () => { if (ripping) ripping.controller.abort(); return true; });
 // The rip panel's SHOW IN FOLDER: the folder the last rip wrote (and nothing else).
 let lastRipFolder = null;
 handle('rip:showFolder', () => (lastRipFolder ? shell.openPath(lastRipFolder) : null));
+// A rip stopped part-way keeps the tracks it finished; the panel's DELETE THE n RIPPED takes them away again — those
+// files only, then the album's folder if nothing else is left in it (its cover.jpg aside).
+let lastRipKept = [];
+handle('rip:deleteKept', async () => {
+  const files = lastRipKept;
+  lastRipKept = [];
+  for (const f of files) await fs.promises.rm(f, { force: true }).catch(() => {});
+  const folder = files.length ? path.dirname(files[0]) : null;
+  if (folder) {
+    const left = await fs.promises.readdir(folder).catch(() => null);
+    if (left && left.every((n) => n === 'cover.jpg' || n.startsWith('.'))) await fs.promises.rm(folder, { recursive: true, force: true }).catch(() => {});
+  }
+  return files.length;
+});
 
 // ---- Windows Start menu shortcut ----------------------------------------------------------------------------------
 // Without a Start menu shortcut carrying the app's ID, Windows can't tell whose media session it is and shows
@@ -1398,7 +1423,22 @@ app.whenReady().then(() => {
   });
 });
 let restoredRate = false;
+let ripStopped = false;
 app.on('before-quit', (e) => {
+  // Quitting while a CD rips: asked first; then the rip is stopped properly (no half-written file left) before quitting.
+  if (ripping && !ripStopped) {
+    e.preventDefault();
+    const choice = dialog.showMessageBoxSync(...(win && !win.isDestroyed() ? [win] : []), {
+      type: 'question', buttons: [t('Stop Ripping and Quit'), t('Keep Ripping')], defaultId: 1, cancelId: 1,
+      message: t('A CD is being ripped.'), detail: t('The tracks already ripped are kept; the one being ripped is not.'),
+    });
+    if (choice !== 0) return;
+    ripStopped = true;
+    const { controller, done } = ripping;
+    controller.abort();
+    Promise.race([done, new Promise((r) => setTimeout(r, 5000))]).finally(() => app.quit());
+    return;
+  }
   quitting = true;
   if (playsTimer) { clearTimeout(playsTimer); writePlays(); }
   libraryWatch.stop();

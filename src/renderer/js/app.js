@@ -1800,7 +1800,7 @@ async function ripAudioCd() {
   button.classList.remove('ripping');
   button.textContent = t('RIP');
   button.hidden = !state.audioCd || !state.audioCd.ready;
-  Object.assign(state.rip, { finished: true, ok: !!result.ok, folder: result.folder || state.rip.folder,
+  Object.assign(state.rip, { finished: true, ok: !!result.ok, folder: result.folder || state.rip.folder, kept: result.ok ? 0 : result.kept || 0,
     message: result.ok ? null : RIP_STATUS[result.reason] || t('RIP FAILED · {why}', { why: String(result.message || 'unknown').toUpperCase() }) });
   panels.refreshRipIfOpen(app);
   if (result.ok) setStatus(t('RIPPED TO {album} · {folder}', { album: (result.album || t('YOUR MUSIC FOLDER')).toUpperCase(), folder: result.folder }));
@@ -3111,7 +3111,8 @@ let sessionTick = 0, miniLevelsAt = 0;
 // 4 minutes — has played, once per time it's loaded. Not Spotify's songs: Spotify sends those itself.
 const SCROBBLE_LONGEST = 240;
 /** Scrobbling while any service is signed in (scrobble:status's answer). */
-function noteScrobbling(status) { state.scrobbling = !!status && Object.values(status).some((s) => s && s.user && !s.dropped); }
+// (one that signed CDPlayer out still counts: what's heard waits for it to be connected again)
+function noteScrobbling(status) { state.scrobbling = !!status && Object.values(status).some((s) => s && s.user); }
 let scrobbleFor = -1, heardMs = 0, heardAt = 0, toldPlaying = false, scrobbled = false;
 function trackScrobble(now) {
   if (!state.scrobbling || !state.loadedPath || isSpotifyUri(state.loadedPath)) return;
@@ -3424,6 +3425,7 @@ async function start() {
   state.deviceSounds = {};
   state.scrobbling = false;
   cdp.scrobbleStatus().then(noteScrobbling).catch(() => {});
+  cdp.onScrobbleDropped((service) => setStatus(service === 'lastfm' ? t('LAST.FM SIGNED CDPLAYER OUT · CONNECT AGAIN') : t('LISTENBRAINZ TOKEN NO LONGER WORKS · PASTE A NEW ONE IN SETTINGS')));
   cdp.deviceSounds().catch(() => null).then((kept) => { if (kept && typeof kept === 'object') state.deviceSounds = kept; applyOutput(false); });
   navigator.mediaDevices.addEventListener('devicechange', () => applyOutput(true));
   state.saveFound = !!s.saveFound;
@@ -3460,6 +3462,8 @@ async function start() {
     if (state.changerMode) saveQueueSoon(); // a changer rebuilt from its list is kept as rebuilt
     if (state.index >= 0) load(state.queue[state.index], { autoPlay: false, startAt: (mine.positionMicros || 0) / 1e6 });
   }
+  const restored = state.changerMode ? saved.changerQueue : saved.queue;
+  if (restored && restored.away) setStatus(t('KEPT IN THE QUEUE: {n} FROM A DRIVE THAT ISN’T CONNECTED', { n: restored.away }));
   const existingInstall = saved.onboarded;
   if (!saved.onboarded) await panels.showOnboarding(app);
   panels.showChangelogIfNeeded(app, saved.lastVersion, existingInstall);
