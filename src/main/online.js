@@ -103,7 +103,11 @@ const MB_TYPE_RANK = { Album: 0, EP: 1, Single: 2 };
 async function musicBrainzAlbum({ artist, title, album }) {
   if (album) {
     const json = await musicBrainz('release-group', `releasegroup:${phrase(album)} AND artist:${phrase(artist)}`);
-    const group = (json['release-groups'] || []).find((g) => g.score >= 90 && sameSong({ title: g.title, artist: credited(g) }, artist, album));
+    // The album itself, not a remix, live or fan-made one of the same name that the search may put first: no secondary
+    // type before one, an album before an EP, then the one with the most releases.
+    const groups = (json['release-groups'] || []).filter((g) => g.score >= 90 && sameSong({ title: g.title, artist: credited(g) }, artist, album));
+    const rank = (g) => [(g['secondary-types'] || []).length ? 1 : 0, MB_TYPE_RANK[g['primary-type']] ?? 3, -(g.count || 0)];
+    const group = groups.sort((a, b) => (rankBefore(rank(a), rank(b)) ? -1 : rankBefore(rank(b), rank(a)) ? 1 : 0))[0];
     if (group) return { id: group.id, title: group.title };
   }
   const json = await musicBrainz('recording', `recording:${phrase(bareTitle(title))} AND artist:${phrase(artist)}`);
@@ -275,7 +279,7 @@ function bareAlbum(album) {
  * → data URL, or null when nobody has uploaded one.
  */
 async function findDiscArt({ artist, album, releaseId }) {
-  const ids = releaseId ? [releaseId] : [];
+  const ids = releaseId ? [releaseId] : [], cds = new Set(releaseId ? [releaseId] : []);
   // (offline: it throws — not "none"). An edition's name ("… (Special Edition)", "[Remastered 2011]") found as the album.
   const bare = bareAlbum(album);
   let group = artist && album ? await musicBrainzAlbum({ artist, album, title: album }) : null;
@@ -283,10 +287,11 @@ async function findDiscArt({ artist, album, releaseId }) {
   let failed = false; // (a lookup that went wrong, not one that found nothing: tried again another time, not "none")
   const lost = (e) => { if (!e || e.status !== 404) failed = true; return null; };
   if (group) {
-    const json = await mbFetch(`release?release-group=${group.id}&inc=media&fmt=json&limit=50`).catch(lost);
-    const rank = (r) => [(r.media || []).some((m) => m.format === 'CD') ? 0 : 1, -((r['cover-art-archive'] || {}).count || 0)];
+    const json = await mbFetch(`release?release-group=${group.id}&inc=media&fmt=json&limit=100`).catch(lost);
+    const isCd = (r) => (r.media || []).some((m) => /\bCD\b/.test(m.format || '') && m.format !== 'CD-R');
+    const rank = (r) => [isCd(r) ? 0 : 1, (r.media || []).length > 1 ? 1 : 0, -((r['cover-art-archive'] || {}).count || 0)]; // (a one-disc edition's photo shows one disc, not a CD and its DVD side by side)
     ((json && json.releases) || []).filter((r) => ((r['cover-art-archive'] || {}).count || 0) > 1)
-      .sort((a, b) => (rankBefore(rank(a), rank(b)) ? -1 : rankBefore(rank(b), rank(a)) ? 1 : 0)).forEach((r) => ids.push(r.id));
+      .sort((a, b) => (rankBefore(rank(a), rank(b)) ? -1 : rankBefore(rank(b), rank(a)) ? 1 : 0)).forEach((r) => { ids.push(r.id); if (isCd(r)) cds.add(r.id); });
   }
   // The archive takes seconds to answer for each release (and now and then fails): all of them asked at once, the
   // first with a photo of the disc taken.
@@ -299,7 +304,10 @@ async function findDiscArt({ artist, album, releaseId }) {
     if (!art) { failed = true; throw new Error('no picture'); }
     return art;
   };
-  const art = await Promise.any([...new Set(ids)].slice(0, 8).map(discOf)).catch(() => null);
+  // The CDs' first — a vinyl's label (or a cassette's) only when no CD of it has its disc photographed.
+  const unique = [...new Set(ids)];
+  const art = await Promise.any(unique.filter((id) => cds.has(id)).slice(0, 12).map(discOf)).catch(() => null)
+    || await Promise.any(unique.filter((id) => !cds.has(id)).slice(0, 6).map(discOf)).catch(() => null);
   if (art) return art;
   if (failed) throw new Error('disc art: lookup failed');
   return null;
