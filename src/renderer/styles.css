@@ -189,6 +189,11 @@ body[data-theme="RED"] #deck-display {
 .vfd-track { display: flex; flex-direction: column; gap: 5px; }
 .vfd-digits { display: flex; align-items: flex-end; gap: 7px; height: 26px; }
 #vfd-track, #vfd-time { display: block; flex: none; }
+/* The disc of a set that's playing, beside TRACK (box-set.js): DISC 2 lit; as one disc ends and the next begins,
+   CHANGE DISC blinks while the digits wait, as a changer's would. */
+.vfd-disc { margin-left: 8px; color: rgb(var(--accent)); text-shadow: 0 0 6px rgba(var(--accent), .8); }
+.vfd-disc.changing { animation: vfdChange 360ms steps(2, jump-none) infinite; }
+@keyframes vfdChange { from { opacity: 1; } to { opacity: .2; } }
 #vfd-of { font-size: 11px; color: rgba(var(--accent), .7); font-variant-numeric: tabular-nums; }
 /* (on the digits' line: below as much as the labels above them take) */
 .vfd-flags { flex: 1; min-width: 0; align-self: stretch; padding-top: 17px; display: flex; gap: 12px; justify-content: center; align-items: center; font-size: 10px; letter-spacing: .1em; overflow: hidden; }
@@ -1021,6 +1026,41 @@ body.no-anim .queue-row.active .num::after { animation: none; }
   transition: transform 260ms var(--ease-out), box-shadow 260ms ease;
 }
 .spine.double { width: 52px; }
+/* A double album's fat case (box-set.js): two jewel cases' worth of spine, a hinge ridge down the middle. A set of
+   three or more discs stands in a cardboard slipcase box: wider still, matte, its top and foot printed darker. */
+.spine.double {
+  background:
+    linear-gradient(to right, transparent calc(50% - 1px), rgba(0, 0, 0, .22) calc(50% - 1px) 50%, rgba(255, 255, 255, .14) 50% calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(to right, rgba(255, 255, 255, .28) 0 1px, rgba(255, 255, 255, .06) 1px 4px, transparent 4px calc(100% - 4px), rgba(0, 0, 0, .25) calc(100% - 4px) calc(100% - 1px), rgba(0, 0, 0, .5) calc(100% - 1px)),
+    linear-gradient(to bottom, rgba(255, 255, 255, .12), transparent 18%, transparent 85%, rgba(0, 0, 0, .3)),
+    rgb(var(--spine));
+}
+.spine.box {
+  width: 70px; border-radius: 2px;
+  background:
+    linear-gradient(to right, rgba(255, 255, 255, .16) 0 2px, transparent 2px calc(100% - 3px), rgba(0, 0, 0, .35) calc(100% - 3px)),
+    linear-gradient(to bottom, rgba(0, 0, 0, .3) 0 14px, rgba(255, 255, 255, .1) 14px 15px, transparent 15px calc(100% - 15px), rgba(255, 255, 255, .1) calc(100% - 15px) calc(100% - 14px), rgba(0, 0, 0, .3) calc(100% - 14px)),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.4' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .45 0 0 0 0 .4 0 0 0 .22 0'/%3E%3C/filter%3E%3Crect width='40' height='40' filter='url(%23n)'/%3E%3C/svg%3E"),
+    rgb(var(--spine));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .6), inset 0 0 0 1px rgba(0, 0, 0, .25);
+}
+.spine.box .spine-text { inset: 20px 0 34px; line-height: 70px; font-size: 11px; letter-spacing: .08em; }
+.spine.double:not(.obi) .spine-text { bottom: 30px; }
+.spine.obi.double .spine-text, .spine.obi.box .spine-text { bottom: 62px; }
+.spine.double, .spine.box { contain-intrinsic-size: auto 52px auto 196px; }
+.spine.box { contain-intrinsic-size: auto 70px auto 196px; }
+/* "2 CD" / "4 CD" at the foot of the spine, printed across it as on a set's. */
+.spine-discs {
+  position: absolute; left: 0; right: 0; bottom: 9px; text-align: center; pointer-events: none;
+  font-size: 8px; font-weight: bold; letter-spacing: .1em; line-height: 12px; color: rgb(var(--ink)); opacity: .85;
+}
+.spine.box .spine-discs { bottom: 2px; line-height: 12px; font-size: 9px; color: rgba(255, 255, 255, .88); }
+.spine.obi .spine-discs { bottom: auto; top: 6px; color: rgb(var(--ink)); }
+.spine.obi.new .spine-discs { display: none; } /* (the NEW sticker sits there) */
+.spine.in-player .spine-discs { bottom: 20px; }
+.spine.in-player.box .spine-discs { bottom: 16px; }
+.spine.in-player.double:not(.obi) .spine-text, .spine.in-player.box:not(.obi) .spine-text { bottom: 38px; }
+.spine.double.rare::after, .spine.box.rare::after { bottom: 2px; }
 /* Spines, cards and boxes off screen aren't laid out or painted at all: with thousands of albums on the shelf, that's
    what keeps filtering, sorting and scrolling quick. */
 .spine, .shelf-divider, .missing-box { content-visibility: auto; contain-intrinsic-size: auto 30px auto 196px; overflow-clip-margin: 14px; } /* room for a note's corner above */
@@ -1043,6 +1083,7 @@ body.no-anim .queue-row.active .num::after { animation: none; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .spine.double .spine-text { line-height: 52px; }
+.spine.box .spine-text, .spine.box .obi-cat { line-height: 70px; }
 .spine-text b { font-weight: bold; }
 /* A Japanese edition's obi: the paper strip wrapped round the case's spine — cream paper, the album's colour at the
    top, its catalog number at the foot (shelf-stickers.js picks which albums have one). */
@@ -1326,6 +1367,8 @@ body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: 
 .case-track.missing { cursor: default; color: rgb(var(--muted)); opacity: .55; }
 .case-track.missing:hover { background: none; }
 .case-track .time { color: rgb(var(--muted)); font-size: 10px; }
+.case-disc { padding: 10px 6px 3px; font-size: 9px; letter-spacing: .14em; color: rgb(var(--muted)); border-bottom: 1px solid rgba(255, 255, 255, .07); margin-bottom: 2px; }
+.case-disc:first-child { padding-top: 0; }
 /* SKIP: a small button that shows on the track under the mouse, and stays lit on one marked; that one struck through. */
 .case-skip {
   flex: none; align-self: center; padding: 1px 6px; border: 1px solid rgba(var(--muted), .45); border-radius: 8px; background: none;
@@ -1415,6 +1458,9 @@ body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: 
 .booklet .track .name { flex: 1 1 auto; min-width: 0; font-weight: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .booklet .track .time { flex: none; font-size: .82em; color: var(--b-muted); font-weight: normal; }
 .booklet .track.current .name, .booklet .track.current .no { color: var(--b-accent2); font-weight: bold; }
+/* A set's tracklist, disc by disc (box-set.js): DISC 2 over its first song. */
+.booklet .disc-head { margin: .9em 0 .25em; font-size: .78em; letter-spacing: .14em; color: var(--b-accent2); }
+.booklet .page-body > .disc-head:first-child { margin-top: 0; }
 /* The owner's pen marks (booklet-content.js ownerMarks): tallies of plays beside each song, the favourite circled
    with a star in the margin, and a note on the back cover — in light ballpoint ink, readable on any print. */
 .booklet { --ink: rgba(150, 192, 255, .92); }

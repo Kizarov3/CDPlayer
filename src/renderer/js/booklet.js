@@ -10,6 +10,7 @@ import { parseLrc, formatLyricsForDisplay, currentLineIndex } from './lyrics.js'
 import { paginate, leavesFor, ean13 } from './booklet-layout.js';
 import { albumCredits, albumSummary, albumSmallPrint, sameAlbum, ownerMarks, storyChunks, releasedLine, formatReleased, penHidden } from './booklet-content.js';
 import { hiddenName } from './hidden-track.js';
+import { withDiscHeads } from './box-set.js';
 import { t, locale } from './i18n.js';
 
 const LIFT_MS = 420, TURN_MS = 650;
@@ -17,6 +18,7 @@ const layer = () => document.getElementById('overlays');
 let book = null; // the open booklet: { root, spread, leaves, turned, from, app, content, lyricsTimer, closing }
 
 export const isBookletOpen = () => !!book;
+const discHeading = (n) => t('DISC {n}', { n }); // (the tracklist's rows are `t` where it's used)
 const wait = (ms) => new Promise((r) => setTimeout(r, anim.enabled ? ms : 0));
 
 // ---- Opening, turning, closing ------------------------------------------------------------------------------------
@@ -309,9 +311,10 @@ export async function albumBooklet(app, album, cover, { play, onClose = () => {}
   const content = {
     cover, marker: { title: album.title, artist: album.artist },
     tracks: {
-      title: album.title, sub: [album.artist, album.year].filter(Boolean).join(' · '),
-      // The album's whole tracklist when the case knows it: the songs you don't have in their places, in grey.
-      rows: penHidden(wholeList ? wholeList.map((r) => {
+      title: album.title, sub: [album.artist, album.year, album.discs > 1 ? t('{n} DISCS', { n: album.discs }) : null].filter(Boolean).join(' · '),
+      // The album's whole tracklist when the case knows it: the songs you don't have in their places, in grey. A set's
+      // disc by disc, a DISC 2 heading before each (box-set.js).
+      rows: withDiscHeads(penHidden(wholeList ? wholeList.map((r) => {
         const i = r.have ? album.tracks.indexOf(r.have) : -1;
         return i < 0 ? { no: r.no, name: r.title, time: r.length ? app.formatTime(r.length) : '', missing: true, tip: t('Not in your collection'), track: -1 }
           : { no: r.no, name: r.have.title, time: r.have.duration ? app.formatTime(r.have.duration) : '', current: i === playing(), tip: t('Play {song}', { song: r.have.title }), play: () => play(i), tally: marks.tallies[i], favorite: i === marks.favorite, track: i };
@@ -319,7 +322,7 @@ export async function albumBooklet(app, album, cover, { play, onClose = () => {}
         no: tr.track || null, // its number on the album (a song you have of it isn't necessarily its first)
         name: tr.title, time: tr.duration ? app.formatTime(tr.duration) : '', current: i === playing(), tip: t('Play {song}', { song: tr.title }), play: () => play(i),
         tally: marks.tallies[i], favorite: i === marks.favorite, track: i,
-      })), hidden),
+      })), hidden), (r) => (r.track >= 0 ? album.tracks[r.track].disc : null)),
     },
     lyrics: [],
     credits: { sub: album.title, none: t('No credits in these files’ tags.'), rows: albumCredits(details, pressing), summaryTitle: t('THIS ALBUM'), summary: albumSummary({ details, plays, discs: album.discs }) },
@@ -384,11 +387,12 @@ function insidePages(content, spread, size) {
   // Tracklist.
   const { tracks } = content;
   pages.push(...layout('tracks', (n) => heading(n ? t('{title} (cont.)', { title: tracks.title }) : tracks.title, n ? null : tracks.sub), tracks.rows.map((t, k) => () => {
+    if (t.disc) return el('div', { class: 'disc-head' }, discHeading(t.disc)); // a set's next disc
     if (t.pen) { // a hidden song written in under its track: no number, no time, a little crooked
       return el('div', { class: 'track hidden-pen' }, el('span', { class: 'no' }), el('span', { class: 'name' }, el('span', { class: 'pen', style: `display: inline-block; transform: rotate(${((k * 37) % 5) - 2}deg)` }, `+ ${t.name}`)));
     }
     const row = el('div', { class: `track${t.current ? ' current' : ''}${t.favorite ? ' favorite' : ''}${t.missing ? ' missing' : ''}`, 'data-play': t.play ? k : null, title: t.tip },
-      el('span', { class: 'no' }, String(t.no || k + 1).padStart(2, '0')),
+      el('span', { class: 'no' }, String(t.no || (t.track >= 0 ? t.track + 1 : k + 1)).padStart(2, '0')),
       el('span', { class: 'name' }, el('span', { class: 'title' }, t.name)),
       t.tally ? tallyMarks(t.tally, k) : null, // beside the name, never cut off with a long one
       el('span', { class: 'time' }, t.time));

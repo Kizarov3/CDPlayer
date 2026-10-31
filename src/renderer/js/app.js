@@ -41,6 +41,7 @@ import { phoneTagTitle, phoneJoined } from './remote-settings.js';
 import { drawShelfie, cutRows, firstCrop } from './shelfie.js';
 import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged, playSimilarTo, setWanted, shelfTakeAlong, takeShelfie } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke, karaokeCover } from './karaoke.js';
+import { discChange, discOfDetails } from './box-set.js';
 import { SpotifySession, SpotifyTrackElement, isSpotifyUri, spotifyUpcoming, loadSpotifySdk } from './spotify-deck.js';
 
 const cdp = window.cdp;
@@ -105,7 +106,7 @@ let showRemaining = false;
 try { showRemaining = localStorage.getItem('timeRemaining') === '1'; } catch { /* no storage: how far in */ }
 const deckDisplay = new DeckDisplay({
   track: $('vfd-track'), time: $('vfd-time'), of: $('vfd-of'), total: $('vfd-total'), flags: [...document.querySelectorAll('.vfd-flag')],
-  elapsed: $('elapsed'), length: $('length'),
+  elapsed: $('elapsed'), length: $('length'), disc: $('vfd-disc'),
 });
 deckDisplay.left = showRemaining;
 // Settings → SOUND CHECK (sound-check.js): every song at the same loudness — not Spotify's (it does its own) nor a live CD's.
@@ -591,7 +592,11 @@ async function loadDisc(item, tracks, { play = false, next = false, startPlaybac
   if (!state.changerMode) return queueAdd(tracks, { play, next, startPlayback });
   // One song to play, already on a disc in the changer (from SEARCH or HISTORY): it's played there, not loaded again.
   if (play && startPlayback && tracks.length === 1 && state.queue.includes(tracks[0])) { goTo(state.queue.indexOf(tracks[0])); return { slot: changer.slotOf(ch(), state.index).slot }; }
-  let r = changer.load(ch(), item, tracks, { play, next });
+  // A double album or a box set (the shelf's, whole): its discs into free slots side by side (changer.loadSet), as one
+  // disc when there aren't enough of them.
+  const whole = item.parts && item.parts.reduce((n, p) => n + p.tracks.length, 0) === tracks.length;
+  const set = whole && !remote && chosen == null ? changer.loadSet(ch(), item.parts, { play, next }) : null;
+  let r = set || changer.load(ch(), item, tracks, { play, next });
   if (r.full && remote) {
     if (chosen == null) return { full: true };
     r = changer.load(ch(), item, tracks, { play, next, slot: chosen }); // the slot playing (by now) gives -1: cancelled below
@@ -616,7 +621,8 @@ async function loadDisc(item, tracks, { play = false, next = false, startPlaybac
   if (r.slot < 0) return { cancelled: true };
   const wasPlaying = state.index >= 0 && !!engine.deck;
   apply(r.changer);
-  setStatus(!r.replaced ? t('DISC {n} IN', { n: r.slot + 1 }) : r.replaced.kind === 'album' ? t('DISC {n} IN · {title} WENT BACK TO THE SHELF', { n: r.slot + 1, title: discLabel(r.replaced) })
+  setStatus(r.slots ? t('DISCS {from}–{to} IN · {title}', { from: r.slots[0] + 1, to: r.slots[r.slots.length - 1] + 1, title: discLabel(item) })
+    : !r.replaced ? t('DISC {n} IN', { n: r.slot + 1 }) : r.replaced.kind === 'album' ? t('DISC {n} IN · {title} WENT BACK TO THE SHELF', { n: r.slot + 1, title: discLabel(r.replaced) })
     : t('DISC {n} IN · {title} TAKEN OUT', { n: r.slot + 1, title: discLabel(r.replaced) }));
   renderQueue(); saveQueueSoon(); spotifyResync();
   if (startPlayback && (play || !wasPlaying)) load(state.queue[state.index], { autoPlay: true }); // an idle player plays it, as before the changer
@@ -773,9 +779,23 @@ function undoEjectSlot() {
   if (at < 0 && state.index >= 0) load(state.queue[state.index], { autoPlay: u.playing, startAt: u.position }).then(said); else said();
   return true;
 }
+// A set's disc on the display (box-set.js): DISC 2 beside TRACK while a disc of a double album or box set plays; and
+// when the next song is on the set's next disc (its first disc ended, gapless or not), a CHANGE DISC moment — the
+// display blinks it, the disc lifts out and the next goes in — while the music plays straight on. Not in the changer,
+// whose DISC is its slot (and whose tray turns to a set's next disc anyway).
+let setDiscShown = null;
+function showSetDisc(details) {
+  const here = state.changerMode ? null : discOfDetails(details), moved = discChange(setDiscShown, here);
+  setDiscShown = here;
+  const label = here && here.disc ? t('DISC {n}', { n: here.disc }) : '';
+  if (!moved || !anim.enabled) { deckDisplay.setDisc(label); return; }
+  deckDisplay.changeDisc(label, t('CHANGE DISC'));
+  disc.changeDisc();
+}
 // A song that wouldn't play: its name shown (not the one before it), with nothing to play.
 function showUnplayed(path, d) {
   state.details = null; state.detailsPath = null; state.lyrics = null;
+  showSetDisc(null);
   resetHidden();
   disc.setWear(null);
   setTrackTitle((d && d.title) || displayName(path), (d && d.artist) || null);
@@ -792,6 +812,7 @@ function resetToIdle(message) {
   stopStreamReading();
   engine.stop();
   state.loadedPath = null; state.details = null; state.lyrics = null;
+  showSetDisc(null);
   resetHidden(); // no ? on an empty seek bar, no HIDDEN badge
   disc.setWear(null);
   showInPlayer(null);
@@ -946,6 +967,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   const details = (await (isStream(path) ? cdp.details(path, { withCover: true }).catch(() => null) : detailsPromise)) || { title: displayName(path), artist: null, album: null, lyrics: null, cover: null, ext: extension(path), duration: engine.duration };
   if (token !== state.loadToken) return;
   state.details = details; state.detailsPath = path;
+  showSetDisc(details);
   detailsCache.set(path, { ...details, cover: undefined, duration: details.duration || engine.duration });
   setTrackTitle(details.title, details.artist); // (A of "A / B" once it's known to hide B: followHidden)
   updateWear();
@@ -1756,6 +1778,7 @@ async function loadSpotify(path, token, { autoPlay, startAt }) {
   panels.refreshSettingsIfOpen(app);
   const details = { title: track.title, artist: track.artist, album: track.album, lyrics: null, cover: null, coverUrl: track.cover, duration: track.durationMs / 1000, ext: 'SPOTIFY' };
   state.details = details; state.detailsPath = path;
+  showSetDisc(null); // (Spotify doesn't say which disc)
   setTrackTitle(details.title, details.artist);
   updateWear();
   updateQualityBadge();
@@ -2830,6 +2853,7 @@ async function setChangerMode(on) {
     state.playModes = { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } };
     trail.length = 0; shownIndex = -1; // PREVIOUS goes back through this mode's songs only; its list goes to the song
     state.changerMode = on;
+    showSetDisc(null); // (the other mode's music loads anew)
     document.body.classList.toggle('changer-mode', on);
     takePlayModes(); // each mode has its own SHUFFLE and REPEAT
     showModes();

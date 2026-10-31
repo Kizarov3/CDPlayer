@@ -20,6 +20,14 @@ const CACHE_VERSION = 5; // bump when trackInfo() reads files differently, so ol
 const CONCURRENCY = 6;
 const COVER_FILE = /^(cover|folder|front|album|albumart|albumartlarge)\.(jpe?g|png|webp)$/i;
 const DISC_FOLDER = /^(cd|disc|disk)\s*\d+$/i;
+// A set's disc named in its album title, as some rips tag it: "Mellon Collie (Disc 2)", "Live - CD1", "Anthology [Disk 3]".
+const DISC_TITLE = /[\s\-–—:,]*[([]?\s*(?:cd|disc|disk)\s*(\d{1,2})\s*[)\]]?\s*$/i;
+/** An album title without its disc ("Live - CD1" → { title: 'Live', disc: 1 }); one that's nothing else stays as it is. */
+function discInTitle(album) {
+  const m = DISC_TITLE.exec(album || '');
+  const title = m ? album.slice(0, m.index).trim() : '';
+  return m && /[\p{L}\p{N}]/u.test(title) ? { title, disc: parseInt(m[1], 10) } : null;
+}
 const THUMB = 256;
 
 // The file whose size and date say whether a cached entry is still right (a cue track: its sheet).
@@ -58,10 +66,16 @@ async function trackInfo(p) {
 /**
  * Tracks ([{ path, info }]) → albums, sorted by artist (ignoring a leading "The"; no artist last), then year, then title. An album's artist is its album artist,
  * or its tracks' artist when they share one, or "Various Artists". Its tracks are in disc, then track, then file
- * order; `discs` counts the discs (a double album gets a double-width case on the shelf).
+ * order; `discs` counts the discs there are of it (a double album gets a double case on the shelf, three or more a box)
+ * — the ones there are, not the highest number: disc 2 of a set on its own is one disc. A set tagged by its title
+ * ("… (Disc 2)") is one album too, each track on the disc its title names (unless its tags name another).
  */
 
-function groupAlbums(tracks) {
+function groupAlbums(found) {
+  const tracks = found.map((t) => {
+    const inTitle = discInTitle(t.info.album);
+    return inTitle ? { ...t, info: { ...t.info, album: inTitle.title, disc: t.info.disc > 1 ? t.info.disc : inTitle.disc } } : t;
+  });
   // A song with no album artist belongs with the same-named album in its folder that has one (a song whose tags were
   // fixed from MusicBrainz, next to ones that weren't yet).
   const artistHere = new Map();
@@ -92,7 +106,7 @@ function groupAlbums(tracks) {
       artistMbid: g.items.map((t) => t.info.artistMbid).find(Boolean) || null,
       mbReleaseId: most('albumMbid'), barcode: most('barcode'), catalog: most('catalog'), label: most('label'), // the pressing its tracks' tags name most
       genre: most('genre'), released: most('released'),
-      discs: Math.max(1, ...g.items.map((t) => t.info.disc || 1)),
+      discs: new Set(g.items.map((t) => t.info.disc || 1)).size,
       duration: g.items.reduce((s, t) => s + (t.info.duration || 0), 0),
       added: g.items.reduce((m, t) => (t.added && (m === null || t.added > m) ? t.added : m), null), // its newest track (a NEW sticker)
       arrived: g.items.reduce((m, t) => (t.added && (m === null || t.added < m) ? t.added : m), null), // its oldest: on the shelf since

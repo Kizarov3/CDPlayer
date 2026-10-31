@@ -26,6 +26,7 @@ import { SLOTS, slotOfAlbum } from './changer.js';
 import { isWanted, wantKey, stillWanted, foundNote } from './want-list.js';
 import { ROW, ROW_ABOVE, ROW_BELOW, shelfieCrops, shelfieLine, completeCount } from './shelfie.js';
 import { t, locale } from './i18n.js';
+import { caseKind, discRuns, withDiscHeads } from './box-set.js';
 
 const $ = (id) => document.getElementById(id);
 const shelf = { open: false, albums: [], loading: false, covers: new Map(), colors: new Map(), observer: null, caseOpen: null, app: null, generation: 0, inPlayer: null,
@@ -64,7 +65,12 @@ const leftAt = (a) => t('Left at track {n} · {song}', { n: a.bookmark.track + 1
 // Artists like an album's, as Last.fm has them (main/similar-artists.js): asked once each while CDPlayer runs.
 const similar = createSimilarLookup((artist) => shelf.app.cdp.similarArtists(artist));
 // A shelf album as a changer disc: the shelf's own album id, so loading it again is ALREADY IN SLOT n.
-const discOfAlbum = (a) => ({ id: a.id, kind: 'album', title: a.title, artist: a.artist });
+// A double album or a box set brings its `parts` too, a disc each, for the changer's slots side by side (loadSet).
+const discOfAlbum = (a) => {
+  const runs = a.discs > 1 ? discRuns(a.tracks) : [];
+  return { id: a.id, kind: 'album', title: a.title, artist: a.artist,
+    parts: runs.length > 1 ? runs.map((r) => ({ disc: { id: `${a.id}#${r.no}`, kind: 'album', title: t('{title} · CD {n}', { title: a.title, n: r.no }), artist: a.artist }, tracks: r.tracks.map((x) => x.path) })) : null };
+};
 // The changer slot number on the spine of an album that's in the changer.
 function markSlot(spine) {
   const c = shelf.app && shelf.app.changerMode && shelf.app.changerMode() ? shelf.app.changerState() : null;
@@ -351,14 +357,16 @@ function render() {
     if (a.ghost) return ghostSpine(a.ghost, a.artist);
     if (a.divider) return el('div', { class: `shelf-divider${[...a.divider].length <= 2 ? ' short' : ''}`, 'aria-hidden': 'true', 'data-section': a.divider }, el('span', {}, a.divider));
     const st = a.stickers = stickersFor(a, now);
-    const spine = el('button', { class: `spine${a.discs > 1 ? ' double' : ''}${st.obi ? ' obi' : ''}${st.isNew ? ' new' : ''}${a.foundIt ? ' found' : ''}${spineHolds(a, shelf.inPlayer) ? ' in-player' : ''}${isRare(a.pressing) ? ' rare' : ''}`, title: spineTitle(a), onClick: () => { if (!shelf.dragged) openCase(a, spine); } },
+    const kind = caseKind(a.discs);
+    const spine = el('button', { class: `spine${kind ? ` ${kind}` : ''}${st.obi ? ' obi' : ''}${st.isNew ? ' new' : ''}${a.foundIt ? ' found' : ''}${spineHolds(a, shelf.inPlayer) ? ' in-player' : ''}${isRare(a.pressing) ? ' rare' : ''}`, title: spineTitle(a), onClick: () => { if (!shelf.dragged) openCase(a, spine); } },
       el('span', { class: 'spine-text' }, a.artist ? el('b', {}, a.artist) : null, a.artist ? ' · ' : null, a.title),
       st.obi ? el('span', { class: 'obi-cat' }, st.obi.catalog) : null,
       a.foundIt ? el('span', { class: 'sticker-new sticker-found' }, t('FOUND IT')) : st.isNew ? el('span', { class: 'sticker-new' }, t('NEW')) : null,
       todayOf(a, now) ? el('span', { class: `sticker-today ${todayOf(a, now).kind}` }, todayOf(a, now).label) : null,
       a.wrapped ? el('span', { class: 'spine-film' }) : null,
       bookmarkOf(a) ? el('span', { class: 'spine-bookmark' }) : null,
-      a.editions ? el('span', { class: `spine-editions${a.editions.length > 2 ? ' more' : ''}` }) : null);
+      a.editions ? el('span', { class: `spine-editions${a.editions.length > 2 ? ' more' : ''}` }) : null,
+      kind ? el('span', { class: 'spine-discs', title: t('{n} DISCS', { n: a.discs }) }, t('{n} CD', { n: a.discs })) : null);
     spine.album = a;
     markSlot(spine);
     showNoteTab(spine);
@@ -970,7 +978,9 @@ async function openCase(a, spine) {
     row.append(skipButton(track, row), el('span', { class: 'time' }, track.duration ? app.formatTime(track.duration) : ''));
     return row;
   };
-  const tracks = a.tracks.map((t, i) => trackRow(t, i));
+  // A set's songs disc by disc, under a DISC 2 heading each (box-set.js).
+  const discHead = (r) => el('div', { class: 'case-disc' }, t('DISC {n}', { n: r.disc }));
+  const tracks = withDiscHeads(a.tracks).map((r) => (r.path ? trackRow(r, a.tracks.indexOf(r)) : discHead(r)));
   const trackList = el('div', { class: 'case-tracks scroll' }, tracks);
   let wholeList = null; // the full tracklist once it's known, for the booklet too
   // The album's whole tracklist from MusicBrainz, once its artist's discography is known: the songs you don't have
@@ -981,7 +991,7 @@ async function openCase(a, spine) {
     const rows = fullTracklist(edition, a.tracks);
     if (rows.every((r) => r.have)) return; // nothing missing: as it was
     wholeList = rows;
-    trackList.replaceChildren(...rows.map((r) => (r.have ? trackRow(r.have, a.tracks.indexOf(r.have), r.no) : el('div', { class: 'case-track missing', title: t('Not in your collection') },
+    trackList.replaceChildren(...withDiscHeads(rows, (r) => (r.have ? r.have.disc : null)).map((r) => (r.disc ? discHead(r) : r.have ? trackRow(r.have, a.tracks.indexOf(r.have), r.no) : el('div', { class: 'case-track missing', title: t('Not in your collection') },
       el('span', { class: 'no' }, String(r.no).padStart(2, '0')), el('span', { class: 'name' }, r.title),
       el('span', { class: 'time' }, r.length ? app.formatTime(r.length) : '')))));
   }).catch(() => {});
