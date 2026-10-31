@@ -1048,8 +1048,8 @@ body.no-anim .queue-row.active .num::after { animation: none; }
 /* Behind: the album's cover, blurred, breathing with the music (karaoke.js). */
 #karaoke-cover {
   position: absolute; inset: -10%; z-index: -1; pointer-events: none;
-  background: center / cover no-repeat; filter: blur(70px) saturate(1.5); opacity: .3; transform: scale(1.18);
-  transition: background-image 600ms ease; will-change: transform, opacity; /* (blurred once, then only scaled: no flicker) */
+  background: center / cover no-repeat; opacity: .3; transform: scale(1.18); /* (blurred once, small: karaoke.js showCover) */
+  transition: background-image 600ms ease;
 }
 #karaoke-cover.none { display: none; }
 #karaoke { isolation: isolate; overflow: hidden; }

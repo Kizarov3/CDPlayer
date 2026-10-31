@@ -63,10 +63,29 @@ function countIn(line, frac, left) {
 }
 // The album's cover behind the lyrics, blurred (the player's, as it is now; app.js tells when it's found).
 export function karaokeCover() { if (view) showCover(); }
+// Blurred once, into a small picture (not a 70px blur filter over the window redone as it breathes: that flickered,
+// and took the graphics card's memory).
+let blurred = { from: null, url: '' };
 function showCover() {
   const cover = $('karaoke-cover'), art = $('cover-art').style.backgroundImage;
-  cover.style.backgroundImage = art || '';
-  cover.classList.toggle('none', !art || art === 'none');
+  const none = !art || art === 'none';
+  cover.classList.toggle('none', none);
+  if (none) { cover.style.backgroundImage = ''; return; }
+  if (blurred.from === art) { cover.style.backgroundImage = blurred.url; return; }
+  const src = /url\("?(.*?)"?\)/.exec(art), img = new Image();
+  if (!src) return;
+  blurred = { from: art, url: '' };
+  img.onload = () => {
+    if (blurred.from !== art) return;
+    const n = 96, cv = document.createElement('canvas');
+    cv.width = cv.height = n;
+    const g = cv.getContext('2d');
+    g.filter = 'blur(6px) saturate(1.5)';
+    g.drawImage(img, -12, -12, n + 24, n + 24); // (past the edges: no pale rim from the blur)
+    try { blurred.url = `url("${cv.toDataURL('image/jpeg', 0.9)}")`; } catch { blurred.url = art; } // (a picture from elsewhere can't be read back: as it is)
+    if (view) cover.style.backgroundImage = blurred.url;
+  };
+  img.src = src[1];
 }
 
 // Where line i stops: its own end, else when the next line starts (at most 6 s on).

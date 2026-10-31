@@ -77,6 +77,43 @@ function arcText(g, text, c, radius, px, span, bottom, spacing = 0.08) {
   g.restore();
   return px;
 }
+const discBoxes = new WeakMap();
+/**
+ * Where the disc is in a photo of it: scans are often the disc lying somewhere on a page, or with its case round it —
+ * what isn't the page's colour (round its edge), rows and columns with enough of it, squared round its middle.
+ */
+function discBox(photo) {
+  if (discBoxes.has(photo)) return discBoxes.get(photo);
+  const iw = photo.naturalWidth || photo.width, ih = photo.naturalHeight || photo.height;
+  let box = { x: (iw - Math.min(iw, ih) * 0.985) / 2, y: (ih - Math.min(iw, ih) * 0.985) / 2, s: Math.min(iw, ih) * 0.985 };
+  try {
+    const k = 128 / Math.max(iw, ih), w = Math.max(1, Math.round(iw * k)), h = Math.max(1, Math.round(ih * k));
+    const g = new OffscreenCanvas(w, h).getContext('2d', { willReadFrequently: true });
+    g.drawImage(photo, 0, 0, w, h);
+    const d = g.getImageData(0, 0, w, h).data, at = (x, y) => (y * w + x) * 4;
+    // The page's colour: the middle value round the edge, a little in (a scanner's dark edges and shadows left out).
+    const m = Math.max(1, Math.round(Math.min(w, h) * 0.03)), ring = [];
+    for (let x = m; x < w - m; x++) ring.push(at(x, m), at(x, h - 1 - m));
+    for (let y = m; y < h - m; y++) ring.push(at(m, y), at(w - 1 - m, y));
+    const bg = [0, 1, 2].map((c) => ring.map((i) => d[i + c]).sort((a, b) => a - b)[ring.length >> 1]);
+    const rows = new Array(h).fill(0), cols = new Array(w).fill(0);
+    for (let y = m; y < h - m; y++) for (let x = m; x < w - m; x++) {
+      const i = at(x, y);
+      if (Math.abs(d[i] - bg[0]) + Math.abs(d[i + 1] - bg[1]) + Math.abs(d[i + 2] - bg[2]) > 60) { rows[y]++; cols[x]++; }
+    }
+    const span = (a, n) => { const min = n * 0.04; const lo = a.findIndex((v) => v > min); let hi = a.length - 1; while (hi > lo && a[hi] <= min) hi--; return [lo, hi]; };
+    const [x0, x1] = span(cols, h), [y0, y1] = span(rows, w);
+    const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+    // A disc's found when what's there is round-ish (as wide as it's tall) and not just a speck; else the middle, as before.
+    if (x0 >= 0 && y0 >= 0 && Math.min(bw, bh) > Math.max(w, h) * 0.3 && Math.abs(bw - bh) < Math.max(bw, bh) * 0.12) {
+      const s = Math.max(bw, bh) / k, cx = (x0 + x1 + 1) / 2 / k, cy = (y0 + y1 + 1) / 2 / k;
+      box = { x: cx - s / 2, y: cy - s / 2, s };
+    }
+  } catch { /* (a picture that can't be read back: the middle) */ }
+  discBoxes.set(photo, box);
+  return box;
+}
+
 /**
  * A pressed CD's printed face, the way a real one's done: printed in the cover's main colour, the picture from the
  * cover in the middle round the hub, the album's name round the top of the rim and who it's by round the bottom,
@@ -84,10 +121,10 @@ function arcText(g, text, c, radius, px, span, bottom, spacing = 0.08) {
  */
 export function drawLabelPrint(g, c, side, cover, print, photo = null) {
   if (photo) { // the disc's own, photographed (online.findDiscArt): the middle of the photo, to the disc's edge
-    const iw = photo.naturalWidth || photo.width, ih = photo.naturalHeight || photo.height, s = Math.min(iw, ih) * 0.985;
+    const { x, y, s } = discBox(photo);
     g.save(); g.beginPath(); g.arc(c, c, c, 0, Math.PI * 2); g.clip();
     g.imageSmoothingQuality = 'high';
-    g.drawImage(photo, (iw - s) / 2, (ih - s) / 2, s, s, 0, 0, side, side);
+    g.drawImage(photo, x, y, s, s, 0, 0, side, side);
     g.restore();
     return;
   }

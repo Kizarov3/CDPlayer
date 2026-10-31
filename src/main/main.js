@@ -478,7 +478,7 @@ const discArtLookups = new Map(); // (one lookup per album at a time: a look-ahe
 handle('online:discArt', (q) => lookupDiscArt(q));
 function lookupDiscArt(q) {
   if (!q || !q.artist || !q.album) return Promise.resolve(null);
-  const name = require('crypto').createHash('sha1').update(`${q.artist}\n${q.album}`.toLowerCase()).digest('hex');
+  const name = require('crypto').createHash('sha1').update(`2\n${q.artist}\n${q.album}`.toLowerCase()).digest('hex'); // (2: albums with an edition's name looked for again)
   if (!discArtLookups.has(name)) discArtLookups.set(name, discArtFor(q, name).finally(() => discArtLookups.delete(name)));
   return discArtLookups.get(name);
 }

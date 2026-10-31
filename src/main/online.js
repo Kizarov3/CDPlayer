@@ -262,6 +262,13 @@ async function lookupTags({ artist, title, album, duration, guessed, isrc }) {
   }
   return networkError ? { networkError: true } : null;
 }
+// An album's name without its edition: "Vol. 3 (Special Edition)" → "Vol. 3".
+const EDITION_WORDS = /edition|deluxe|remaster|expanded|anniversary|bonus|version|reissue|special|collector|limited|mono|stereo|explicit/i;
+function bareAlbum(album) {
+  let a = String(album || '').trim(), m;
+  while ((m = /\s*[([]([^()[\]]*)[)\]]\s*$/.exec(a)) && EDITION_WORDS.test(m[1])) a = a.slice(0, m.index).trim();
+  return a.replace(/\s+-\s+[^-]*(edition|remaster(ed)?|deluxe)[^-]*$/i, '').trim() || String(album);
+}
 /**
  * The disc itself, as it's printed: a photo of the CD (an image of the "Medium") from the Cover Art Archive — the
  * album's own picture on the disc, not its cover's. `releaseId` first, then the album's other releases (CDs first).
@@ -269,7 +276,10 @@ async function lookupTags({ artist, title, album, duration, guessed, isrc }) {
  */
 async function findDiscArt({ artist, album, releaseId }) {
   const ids = releaseId ? [releaseId] : [];
-  const group = artist && album ? await musicBrainzAlbum({ artist, album, title: album }) : null; // (offline: it throws — not "none")
+  // (offline: it throws — not "none"). An edition's name ("… (Special Edition)", "[Remastered 2011]") found as the album.
+  const bare = bareAlbum(album);
+  let group = artist && album ? await musicBrainzAlbum({ artist, album, title: album }) : null;
+  if (!group && artist && bare !== album) group = await musicBrainzAlbum({ artist, album: bare, title: bare });
   let failed = false; // (a lookup that went wrong, not one that found nothing: tried again another time, not "none")
   const lost = (e) => { if (!e || e.status !== 404) failed = true; return null; };
   if (group) {
@@ -505,4 +515,4 @@ async function findLyrics({ title, artist, album, duration, guessed }) {
   return null;
 }
 
-module.exports = { findDiscArt, fetchJson, musicBrainzAlbum, sameSong, hiddenNameFrom, findHiddenName, findCover, findCoverUrl, findAlbumCover, findAlbumCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, wordOverlapRatio };
+module.exports = { bareAlbum, findDiscArt, fetchJson, musicBrainzAlbum, sameSong, hiddenNameFrom, findHiddenName, findCover, findCoverUrl, findAlbumCover, findAlbumCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, wordOverlapRatio };
