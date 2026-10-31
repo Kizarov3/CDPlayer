@@ -686,9 +686,9 @@ body.look-case #backdrop::before { opacity: 1; background: radial-gradient(circl
 body.look-case::after { /* the inlay's keyline */
   content: ""; position: fixed; inset: 10px 10px 10px 22px; border: 1px solid rgba(var(--case-paper), .09); pointer-events: none; z-index: 0;
 }
-body.look-case::before { /* the spine, as on the case's */
-  content: "COMPACT DISC · DIGITAL AUDIO"; position: fixed; left: 0; top: 0; bottom: 0; width: 14px; pointer-events: none;
-  z-index: 1; background: rgb(var(--case-ink)); color: rgba(0, 0, 0, .7); font: bold 8px/14px var(--case-mono); letter-spacing: .4em; writing-mode: vertical-rl; transform: rotate(180deg); text-align: center;
+body.look-case::before { /* the spine, as on the case's: who and what (app.js updateAlbumHead) */
+  content: attr(data-spine); position: fixed; left: 0; top: 0; bottom: 0; width: 14px; pointer-events: none;
+  z-index: 1; background: rgb(var(--case-ink)); color: rgba(0, 0, 0, .7); font: bold 8px/14px var(--case-mono); letter-spacing: .3em; text-transform: uppercase; writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; white-space: nowrap; overflow: hidden;
 }
 body.look-case #track-title, body.look-case #cd-title { font-weight: 800; text-transform: uppercase; letter-spacing: .1em; }
 body.look-case #track-title { font-size: 26px; }
@@ -712,7 +712,7 @@ body.look-case .queue-row .num { color: rgb(var(--case-ink)); }
 body.look-case .queue-row.active, body.look-case .queue-row.active .duration { color: rgb(14, 13, 12); }
 body.look-case .queue-row.active::before { background: rgb(var(--case-ink)); border-radius: 0; }
 body.look-case:not(.cd-view) #queue-card::after { /* the barcode and the catalogue number, bottom right */
-  content: "CDP 0001 · DIGITAL AUDIO"; position: absolute; right: 0; bottom: 4px; padding-top: 34px; width: 170px; text-align: center; white-space: nowrap;
+  content: attr(data-catalog); position: absolute; right: 0; bottom: 4px; padding-top: 34px; width: 190px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   font: 9px var(--case-mono); letter-spacing: .12em; color: rgba(var(--case-paper), .55); pointer-events: none;
   background: repeating-linear-gradient(90deg, rgba(var(--case-paper), .75) 0 2px, transparent 2px 3px, rgba(var(--case-paper), .75) 3px 4px, transparent 4px 7px, rgba(var(--case-paper), .75) 7px 10px, transparent 10px 11px) top / 100% 30px no-repeat;
 }

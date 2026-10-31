@@ -379,6 +379,10 @@ const albumPlays = { path: null, n: 0 };
 function updateAlbumHead() {
   const d = state.details, album = d && d.album;
   $('album-head').hidden = !album;
+  // JEWEL CASE's page: the album on its spine, as a case's, and its own catalogue number under the barcode.
+  const cr = (d && d.credits) || {};
+  document.body.dataset.spine = album ? [d.albumArtist || d.artist, album].filter(Boolean).join(' · ') : 'COMPACT DISC · DIGITAL AUDIO';
+  $('queue-card').dataset.catalog = [cr.catalog, cr.barcode].filter(Boolean).join(' · ') || 'CDP 0001 · DIGITAL AUDIO';
   if (!album) return;
   const songs = state.queue.map((p) => detailsCache.get(p)).filter((x) => x && x.album === album);
   const seconds = songs.reduce((sum, x) => sum + (x.duration || 0), 0), c = d.credits || {};
