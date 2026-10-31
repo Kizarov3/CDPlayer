@@ -104,6 +104,12 @@ test('taken again: only what changed is written, and a file someone else put the
   assert.strictEqual(fs.readFileSync(theirs, 'utf8'), 'mine');
 });
 
+test('planned before a folder is picked: counted, nothing there yet', async () => {
+  const { album } = library();
+  const p = await plan([album], { dest: null, format: 'COPY' });
+  assert.deepStrictEqual([p.albums, p.songs, p.toWrite, p.there, p.free], [1, 3, 3, 0, null]);
+});
+
 test('MP3 320: the FLACs made tagged MP3s with the cover in them, the MP3 copied as it is', async () => {
   const { album } = library(), dest = tmp('dest');
   const p = await plan([album], { dest, format: 'MP3' });

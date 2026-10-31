@@ -146,7 +146,7 @@ async function freeSpace(dest, statfs = (p) => fsp.statfs(p)) {
  */
 async function plan(albums, { dest, format, statfs } = {}) {
   format = FORMATS.includes(format) ? format : 'COPY';
-  const items = await planFiles(albums, { dest, format });
+  const items = await planFiles(albums, { dest: dest || '', format }); // (counted before a folder is picked too)
   if (dest && fs.existsSync(dest)) await markThere(items, readManifest(dest)); else items.forEach((i) => { i.there = false; });
   const todo = items.filter((i) => !i.there);
   return {
