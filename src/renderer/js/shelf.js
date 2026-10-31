@@ -373,7 +373,9 @@ function render() {
     showNoteTab(spine);
     spine.addEventListener('pointerdown', (e) => pressSpine(e, spine));
     spine.addEventListener('pointermove', (e) => rubSpine(e, spine));
-    spine.addEventListener('pointerleave', () => { spine.wiper = null; });
+    spine.addEventListener('pointerleave', () => { spine.wiper = null; clearTimeout(spine.lookAhead); });
+    // A hand on a spine: its disc's picture looked up ahead (it takes the archive seconds), there by the time it's out.
+    spine.addEventListener('pointerenter', () => { spine.lookAhead = setTimeout(() => discArtOf(a), 250); });
     setDust(spine, st.isNew ? 0 : dustLevel(a.touched, now)); // a new album is fresh from the shop
     paintSpine(spine, a);
     shelf.observer.observe(spine);
@@ -1021,7 +1023,7 @@ async function openCase(a, spine) {
   if (cover) { // printed as a pressed disc is (disc.js drawLabelPrint)
     const img = new Image(); img.src = cover;
     const print = { album: a.title || null, artist: a.artist || null, year: a.year || null, label: a.label || null };
-    const photo = shelf.app.cdp.discArt({ artist: a.artist, album: a.title, releaseId: a.mbReleaseId }).then(async (u) => { if (!u) return null; const p = new Image(); p.src = u; await p.decode(); return p; }).catch(() => null);
+    const photo = discArtOf(a).then(async (u) => { if (!u) return null; const p = new Image(); p.src = u; await p.decode(); return p; }).catch(() => null);
     img.decode().then(async () => labelImage(img, print, 520, await photo))
       .then((url) => { caseCd.style.setProperty('--art', `url("${url}")`); caseCd.style.setProperty('--art-size', '100%'); }).catch(() => {});
   }
@@ -1224,6 +1226,9 @@ function showCase(card, spine, from, color) {
   ], { duration: 460, easing: EASE.out });
   layer.animate([{ background: 'rgba(0,0,0,0)' }, { background: 'rgba(0,0,0,.6)' }], { duration: 360, easing: EASE.out });
 }
+
+// The disc's own picture (main: online.findDiscArt, kept once found), as a data URL — or null.
+const discArtOf = (a) => (a.artist && a.title ? shelf.app.cdp.discArt({ artist: a.artist, album: a.title, releaseId: a.mbReleaseId }).catch(() => null) : Promise.resolve(null));
 
 // The album's booklet, rising out of the case's cover (full size, not the spine's thumbnail).
 async function openAlbumBooklet(a, front, wholeList = null, lid = null) {

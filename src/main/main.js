@@ -474,9 +474,14 @@ handle('online:cover', (query) => online.findCover(query));
 handle('online:coverUrl', (query) => online.findCoverUrl(query));
 // A disc's own printed picture (online.findDiscArt), kept once found — or once found not to be there.
 const discArtDir = () => path.join(store.dataDir(), 'disc-art');
-handle('online:discArt', async (q) => {
+const discArtLookups = new Map(); // (one lookup per album at a time: a look-ahead and the real ask share it)
+handle('online:discArt', (q) => {
   if (!q || !q.artist || !q.album) return null;
   const name = require('crypto').createHash('sha1').update(`${q.artist}\n${q.album}`.toLowerCase()).digest('hex');
+  if (!discArtLookups.has(name)) discArtLookups.set(name, discArtFor(q, name).finally(() => discArtLookups.delete(name)));
+  return discArtLookups.get(name);
+});
+async function discArtFor(q, name) {
   const file = path.join(discArtDir(), `${name}.jpg`), none = path.join(discArtDir(), `${name}.none`);
   if (fs.existsSync(file)) return `data:image/jpeg;base64,${fs.readFileSync(file).toString('base64')}`;
   if (fs.existsSync(none) && Date.now() - fs.statSync(none).mtimeMs < 30 * 86400000) return null; // (looked again in a month)
@@ -485,7 +490,7 @@ handle('online:discArt', async (q) => {
   fs.mkdirSync(discArtDir(), { recursive: true });
   if (art) fs.writeFileSync(file, Buffer.from(art.split(',')[1], 'base64')); else fs.writeFileSync(none, '');
   return art;
-});
+}
 handle('online:lyrics', (details) => online.findLyrics(details));
 handle('spotify:classify', (text) => spotify.classifySpotifyLink(text));
 handle('spotify:resolve', async (text) => {

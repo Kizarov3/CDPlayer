@@ -204,11 +204,24 @@ const discArts = new Map();
 function discArtFor(print) {
   if (!print || !print.artist || !print.album) return Promise.resolve(null);
   const key = `${print.artist}|${print.album}`;
-  if (!discArts.has(key)) discArts.set(key, cdp.discArt({ artist: print.artist, album: print.album }).then(decodeCover).catch(() => null));
+  if (!discArts.has(key)) discArts.set(key, cdp.discArt({ artist: print.artist, album: print.album }).then(decodeCover).catch(() => null).then((img) => { if (!img) discArts.delete(key); return img; })); // (none: asked again next time — main knows if there's none)
   return discArts.get(key);
+}
+// The next albums in the queue: their discs' pictures looked up ahead, ready when they're in.
+function lookAheadDiscs() {
+  const seen = new Set(), here = printOf(state.loadedPath && state.details);
+  if (here) seen.add(`${here.artist}|${here.album}`);
+  for (const p of state.queue.slice(Math.max(0, state.index), state.index + 40)) {
+    const print = printOf(detailsCache.get(p));
+    if (!print || !print.artist || !print.album || seen.has(`${print.artist}|${print.album}`)) continue;
+    seen.add(`${print.artist}|${print.album}`);
+    discArtFor(print);
+    if (seen.size > 3) break;
+  }
 }
 function printDisc() {
   const print = printOf(state.loadedPath && state.details);
+  setTimeout(lookAheadDiscs, 3000);
   disc.setPrint(print);
   const cover = state.cover;
   if (!print) disc.setDiscArt(null);

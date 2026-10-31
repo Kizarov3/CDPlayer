@@ -13,13 +13,13 @@ const { ttmlToLrc, ttmlDuration } = require('./ttml');
 const USER_AGENT = 'CDPlayer/2.0 (open cover lookup)';
 const TIMEOUT_MS = 8000;
 
-async function fetchJson(url, init = {}) {
-  const res = await httpFetch(url, { ...init, headers: { 'User-Agent': USER_AGENT, ...(init.headers || {}) }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+async function fetchJson(url, { timeout = TIMEOUT_MS, ...init } = {}) {
+  const res = await httpFetch(url, { ...init, headers: { 'User-Agent': USER_AGENT, ...(init.headers || {}) }, signal: AbortSignal.timeout(timeout) });
   if (!res.ok) { const err = new Error(`HTTP ${res.status}`); err.status = res.status; throw err; }
   return res.json();
 }
-async function fetchImageDataUrl(url) {
-  const res = await httpFetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+async function fetchImageDataUrl(url, timeout = TIMEOUT_MS) {
+  const res = await httpFetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(timeout) });
   if (!res.ok) return null;
   const img = nativeImage.createFromBuffer(Buffer.from(await res.arrayBuffer()));
   if (img.isEmpty()) return null;
@@ -278,15 +278,19 @@ async function findDiscArt({ artist, album, releaseId }) {
     ((json && json.releases) || []).filter((r) => ((r['cover-art-archive'] || {}).count || 0) > 1)
       .sort((a, b) => (rankBefore(rank(a), rank(b)) ? -1 : rankBefore(rank(b), rank(a)) ? 1 : 0)).forEach((r) => ids.push(r.id));
   }
-  for (const id of [...new Set(ids)].slice(0, 8)) {
-    const index = await fetchJson(`https://coverartarchive.org/release/${id}`).catch(lost);
+  // The archive takes seconds to answer for each release (and now and then fails): all of them asked at once, the
+  // first with a photo of the disc taken.
+  const discOf = async (id) => {
+    const index = await fetchJson(`https://coverartarchive.org/release/${id}`, { timeout: 20000 }).catch(lost);
     const images = (index && index.images) || [];
     const disc = images.find((i) => (i.types || []).length === 1 && i.types[0] === 'Medium') || images.find((i) => (i.types || []).includes('Medium'));
-    if (!disc) continue;
-    const art = await fetchImageDataUrl((disc.thumbnails && (disc.thumbnails['500'] || disc.thumbnails.large)) || disc.image).catch(() => null);
-    if (art) return art;
-    failed = true;
-  }
+    if (!disc) throw new Error('no disc');
+    const art = await fetchImageDataUrl((disc.thumbnails && (disc.thumbnails['500'] || disc.thumbnails.large)) || disc.image, 20000).catch(() => null);
+    if (!art) { failed = true; throw new Error('no picture'); }
+    return art;
+  };
+  const art = await Promise.any([...new Set(ids)].slice(0, 8).map(discOf)).catch(() => null);
+  if (art) return art;
   if (failed) throw new Error('disc art: lookup failed');
   return null;
 }
