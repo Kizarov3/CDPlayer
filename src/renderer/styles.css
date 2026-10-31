@@ -1349,10 +1349,10 @@ body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: 
 .shelf-empty { display: flex; flex-direction: column; align-items: center; gap: 16px; padding-top: 18vh; font-size: 14px; color: rgb(var(--muted)); }
 .case-layer { position: absolute; inset: 0; background: rgba(0, 0, 0, .6); display: grid; place-items: center; perspective: 1400px; }
 .case-card {
-  display: flex; gap: 28px; padding: 24px; width: min(880px, calc(100vw - 80px)); height: min(430px, calc(100vh - 80px));
+  display: flex; gap: 28px; padding: 24px; width: min(980px, calc(100vw - 80px)); max-height: calc(100vh - 80px); /* (room beside a jewel case's width for the songs; as tall as its text needs) */
   background: rgb(var(--card)); border: 1px solid rgba(255, 255, 255, .16); box-shadow: 0 30px 80px rgba(0, 0, 0, .6);
 }
-.case-front { flex: 0 0 auto; height: 100%; aspect-ratio: 142 / 125; position: relative; } /* (a jewel case's: wider than tall) */
+.case-front { flex: 0 0 auto; height: min(410px, calc(100vh - 128px)); align-self: flex-start; aspect-ratio: 142 / 125; position: relative; } /* (a jewel case's: wider than tall) */
 .case-cover { width: 100%; height: 100%; object-fit: cover; display: block; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
 .case-front .case-cover { cursor: pointer; position: relative; z-index: 1; } /* over the receipt tucked behind it */
 .case-front .case-cover.opening { cursor: progress; }
@@ -1497,7 +1497,7 @@ body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: 
   background: linear-gradient(135deg, #f3d77a, #c8992e); color: #3a2a05; font-size: 11px; font-weight: bold; letter-spacing: .04em; box-shadow: 0 2px 6px rgba(0, 0, 0, .45); }
 .spine.rare::after { content: ""; position: absolute; left: 50%; bottom: 6px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%;
   background: #d8b24a; box-shadow: 0 0 4px rgba(216, 178, 74, .8); }
-.case-tracks { flex: 1 1 auto; min-height: 0; margin: 14px 0; }
+.case-tracks { flex: 1 1 auto; min-height: 92px; max-height: 300px; margin: 14px 0; } /* (a few songs always seen, however long the text above) */
 .case-track { display: flex; gap: 10px; align-items: baseline; padding: 5px 6px; border-radius: 3px; font-size: 11px; font-weight: normal; color: rgb(var(--text)); cursor: pointer; }
 .case-track:hover { background: rgba(255, 255, 255, .06); }
 .case-track .no { flex: 0 0 20px; color: rgb(var(--muted)); font-size: 10px; }
