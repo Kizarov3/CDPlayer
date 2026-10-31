@@ -24,8 +24,9 @@ const DISC_FOLDER = /^(cd|disc|disk)\s*\d+$/i;
 const DISC_TITLE = /[\s\-–—:,]*[([]?\s*(?:cd|disc|disk)\s*(\d{1,2})\s*[)\]]?\s*$/i;
 /** An album title without its disc ("Live - CD1" → { title: 'Live', disc: 1 }); one that's nothing else stays as it is. */
 function discInTitle(album) {
-  const m = DISC_TITLE.exec(album || '');
-  const title = m ? album.slice(0, m.index).trim() : '';
+  // (only its end is looked at: a long run of spaces would make the pattern try every way of splitting it)
+  const s = String(album || ''), from = Math.max(0, s.length - 48), m = DISC_TITLE.exec(s.slice(from));
+  const title = m ? s.slice(0, from + m.index).trim() : '';
   return m && /[\p{L}\p{N}]/u.test(title) ? { title, disc: parseInt(m[1], 10) } : null;
 }
 const THUMB = 256;

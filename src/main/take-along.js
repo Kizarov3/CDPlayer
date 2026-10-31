@@ -17,6 +17,7 @@ const fsp = fs.promises;
 const path = require('path');
 const { pipeline } = require('stream/promises');
 const { Worker } = require('worker_threads');
+const crypto = require('crypto');
 const tagWriter = require('./tag-writer');
 const cue = require('./cue');
 const { albumFolder, trackFiles } = require('./rip-names');
@@ -24,6 +25,9 @@ const { losslessKind } = require('./encoders/pcm');
 
 const MANIFEST = '.cdplayer-take-along.json';
 const TEMP = '.cdplayer-taking-';
+// A file being written on the destination: a name no one could have guessed and put a link at, created only if it's new.
+const tempName = (folder, ext) => path.join(folder, `${TEMP}${crypto.randomBytes(8).toString('hex')}${ext}`);
+const NEW_ONLY = { flag: 'wx' };
 const FORMATS = ['COPY', 'MP3'];
 const MP3_BYTES_PER_SECOND = 40000; // 320 kbps
 const TAG_ROOM = 600 * 1024; // the tags and the cover in each MP3, roughly (a big cover is most of it)
@@ -114,8 +118,8 @@ function readManifest(dest) {
   try { const m = JSON.parse(fs.readFileSync(path.join(dest, MANIFEST), 'utf8')); return m && m.version === 1 && m.files ? m.files : {}; } catch { return {}; }
 }
 async function writeManifest(dest, files) {
-  const target = path.join(dest, MANIFEST), tmp = `${target}.tmp`;
-  await fsp.writeFile(tmp, JSON.stringify({ version: 1, files }));
+  const target = path.join(dest, MANIFEST), tmp = tempName(dest, '.json');
+  await fsp.writeFile(tmp, JSON.stringify({ version: 1, files }), NEW_ONLY);
   await fsp.rename(tmp, target);
 }
 /**
@@ -208,8 +212,8 @@ async function writeCover(folder, cover) {
   const m = /^data:[^;]+;base64,(.*)$/s.exec(cover || '');
   const target = path.join(folder, 'cover.jpg');
   if (!m || await statOf(target)) return; // (one there already, whoever put it there, stays)
-  const tmp = path.join(folder, `${TEMP}cover.jpg`);
-  await fsp.writeFile(tmp, Buffer.from(m[1], 'base64'));
+  const tmp = tempName(folder, '.jpg');
+  await fsp.writeFile(tmp, Buffer.from(m[1], 'base64'), NEW_ONLY);
   await fsp.rename(tmp, target);
 }
 
@@ -237,21 +241,21 @@ async function takeAlong({ albums, dest, format = 'COPY', signal, onProgress = (
       if (signal && signal.aborted) throw stop('cancelled');
       const a = albums[it.album], folder = path.dirname(it.dest);
       report(a);
-      const temp = path.join(folder, `${TEMP}${process.pid}-${done}${path.extname(it.dest)}`);
+      const temp = tempName(folder, path.extname(it.dest));
       try {
         await fsp.mkdir(folder, { recursive: true });
         if (!folders.has(folder)) { folders.add(folder); await writeCover(folder, await coverOf(it.album)); }
         if (it.action === 'mp3') {
           const file = await convert(it, signal);
           if (signal && signal.aborted) throw stop('cancelled');
-          await fsp.writeFile(temp, file);
+          await fsp.writeFile(temp, file, NEW_ONLY);
           let tags = {};
           if (!it.cueTrack) try { tags = readTags(it.src) || {}; } catch { /* untagged: the shelf's names do */ }
           const keep = Object.fromEntries(Object.entries(tags).filter(([k, v]) => tagWriter.FIELDS[k] && v != null && v !== ''));
           const cover = await coverOf(it.album);
           await writeTags(temp, { ...keep, ...Object.fromEntries(Object.entries(it.tags).filter(([, v]) => v != null && v !== '')), ...(cover ? { cover } : {}) });
         } else {
-          await pipeline(fs.createReadStream(it.src), fs.createWriteStream(temp), signal ? { signal } : {});
+          await pipeline(fs.createReadStream(it.src), fs.createWriteStream(temp, { flags: 'wx' }), signal ? { signal } : {});
         }
         if (signal && signal.aborted) throw stop('cancelled');
         await fsp.rename(temp, it.dest);
