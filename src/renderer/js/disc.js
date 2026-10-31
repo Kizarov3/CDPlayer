@@ -14,6 +14,7 @@ const SIZES = {
   mini: { cap: 84, margin: 4 },
 };
 const EJECT_OUT = 300, EJECT_HOLD = 180, EJECT_BACK = 320;
+const SWAP_OUT = 520, SWAP_HOLD = 300, SWAP_BACK = 620; // a set's next disc going in: slower than an eject's flick
 const TRAY_MS = 650;     // the tray motor, one way
 const SPIN_TAU_MS = 380, WIND_DOWN_TAU_MS = 700; // how quickly the disc gets up to speed, and winds down (READING spins up slower)
 const ART_MS = 340;
@@ -51,6 +52,7 @@ export class Disc {
     this.ejectStart = -1;
     this.ejectPeakFired = false;
     this.onEjectPeak = null;
+    this.swapStart = -1;          // a set's next disc going in (changeDisc), or -1
     this.onMiniClick = null;
     this.onArtClick = null;       // (art's rectangle on screen) → open the booklet
     this.suppressRebuild = false; // during a theme color transition, keep the old face instead of re-rendering every frame
@@ -152,7 +154,7 @@ export class Disc {
   // A press here can take hold of the disc: on the disc itself, in the case (not Mini Mode), with nothing over it.
   grabbable(e) {
     const c = this.center;
-    if (!c || this.mode === 'mini' || this.artOpen || this.artT > 0 || this.trayT > 0 || this.ejectStart >= 0 || this.morph) return false;
+    if (!c || this.mode === 'mini' || this.artOpen || this.artT > 0 || this.trayT > 0 || this.ejectStart >= 0 || this.swapStart >= 0 || this.morph) return false;
     if (!this.discPresent || this.overArt(e) || Math.hypot(e.clientX - c.x, e.clientY - c.y) > c.r) return false;
     return !this.canGrab || this.canGrab();
   }
@@ -293,6 +295,20 @@ export class Disc {
   }
 
   startEject() { if (this.ejectStart < 0) { this.ejectStart = performance.now(); this.ejectPeakFired = false; } }
+
+  /**
+   * A set's next disc (box-set.js): the disc spins down and lifts out of the case, and the next one goes in and spins
+   * up — the music doesn't stop for it (only the picture changes discs). app.js doesn't call it with animations off.
+   */
+  changeDisc() { this.swapStart = performance.now(); }
+  swapProgress(now) {
+    if (this.swapStart < 0) return 0;
+    const t = now - this.swapStart;
+    if (t >= SWAP_OUT + SWAP_HOLD + SWAP_BACK) { this.swapStart = -1; return 0; }
+    if (t < SWAP_OUT) return easeInOutCubic(t / SWAP_OUT);
+    if (t < SWAP_OUT + SWAP_HOLD) return 1;
+    return 1 - easeInOutCubic((t - SWAP_OUT - SWAP_HOLD) / SWAP_BACK);
+  }
 
   ejectProgress(now) {
     if (this.ejectStart < 0) return 0;
@@ -574,7 +590,7 @@ export class Disc {
       if (this.onJog) this.onJog(d, dt);
       this.fling = coast(this.fling, dt);
       if (!this.fling) this.endJog();
-    } else if (!this.jogging) this.angle += 0.045 * this.speed * (dt / 16);
+    } else if (!this.jogging) this.angle += 0.045 * this.speed * (1 - this.swapProgress(now)) * (dt / 16); // (out of the drive while discs change)
     this.stepTray(dt);
     this.flipT = Math.max(0, Math.min(1, this.flipT + (this.flipped ? 1 : -1) * (dt / FLIP_MS)));
     // Not on screen (a PLAYER LOOK without the disc), or not to be drawn (`offstage`: ALBUM's, hidden under its cover):
@@ -597,7 +613,7 @@ export class Disc {
 
     this.artT = Math.max(0, Math.min(1, this.artT + (this.artOpen ? 1 : -1) * (dt / ART_MS)));
     const art = mini || !this.cover ? 0 : easeInOutCubic(this.artT);
-    const eject = this.ejectProgress(now), wobble = this.wobbleOffset(now);
+    const eject = Math.max(this.ejectProgress(now), 0.8 * this.swapProgress(now)), wobble = this.wobbleOffset(now);
     this.stepLight(now, dt);
     this.artRect = null;
     if (!mini && this.cover && !(tray > 0)) {
@@ -727,5 +743,5 @@ export class Disc {
     return bounds;
   }
 
-  get animating() { return this.spinning || this.speed > 0 || this.trayT > 0 || this.ejectStart >= 0 || this.jogging || this.flipT !== (this.flipped ? 1 : 0); }
+  get animating() { return this.spinning || this.speed > 0 || this.trayT > 0 || this.ejectStart >= 0 || this.swapStart >= 0 || this.jogging || this.flipT !== (this.flipped ? 1 : 0); }
 }

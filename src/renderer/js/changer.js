@@ -88,6 +88,27 @@ export function load(c, disc, tracks, { play = false, next = false, slot = null 
 }
 
 /**
+ * A double album or a box set (`parts`: [{ disc, tracks }], a changer disc for each of its discs) into free slots side
+ * by side, one disc each, so the changer goes on from one to the next as it would with the real set — `play` stands on
+ * its first, `next` marks its first to come after the disc playing. Only into free slots (a set doesn't push discs back
+ * to the shelf); when there aren't enough of them next to each other → null, and it goes in as one disc (load). A set
+ * with any of its discs in already: { changer, slot, already: true }, as load. → load's { changer, slot, slots }.
+ */
+export function loadSet(c, parts, { play = false, next = false } = {}) {
+  if (parts.length < 2 || parts.length > SLOTS || parts.some((p) => !p.tracks.length)) return null;
+  for (const p of parts) {
+    const have = c.slots.findIndex((d, s) => d && (d.id === p.disc.id || (d.end - d.start === p.tracks.length && tracksOf(c, s).every((x, k) => x === p.tracks[k]))));
+    if (have >= 0) return { changer: c, slot: have, already: true };
+  }
+  let first = -1;
+  for (let s = 0; s + parts.length <= SLOTS && first < 0; s++) if (parts.every((p, k) => !c.slots[s + k])) first = s;
+  if (first < 0) return null;
+  let changer = c;
+  parts.forEach((p, k) => { changer = load(changer, p.disc, p.tracks, { play: play && !k, next: next && !k, slot: first + k }).changer; });
+  return { changer, slot: first, slots: parts.map((p, k) => first + k), replaced: null };
+}
+
+/**
  * FILL: `picks` ([{ disc, tracks }], in the order picked) loaded one each into the slots that are free or hold a
  * finished disc (as `load` finds room), passing over a disc already in; where the changer stands stays (an empty one
  * stands on the first put in). → { changer, loaded: [slot…], replaced: [disc taken out…], full: no room to begin with }

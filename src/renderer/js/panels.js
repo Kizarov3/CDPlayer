@@ -1599,6 +1599,9 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.21.0', changes: [
+    '<b>Box sets and double albums</b>: a 2-disc album stands on the shelf in a fat double case, three discs or more in a slipcase box, &ldquo;2 CD&rdquo; on the spine; its case and booklet list the songs disc by disc; as disc 1 ends the display shows CHANGE DISC and DISC 2 while the music plays straight on; and in the CD changer its discs go into slots side by side',
+  ] },
   { version: '2.20.1', changes: [
     '<b>The Now Playing video plays to the end</b> wherever it&rsquo;s opened or shared: saved as a plain MP4, nothing re-encoded, so players that stopped after the first few seconds play all of it',
     '<b>YouTube Music &amp; SoundCloud</b>: turned on in Settings &rarr; LIBRARY, the search finds their albums and songs, and they play like your own discs &mdash; in the best sound each gives without signing in; a playlist&rsquo;s link pasted in the search opens it',

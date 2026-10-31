@@ -64,8 +64,9 @@ const moving = () => typeof document !== 'undefined' && !document.body.classList
 const cellsWidth = (text, h) => [...text].reduce((sum, ch) => sum + (ch === ':' ? h * 0.32 : h * 0.72), 0) - (text.endsWith(':') ? 0 : h * 0.16) + h * SLANT;
 
 export class DeckDisplay {
-  constructor({ track, time, of, total, flags, elapsed = null, length = null }) {
-    Object.assign(this, { trackCanvas: track, timeCanvas: time, ofNode: of, totalNode: total, flags, elapsedNode: elapsed, lengthNode: length });
+  constructor({ track, time, of, total, flags, elapsed = null, length = null, disc = null }) {
+    Object.assign(this, { trackCanvas: track, timeCanvas: time, ofNode: of, totalNode: total, flags, elapsedNode: elapsed, lengthNode: length, discNode: disc });
+    this.changing = null; // the CHANGE DISC moment's timer
     this.shown = { track: null, time: null, color: null };
     this.track = '--'; this.time = timeCells(0); this.left = false; this.lampTest = false;
   }
@@ -83,6 +84,26 @@ export class DeckDisplay {
     this.track = trackCells(n);
     const ofText = n > 0 && of > 0 ? `/${String(of).padStart(2, '0')}` : '';
     if (this.ofNode.textContent !== ofText) this.ofNode.textContent = ofText;
+    this.draw();
+  }
+  /** The disc of a set that's playing, beside TRACK (`label`: 'DISC 2'), or '' for none — an album of one disc. */
+  setDisc(label) {
+    if (!this.discNode) return;
+    setText(this.discNode, label || '');
+    this.discNode.hidden = !label;
+  }
+  /**
+   * One disc of a set ended and the next one's begun (box-set.js): CHANGE DISC (`changing`) blinks for a moment and the
+   * track digits wait at --, then `label` (DISC 2) lights and the track number flickers on. The music goes on as it
+   * was: only the display shows it. Animations off: straight to `label`.
+   */
+  changeDisc(label, changing) {
+    clearTimeout(this.changing);
+    if (!this.discNode || !moving()) { this.changing = null; this.setDisc(label); this.draw(); return; }
+    this.setDisc(changing); this.discNode.classList.add('changing');
+    this.changing = setTimeout(() => {
+      this.changing = null; this.discNode.classList.remove('changing'); this.setDisc(label); this.draw();
+    }, 1500);
     this.draw();
   }
   /** Where the song is and how long it is (s); the time left instead once TIME has been clicked. */
@@ -106,7 +127,7 @@ export class DeckDisplay {
   draw() {
     const color = `${colors.accent.join(',')}@${window.devicePixelRatio || 1}`; // (moved to a sharper screen: drawn again)
     if (this.shown.color !== color) { this.shown = { track: null, time: null, color }; }
-    const lit = (text) => (this.lampTest ? text.replace(/[^:]/g, '8') : text), track = lit(this.track), time = lit(this.time);
+    const lit = (text) => (this.lampTest ? text.replace(/[^:]/g, '8') : text), track = lit(this.changing ? '--' : this.track), time = lit(this.time);
     if (this.shown.track !== track) {
       // another track: its number flickers on (not at the lamp test, nor drawn again in a theme's colour: shown is null)
       if (this.shown.track !== null && !this.lampTest && this.shown.track !== '88' && moving()) this.trackCanvas.animate(FLICKER, { duration: 320, easing: 'ease-out' });
