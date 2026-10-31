@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('cdp', {
   playTimes: invoke('plays:times'),
   skips: { list: invoke('skips:list'), set: invoke('skips:set') },
   albumPlays: invoke('plays:album'),
+  yearOnShelf: invoke('year:shelf'),
   wipeAlbum: invoke('dust:wipe'),
   setNote: invoke('notes:set'),
   setDivider: invoke('dividers:set'),

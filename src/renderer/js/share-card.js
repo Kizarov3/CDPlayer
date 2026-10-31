@@ -515,3 +515,55 @@ function drawWords(g, song, colors, w) {
   }
   g.restore();
 }
+
+// ---- THE YEAR ON THE SHELF's card -------------------------------------------------------------------------------
+
+/**
+ * The year's card as PNG bytes: the hours and plays, the five albums played most standing in their cases, the artists,
+ * and the year month by month (ALL TIME: year by year). `year`: { heading ("MY 2026 ON THE SHELF"), hours, hoursLabel,
+ * playsLabel, albums: [{ title, artist, cover (image or null) }], artistsLabel, artists: [names], strip: [{ label,
+ * minutes }], foot (small print) }.
+ */
+export async function drawYearCard(year, colors) {
+  const canvas = new OffscreenCanvas(W, H), g = canvas.getContext('2d');
+  wash(g, { cover: (year.albums[0] || {}).cover || null }, colors, { alpha: 0.35, shade: [0.35, 0.55] });
+  g.textBaseline = 'alphabetic'; g.textAlign = 'left';
+  g.font = `bold 20px ${FONT}`; g.fillStyle = rgb(colors.accent); g.fillText(year.heading, 60, 70);
+  g.font = `bold 92px ${FONT}`; g.fillStyle = rgb(colors.text); g.fillText(year.hours, 56, 166);
+  const hoursW = g.measureText(year.hours).width;
+  g.font = `26px ${FONT}`; g.fillStyle = rgb(colors.accent2); g.fillText(year.hoursLabel, 70 + hoursW, 164);
+  g.font = `22px ${FONT}`; g.fillStyle = rgb(colors.muted); g.fillText(year.playsLabel, 60, 204);
+  // The albums played most, side by side in their cases, the first the biggest.
+  let x = 60;
+  year.albums.slice(0, 5).forEach((a, i) => {
+    const size = i === 0 ? 180 : 120, y = 250 + (180 - size);
+    shadowed(g, 24, 10, 0.55, () => { g.fillStyle = '#16161a'; g.fillRect(x, y, size, size); });
+    art(g, a, x, y, size);
+    g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(x, y, 8, size); // (the hinge)
+    g.strokeStyle = 'rgba(255,255,255,0.18)'; g.lineWidth = 1.5; g.strokeRect(x + 0.75, y + 0.75, size - 1.5, size - 1.5);
+    g.font = `bold ${i === 0 ? 16 : 13}px ${FONT}`; g.fillStyle = rgb(colors.text);
+    g.fillText(wrap(g, `${i + 1}. ${a.title}`, size, 1)[0] || '', x, y + size + 24);
+    x += size + 18;
+  });
+  // The artists, down the right.
+  const rx = 880;
+  g.font = `bold 16px ${FONT}`; g.fillStyle = rgb(colors.accent); g.fillText(year.artistsLabel, rx, 70);
+  year.artists.slice(0, 5).forEach((name, i) => {
+    g.font = `${i === 0 ? 'bold 26' : '22'}px ${FONT}`; g.fillStyle = i === 0 ? rgb(colors.text) : rgb(colors.accent2);
+    g.fillText(wrap(g, name, W - rx - 50, 1)[0] || '', rx, 112 + i * 38);
+  });
+  // The year month by month (or year by year), a bar each.
+  const strip = (year.strip || []).slice(-12), most = Math.max(1, ...strip.map((s) => s.minutes)), sw = W - rx - 50, bw = strip.length ? sw / strip.length : 0;
+  strip.forEach((s, i) => {
+    const h = Math.max(2, Math.round((s.minutes / most) * 120));
+    g.fillStyle = rgb(colors.accent, s.minutes ? 0.9 : 0.25); g.fillRect(rx + i * bw + 2, 470 - h, Math.max(2, bw - 4), h);
+    g.font = `11px ${FONT}`; g.fillStyle = rgb(colors.muted); g.textAlign = 'center';
+    g.fillText(s.label, rx + i * bw + bw / 2, 490);
+    g.textAlign = 'left';
+  });
+  if (year.foot) { g.font = `14px ${FONT}`; g.fillStyle = rgb(colors.muted); g.fillText(wrap(g, year.foot, 760, 1)[0] || '', 60, H - 32); }
+  g.font = `bold 16px ${FONT}`; g.fillStyle = rgb(colors.muted); g.textAlign = 'right';
+  g.fillText('CDPlayer', W - 40, H - 32);
+  const blob = await canvas.convertToBlob({ type: 'image/png' });
+  return new Uint8Array(await blob.arrayBuffer());
+}

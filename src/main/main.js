@@ -38,6 +38,8 @@ const shelf = require('./shelf');
 const { recordPlay } = require('./plays');
 const relocate = require('./relocate');
 const albumRuns = require('./album-runs');
+const listens = require('./listens');
+const { yearOnShelf } = require('./year-shelf');
 const tagWriter = require('./tag-writer');
 const audioCd = require('./audio-cd');
 const rip = require('./rip');
@@ -292,8 +294,26 @@ function writePlays() {
   if (lastPlayed) store.writeLastPlayed(lastPlayed);
   if (firstPlayed) store.writeFirstPlayed(firstPlayed);
 }
+// Every play with when (listens.js), for THE YEAR ON THE SHELF and ON THIS DAY: begun, the first time, from each song's
+// first and last play; a play is a line added to its end, the whole written anew only when it's grown past its limit.
+let listenLog = null;
+function listened() {
+  if (listenLog) return listenLog;
+  const text = store.readText('listens.txt');
+  listenLog = text != null ? listens.parse(text) : listens.seed(firstPlayedAt(), playedAt());
+  if (text == null) store.writeText('listens.txt', listens.format(listenLog));
+  return listenLog;
+}
+function logPlays(entries) { // (imported: in their places in time, so written anew)
+  listens.merge(listened(), entries);
+  store.writeText('listens.txt', listens.format(listenLog));
+}
 handle('plays:add', (p) => {
-  const n = recordPlay({ counts: plays(), last: playedAt(), first: firstPlayedAt() }, p, Date.now());
+  const now = Date.now();
+  listened(); // (begun before this play counts in the first and last plays it starts from)
+  const n = recordPlay({ counts: plays(), last: playedAt(), first: firstPlayedAt() }, p, now);
+  if (listens.add(listenLog, now, p)) store.writeText('listens.txt', listens.format(listens.trim(listenLog)));
+  else store.appendText('listens.txt', listens.lineOf([now, p]));
   clearTimeout(playsTimer); playsTimer = setTimeout(writePlays, 1000);
   // Played, its album is out of its shrink-wrap for good (not only while its play count is kept).
   const album = shelf.albumOf(p), w = album && wrap();
@@ -574,11 +594,24 @@ async function shelfListing() {
   // …and where one was left part-way through (a bookmark), and how many times each was played through.
   const r = runsState();
   for (const a of result.albums) { a.bookmark = albumRuns.bookmark(r, a.id, a.tracks.length); a.through = albumRuns.throughCount(r, a.id); }
+  // ON THIS DAY: the day each came out (as a story looked up before says, else its tags), and how many years ago it
+  // was played on this day — nothing asked online for it.
+  const releasedOf = albumStory.releaseDates(), playedThen = listens.onThisDay(listened());
+  for (const a of result.albums) {
+    a.released = releasedOf(a) || a.released || null;
+    a.playedYearsAgo = a.tracks.reduce((m, t) => { const y = playedThen.get(t.path); return y && (!m || y < m) ? y : m; }, null);
+  }
   result.hiddenMissing = [...store.readHiddenMissing()];
   result.moves = movedSongs(result.albums);
   return result;
 }
 handle('shelf:albums', () => shelfListing());
+// THE YEAR ON THE SHELF (year-shelf.js): a year of listening (a number), or 'ALL'.
+handle('year:shelf', async (year) => {
+  const { albums } = await shelf.scanAlbums(() => {});
+  const y = year === 'ALL' ? 'ALL' : Number.isInteger(year) ? year : new Date().getFullYear();
+  return yearOnShelf({ log: listened(), albums, counts: plays(), through: runsState().through, year: y });
+});
 // Songs moved (relocate.js): what's kept by their old paths — plays, HISTORY — found again on the shelf, a folder at a
 // time, for the shelf to offer to bring along. Nothing moves until it's asked to.
 let movesFound = null;
@@ -596,8 +629,10 @@ handle('moves:apply', (key) => {
   if (!group) return 0;
   const moves = relocate.movesOf(movesFound, key);
   clearTimeout(playsTimer);
+  listened();
   ({ counts: playCounts, last: lastPlayed, first: firstPlayed } = relocate.movePlays({ counts: plays(), last: playedAt(), first: firstPlayedAt() }, moves));
   writePlays();
+  listens.move(listenLog, moves); store.writeText('listens.txt', listens.format(listenLog));
   store.writeHistoryAll(relocate.newestFirst(relocate.moveHistory(store.readHistoryAll(), moves), lastPlayed));
   // An album known by its folder (no tags to know it by) takes its sticky note, its dust and its wrapping along.
   // (Not one still on the shelf by its id: the group's from → to can be a folder many albums share — "Rock" → "Archive"
@@ -691,9 +726,11 @@ handle('plays:import', async () => {
   try { before = JSON.parse(store.readText('imports.json') || '{}'); } catch { /* none yet */ }
   clearTimeout(playsTimer);
   const done = importPlays.apply(found, albums, { counts: plays(), last: playedAt(), first: firstPlayedAt() }, before, { own: scrobbler.ownSince() });
+  listened(); // (begun from the plays as they were, before these)
   ({ counts: playCounts, last: lastPlayed, first: firstPlayed } = done.plays);
   writePlays();
   store.writeText('imports.json', JSON.stringify(done.imports));
+  if (done.timed.length) logPlays(done.timed);
   // Their songs in HISTORY, each at its last play — those played here since stay above them.
   if (done.songs.length) store.writeHistoryAll(relocate.newestFirst([...new Set([...store.readHistoryAll(), ...done.songs])], lastPlayed));
   phoneShelf = null;
