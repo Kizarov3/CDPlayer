@@ -160,7 +160,7 @@ Pushing a `v*` tag builds, smoke-tests and releases all three platforms via [Git
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Tags are written with [node-taglib-sharp](https://github.com/benrr101/node-taglib-sharp) (LGPL-2.1-or-later), used unmodified.
+MIT — see [LICENSE](LICENSE). Tags are written with [node-taglib-sharp](https://github.com/benrr101/node-taglib-sharp) (LGPL-2.1-or-later), used unmodified. MP3 rips are encoded with [lamejs](https://github.com/zhuker/lamejs) (LGPL-3.0), its own build, unmodified, in `src/main/encoders/lame/`.
 
 ## Support
 
