@@ -1619,6 +1619,9 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.21.0', changes: [
+    '<b>From your shelf</b>: a case pulled out shows IF YOU LIKE THIS &mdash; albums you already have by artists like its own, from Last.fm, one click to pull them out; the changer&rsquo;s FILL can fill it, or keep it full, with albums like what&rsquo;s playing, and the search (<kbd>/</kbd>) has PLAY SIMILAR TO the album playing',
+  ] },
   { version: '2.20.1', changes: [
     '<b>The Now Playing video plays to the end</b> wherever it&rsquo;s opened or shared: saved as a plain MP4, nothing re-encoded, so players that stopped after the first few seconds play all of it',
     '<b>YouTube Music &amp; SoundCloud</b>: turned on in Settings &rarr; LIBRARY, the search finds their albums and songs, and they play like your own discs &mdash; in the best sound each gives without signing in; a playlist&rsquo;s link pasted in the search opens it',

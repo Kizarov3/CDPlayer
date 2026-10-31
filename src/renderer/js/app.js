@@ -38,7 +38,7 @@ import { pickOutput, outputName } from './output.js';
 import { soundOf, sameSound, deviceKey } from './device-sound.js';
 import { note as noteForReport, buildReport } from './report.js';
 import { phoneTagTitle, phoneJoined } from './remote-settings.js';
-import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged } from './shelf.js';
+import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged, playSimilarTo } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke, karaokeCover } from './karaoke.js';
 import { SpotifySession, SpotifyTrackElement, isSpotifyUri, spotifyUpcoming, loadSpotifySdk } from './spotify-deck.js';
 
@@ -3001,6 +3001,9 @@ function commands() {
     { label: t('MUTE / UNMUTE'), also: 'mute sound звук', key: 'U', run: toggleMute },
     { label: t('THE SHELF'), also: 'shelf albums divider dividers editions полка разделитель разделители издания', key: 'S', run: toggleShelf },
     state.changerMode ? { label: t('FILL'), also: 'fill changer keep full заполнить держать полным чейнджер', run: fillFromShelf } : null,
+    // (an album of yours like the one playing, from the shelf: shelf.js playSimilarTo)
+    state.index >= 0 && state.details && state.details.album ? { label: t('PLAY SIMILAR TO {album}', { album: state.details.album.toUpperCase() }), also: 'similar like recommend похожее похожие рекомендации',
+      run: () => playSimilarTo(app, state.queue[state.index], (state.details.credits && state.details.credits.albumArtist) || state.details.artist || '') } : null,
     state.index >= 0 ? { label: state.skipped.has(state.queue[state.index]) ? t('DON’T SKIP THIS SONG') : t('SKIP THIS SONG'), also: 'skip song mark пропуск пропускать', run: () => toggleSkip(state.queue[state.index]) } : null,
     { label: t('CD VIEW'), key: 'C', run: toggleCdView },
     { label: t('MINI MODE'), key: 'M', run: () => setMiniMode(!state.miniMode) },

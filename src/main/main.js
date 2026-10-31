@@ -723,6 +723,9 @@ const albumStory = require('./album-story').createAlbumStory({ mbFetch: (q) => o
 handle('story:album', (q) => albumStory.storyFor({ ...(q || {}), lang: i18n.current().code }).catch(() => ({ unavailable: true })));
 handle('story:open', (url) => { if (/^https:\/\/[a-z-]+\.wikipedia\.org\/wiki\//.test(String(url))) shell.openExternal(url); });
 handle('discography:of', (a) => discography.discographyFor({ artist: String((a && a.artist) || ''), mbid: (a && a.mbid) || null }));
+// FROM YOUR SHELF (similar-artists.js): the artists Last.fm finds like one, for IF YOU LIKE THIS and KEEP IT FULL.
+const similarArtists = require('./similar-artists').createSimilarArtists();
+handle('similar:artists', (artist) => (smokeDir || typeof artist !== 'string' ? [] : similarArtists.similarTo(artist.slice(0, 300))));
 // Discogs (discogs.js): an album's pressing and price when its case is opened, the whole shelf when it's appraised.
 const discogs = require('./discogs').createDiscogs({ fetchJson: (url, init) => require('./online').fetchJson(url, init), mbFetch: (q) => require('./online').mbFetch(q), userAgent: `CDPlayer/${APP_VERSION} +https://github.com/Kizarov3/CDPlayer` });
 const albumQuery = (a) => (a && typeof a === 'object' && typeof a.id === 'string' ? { id: a.id, artist: a.artist || null, title: a.title || null, year: a.year || null, barcode: a.barcode || null, catalog: a.catalog || null, label: a.label || null, mbReleaseId: a.mbReleaseId || null } : null);
