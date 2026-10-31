@@ -143,7 +143,21 @@ function createAlbumStory({ mbFetch, fetchJson, findGroup, read = () => store.re
     return story;
   }
 
-  return { storyFor };
+  /**
+   * The days shelf albums first came out, as far as the stories looked up before say — in any language, nothing asked
+   * for: → (album: { mbReleaseId, artist, title }) → "1997-05-21", or null (not looked up, none, or only a year).
+   */
+  function releaseDates() {
+    const known = new Map();
+    for (const [key, e] of Object.entries(entries())) {
+      const d = e && e.story && e.story.released;
+      if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) known.set(key.slice(key.indexOf('|') + 1), d);
+    }
+    return (album) => (MBID.test(album.mbReleaseId || '') && known.get(`r:${album.mbReleaseId}`))
+      || known.get(`n:${sameName(album.artist || '')}|${sameName(album.title || '')}`) || null;
+  }
+
+  return { storyFor, releaseDates };
 }
 
 module.exports = { createAlbumStory, cleanExtract, searchTitle, pickGroup };

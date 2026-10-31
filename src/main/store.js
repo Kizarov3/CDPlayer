@@ -50,6 +50,11 @@ function writeText(name, content) {
     return true;
   } catch { return false; }
 }
+// A line added to the end (a log written as it grows: listens.txt); not while a backup is put back either.
+function appendText(name, content) {
+  if (frozen) return false;
+  try { fs.mkdirSync(dataDir(), { recursive: true }); fs.appendFileSync(file(name), content, 'utf8'); return true; } catch { return false; }
+}
 // Same semantics as Java's Files.readAllLines: a final line terminator doesn't start another (empty) line.
 const lines = (text) => {
   if (text == null || text === '') return [];
@@ -429,7 +434,7 @@ const readLastVersion = () => { const t = readText(FILES.lastVersion); return t 
 const writeLastVersion = (v) => writeText(FILES.lastVersion, v);
 
 module.exports = {
-  dataDir, file, FILES, readText, writeText, freeze, isFile, isDir,
+  dataDir, file, FILES, readText, writeText, appendText, freeze, isFile, isDir,
   readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, readChangerQueue, writeQueue, readHistory, writeHistory, readHistoryAll, writeHistoryAll, readMovesDeclined, writeMovesDeclined, readSkipped, writeSkipped, HISTORY_LIMIT,
   readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readFirstPlayed, writeFirstPlayed, readDust, writeDust, readNotes, writeNotes, readDividers, writeDividers, readHiddenMissing, writeHiddenMissing, readWrap, writeWrap, readShelfColors, writeShelfColors,
   readEqPresets, writeEqPresets, readLastPath, writeLastPath, readMusicFolders, writeMusicFolders, musicFolders, noMusicFolderYet, isOnboarded, markOnboarded, readLastVersion, writeLastVersion,

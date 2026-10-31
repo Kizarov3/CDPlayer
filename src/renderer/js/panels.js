@@ -1,7 +1,8 @@
 // In-window panels (Settings, Equalizer, Lyrics, History, Search, the theme and EQ preset menus, the welcome and
 // What's New dialogs). Each is a dimmed full-window layer that blocks clicks/drops/shortcuts to the player behind it,
 // with a centered card that grows and fades in, and shrinks and fades out.
-import { THEMES, draftFrom } from './theme.js';
+import { THEMES, draftFrom, colors } from './theme.js';
+import { drawYearCard } from './share-card.js';
 import { buildThemeEditor, themeLabel } from './theme-editor.js';
 import { t, locale } from './i18n.js';
 import { historyDays } from './history-days.js';
@@ -22,7 +23,7 @@ import { cardOrder, priceWords, stillWanted } from './want-list.js';
 const layer = () => document.getElementById('overlays');
 const panels = new Map(); // name -> { overlay, card, build }
 // Escape closes the closest thing first, in this order.
-const ESC_ORDER = ['changer-full', 'onboarding', 'guide', 'features', 'faq', 'shortcuts', 'changelog', 'tags', 'check', 'want', 'card', 'booklet', 'menu', 'theme', 'lyrics', 'eq', 'rip', 'take-along', 'history', 'spotify', 'search', 'settings'];
+const ESC_ORDER = ['changer-full', 'onboarding', 'guide', 'features', 'faq', 'shortcuts', 'changelog', 'tags', 'check', 'want', 'card', 'year', 'booklet', 'menu', 'theme', 'lyrics', 'eq', 'rip', 'take-along', 'history', 'spotify', 'search', 'settings'];
 
 // A panel comes out of the button that opened it, and goes back into it: the one just pressed, or — opened by a key —
 // the header's button for it. (Without one, it rises in as before.)
@@ -988,7 +989,96 @@ function buildHistory(app) {
   const body = h.length ? el('div', { class: 'scroll' }, rows) : el('div', { class: 'empty-note' }, t('NOTHING PLAYED YET'));
   if (h.length) { body.style.height = '380px'; body.style.marginTop = '16px'; }
   else body.style.marginTop = '16px';
-  return [title(t('HISTORY')), body, closeRow(() => closePanel('history'))];
+  return [title(t('HISTORY')), body, el('div', { class: 'close-row split' },
+    el('div', { class: 'row-pills' }, pill(t('THE YEAR ON THE SHELF'), () => showYear(app), t('Your year of listening: hours, the albums and artists played most, month by month'))),
+    pill(t('CLOSE'), () => closePanel('history')))];
+}
+
+// ---- THE YEAR ON THE SHELF -----------------------------------------------------------------------------------------
+// A year of listening (main: year-shelf.js) — this year to start with, any year the log has, or ALL TIME: the hours,
+// the albums played most (their covers), the artists, the albums played start to end, the ones that came in and
+// haven't been played, the busiest day and the year month by month; SHARE copies it as a card (share-card.js).
+const year = { asked: null, data: null, covers: new Map() };
+const hoursOf = (minutes) => (minutes < 600 ? (Math.round(minutes / 6) / 10).toLocaleString(locale) : Math.round(minutes / 60).toLocaleString(locale));
+const monthName = (m) => new Date(2000, m, 1).toLocaleDateString(locale, { month: 'short' }).replace('.', '').toLocaleUpperCase();
+const longDate = (ms) => new Date(ms).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' });
+export function showYear(app, which = new Date().getFullYear()) {
+  year.asked = which; year.data = null;
+  openPanel('year', () => buildYear(app), { width: 680 });
+  app.cdp.yearOnShelf(which).then(async (data) => {
+    if (year.asked !== which) return;
+    year.data = data;
+    if (isOpen('year')) refreshPanel('year');
+    // Their covers, as the shelf has them (nothing asked online for them here).
+    for (const a of data.albums) {
+      if (!a.first || year.covers.has(a.id)) continue;
+      year.covers.set(a.id, await app.cdp.shelfCover(a.first, { online: false }).catch(() => null));
+    }
+    if (year.asked === which && isOpen('year')) refreshPanel('year');
+  }).catch(() => { year.data = { failed: true }; if (isOpen('year')) refreshPanel('year'); });
+}
+const yearLabel = (y) => (y === 'ALL' ? t('ALL TIME') : String(y));
+function buildYear(app) {
+  const d = year.data, all = year.asked === 'ALL';
+  const years = d && d.years ? d.years.slice(0, 6) : [new Date().getFullYear()];
+  const pick = (y) => { const b = pill(yearLabel(y), () => { if (y !== year.asked) showYear(app, y); }); b.classList.add('small'); b.classList.toggle('on', y === year.asked); return b; };
+  const head = [title(t('THE YEAR ON THE SHELF')), el('div', { class: 'row-pills year-pick' }, ...years.map(pick), pick('ALL'))];
+  const close = pill(t('CLOSE'), () => closePanel('year'));
+  if (!d || d.failed) return [...head, el('div', { class: 'empty-note year-wait' }, d ? t('UNKNOWN ERROR') : t('COUNTING…')), el('div', { class: 'close-row' }, close)];
+  const section = (label, ...body) => el('div', { class: 'year-section' }, el('div', { class: 'history-day' }, label), ...body);
+  const stat = (n, label) => el('div', { class: 'year-stat' }, el('b', {}, n), el('span', {}, label));
+  const most = Math.max(1, ...d.strip.map((s) => s.minutes));
+  const strip = el('div', { class: 'year-strip' }, d.strip.map((s) => {
+    const bar = el('i', {}); bar.style.height = `${Math.max(2, Math.round((s.minutes / most) * 56))}px`;
+    if (!s.minutes) bar.classList.add('none');
+    return el('div', { title: t('{n} H', { n: hoursOf(s.minutes) }) }, bar, el('span', {}, all ? String(s.year).slice(-2) : monthName(s.month)));
+  }));
+  const cover = (a) => {
+    const url = year.covers.get(a.id);
+    return el('div', { class: 'year-album', title: [a.artist, a.title, a.year].filter(Boolean).join(' · ') },
+      url ? el('img', { src: url, alt: '' }) : el('div', { class: 'year-cdr' }, a.title),
+      el('span', {}, a.plays === 1 ? t('1 PLAY') : t('{n} PLAYS', { n: a.plays })));
+  };
+  const names = (list, n) => list.map((a) => [a.artist, a.title].filter(Boolean).join(' — ')).join(' · ') + (n > list.length ? ` · ${t('+{n} MORE', { n: n - list.length })}` : '');
+  const nothing = !d.plays;
+  return [...head,
+    el('div', { class: 'scroll year-body' },
+      el('div', { class: 'year-stats' },
+        stat(hoursOf(d.minutes), t('HOURS')), stat(d.plays.toLocaleString(locale), t('PLAYS')),
+        stat(String(d.throughCount), t('PLAYED START TO END')), stat(String(d.arrivalsCount), all ? t('NEVER PLAYED') : t('NEW, NOT PLAYED YET'))),
+      nothing ? el('div', { class: 'empty-note' }, t('NOTHING PLAYED THAT YEAR — AS FAR AS CDPLAYER KNOWS')) : null,
+      section(all ? t('YEAR BY YEAR') : t('MONTH BY MONTH'), strip),
+      d.albums.length ? section(t('ALBUMS PLAYED MOST'), el('div', { class: 'year-albums' }, d.albums.map(cover))) : null,
+      d.artists.length ? section(t('ARTISTS PLAYED MOST'), el('div', { class: 'year-list' }, d.artists.map((a, i) => el('div', {}, el('b', {}, `${i + 1}. ${a.name}`), ` · ${a.plays === 1 ? t('1 PLAY') : t('{n} PLAYS', { n: a.plays })} · ${t('{n} H', { n: hoursOf(a.minutes) })}`)))) : null,
+      d.busiest ? section(t('BUSIEST DAY'), el('div', { class: 'year-list' }, `${longDate(d.busiest.day)} · ${t('{n} H', { n: hoursOf(d.busiest.minutes) })} · ${d.busiest.plays === 1 ? t('1 PLAY') : t('{n} PLAYS', { n: d.busiest.plays })}`)) : null,
+      d.through.length ? section(t('PLAYED START TO END'), el('div', { class: 'year-list' }, names(d.through, d.throughCount))) : null,
+      d.arrivals.length ? section(all ? t('NEVER PLAYED') : t('NEW ARRIVALS, NEVER PLAYED'), el('div', { class: 'year-list' }, names(d.arrivals, d.arrivalsCount))) : null,
+      // What it can't know, said plainly: the days are kept only from 2.21.
+      quietHint(all
+        ? t('Hours, plays and albums count every play. Its days — the months, the busiest day — only from {date}, when CDPlayer 2.21 began keeping them (and the plays you imported).', { date: longDate(d.since || Date.now()) })
+        : t('Counted since CDPlayer 2.21 ({date}). Before that only each song’s first and last play are known, and the plays you imported. “Played start to end” counts the albums last played through that year.', { date: longDate(d.since || Date.now()) }))),
+    el('div', { class: 'close-row split' },
+      el('div', { class: 'row-pills' },
+        pill(t('SHARE'), () => shareYear(app, d, 'copy'), t('Copy the year as a picture, to paste into a chat')),
+        pill(t('SAVE CARD…'), () => shareYear(app, d, 'save'), t('Save the year as a picture'))),
+      close)];
+}
+// The year's card (share-card.js): the same numbers, the covers as the panel has them.
+async function shareYear(app, d, how) {
+  const image = (url) => new Promise((resolve) => { if (!url) { resolve(null); return; } const i = new Image(); i.onload = () => resolve(i); i.onerror = () => resolve(null); i.src = url; });
+  const albums = await Promise.all(d.albums.slice(0, 5).map(async (a) => ({ title: a.title, artist: a.artist, cover: await image(year.covers.get(a.id)) })));
+  const all = d.year === 'ALL';
+  try {
+    const bytes = await drawYearCard({
+      heading: all ? t('ALL TIME ON THE SHELF') : t('MY {year} ON THE SHELF', { year: d.year }),
+      hours: hoursOf(d.minutes), hoursLabel: t('HOURS'), playsLabel: `${d.plays === 1 ? t('1 PLAY') : t('{n} PLAYS', { n: d.plays })} · ${t('{n} ALBUMS PLAYED START TO END', { n: d.throughCount })}`,
+      albums, artistsLabel: t('ARTISTS PLAYED MOST'), artists: d.artists.map((a) => a.name),
+      strip: d.strip.map((s) => ({ minutes: s.minutes, label: all ? String(s.year) : monthName(s.month) })),
+      foot: d.busiest ? `${t('BUSIEST DAY')}: ${longDate(d.busiest.day)}` : null,
+    }, { ...colors });
+    if (how === 'copy') { await app.cdp.copyImage(bytes); app.setStatus(t('CARD COPIED · PASTE IT ANYWHERE')); }
+    else if (await app.cdp.saveCard(bytes, all ? t('ALL TIME ON THE SHELF') : t('MY {year} ON THE SHELF', { year: d.year }))) app.setStatus(t('CARD SAVED'));
+  } catch { app.setStatus(t("COULDN'T MAKE THE CARD")); }
 }
 
 // ---- The rip ----------------------------------------------------------------------------------------------------
@@ -1828,6 +1918,7 @@ const CHANGELOG = [
     '<b>WANT LIST</b>: ★ WANT on a missing album&rsquo;s case on the shelf puts it on an index card with its lowest Discogs price; when it turns up in your music folder it&rsquo;s crossed off by itself, and its case says FOUND IT until you play it',
     '<b>TAKE ALONG</b>: the albums the shelf shows, the changer&rsquo;s discs or one album copied onto a portable player, a phone or an SD card &mdash; as they are, or as MP3s at 320 kbps for players that don&rsquo;t take FLAC (the lossless ones made MP3, tagged, with the cover, still gapless); taken again, only what&rsquo;s new is written, and nothing already there is touched',
     '<b>SHELFIE</b>: SHARE on the shelf (or &ldquo;shelfie&rdquo; in the search) makes a picture of your wall of spines as it stands &mdash; dust, obis, stickers, COMPLETE ★ and all, only what SHOW and the search let stand, as it&rsquo;s sorted &mdash; the rows in view, the first few or the whole shelf, framed in your theme with how many discs, how many artists complete and what it&rsquo;s worth on Discogs; copied to paste anywhere, or saved',
+    '<b>ON THIS DAY</b>: an album that came out on this day gets a gold sticker on its spine &mdash; 29 YEARS TODAY &mdash; and one you played on this day a year ago a silver one; the shelf says so as it opens, PULL ONE leans towards them, and a case says how long it&rsquo;s been on your shelf. <b>THE YEAR ON THE SHELF</b> (on the shelf, in HISTORY, or &ldquo;/&rdquo;): a year of listening, or all time &mdash; hours, the albums and artists played most, albums played start to end, new ones not played yet, the busiest day, month by month &mdash; and SHARE makes it a card (its days are counted from 2.21 on)',
   ] },
   { version: '2.20.1', changes: [
     '<b>The Now Playing video plays to the end</b> wherever it&rsquo;s opened or shared: saved as a plain MP4, nothing re-encoded, so players that stopped after the first few seconds play all of it',

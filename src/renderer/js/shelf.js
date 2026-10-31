@@ -11,6 +11,7 @@
 import { el, pill, anim, EASE, growFrom } from './widgets.js';
 import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './booklet.js';
 import { stickersFor } from './shelf-stickers.js';
+import { todaySticker, todayLine, pullToday } from './on-this-day.js';
 import { arrange, SORTS, matchesFilter, dominantColor, jumpTargets, shelfSignature } from './shelf-order.js';
 import { pressingLine, marketLine, money, isRare, shelfTotal, discogsPrice } from './shelf-discogs.js';
 import { hash } from './disc-wear.js';
@@ -24,7 +25,7 @@ import { similarOnShelf, similarPool, createSimilarLookup } from './similar-shel
 import { SLOTS, slotOfAlbum } from './changer.js';
 import { isWanted, wantKey, stillWanted, foundNote } from './want-list.js';
 import { ROW, ROW_ABOVE, ROW_BELOW, shelfieCrops, shelfieLine, completeCount } from './shelfie.js';
-import { t } from './i18n.js';
+import { t, locale } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 const shelf = { open: false, albums: [], loading: false, covers: new Map(), colors: new Map(), observer: null, caseOpen: null, app: null, generation: 0, inPlayer: null,
@@ -51,8 +52,11 @@ const group = (a) => a.editions || [a];
 const spineHolds = (a, path) => group(a).some((e) => holds(e, path));
 const noteOf = (a) => (group(a).find((e) => e.note) || {}).note || null;
 const bookmarkOf = (a) => group(a).some((e) => e.bookmark);
+// ON THIS DAY (on-this-day.js): the sticker today puts on the spine — any of its editions'.
+const todayOf = (a, now = Date.now()) => group(a).map((e) => todaySticker(e, now)).find(Boolean) || null;
 const spineTitle = (a) => [a.artist, a.title, a.year, spineHolds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ')
   + (a.editions ? `\n${t('{n} EDITIONS', { n: a.editions.length })}` : '')
+  + (todayOf(a) ? `\n${todayOf(a).label}` : '')
   + (group(a).some((e) => e.bookmark) ? `\n${leftAt(group(a).find((e) => e.bookmark))}` : '') + (noteOf(a) ? `\n\n${noteOf(a)}` : '');
 // Where an album played from its start was left (album-runs.js): its bookmark's words.
 const leftAt = (a) => t('Left at track {n} · {song}', { n: a.bookmark.track + 1, song: (a.tracks[a.bookmark.track] || {}).title || '' });
@@ -181,6 +185,7 @@ export function setupShelf(app) {
   $('shelf-folder').addEventListener('click', folderMenu);
   $('shelf-pull').addEventListener('click', pullOne);
   $('shelf-take').addEventListener('click', () => shelf.app.takeAlong());
+  $('shelf-year').addEventListener('click', () => shelf.app.showYear());
   $('shelf-fill').addEventListener('click', fillChanger);
   $('shelf-here').addEventListener('click', goToPlayer);
   $('shelf-check').addEventListener('click', () => shelf.app.libraryCheck());
@@ -275,6 +280,7 @@ async function load({ quiet = false } = {}) {
   shelf.folderName = result.name || null;
   render();
   if (quiet) $('shelf-body').scrollTop = scroll;
+  else { const today = todayLine(shelf.albums); if (today) say(today); } // ON THIS DAY, said as the shelf opens
 }
 
 // With no folder yet, or nothing in it, there's nothing for these to work on: they're off until there is.
@@ -349,6 +355,7 @@ function render() {
       el('span', { class: 'spine-text' }, a.artist ? el('b', {}, a.artist) : null, a.artist ? ' · ' : null, a.title),
       st.obi ? el('span', { class: 'obi-cat' }, st.obi.catalog) : null,
       a.foundIt ? el('span', { class: 'sticker-new sticker-found' }, t('FOUND IT')) : st.isNew ? el('span', { class: 'sticker-new' }, t('NEW')) : null,
+      todayOf(a, now) ? el('span', { class: `sticker-today ${todayOf(a, now).kind}` }, todayOf(a, now).label) : null,
       a.wrapped ? el('span', { class: 'spine-film' }) : null,
       bookmarkOf(a) ? el('span', { class: 'spine-bookmark' }) : null,
       a.editions ? el('span', { class: `spine-editions${a.editions.length > 2 ? ' more' : ''}` }) : null);
@@ -895,7 +902,7 @@ const spineOf = (a) => spineFor(a) || [...document.querySelectorAll('#shelf-body
 
 function pullOne() {
   if (shelf.caseOpen || shelf.opening || shelf.pulling || !shelf.shown || !shelf.shown.length) return;
-  const a = pickOne(shelf.shown);
+  const a = pullToday(shelf.shown) || pickOne(shelf.shown); // (half the time one with a sticker for today, if any has)
   const spine = spineFor(a);
   if (!spine) return;
   spine.scrollIntoView({ block: 'center', inline: 'nearest', behavior: anim.enabled ? 'smooth' : 'auto' });
@@ -1026,6 +1033,7 @@ async function openCase(a, spine) {
         el('div', { class: 'obi-foot' }, el('div', {}, st.obi.catalog), tag)) : null,
       !st.obi ? tag : null,
       a.foundIt ? el('div', { class: 'sticker-new sticker-found' }, t('FOUND IT')) : st.isNew ? el('div', { class: 'sticker-new' }, t('NEW')) : null,
+      todaySticker(a) ? el('div', { class: `sticker-today ${todaySticker(a).kind}` }, todaySticker(a).label) : null,
       film,
       a.note ? stickyNote({ id: a.id, text: a.note, onSave: saveNote }) : null);
   const card = el('div', { class: 'case-card' },
@@ -1034,6 +1042,7 @@ async function openCase(a, spine) {
       el('div', { class: 'case-title' }, a.title),
       el('div', { class: 'case-artist' }, [a.artist, a.year].filter(Boolean).join(' · ')),
       el('div', { class: 'case-meta' }, [a.tracks.length === 1 ? t('1 TRACK') : t('{n} TRACKS', { n: a.tracks.length }), a.duration ? app.formatTime(a.duration) : null, a.discs > 1 ? t('{n} DISCS', { n: a.discs }) : null, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ')),
+      a.arrived ? el('div', { class: 'case-since' }, t('ON YOUR SHELF SINCE {date}', { date: new Date(a.arrived).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' }) }).toLocaleUpperCase()) : null,
       // (small, in one row with its editions: the actions underneath keep the track list its room in a small window)
       el('div', { class: 'case-tools' }, ...editionButtons(a, spine), addNote, fileButton,
         pill(t('TAKE ALONG'), () => app.takeAlong({ album: { title: a.title, paths: a.tracks.map((tr) => tr.path) } }), t('Copy this album to a portable player, a phone or an SD card'))),

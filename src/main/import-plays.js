@@ -199,7 +199,7 @@ const byLast = (map, last) => new Map([...map].sort(([a], [b]) => (last.get(a) |
 function apply(found, albums, plays, before = {}, { own = {} } = {}) {
   const shelf = shelfIndex(albums), imports = JSON.parse(JSON.stringify(before || {}));
   const counts = new Map(plays.counts), last = new Map(plays.last), first = new Map(plays.first);
-  const songs = new Set(), sources = new Set();
+  const songs = new Set(), sources = new Set(), timed = []; // (each listen counted, at its time: for the log of plays)
   let added = 0, already = 0, missing = 0;
   const soon = Date.now() + 24 * 60 * 60 * 1000; // (a time past this is a wrong one: not taken as when it was played)
   const play = (p, n, at, isListen) => {
@@ -207,6 +207,7 @@ function apply(found, albums, plays, before = {}, { own = {} } = {}) {
     counts.set(p, (counts.get(p) || 0) + n); added += n; songs.add(p);
     if (at && at > (last.get(p) || 0)) last.set(p, at);
     if (isListen && at && (!first.has(p) || at < first.get(p))) first.set(p, at);
+    if (isListen && at) timed.push([at, p]);
   };
   // Listens, a service at a time: the same listen twice (a file picked again, and in its .zip) counts once.
   const listens = new Map();
@@ -250,7 +251,7 @@ function apply(found, albums, plays, before = {}, { own = {} } = {}) {
   }
   return {
     plays: { counts: byLast(counts, last), last: byLast(last, last), first: byLast(first, last) },
-    imports, songs: [...songs], added, already, missing, sources: [...sources].map((s) => SOURCE_NAMES[s]),
+    imports, songs: [...songs], timed, added, already, missing, sources: [...sources].map((s) => SOURCE_NAMES[s]),
   };
 }
 

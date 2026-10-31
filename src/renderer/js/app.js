@@ -3040,6 +3040,7 @@ function commands() {
     { label: t('NOW PLAYING CARD'), also: 'share card image карточка', key: 'P', run: shareCard },
     { label: t('SHELFIE'), also: 'share shelf picture image photo wall поделиться полка снимок картинка фото', run: shareShelf },
     { label: t('HISTORY'), also: 'history played история', run: click('history-button') },
+    { label: t('THE YEAR ON THE SHELF'), also: 'year stats statistics wrapped recap review on this day год итоги статистика', run: () => panels.showYear(app) },
     can('lyrics-button') ? { label: t('LYRICS'), also: 'lyrics words', run: click('lyrics-button') } : null,
     can('tags-button') ? { label: t('TAGS'), also: 'tags edit теги', run: click('tags-button') } : null,
     { label: t('SPOTIFY'), run: click('spotify-button') },
@@ -3271,7 +3272,7 @@ function frame(now) {
 // ---- The app object the panels module works through ------------------------------------------------------------
 
 export const app = {
-  state, engine, disc, THEMES, BUILTIN_EQ_PRESETS, cdp, libraryCheck: () => panels.showLibraryCheck(app), shareShelf,
+  state, engine, disc, THEMES, BUILTIN_EQ_PRESETS, cdp, libraryCheck: () => panels.showLibraryCheck(app), shareShelf, showYear: (y) => panels.showYear(app, y),
   setStatus, setStreaming, queueDisplay, displayName, formatTime, ensureDetails, load, addToQueue, playNext, appendAndPlay, seekTo,
   detailsFor: (p) => detailsCache.get(p),
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) goTo(i); },

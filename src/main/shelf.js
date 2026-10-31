@@ -16,7 +16,7 @@ const cue = require('./cue');
 const { sameName } = require('./same-name');
 
 const CACHE_FILE = 'shelf-cache.json';
-const CACHE_VERSION = 4; // bump when trackInfo() reads files differently, so old entries are read again (3: the pressing's tags, 4: genre)
+const CACHE_VERSION = 5; // bump when trackInfo() reads files differently, so old entries are read again (3: the pressing's tags, 4: genre, 5: the full release date)
 const CONCURRENCY = 6;
 const COVER_FILE = /^(cover|folder|front|album|albumart|albumartlarge)\.(jpe?g|png|webp)$/i;
 const DISC_FOLDER = /^(cd|disc|disk)\s*\d+$/i;
@@ -36,6 +36,9 @@ function discFromFolder(p) {
   return m && DISC_FOLDER.test(path.basename(path.dirname(sourceOf(p)))) ? parseInt(m[1], 10) : null;
 }
 
+// A date to the day ("1997-05-21", "1997-05-21T00:00:00"), or null: a year alone has no anniversary to stick on a spine.
+const fullDate = (d) => { const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(d || '').trim()); return m ? m[1] : null; };
+
 /** What the shelf needs to know about one track. */
 async function trackInfo(p) {
   const d = await metadata.getDetails(p, { withCover: false });
@@ -48,6 +51,7 @@ async function trackInfo(p) {
     disc: (c.disc && c.disc.no) || discFromFolder(p) || 1, duration: d.duration || 0, artistMbid: c.albumArtistMbid || null,
     albumMbid: c.albumMbid || null, barcode: c.barcode || null, catalog: c.catalog || null, label: c.label || null, // its pressing, for Discogs
     genre: c.genre || null, // for SHOW
+    released: fullDate(c.released), // the day it came out, when the tags have it (ON THIS DAY)
   };
 }
 
@@ -87,10 +91,11 @@ function groupAlbums(tracks) {
       year: years[0] || null,
       artistMbid: g.items.map((t) => t.info.artistMbid).find(Boolean) || null,
       mbReleaseId: most('albumMbid'), barcode: most('barcode'), catalog: most('catalog'), label: most('label'), // the pressing its tracks' tags name most
-      genre: most('genre'),
+      genre: most('genre'), released: most('released'),
       discs: Math.max(1, ...g.items.map((t) => t.info.disc || 1)),
       duration: g.items.reduce((s, t) => s + (t.info.duration || 0), 0),
       added: g.items.reduce((m, t) => (t.added && (m === null || t.added > m) ? t.added : m), null), // its newest track (a NEW sticker)
+      arrived: g.items.reduce((m, t) => (t.added && (m === null || t.added < m) ? t.added : m), null), // its oldest: on the shelf since
       tracks: g.items.map((t) => ({ path: t.path, title: t.info.title, artist: t.info.artist, duration: t.info.duration, track: t.info.track, disc: t.info.disc })),
     };
   });
