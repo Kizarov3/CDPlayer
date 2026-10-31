@@ -3119,7 +3119,8 @@ function buildStaticUi() {
     if (state.look !== 'CASE' || caseFlying || isBookletOpen() || $('cover-art').classList.contains('open')) return;
     if (!caseDiscOut) { toggleShelf(); return; }
     if (spotifyActive()) return;
-    const box = $('case-box').getBoundingClientRect(), col = $('disc-column').getBoundingClientRect();
+    const r = $('case-box').getBoundingClientRect(), col = $('disc-column').getBoundingClientRect();
+    const box = { left: r.left + r.width * 0.099, top: r.top + r.height * 0.02, width: r.width * 0.845, height: r.height * 0.96 }; // (the booklet, under the tabs)
     setLid(true, true);
     if (anim.enabled) await pause(380); // (the lid most of the way open)
     openBooklet(app, box, null, { angle: -112, perspective: 1700, origin: { x: col.left + col.width * 0.2, y: col.top + col.height * 0.45 },

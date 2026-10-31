@@ -549,12 +549,14 @@ body.no-anim #album-disc::before { animation: none; }
 #case-box { display: contents; }
 #case-tray, .lid-inside { display: none; }
 body.look-case:not(.cd-view) #body { grid-template-columns: minmax(420px, 1.7fr) minmax(0, 1fr); column-gap: 32px; }
-body.look-case #disc-column > canvas { visibility: visible; left: auto; right: 0; width: 43%; }
+body.look-case #disc-column > canvas { visibility: visible; left: auto; right: 0; width: 37%; }
 body.look-case #disc-column { perspective: 1700px; perspective-origin: 20% 45%; }
 body.look-case #case-box {
-  --s: min(80cqh, 40cqw); display: block; position: absolute; width: var(--s); height: var(--s);
-  left: calc(55cqw - var(--s)); top: calc(48% - var(--s) / 2); transform-style: preserve-3d; /* (room on its left for the lid open) */
+  --s: min(80cqh, 37cqw); display: block; position: absolute; width: calc(var(--s) * 1.136); height: var(--s);
+  left: calc(61.5cqw - var(--s) * 1.136); top: calc(48% - var(--s) / 2); transform-style: preserve-3d; /* (room on its left for the lid open) */
 }
+/* A real one's proportions: 142 × 125 mm, the hinge down its left, the booklet (120 mm square) under the lid's tabs. */
+body.look-case #cover-art { background-size: 84.5% 96%; background-position: 64% 50%; }
 /* The lid: the cover under clear plastic, a few pixels thick (its edge catching the light), hinged down its left;
    the light across it follows the pointer (--mx). */
 body.look-case #cover-art {
@@ -573,11 +575,11 @@ body.look-case #cover-art:hover:not(.open) { filter: brightness(1.08); scale: 1.
 /* No cover on it yet (nothing's been in the player): a plain dark case, a note on it — the way to the shelf. */
 body.look-case #cover-art:not([style*="url("]) { background: linear-gradient(150deg, rgb(58, 59, 64), rgb(30, 31, 35)); }
 body.look-case #cover-art:not([style*="url("])::after { content: "♪"; position: absolute; inset: 0; display: grid; place-items: center; color: rgba(var(--text), .18); font-weight: normal; }
-body.look-case #cover-art::after, body.look-case #cover-art.none::after { font-size: calc(min(80cqh, 40cqw) * .34); }
+body.look-case #cover-art::after, body.look-case #cover-art.none::after { font-size: calc(min(80cqh, 37cqw) * .34); }
 body.look-case #cover-art.inside::after { visibility: hidden; }
 /* Its inside, seen once it's swung past its edge: the booklet's back page through the plastic, held by the tabs. */
 body.look-case .lid-inside {
-  display: block; position: absolute; inset: 0; border-radius: inherit; opacity: 0;
+  display: block; position: absolute; inset: 2% 5.6% 2% 9.9%; border-radius: 2px; opacity: 0;
   background: linear-gradient(70deg, rgba(255, 255, 255, .3), transparent 40%), linear-gradient(to left, rgba(0, 0, 0, .45) 0 5%, transparent 5%),
     radial-gradient(circle at 92% 8%, rgba(0, 0, 0, .25) 0 2.5%, transparent 2.6%), radial-gradient(circle at 92% 92%, rgba(0, 0, 0, .25) 0 2.5%, transparent 2.6%),
     linear-gradient(160deg, rgb(232, 228, 218), rgb(184, 180, 170));
@@ -616,7 +618,7 @@ body.look-case .tray-plastic::before {
 /* The disc on the hub: there while the case holds it (seen with the lid open), and on its way to the player and back. */
 body.look-case #album-disc, body.look-case #album-disc.out {
   z-index: 3; opacity: 0; transform: translateZ(1px); transition: none; pointer-events: none;
-  left: calc(54% - var(--s) * .4); top: 10%; width: calc(var(--s) * .8); height: calc(var(--s) * .8);
+  left: calc(54% - 35.2%); top: 10%; width: 70.4%; height: 80%; /* (80% of the case's height across) */
 }
 body.look-case #case-box.holding #album-disc { opacity: 1; }
 body.look-case #album-disc { --s: 100%; }
