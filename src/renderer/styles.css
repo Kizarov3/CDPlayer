@@ -535,7 +535,7 @@ body.no-anim #album-disc::before { animation: none; }
 /* CASE: the album's jewel case beside the player — as a disc goes in, the lid opens on its hinge down the left and the
    disc lifts off the tray into the player (app.js flyCaseDisc), the case left open and empty while it plays; as the
    disc comes out it goes back on the tray and the lid shuts. */
-#case-tray, .lid-inside { display: none; }
+#case-tray, #case-back, .lid-inside { display: none; }
 body.look-case #disc-column > canvas { visibility: visible; left: auto; right: 0; width: 60%; }
 body.look-case #disc-column { perspective: 1800px; perspective-origin: 0 50%; }
 body.look-case #cover-art, body.look-case #case-tray, body.look-case #album-disc { --s: min(66cqh, 30cqw); }
@@ -566,6 +566,33 @@ body.look-case #cover-art.open::after { visibility: hidden; transition: visibili
 body.look-case #album-disc, body.look-case #album-disc.out { z-index: 3; opacity: 0; transform: none; transition: none; pointer-events: none;
   left: calc(40cqw - var(--s) + var(--s) * .14); top: calc(50% - var(--s) * .4); }
 body.no-anim.look-case #cover-art { transition: none; }
+body.look-case #cover-art, body.look-case #case-tray { cursor: pointer; }
+body.look-case #cover-art:hover:not(.open) { filter: brightness(1.08); }
+/* The case turned over: its back inlay — the album's name and its songs, between the two folded spines; turning it
+   back, a click anywhere but a song. */
+body.look-case #case-back {
+  --s: min(66cqh, 30cqw); display: flex; flex-direction: column; position: absolute; z-index: 4; box-sizing: border-box;
+  --w: min(80cqw, var(--s) * 2); --h: min(94cqh, var(--s) * 1.45); /* (picked up and turned over: nearer, bigger, over the player) */
+  left: calc(42cqw - var(--w) / 2); top: calc(50% - var(--h) / 2); width: var(--w); height: var(--h); padding: 4.5% 7%;
+  background: linear-gradient(115deg, rgba(255, 255, 255, .22), transparent 38%),
+    linear-gradient(to right, rgba(0, 0, 0, .18) 0 5%, transparent 5% 95%, rgba(0, 0, 0, .18) 95%), linear-gradient(160deg, rgb(234, 231, 222), rgb(196, 192, 182));
+  box-shadow: 0 24px 50px rgba(0, 0, 0, .5), inset 0 0 0 1px rgba(255, 255, 255, .4), 0 0 0 1px rgba(255, 255, 255, .12);
+  color: rgb(34, 34, 40); cursor: pointer; overflow: hidden; border-radius: 3px;
+  visibility: hidden; opacity: 0; transform: rotateY(90deg); transition: transform 320ms var(--ease-out), opacity 0s 320ms, visibility 0s 320ms;
+}
+body.look-case.case-turned #case-back { visibility: visible; opacity: 1; transform: none; transition: transform 420ms var(--ease-out) 160ms, opacity 0s 160ms; }
+body.look-case.case-turned #cover-art, body.look-case.case-turned #case-tray { opacity: 0; transition: opacity 160ms ease; pointer-events: none; }
+body.look-case #cover-art, body.look-case #case-tray { transition: transform 800ms var(--ease-out), opacity 200ms ease 300ms, background-image 400ms ease; }
+.back-title { font-size: 16px; line-height: 1.35; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.back-artist { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; opacity: .7; margin: 2px 0 8px; }
+.back-songs { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.back-song { display: flex; gap: 10px; align-items: baseline; padding: 3px 6px; border-radius: 2px; font-size: 12px; cursor: pointer; font-weight: normal; }
+.back-song:hover { background: rgba(0, 0, 0, .08); }
+.back-song.on { color: rgb(var(--accent)); font-weight: 700; }
+.back-song .no { flex: 0 0 auto; opacity: .55; }
+.back-song .name { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.back-song .time { opacity: .55; }
+body.no-anim.look-case #case-back, body.no-anim.look-case.case-turned #case-back { transition: none; }
 body.look-album { --font: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; }
 body.look-album #divider, body.look-visualizer #divider, body.look-lyrics #divider, body.look-album #now-playing-label, body.look-album #visualizer, body.look-album #deck-display, body.look-album #now-row .grow { display: none; }
 body.look-album #times { display: flex; }

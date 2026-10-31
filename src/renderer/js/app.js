@@ -373,12 +373,30 @@ function showAlbumDisc() {
   disc.inCase = false;
   if (state.look !== 'CASE') { lid.classList.toggle('open', out); caseDiscOut = null; return; }
   const inPlayer = !!disc.discPresent && !!state.loadedPath; // (the tray out, it's still the player's: on its tray, not back in the case)
+  if (!inPlayer) turnCase(false);
   if (caseDiscOut === inPlayer) { if (!caseFlying) disc.inCase = !inPlayer; return; }
   const first = caseDiscOut === null;
   caseDiscOut = inPlayer;
   if (first || !anim.enabled) { lid.classList.toggle('open', inPlayer); disc.inCase = !inPlayer; return; }
   if (inPlayer) { disc.inCase = true; lid.classList.add('open'); setTimeout(() => { if (caseDiscOut) flyCaseDisc(true).then(() => { disc.inCase = !caseDiscOut; }); }, 380); return; }
   flyCaseDisc(false).then(() => { if (caseDiscOut === false) { disc.inCase = true; lid.classList.remove('open'); } });
+}
+// CASE's case turned over: its back inlay, the album's name and its songs in the queue (the one playing lit).
+function turnCase(over) {
+  document.body.classList.toggle('case-turned', over);
+  if (over) showCaseBack();
+}
+function showCaseBack() {
+  if (!document.body.classList.contains('case-turned')) return;
+  const d = state.details, album = d && d.album;
+  const rows = state.queue.map((p, i) => ({ p, i, x: detailsCache.get(p) })).filter((r) => !album || (r.x && r.x.album === album));
+  $('case-back').replaceChildren(
+    el('div', { class: 'back-title' }, album || queueDisplay(state.loadedPath || '')),
+    el('div', { class: 'back-artist' }, (d && (d.albumArtist || d.artist)) || ''),
+    el('div', { class: 'back-songs' }, ...rows.map((r, n) => el('div', { class: `back-song${r.i === state.index ? ' on' : ''}`, title: t('Play {song}', { song: queueDisplay(r.p) }),
+      onClick: (e) => { e.stopPropagation(); goTo(r.i); } },
+      el('span', { class: 'no' }, String(n + 1).padStart(2, '0')), el('span', { class: 'name' }, (r.x && r.x.title) || queueDisplay(r.p)),
+      el('span', { class: 'time' }, r.x && r.x.duration ? formatTime(r.x.duration) : '')))));
 }
 // The disc between the case's tray and the player's (where the player drew it last): off the hub, across, and in.
 function flyCaseDisc(intoPlayer) {
@@ -400,6 +418,7 @@ function drawQueue() {
   if (!changerView) return; // not built yet
   syncRev();
   updateAlbumHead();
+  showCaseBack();
   remoteSoon();
   updateDiscData();
   showChangerSlots();
@@ -2983,6 +3002,15 @@ function buildStaticUi() {
   disc.onJog = turnJog;
   disc.onJogEnd = endJog;
   disc.onArtClick = (from) => { if (!spotifyActive()) openBooklet(app, from); };
+  // CASE's case: its lid, open, holds the booklet; shut (nothing in the player), it's a way to the shelf; its tray,
+  // clicked, turns the case over to its back — the songs on it, one clicked is played — and a click turns it back.
+  $('cover-art').addEventListener('click', () => {
+    if (state.look !== 'CASE') return;
+    if (!caseDiscOut) { toggleShelf(); return; }
+    if (!spotifyActive()) openBooklet(app, $('cover-art').getBoundingClientRect());
+  });
+  $('case-tray').addEventListener('click', () => { if (state.look === 'CASE' && caseDiscOut) turnCase(true); });
+  $('case-back').addEventListener('click', () => turnCase(false));
   disc.position = discPosition;
   setupQueueDrag();
   changerView = createChangerView($('queue-card'), {
@@ -3190,6 +3218,7 @@ function setLook(kind, { save = true } = {}) {
   showQueueDrawer(false);
   disc.offstage = state.look === 'ALBUM'; // (its canvas hidden under the cover there: not drawn for nothing)
   showAlbumDisc(); // (CASE's lid as the disc is: open while one's in)
+  if (state.look !== 'CASE') turnCase(false);
   tintFromCover(); renderQueue(); // (ALBUM's heading, and its rows by their titles)
   if (state.look === 'LYRICS') { showLookWords(); requestAnimationFrame(showLookWords); } // (again once it's laid out: where a line or song sits needs the room)
   if (save) saveSettingsSoon();
