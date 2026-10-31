@@ -777,7 +777,7 @@ function kinetic(L, s, lines, start) {
 let measuring = null;
 const scratch = () => measuring || (measuring = canvas(8, 8).getContext('2d'));
 
-const FILMS = { CLASSIC: classic, ALBUM: album, HIFI: hifi, VISUALIZER: visualizer, LYRICS: kinetic };
+const FILMS = { CLASSIC: classic, ALBUM: album, CASE: album, HIFI: hifi, VISUALIZER: visualizer, LYRICS: kinetic };
 /** A look's film for `song`, ready to draw: → draw(g, at) (at: seconds into the video). What doesn't move is drawn here. */
 function film(format, song) {
   const L = videoLayout(format), lines = lyricLines(song.timed || []);

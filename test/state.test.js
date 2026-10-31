@@ -387,6 +387,8 @@ test("the player's LOOK: CLASSIC unless another is picked, kept on its own line;
     lines[29] = old; fs.writeFileSync(path.join(home, 'settings.txt'), lines.join('\n'));
     assert.strictEqual(store.readSettings().look, now, `${old}, its older name`);
   }
+  store.writeSettings({ ...store.readSettings(), look: 'CASE' });
+  assert.strictEqual(store.readSettings().look, 'CASE', 'the jewel case');
   store.writeSettings({ ...store.readSettings(), look: 'NEON' });
   assert.strictEqual(store.readSettings().look, 'CLASSIC');
 });

@@ -997,11 +997,21 @@ async function openCase(a, spine) {
   }).catch(() => {});
   const front = cover ? el('img', { class: 'case-cover', src: cover, alt: '' })
     : el('div', { class: 'case-cover cdr' }, el('div', { class: 'marker' }, a.title), a.artist ? el('div', { class: 'marker small' }, a.artist) : null);
-  front.title = t('Open the booklet');
+  front.title = t('Open the case');
   front.addEventListener('click', () => {
     if (a.wrapped) { if (film && anim.enabled) film.animate([{ transform: 'none' }, { transform: 'translateX(-4px)' }, { transform: 'translateX(3px)' }, { transform: 'none' }], { duration: 240 }); return; } // unwrap it first
-    openAlbumBooklet(a, front, wholeList);
+    openLid(true);
   });
+  // The jewel case opens on its hinge: the lid swings out to the left, the booklet held inside it (clicked, it comes
+  // out), the disc on the tray (clicked, it's played); a click on the tray beside the disc shuts the lid.
+  const lidInside = el('div', { class: 'case-lid-inside', title: t('Open the booklet'), onClick: () => openAlbumBooklet(a, lidInside, wholeList) });
+  const caseCd = el('button', { class: 'case-cd', title: t('Play'), style: cover ? `--art: url("${cover}")` : '', onClick: (e) => {
+    e.stopPropagation();
+    if (!anim.enabled) { play(a, 0); return; }
+    caseCd.animate([{ transform: 'none' }, { transform: 'translateY(-10%) scale(1.06)', opacity: 0 }], { duration: 260, easing: EASE.in, fill: 'forwards' }).onfinish = () => play(a, 0);
+  } });
+  const tray = el('div', { class: 'case-tray', title: t('Close the case'), onClick: () => openLid(false) }, caseCd);
+  const openLid = (open) => caseFront.classList.toggle('open', open);
   const st = a.stickers || stickersFor(a);
   // The sticky note: on the front when there is one; + NOTE sticks a blank one on to write.
   const saveNote = (text) => {
@@ -1022,7 +1032,7 @@ async function openCase(a, spine) {
   // Into the queue or the changer; the case goes back once it's in — not when a full changer's question was turned
   // down (Esc there closes the question, and the case stays out).
   const putIn = async (opts) => { const r = await app.loadDisc(discOfAlbum(a), a.tracks.map((t) => t.path), opts); if (!(r && r.cancelled)) closeCase(); };
-  const addNote = pill(t('+ NOTE'), () => { addNote.hidden = true; caseFront.append(stickyNote({ id: a.id, text: '', onSave: saveNote })); }, t('Stick a note on the case'));
+  const addNote = pill(t('+ NOTE'), () => { addNote.hidden = true; lidFace.append(stickyNote({ id: a.id, text: '', onSave: saveNote })); }, t('Stick a note on the case'));
   addNote.hidden = !!a.note;
   const fileButton = dividerButton(a, spine);
   const rare = el('div', { class: 'sticker-rare', hidden: !isRare(a.pressing) }, t('★ RARE'));
@@ -1036,7 +1046,7 @@ async function openCase(a, spine) {
     if (st.obi) tag.style.fontSize = tag.textContent.length > 7 ? `${Math.max(6, Math.floor(70 / tag.textContent.length))}px` : '';
   };
   showTag(a.pressing);
-  const caseFront = el('div', { class: 'case-front' }, receipt, front, rare,
+  const lidFace = el('div', { class: 'case-lid-face' }, front, rare,
       st.obi ? el('div', { class: 'case-obi' },
         el('div', { class: 'obi-top' }, 'CD'),
         el('div', { class: 'obi-title' }, a.title),
@@ -1046,6 +1056,7 @@ async function openCase(a, spine) {
       todaySticker(a) ? el('div', { class: `sticker-today ${todaySticker(a).kind}` }, todaySticker(a).label) : null,
       film,
       a.note ? stickyNote({ id: a.id, text: a.note, onSave: saveNote }) : null);
+  const caseFront = el('div', { class: 'case-front' }, tray, receipt, el('div', { class: 'case-lid' }, lidFace, lidInside));
   const card = el('div', { class: 'case-card' },
     caseFront,
     el('div', { class: 'case-info' },

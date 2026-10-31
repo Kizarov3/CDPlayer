@@ -68,7 +68,7 @@ const safePath = (p) => typeof p === 'string' && !/[\r\n]/.test(p);
 
 // settings.txt — one value per line, in the Java app's order: volume, crossfade, mono, animations, theme, EQ
 // gains, waveform, mini mode, window bounds, ambient background, then Discord status, disc noise and saving found
-// art & lyrics into files, the lyrics offset in ms, how the shelf is sorted, disc wear, the audio output ("id<TAB>name") and the language (AUTO, en or a locale code), then the sound quality (HIGH, LOSSLESS or HIRES), spatial audio (1/0) and its amount (0–100), the disc's shine (1/0) and the disc on the app's icon (1/0; on unless turned off, but off on Windows unless turned on) and Sound Check (OFF, TRACK or ALBUM), then the CD changer mode (ON/OFF), then SHUFFLE and REPEAT for the queue and for the changer ("OFF ALL DISC TRACK"), then the display under the seek bar (DECK or CLASSIC), then TRANSITION (OFF, AUTOMIX or CROSSFADE) and the crossfade's seconds, kept while another is picked, then streaming (ON/OFF), then the player's LOOK (CLASSIC, VISUALIZER, LYRICS, HIFI or ALBUM), then how the ambient background is drawn (COVER or GRADIENT), then what RIP saves a CD as (FLAC, MP3 or WAV)
+// art & lyrics into files, the lyrics offset in ms, how the shelf is sorted, disc wear, the audio output ("id<TAB>name") and the language (AUTO, en or a locale code), then the sound quality (HIGH, LOSSLESS or HIRES), spatial audio (1/0) and its amount (0–100), the disc's shine (1/0) and the disc on the app's icon (1/0; on unless turned off, but off on Windows unless turned on) and Sound Check (OFF, TRACK or ALBUM), then the CD changer mode (ON/OFF), then SHUFFLE and REPEAT for the queue and for the changer ("OFF ALL DISC TRACK"), then the display under the seek bar (DECK or CLASSIC), then TRANSITION (OFF, AUTOMIX or CROSSFADE) and the crossfade's seconds, kept while another is picked, then streaming (ON/OFF), then the player's LOOK (CLASSIC, VISUALIZER, LYRICS, HIFI, ALBUM or CASE), then how the ambient background is drawn (COVER or GRADIENT), then what RIP saves a CD as (FLAC, MP3 or WAV)
 // (CDPlayer 2 only; the second line still holds the crossfade's seconds while it's the one picked, else 0, as the Java app reads it). Missing trailing
 // lines keep their defaults.
 const DEFAULT_SETTINGS = {
@@ -81,7 +81,7 @@ const SOUND_CHECKS = ['OFF', 'TRACK', 'ALBUM'];
 const TRANSITIONS = ['OFF', 'AUTOMIX', 'CROSSFADE'];
 const DISPLAYS = ['DECK', 'CLASSIC'];
 const RIP_FORMATS = ['FLAC', 'MP3', 'WAV'];
-const LOOKS = ['CLASSIC', 'VISUALIZER', 'LYRICS', 'HIFI', 'ALBUM'];
+const LOOKS = ['CLASSIC', 'VISUALIZER', 'LYRICS', 'HIFI', 'ALBUM', 'CASE'];
 // (the looks' older names: the same looks, done again; GLASS is gone)
 const OLD_LOOKS = { DOCK: 'VISUALIZER', STAGE: 'LYRICS', PANEL: 'HIFI', COVER: 'ALBUM' };
 // SHUFFLE and REPEAT: each mode keeps its own.

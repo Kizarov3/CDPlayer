@@ -188,7 +188,7 @@ function queueDisplay(p) {
 // album's track list has it.
 function rowName(p) {
   const d = detailsCache.get(p), now = state.details;
-  return state.look === 'ALBUM' && d && d.title && d.artist && now && d.artist === now.artist ? d.title : queueDisplay(p);
+  return albumLook() && d && d.title && d.artist && now && d.artist === now.artist ? d.title : queueDisplay(p);
 }
 export function formatTime(seconds) {
   const s = Math.max(0, Math.floor(seconds || 0));
@@ -339,7 +339,7 @@ function updateAlbumHead() {
   if (!album) return;
   const songs = state.queue.map((p) => detailsCache.get(p)).filter((x) => x && x.album === album);
   const seconds = songs.reduce((sum, x) => sum + (x.duration || 0), 0), c = d.credits || {};
-  if (state.look === 'ALBUM' && albumPlays.path !== state.loadedPath && state.loadedPath && !isStream(state.loadedPath)) {
+  if (albumLook() && albumPlays.path !== state.loadedPath && state.loadedPath && !isStream(state.loadedPath)) {
     const path = albumPlays.path = state.loadedPath;
     albumPlays.n = 0;
     cdp.albumPlays(path).then((a) => { if (albumPlays.path === path && a && a.plays) { albumPlays.n = a.plays; updateAlbumHead(); } }).catch(() => {});
@@ -355,7 +355,7 @@ function updateAlbumHead() {
 // ALBUM's colour: the cover's (as AUTO's theme finds it, on a small copy), lightened to read on the dark — for the
 // artist's name and the song playing. Worked out as the cover comes, only while ALBUM is the look.
 function tintFromCover() {
-  if (state.look !== 'ALBUM') return;
+  if (!albumLook()) return;
   const img = state.cover, style = document.body.style;
   if (!img) { style.removeProperty('--album-tint'); return; }
   const small = new OffscreenCanvas(160, 160); // (as many points as AUTO samples of a big cover: the colour it finds)
@@ -364,7 +364,12 @@ function tintFromCover() {
 }
 // ALBUM's disc: out of its case, beside the cover, while there's a song in the player (turning while it plays — the
 // body's .playing); back in when the tray opens, or there's nothing to play.
-function showAlbumDisc() { $('album-disc').classList.toggle('out', !!disc.discPresent && !disc.trayOpen); }
+// CASE: the same moment opens the case's lid, the disc on its tray inside; it shuts as the disc comes out.
+function showAlbumDisc() {
+  const out = !!disc.discPresent && !disc.trayOpen;
+  $('album-disc').classList.toggle('out', out);
+  $('cover-art').classList.toggle('open', out);
+}
 function renderQueue() {
   drawQueue();
   refreshLookSongs(); // (a song without words: the list of the disc's songs)
@@ -3138,14 +3143,17 @@ function setDisplay(kind, { save = true } = {}) {
   document.body.classList.toggle('classic-display', state.display === 'CLASSIC');
   if (save) saveSettingsSoon();
 }
-const LOOKS = ['CLASSIC', 'VISUALIZER', 'LYRICS', 'HIFI', 'ALBUM'];
+const LOOKS = ['CLASSIC', 'VISUALIZER', 'LYRICS', 'HIFI', 'ALBUM', 'CASE'];
+// CASE (the jewel case) is ALBUM's page with the case seen whole: its lid opens on its hinge while a disc is in.
+const albumLook = () => state.look === 'ALBUM' || state.look === 'CASE';
 function setLook(kind, { save = true } = {}) {
   leaveVisualizerMode(); // (the overlay is for the other looks, the immersive one for this)
   state.look = LOOKS.includes(kind) ? kind : 'CLASSIC';
   lookInsetSet = false;
   for (const k of LOOKS) document.body.classList.toggle(`look-${k.toLowerCase()}`, state.look === k);
+  document.body.classList.toggle('look-album', albumLook());
   showQueueDrawer(false);
-  disc.offstage = state.look === 'ALBUM'; // (its canvas hidden under the cover there: not drawn for nothing)
+  disc.offstage = albumLook(); // (its canvas hidden under the cover there: not drawn for nothing)
   tintFromCover(); renderQueue(); // (ALBUM's heading, and its rows by their titles)
   if (state.look === 'LYRICS') { showLookWords(); requestAnimationFrame(showLookWords); } // (again once it's laid out: where a line or song sits needs the room)
   if (save) saveSettingsSoon();

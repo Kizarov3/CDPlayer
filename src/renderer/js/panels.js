@@ -382,7 +382,7 @@ function buildSettings(app) {
     pick: () => app.setQuality(level).then(() => refreshSettingsIfOpen(app)),
   }))), t('How the sound leaves CDPlayer'));
   const SOUND_CHECK_NAMES = { OFF: t('OFF'), ALBUM: t('ALBUM'), TRACK: t('TRACK') };
-  const LOOK_NAMES = { CLASSIC: t('CLASSIC|look'), VISUALIZER: t('VISUALIZER|look'), LYRICS: t('LYRICS|look'), HIFI: t('HI-FI|look'), ALBUM: t('ALBUM|look') };
+  const LOOK_NAMES = { CLASSIC: t('CLASSIC|look'), VISUALIZER: t('VISUALIZER|look'), LYRICS: t('LYRICS|look'), HIFI: t('HI-FI|look'), ALBUM: t('ALBUM|look'), CASE: t('JEWEL CASE|look') };
   const lookButton = pill(LOOK_NAMES[s.look] || LOOK_NAMES.CLASSIC, () => showMenu(lookButton, Object.keys(LOOK_NAMES).map((kind) => ({
     label: LOOK_NAMES[kind], current: kind === (s.look || 'CLASSIC'), pick: () => { app.setLook(kind); refreshSettingsIfOpen(app); },
   }))));
@@ -1914,6 +1914,7 @@ export function showShortcuts() {
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
   { version: '2.21.0', changes: [
+    '<b>JEWEL CASE</b>: a new PLAYER LOOK (Settings &rarr; LOOK) &mdash; the album&rsquo;s plastic case whole, its lid opening on its hinge as a disc goes in, the disc turning on the tray inside, and shutting as it comes out; and a case pulled out of the shelf opens the same way: click its cover and the lid swings open, the booklet held inside it and the disc on the tray &mdash; click the disc to play it',
     '<b>From your shelf</b>: a case pulled out shows IF YOU LIKE THIS &mdash; albums you already have by artists like its own, from Last.fm, one click to pull them out; the changer&rsquo;s FILL can fill it, or keep it full, with albums like what&rsquo;s playing, and the search (<kbd>/</kbd>) has PLAY SIMILAR TO the album playing',
     '<b>WANT LIST</b>: ★ WANT on a missing album&rsquo;s case on the shelf puts it on an index card with its lowest Discogs price; when it turns up in your music folder it&rsquo;s crossed off by itself, and its case says FOUND IT until you play it',
     '<b>TAKE ALONG</b>: the albums the shelf shows, the changer&rsquo;s discs or one album copied onto a portable player, a phone or an SD card &mdash; as they are, or as MP3s at 320 kbps for players that don&rsquo;t take FLAC (the lossless ones made MP3, tagged, with the cover, still gapless); taken again, only what&rsquo;s new is written, and nothing already there is touched',
