@@ -1345,7 +1345,14 @@ body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: 
 @media (max-width: 1000px) { .case-front.open .case-lid { transform: rotateY(-97deg); } } /* (a narrow window: the lid kept inside it) */
 .case-front.open .receipt:not(.out) { visibility: hidden; } /* (in the case, under the disc) */
 .case-front.open .case-lid-inside { opacity: 1; visibility: visible; transition-delay: 150ms; }
-.case-lid-face { position: absolute; inset: 0; transition: visibility 0s 40ms; }
+/* The lid's face: the cover under clear plastic a little bigger than it (its rim and the hinge round it), a few pixels
+   thick, its edge catching the light. */
+.case-lid-face {
+  position: absolute; inset: 0; transition: visibility 0s 40ms; box-sizing: border-box; padding: 2.2% 2.2% 2.2% 6.5%; border-radius: 4px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, .22), rgba(255, 255, 255, .06) 40%, rgba(255, 255, 255, .12)), rgb(26, 27, 31);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .6), inset 0 0 0 1px rgba(255, 255, 255, .4), 1px 1px 0 rgba(255, 255, 255, .3), 3px 3px 0 rgba(170, 180, 190, .25), 5px 5px 0 rgba(0, 0, 0, .3);
+}
+.case-lid-face > .case-cover { box-shadow: 0 0 0 1px rgba(0, 0, 0, .4); }
 .case-front.open .case-lid-face { visibility: hidden; transition-delay: 150ms; } /* (its back is the lid's inside) */
 .case-lid-inside {
   position: absolute; inset: 0; z-index: 5; cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0s 40ms, visibility 0s 40ms; /* (once the lid has swung past its edge) */
@@ -1381,7 +1388,11 @@ body.no-anim .case-lid { transition: none; }
 /* The jewel case's hinge and glossy plastic, over the cover. */
 .case-lid-face::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: linear-gradient(to right, rgba(0, 0, 0, .35) 0 10px, rgba(255, 255, 255, .15) 10px 12px, transparent 12px), linear-gradient(125deg, rgba(255, 255, 255, .16), transparent 40%);
+  border-radius: inherit;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, .5), rgba(255, 255, 255, .35) 1.2%, rgba(0, 0, 0, .35) 2.4%, rgba(255, 255, 255, .22) 3.6%, rgba(0, 0, 0, .3) 4.8%, rgba(255, 255, 255, .25) 6%, rgba(255, 255, 255, .08) 6.5%, transparent 7%),
+    linear-gradient(115deg, transparent 18%, rgba(255, 255, 255, .2) 32%, rgba(255, 255, 255, .05) 38%, transparent 50%),
+    linear-gradient(160deg, rgba(255, 255, 255, .12), transparent 30%);
 }
 /* The obi, over the left of the case's front (outside the plastic, so over its hinge too), and the stickers. */
 .case-obi {
