@@ -134,6 +134,8 @@ contextBridge.exposeInMainWorld('cdp', {
   cancelRip: invoke('rip:cancel'),
   showRipFolder: invoke('rip:showFolder'),
   onRipProgress: on('rip-progress'),
+  takeAlong: { settings: invoke('takeAlong:settings'), pickFolder: invoke('takeAlong:pickFolder'), setFormat: invoke('takeAlong:setFormat'), plan: invoke('takeAlong:plan'), start: invoke('takeAlong:start'), cancel: invoke('takeAlong:cancel'), showFolder: invoke('takeAlong:showFolder') },
+  onTakeAlongProgress: on('take-along-progress'),
   onAudioCd: on('audio-cd'),
   onAudioCdGone: on('audio-cd-gone'),
   openTracksDialog: invoke('dialog:openTracks'),

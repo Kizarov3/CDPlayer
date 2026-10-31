@@ -347,4 +347,4 @@ async function albumCoverFull(firstTrack) {
 /** A file's tags changed: its album's cover thumbnail is made again next time. */
 function forget(filePath) { thumbs.delete(filePath); fromWeb.delete(filePath); onShelf = null; } // its tags changed: it may be on another album now
 
-module.exports = { COVER_FILE, scanAlbums, trackNumbers, albumOf, albumTracks, isLastOfDisc, touchedAt, isWrapped, readCache, cacheHas, folderNames, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };
+module.exports = { COVER_FILE, scanAlbums, trackInfo, trackNumbers, albumOf, albumTracks, isLastOfDisc, touchedAt, isWrapped, readCache, cacheHas, folderNames, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };
