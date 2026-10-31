@@ -39,6 +39,7 @@ export class Disc {
     this.trayT = 0;            // 0 = closed … 1 = open (animated)
     this.trayDone = null;      // resolves the open/close in progress
     this.discPresent = true;   // false: an empty tray (nothing loaded)
+    this.inCase = false;       // CASE's disc, in its case beside the player: none drawn in the player
     this.cover = null;         // HTMLImageElement
     this.lookingUp = false;
     this.label = null;         // { title, artist }: handwritten on a disc that has no cover, like a burned CD-R
@@ -628,7 +629,7 @@ export class Disc {
     const l = this.light;
     const look = [pw, ph, side, x, y, this.angle, this.speed, this.shineOn && l.angle, this.shineOn && l.strength, tray, art, eject, wobble, this.mode,
       this.faceKey, this.coverVersion, this.lookingUp, this.label && this.label.title, this.label && this.label.artist,
-      this.discPresent, colors.accent, colors.accent2, colors.bg, dpr, this.flipT, this.data && this.data.key, this.theme,
+      this.discPresent, this.inCase, colors.accent, colors.accent2, colors.bg, dpr, this.flipT, this.data && this.data.key, this.theme,
       this.flipT > 0 && this.data && this.position ? Math.round(radiusAt(this.data.layout, this.position()) * 2000) : 0].join('|');
     if (look === this.lastLook) return bounds;
     this.lastLook = look;
@@ -697,10 +698,9 @@ export class Disc {
       g.restore();
     }
     g.save();
-    if (!this.discPresent && tray > 0) g.globalAlpha = 0; // an empty tray
     g.translate(cx + wobble, cy + trayDy + wobble * 0.4); g.scale(trayScale, trayScale); g.translate(-cx, -cy);
-    // As the full art opens, the disc sinks back a little and fades out underneath it.
-    g.globalAlpha = 1 - art;
+    // As the full art opens, the disc sinks back a little and fades out underneath it; an empty tray: none.
+    g.globalAlpha = (!this.discPresent && tray > 0) || this.inCase ? 0 : 1 - art;
     g.translate(cx + side * 0.14 * eject, cy - side * 0.42 * eject);
     g.scale(1 - 0.08 * art, (1 - 0.08 * art) * (1 - 0.22 * eject));
     g.translate(-cx, -cy);

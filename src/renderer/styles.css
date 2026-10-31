@@ -532,42 +532,40 @@ body.playing #album-disc::before { animation-play-state: running; }
 }
 body.no-anim #album-disc { transition: none; }
 body.no-anim #album-disc::before { animation: none; }
-/* CASE: the jewel case whole, seen from the front — the lid (the cover under its plastic) opens on its hinge down the
-   left while a disc is in, the disc on the tray inside, turning while it plays; it shuts as the disc comes out. */
+/* CASE: the album's jewel case beside the player — as a disc goes in, the lid opens on its hinge down the left and the
+   disc lifts off the tray into the player (app.js flyCaseDisc), the case left open and empty while it plays; as the
+   disc comes out it goes back on the tray and the lid shuts. */
 #case-tray, .lid-inside { display: none; }
-body.look-case #disc-column { perspective: 2600px; perspective-origin: 62% 50%; }
-body.look-case #cover-art, body.look-case #case-tray, body.look-case #album-disc { --s: min(86cqh, 62cqw); }
-body.look-case #cover-art, body.look-case #case-tray { left: calc(50% - var(--s) * .3); }
+body.look-case #disc-column > canvas { visibility: visible; left: auto; right: 0; width: 60%; }
+body.look-case #disc-column { perspective: 1800px; perspective-origin: 0 50%; }
+body.look-case #cover-art, body.look-case #case-tray, body.look-case #album-disc { --s: min(66cqh, 30cqw); }
+body.look-case #cover-art, body.look-case #case-tray { left: calc(40cqw - var(--s)); top: calc(50% - var(--s) / 2); }
 body.look-case #case-tray {
-  display: block; position: absolute; top: calc(50% - var(--s) / 2); width: var(--s); height: var(--s); border-radius: 4px;
+  display: block; position: absolute; width: var(--s); height: var(--s); border-radius: 4px;
   background:
     radial-gradient(circle at 54% 50%, rgba(255, 255, 255, .5) 0 3.2%, rgba(20, 21, 24, .9) 3.4% 6.6%, rgba(255, 255, 255, .16) 6.8% 7.4%, transparent 7.6%),
     linear-gradient(90deg, rgba(255, 255, 255, .1) 0 4%, rgba(0, 0, 0, .35) 4% 5%, transparent 5%),
     linear-gradient(160deg, rgba(255, 255, 255, .07), transparent 50%, rgba(0, 0, 0, .3)),
     radial-gradient(circle at 54% 50%, transparent 0 11%, rgba(255, 255, 255, .12) 11.4% 12%, rgb(32, 34, 39) 12.4% 45%, rgb(28, 30, 34) 45.4% 46%, rgb(32, 34, 39) 46.4%),
     repeating-conic-gradient(from 0deg at 54% 50%, rgba(255, 255, 255, .22) 0 6deg, rgb(26, 27, 31) 6deg 30deg);
-  box-shadow: 0 30px 70px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 255, 255, .1), inset 0 0 0 5px rgba(255, 255, 255, .04);
+  box-shadow: 0 24px 50px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 255, 255, .1), inset 0 0 0 5px rgba(255, 255, 255, .04);
 }
-body.look-case #cover-art {
-  z-index: 2; transform-origin: left center; transition: transform 900ms var(--ease-out), background-image 400ms ease;
-  box-shadow: 0 30px 70px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 255, 255, .08);
-}
-body.look-case #cover-art.open { transform: rotateY(-118deg); }
-body.look-case #cover-art.open .lid-inside { opacity: 1; transition-delay: 180ms; }
-body.look-case #cover-art.open::after { visibility: hidden; transition: visibility 0s 180ms; }
-/* The lid's inside: the booklet's back page through the clear plastic, and the tabs that hold it. */
+body.look-case #cover-art { z-index: 2; transform-origin: left center; transition: transform 800ms var(--ease-out), background-image 400ms ease;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 255, 255, .08); }
+body.look-case #cover-art.open { transform: rotateY(-106deg); }
+/* The lid's inside: the booklet's back page through the clear plastic — shown once the lid has swung past its edge. */
 body.look-case .lid-inside {
-  display: block; position: absolute; inset: 0; border-radius: inherit; opacity: 0; transition: opacity 0s 40ms; /* (shown once the lid has swung past its edge) */
-  background: linear-gradient(110deg, rgba(255, 255, 255, .28), transparent 40%),
-    linear-gradient(to left, rgba(0, 0, 0, .45) 0 5%, transparent 5%),
+  display: block; position: absolute; inset: 0; border-radius: inherit; opacity: 0; transition: opacity 0s 40ms;
+  background: linear-gradient(110deg, rgba(255, 255, 255, .28), transparent 40%), linear-gradient(to left, rgba(0, 0, 0, .45) 0 5%, transparent 5%),
     linear-gradient(160deg, rgb(226, 222, 212), rgb(176, 172, 164));
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .3), inset 0 0 0 6px rgba(0, 0, 0, .12);
 }
-/* The disc, smaller than the case, on the tray's hub: there only while it's in, lifted off as it comes out. */
-body.look-case #album-disc { left: calc(50% - var(--s) * .3 + var(--s) * .14); top: calc(50% - var(--s) * .4); opacity: 0; transform: translateY(-8%) scale(1.05);
-  transition: transform 700ms var(--ease-out), opacity 500ms ease; z-index: 1; }
-body.look-case #album-disc.out { opacity: 1; transform: none; transition-delay: 300ms; }
-body.no-anim.look-case #cover-art, body.no-anim.look-case #album-disc { transition: none; }
+body.look-case #cover-art.open .lid-inside { opacity: 1; transition-delay: 160ms; }
+body.look-case #cover-art.open::after { visibility: hidden; transition: visibility 0s 160ms; }
+/* The disc on the tray's hub: seen only on its way between the case and the player (the player draws it there). */
+body.look-case #album-disc, body.look-case #album-disc.out { z-index: 3; opacity: 0; transform: none; transition: none; pointer-events: none;
+  left: calc(40cqw - var(--s) + var(--s) * .14); top: calc(50% - var(--s) * .4); }
+body.no-anim.look-case #cover-art { transition: none; }
 body.look-album { --font: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; }
 body.look-album #divider, body.look-visualizer #divider, body.look-lyrics #divider, body.look-album #now-playing-label, body.look-album #visualizer, body.look-album #deck-display, body.look-album #now-row .grow { display: none; }
 body.look-album #times { display: flex; }

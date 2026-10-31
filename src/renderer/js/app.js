@@ -364,11 +364,33 @@ function tintFromCover() {
 }
 // ALBUM's disc: out of its case, beside the cover, while there's a song in the player (turning while it plays — the
 // body's .playing); back in when the tray opens, or there's nothing to play.
-// CASE: the same moment opens the case's lid, the disc on its tray inside; it shuts as the disc comes out.
+// CASE: the case beside the player — as a disc goes in, its lid opens and the disc lifts off its tray into the player;
+// once there's none in the player, it's back on the case's tray and the lid shuts.
+let caseDiscOut = null, caseFlying = false;
 function showAlbumDisc() {
-  const out = !!disc.discPresent && !disc.trayOpen;
+  const out = !!disc.discPresent && !disc.trayOpen, lid = $('cover-art');
   $('album-disc').classList.toggle('out', out);
-  $('cover-art').classList.toggle('open', out);
+  disc.inCase = false;
+  if (state.look !== 'CASE') { lid.classList.toggle('open', out); caseDiscOut = null; return; }
+  const inPlayer = !!disc.discPresent && !!state.loadedPath; // (the tray out, it's still the player's: on its tray, not back in the case)
+  if (caseDiscOut === inPlayer) { if (!caseFlying) disc.inCase = !inPlayer; return; }
+  const first = caseDiscOut === null;
+  caseDiscOut = inPlayer;
+  if (first || !anim.enabled) { lid.classList.toggle('open', inPlayer); disc.inCase = !inPlayer; return; }
+  if (inPlayer) { disc.inCase = true; lid.classList.add('open'); setTimeout(() => { if (caseDiscOut) flyCaseDisc(true).then(() => { disc.inCase = !caseDiscOut; }); }, 380); return; }
+  flyCaseDisc(false).then(() => { if (caseDiscOut === false) { disc.inCase = true; lid.classList.remove('open'); } });
+}
+// The disc between the case's tray and the player's (where the player drew it last): off the hub, across, and in.
+function flyCaseDisc(intoPlayer) {
+  const d = $('album-disc'), c = disc.center, from = d.getBoundingClientRect();
+  if (!c || !from.width) return Promise.resolve();
+  const out = disc.trayT; // (on the player's tray when it's out: lower, and a little bigger — disc.js frame)
+  const k = (c.r * 2 * (1 + 0.05 * out)) / from.width, dx = c.x - (from.left + from.width / 2), dy = c.y + c.r * 2 * 0.16 * out - (from.top + from.height / 2);
+  const tray = { opacity: 1, transform: 'none' }, lifted = { opacity: 1, transform: 'translateY(-7%) scale(1.05)' };
+  const player = { opacity: 1, transform: `translate(${dx}px, ${dy}px) scale(${k})` }, gone = { ...player, opacity: 0 };
+  const frames = intoPlayer ? [tray, { ...lifted, offset: 0.2 }, { ...player, offset: 0.88 }, gone] : [gone, { ...player, offset: 0.1 }, { ...lifted, offset: 0.8 }, tray];
+  caseFlying = true;
+  return d.animate(frames, { duration: 900, easing: EASE.inOut }).finished.catch(() => {}).finally(() => { caseFlying = false; });
 }
 function renderQueue() {
   drawQueue();
@@ -1886,9 +1908,22 @@ async function insertDisc(paths, { status, start = 0, disc: given = null, kind =
   if (!paths.length || state.miniMode) return;
   if (!disc.trayOpen) await openTray();
   if (state.trayBusy) return;
+  await caseToTray(paths[0]);
   await putDiscOnTray(paths, start, status, { disc: given, kind, title });
   await new Promise((r) => setTimeout(r, 450));
   await closeTray();
+}
+// CASE: the new disc out of its case (its cover on the lid, as the shelf has it) onto the player's open tray, before
+// the player shows it there.
+async function caseToTray(firstTrack) {
+  if (state.look !== 'CASE' || state.cdView || !anim.enabled) return;
+  const art = await Promise.race([cdp.shelfCover(firstTrack, { online: false }).catch(() => null), new Promise((r) => setTimeout(r, 400, null))]);
+  const lid = $('cover-art');
+  if (art) { lid.style.backgroundImage = `url("${art}")`; lid.classList.remove('none'); $('album-disc').style.setProperty('--art', `url("${art}")`); }
+  if (!lid.classList.contains('open')) { lid.classList.add('open'); await new Promise((r) => setTimeout(r, 380)); }
+  caseDiscOut = true; // (in the player now: not flown again once it's loaded)
+  await flyCaseDisc(true);
+  disc.inCase = false;
 }
 // Music dropped (or picked) while the tray is out: that's a new disc in the changer, the one in the player — loaded but
 // not playing. `given`: the disc it is (a shelf album); else it's worked out from the tracks.
@@ -3153,7 +3188,8 @@ function setLook(kind, { save = true } = {}) {
   for (const k of LOOKS) document.body.classList.toggle(`look-${k.toLowerCase()}`, state.look === k);
   document.body.classList.toggle('look-album', albumLook());
   showQueueDrawer(false);
-  disc.offstage = albumLook(); // (its canvas hidden under the cover there: not drawn for nothing)
+  disc.offstage = state.look === 'ALBUM'; // (its canvas hidden under the cover there: not drawn for nothing)
+  showAlbumDisc(); // (CASE's lid as the disc is: open while one's in)
   tintFromCover(); renderQueue(); // (ALBUM's heading, and its rows by their titles)
   if (state.look === 'LYRICS') { showLookWords(); requestAnimationFrame(showLookWords); } // (again once it's laid out: where a line or song sits needs the room)
   if (save) saveSettingsSoon();
