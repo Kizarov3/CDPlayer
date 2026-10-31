@@ -2516,8 +2516,16 @@ function sleepsAfterThis() {
 
 // ---- View modes --------------------------------------------------------------------------------------------------
 
+// Whether the disc's canvas is drawn (ALBUM: hidden under the cover, not drawn for nothing — but CD View, and the way
+// into it and out, are the disc's), and, in JEWEL CASE, whether its cover's on the case beside it (not on the player).
+function stageDisc() {
+  const disc_ = state.cdView || !!discMorph;
+  disc.offstage = state.look === 'ALBUM' && !disc_;
+  disc.coverInCase = state.look === 'CASE' && !disc_;
+}
 function applyCdViewState() {
   document.body.classList.toggle('cd-view', state.cdView);
+  stageDisc();
   $('cd-info').hidden = !state.cdView;
   // The deck's display comes along, under the album's name (and back under the seek bar after).
   if (state.cdView) $('cd-artist').after($('deck-display')); else $('progress-row').after($('deck-display'));
@@ -2547,8 +2555,10 @@ function morphCdView(entering) {
   // back first and measured as it is — the CD View title under the disc is gone from it, so the disc sits lower.
   const from = canvas.getBoundingClientRect();
   let to;
-  // The divider too: the header above it comes and goes, so it sits higher in CD View.
-  const chrome = ['header', 'divider', 'player', 'hint'].map($);
+  // The divider too: the header above it comes and goes, so it sits higher in CD View. (ALBUM's cover and JEWEL CASE's
+  // case go the same way: CD View is the disc's.)
+  const chrome = ['header', 'divider', 'player', 'hint', ...(state.look === 'ALBUM' ? ['cover-art', 'album-disc'] : state.look === 'CASE' ? ['case-box'] : [])].map($);
+  body.classList.add('cd-morph');
   if (entering) {
     // (measured in CD View as it will be: its title under the disc, and the deck's display under that, taking room)
     state.cdView = true; applyCdViewState();
@@ -2564,6 +2574,7 @@ function morphCdView(entering) {
   disc.morph = { from: entering ? 'normal' : 'enlarged', to: entering ? 'enlarged' : 'normal', t: 0 };
   return new Promise((resolve) => {
     discMorph = { start: performance.now(), from, to, entering, chrome, resolve };
+    stageDisc();
     stepDiscMorph(performance.now());
   });
 }
@@ -2578,6 +2589,8 @@ function stepDiscMorph(now, finish = false) {
   disc.morph.t = eased;
   if (p < 1) return;
   discMorph = null; disc.morph = null;
+  document.body.classList.remove('cd-morph');
+  stageDisc();
   for (const key of ['position', 'left', 'top', 'right', 'bottom', 'width', 'height', 'zIndex']) style[key] = '';
   if (m.entering) {
     state.cdView = true; applyCdViewState();
@@ -3297,8 +3310,7 @@ function setLook(kind, { save = true } = {}) {
   for (const k of LOOKS) document.body.classList.toggle(`look-${k.toLowerCase()}`, state.look === k);
   document.body.classList.toggle('look-album', albumLook());
   showQueueDrawer(false);
-  disc.offstage = state.look === 'ALBUM'; // (its canvas hidden under the cover there: not drawn for nothing)
-  disc.coverInCase = state.look === 'CASE'; // (the cover's on the case beside it: not on the player too)
+  stageDisc();
   showAlbumDisc(); // (CASE's lid as the disc is: open while one's in)
   tintFromCover(); renderQueue(); // (ALBUM's heading, and its rows by their titles)
   if (state.look === 'LYRICS') { showLookWords(); requestAnimationFrame(showLookWords); } // (again once it's laid out: where a line or song sits needs the room)

@@ -488,6 +488,11 @@ body.look-album:not(.cd-view) #player > *, body.look-album:not(.cd-view) #facepl
 body.look-album:not(.cd-view) #disc-column { grid-column: 1; grid-row: 1; margin: 6px 0 4px; min-height: 120px; }
 body.look-album #disc-column { container-type: size; }
 body.look-album #disc-column > canvas { visibility: hidden; }
+/* CD View is the disc's, in ALBUM and JEWEL CASE too: the cover (or the case) gone, the disc drawn — and on its way in
+   and out (app.js morphCdView). */
+body.look-album.cd-view #disc-column > canvas, body.look-album.cd-morph #disc-column > canvas { visibility: visible; }
+body.look-album.cd-view #disc-column > canvas { left: 0; right: 0; width: 100%; }
+body.look-album.cd-view #cover-art, body.look-album.cd-view #album-disc, body.look-album.cd-view #case-box { display: none; }
 /* The cover in its jewel case and the disc as one picture, centred: the disc (a CD's, smaller than its case) reaches out
    past the case's right edge. */
 body.look-album #cover-art, body.look-album #album-disc { --s: min(94cqh, 74cqw); display: block; position: absolute; }
@@ -1044,7 +1049,7 @@ body.no-anim .queue-row.active .num::after { animation: none; }
 #karaoke-cover {
   position: absolute; inset: -10%; z-index: -1; pointer-events: none;
   background: center / cover no-repeat; filter: blur(70px) saturate(1.5); opacity: .3; transform: scale(1.18);
-  transition: background-image 600ms ease;
+  transition: background-image 600ms ease; will-change: transform, opacity; /* (blurred once, then only scaled: no flicker) */
 }
 #karaoke-cover.none { display: none; }
 #karaoke { isolation: isolate; overflow: hidden; }

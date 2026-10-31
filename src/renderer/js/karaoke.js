@@ -157,11 +157,14 @@ export function updateKaraoke(position, force = false) {
     if (soon >= 0) nodes[soon].classList.add('soon');
     view.soon = soon;
   }
-  // The cover breathes with the music (its loudness, before the volume: as loud at any volume).
+  // The cover breathes with the music (its loudness, before the volume: as loud at any volume) — slowly, the way a
+  // breath goes, not beat by beat: followed over about half a second, so it swells and settles without flickering.
   if (anim.enabled) {
+    const now = performance.now(), dt = Math.min(100, now - (view.levelAt || now));
+    view.levelAt = now;
     const level = (view.app.engine.levels(1) || [0])[0];
-    view.level = (view.level || 0) * 0.8 + level * 0.2;
-    $('karaoke-cover').style.transform = `scale(${(1.18 + view.level * 0.1).toFixed(4)})`;
-    $('karaoke-cover').style.opacity = (0.3 + view.level * 0.25).toFixed(3);
+    view.level = (view.level || 0) + (level - (view.level || 0)) * (1 - Math.exp(-dt / 450));
+    $('karaoke-cover').style.transform = `scale(${(1.18 + view.level * 0.06).toFixed(4)})`;
+    $('karaoke-cover').style.opacity = (0.3 + view.level * 0.12).toFixed(3);
   }
 }
