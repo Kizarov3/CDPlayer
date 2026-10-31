@@ -199,12 +199,26 @@ const formatDuration = (sec) => (sec > 0 ? formatTime(sec) : '--:--');
 // What's printed round a pressed disc's rim (disc.js drawLabelPrint): the album's name, who it's by, the year and the
 // record label — the same on the disc the page draws (ALBUM's, the case's), printed as a picture.
 const printOf = (d) => (d ? { album: d.album || null, artist: d.albumArtist || d.artist || null, year: yearOf(d), label: (d.credits && d.credits.label) || null } : null);
+// The disc's own picture (a photo of the CD, from the Cover Art Archive), by album: looked up once per album.
+const discArts = new Map();
+function discArtFor(print) {
+  if (!print || !print.artist || !print.album) return Promise.resolve(null);
+  const key = `${print.artist}|${print.album}`;
+  if (!discArts.has(key)) discArts.set(key, cdp.discArt({ artist: print.artist, album: print.album }).then(decodeCover).catch(() => null));
+  return discArts.get(key);
+}
 function printDisc() {
   const print = printOf(state.loadedPath && state.details);
   disc.setPrint(print);
   const cover = state.cover;
+  if (!print) disc.setDiscArt(null);
   if (cover && print) {
-    labelImage(cover, print).then((url) => {
+    discArtFor(print).then(async (photo) => {
+      if (JSON.stringify(printOf(state.loadedPath && state.details)) !== JSON.stringify(print)) return;
+      disc.setDiscArt(photo);
+      return labelImage(cover, print, 520, photo);
+    }).then((url) => {
+      if (!url) return;
       if (state.cover !== cover || JSON.stringify(printOf(state.loadedPath && state.details)) !== JSON.stringify(print)) return;
       $('album-disc').style.setProperty('--art', `url("${url}")`); $('album-disc').style.setProperty('--art-size', '100%');
     }).catch(() => {});
@@ -1982,7 +1996,8 @@ async function caseToTray(firstTrack) {
     $('cover-art').style.backgroundImage = `url("${art}")`; $('cover-art').classList.remove('none');
     $('album-disc').style.setProperty('--art', `url("${art}")`); $('album-disc').style.removeProperty('--art-size');
     const img = await decodeCover(art), print = printOf(detailsCache.get(firstTrack));
-    if (img) { const url = await labelImage(img, print).catch(() => null); if (url) { $('album-disc').style.setProperty('--art', `url("${url}")`); $('album-disc').style.setProperty('--art-size', '100%'); } }
+    const photo = await Promise.race([discArtFor(print), pause(600).then(() => null)]);
+    if (img) { const url = await labelImage(img, print, 520, photo).catch(() => null); if (url) { $('album-disc').style.setProperty('--art', `url("${url}")`); $('album-disc').style.setProperty('--art-size', '100%'); } }
   }
   caseDiscOut = true; // (in the player now: not handed over again once it's loaded)
   await handOver(true);

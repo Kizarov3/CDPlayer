@@ -262,6 +262,34 @@ async function lookupTags({ artist, title, album, duration, guessed, isrc }) {
   }
   return networkError ? { networkError: true } : null;
 }
+/**
+ * The disc itself, as it's printed: a photo of the CD (an image of the "Medium") from the Cover Art Archive — the
+ * album's own picture on the disc, not its cover's. `releaseId` first, then the album's other releases (CDs first).
+ * → data URL, or null when nobody has uploaded one.
+ */
+async function findDiscArt({ artist, album, releaseId }) {
+  const ids = releaseId ? [releaseId] : [];
+  const group = artist && album ? await musicBrainzAlbum({ artist, album, title: album }) : null; // (offline: it throws — not "none")
+  let failed = false; // (a lookup that went wrong, not one that found nothing: tried again another time, not "none")
+  const lost = (e) => { if (!e || e.status !== 404) failed = true; return null; };
+  if (group) {
+    const json = await mbFetch(`release?release-group=${group.id}&inc=media&fmt=json&limit=50`).catch(lost);
+    const rank = (r) => [(r.media || []).some((m) => m.format === 'CD') ? 0 : 1, -((r['cover-art-archive'] || {}).count || 0)];
+    ((json && json.releases) || []).filter((r) => ((r['cover-art-archive'] || {}).count || 0) > 1)
+      .sort((a, b) => (rankBefore(rank(a), rank(b)) ? -1 : rankBefore(rank(b), rank(a)) ? 1 : 0)).forEach((r) => ids.push(r.id));
+  }
+  for (const id of [...new Set(ids)].slice(0, 8)) {
+    const index = await fetchJson(`https://coverartarchive.org/release/${id}`).catch(lost);
+    const images = (index && index.images) || [];
+    const disc = images.find((i) => (i.types || []).length === 1 && i.types[0] === 'Medium') || images.find((i) => (i.types || []).includes('Medium'));
+    if (!disc) continue;
+    const art = await fetchImageDataUrl((disc.thumbnails && (disc.thumbnails['500'] || disc.thumbnails.large)) || disc.image).catch(() => null);
+    if (art) return art;
+    failed = true;
+  }
+  if (failed) throw new Error('disc art: lookup failed');
+  return null;
+}
 /** A cover for the Tags panel, by address (the Cover Art Archive's, from lookupTags). → data URL or null. */
 async function coverFromUrl(url) {
   if (!/^https:\/\/coverartarchive\.org\//.test(url)) return null;
@@ -473,4 +501,4 @@ async function findLyrics({ title, artist, album, duration, guessed }) {
   return null;
 }
 
-module.exports = { fetchJson, musicBrainzAlbum, sameSong, hiddenNameFrom, findHiddenName, findCover, findCoverUrl, findAlbumCover, findAlbumCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, wordOverlapRatio };
+module.exports = { findDiscArt, fetchJson, musicBrainzAlbum, sameSong, hiddenNameFrom, findHiddenName, findCover, findCoverUrl, findAlbumCover, findAlbumCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, wordOverlapRatio };

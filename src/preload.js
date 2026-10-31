@@ -76,6 +76,7 @@ contextBridge.exposeInMainWorld('cdp', {
   discMenu: invoke('menu:disc'),
   findCover: invoke('online:cover'),
   findCoverUrl: invoke('online:coverUrl'),
+  discArt: invoke('online:discArt'),
   findLyrics: invoke('online:lyrics'),
   readTags: invoke('tags:read'),
   lookupTags: invoke('tags:lookup'),

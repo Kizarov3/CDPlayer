@@ -1020,7 +1020,9 @@ async function openCase(a, spine) {
   const tray = el('div', { class: 'case-tray', title: t('Close the case'), onClick: () => openLid(false) }, caseCd);
   if (cover) { // printed as a pressed disc is (disc.js drawLabelPrint)
     const img = new Image(); img.src = cover;
-    img.decode().then(() => labelImage(img, { album: a.title || null, artist: a.artist || null, year: a.year || null, label: a.label || null }))
+    const print = { album: a.title || null, artist: a.artist || null, year: a.year || null, label: a.label || null };
+    const photo = shelf.app.cdp.discArt({ artist: a.artist, album: a.title, releaseId: a.mbReleaseId }).then(async (u) => { if (!u) return null; const p = new Image(); p.src = u; await p.decode(); return p; }).catch(() => null);
+    img.decode().then(async () => labelImage(img, print, 520, await photo))
       .then((url) => { caseCd.style.setProperty('--art', `url("${url}")`); caseCd.style.setProperty('--art-size', '100%'); }).catch(() => {});
   }
   const openLid = (open) => {

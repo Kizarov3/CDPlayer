@@ -82,7 +82,15 @@ function arcText(g, text, c, radius, px, span, bottom, spacing = 0.08) {
  * cover in the middle round the hub, the album's name round the top of the rim and who it's by round the bottom,
  * the small print just inside the edge. `print`: { album, artist, year, label } (any of them missing: left off).
  */
-export function drawLabelPrint(g, c, side, cover, print) {
+export function drawLabelPrint(g, c, side, cover, print, photo = null) {
+  if (photo) { // the disc's own, photographed (online.findDiscArt): the middle of the photo, to the disc's edge
+    const iw = photo.naturalWidth || photo.width, ih = photo.naturalHeight || photo.height, s = Math.min(iw, ih) * 0.985;
+    g.save(); g.beginPath(); g.arc(c, c, c, 0, Math.PI * 2); g.clip();
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(photo, (iw - s) / 2, (ih - s) / 2, s, s, 0, 0, side, side);
+    g.restore();
+    return;
+  }
   const [r, gr, b] = inkOf(cover), light = (0.299 * r + 0.587 * gr + 0.114 * b) / 255 > 0.6;
   const text = light ? 'rgba(18,18,22,0.92)' : 'rgba(255,255,255,0.95)';
   g.save();
@@ -117,11 +125,11 @@ export function drawLabelPrint(g, c, side, cover, print) {
 }
 // The printed face as a picture (for a disc drawn by the page, not the canvas — the case's, the shelf's). → its URL.
 const labelURLs = new Map();
-export async function labelImage(cover, print, px = 520) {
-  const key = `${cover.src || ''}|${JSON.stringify(print || null)}|${px}`;
+export async function labelImage(cover, print, px = 520, photo = null) {
+  const key = `${(cover.src || '').slice(-200)}|${JSON.stringify(print || null)}|${px}|${photo ? (photo.src || '').slice(-200) : ''}`;
   if (labelURLs.has(key)) return labelURLs.get(key);
   const cv = new OffscreenCanvas(px, px);
-  drawLabelPrint(cv.getContext('2d'), px / 2, px, cover, print);
+  drawLabelPrint(cv.getContext('2d'), px / 2, px, cover, print, photo);
   const url = URL.createObjectURL(await cv.convertToBlob({ type: 'image/png' }));
   if (labelURLs.size > 12) { const [k, v] = labelURLs.entries().next().value; URL.revokeObjectURL(v); labelURLs.delete(k); }
   labelURLs.set(key, url);
@@ -243,6 +251,8 @@ export class Disc {
   }
   /** What's printed on a pressed disc round its rim: { album, artist, year, label }, or null. */
   setPrint(print) { if (JSON.stringify(print) !== JSON.stringify(this.print)) this.print = print; }
+  /** The disc's own picture, photographed (an <img>), printed instead of one made from the cover; or null. */
+  setDiscArt(img) { if (img !== this.discArt) { this.discArt = img; this.discArtVersion = (this.discArtVersion || 0) + 1; } }
   setLabel(title, artist) {
     const label = title ? { title, artist: artist || '' } : null;
     if (JSON.stringify(label) !== JSON.stringify(this.label)) this.label = label;
@@ -429,7 +439,7 @@ export class Disc {
 
   renderFace(side, dpr) {
     const label = this.cover || !this.label ? '' : `${this.label.title}\n${this.label.artist}`;
-    const key = `${side}|${dpr}|${colors.bg}|${this.coverVersion || 0}|${this.lookingUp}|${label}|${this.wear ? this.wear.key : ''}|${JSON.stringify(this.print)}`;
+    const key = `${side}|${dpr}|${colors.bg}|${this.coverVersion || 0}|${this.lookingUp}|${label}|${this.wear ? this.wear.key : ''}|${JSON.stringify(this.print)}|${this.discArtVersion || 0}`;
     if (this.faceCache && (this.faceKey === key || (this.suppressRebuild && this.faceCache.side === side))) return this.faceCache;
     const scale = dpr * (dpr >= 2 ? 1 : 2); // supersample on low-DPI screens for a clean rim
     const px = Math.max(1, Math.round(side * scale));
@@ -441,7 +451,7 @@ export class Disc {
       // Pressed and printed: the label from the mirror band out (drawLabelPrint).
       g.save();
       g.beginPath(); g.arc(c, c, c, 0, Math.PI * 2); g.arc(c, c, c * LABEL_R, 0, Math.PI * 2, true); g.clip('evenodd');
-      drawLabelPrint(g, c, side, this.cover, side >= WEAR_MIN_SIDE ? this.print : null);
+      drawLabelPrint(g, c, side, this.cover, side >= WEAR_MIN_SIDE ? this.print : null, this.discArt);
       g.restore();
       this.drawHub(g, c, side, true);
     } else {
@@ -732,7 +742,7 @@ export class Disc {
     // redrawing it 60 times a second anyway kept the GPU busy for nothing.
     const l = this.light;
     const look = [pw, ph, side, x, y, this.angle, this.speed, this.shineOn && l.angle, this.shineOn && l.strength, tray, art, eject, wobble, this.mode,
-      this.faceKey, this.coverVersion, this.lookingUp, this.label && this.label.title, this.label && this.label.artist, JSON.stringify(this.print),
+      this.faceKey, this.coverVersion, this.lookingUp, this.label && this.label.title, this.label && this.label.artist, JSON.stringify(this.print), this.discArtVersion,
       this.discPresent, this.inCase, this.coverInCase, colors.accent, colors.accent2, colors.bg, dpr, this.flipT, this.data && this.data.key, this.theme,
       this.flipT > 0 && this.data && this.position ? Math.round(radiusAt(this.data.layout, this.position()) * 2000) : 0].join('|');
     if (look === this.lastLook) return bounds;
