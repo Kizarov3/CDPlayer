@@ -532,67 +532,98 @@ body.playing #album-disc::before { animation-play-state: running; }
 }
 body.no-anim #album-disc { transition: none; }
 body.no-anim #album-disc::before { animation: none; }
-/* CASE: the album's jewel case beside the player — as a disc goes in, the lid opens on its hinge down the left and the
-   disc lifts off the tray into the player (app.js flyCaseDisc), the case left open and empty while it plays; as the
-   disc comes out it goes back on the tray and the lid shuts. */
-#case-tray, #case-back, .lid-inside { display: none; }
-body.look-case #disc-column > canvas { visibility: visible; left: auto; right: 0; width: 60%; }
-body.look-case #disc-column { perspective: 1800px; perspective-origin: 0 50%; }
-body.look-case #cover-art, body.look-case #case-tray, body.look-case #album-disc { --s: min(66cqh, 30cqw); }
-body.look-case #cover-art, body.look-case #case-tray { left: calc(40cqw - var(--s)); top: calc(50% - var(--s) / 2); }
-body.look-case #case-tray {
-  display: block; position: absolute; width: var(--s); height: var(--s); border-radius: 4px;
+/* CASE: the album's jewel case is the player (app.js showAlbumDisc) — big, front on, shut while there's nothing in it.
+   As a disc goes in the lid opens on its hinge, out to the left (seen from the right, so it's seen whole), the case
+   moving over so the open case stands in the middle, and the disc goes off the hub into the drive's slot underneath;
+   the empty tray shows the back inlay through its plastic — the songs, one clicked is played. */
+#case-box { display: contents; }
+body.look-case:not(.cd-view) #body { grid-template-columns: minmax(300px, 1.35fr) minmax(0, 1fr); column-gap: 40px; } /* (room for the case open) */
+#case-tray, #case-slot, .lid-inside { display: none; }
+body.look-case #disc-column { perspective: 1700px; perspective-origin: 78% 45%; }
+body.look-case #case-box {
+  --s: min(74cqh, 45cqw); display: block; position: absolute; width: var(--s); height: var(--s);
+  left: calc(50% - var(--s) / 2); top: calc(45% - var(--s) / 2); transform-style: preserve-3d; transition: transform 700ms var(--ease-out);
+}
+body.look-case #case-box.open { transform: translateX(calc(var(--s) * .47)); }
+/* The lid: the cover under clear plastic, a few pixels thick (its edge catching the light), hinged down its left;
+   the light across it follows the pointer (--mx). */
+body.look-case #cover-art {
+  --s: 100%; z-index: 2; left: 0; top: 0; width: 100%; height: 100%; border-radius: 3px; transform-origin: left center;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, .55), 1px 1px 0 rgba(255, 255, 255, .35), 3px 3px 0 rgba(170, 180, 190, .22), 5px 5px 0 rgba(0, 0, 0, .25);
+  transition: transform 640ms cubic-bezier(.3, 1.45, .5, 1), background-image 400ms ease; cursor: pointer;
+}
+body.look-case #cover-art { transform: translateZ(2px); } /* (over the tray: the two are in one 3D space) */
+body.look-case #cover-art.open { transform: translateZ(2px) rotateY(-163deg); }
+body.look-case #cover-art::before {
   background:
-    radial-gradient(circle at 54% 50%, rgba(255, 255, 255, .5) 0 3.2%, rgba(20, 21, 24, .9) 3.4% 6.6%, rgba(255, 255, 255, .16) 6.8% 7.4%, transparent 7.6%),
-    linear-gradient(90deg, rgba(255, 255, 255, .1) 0 4%, rgba(0, 0, 0, .35) 4% 5%, transparent 5%),
-    linear-gradient(160deg, rgba(255, 255, 255, .07), transparent 50%, rgba(0, 0, 0, .3)),
-    radial-gradient(circle at 54% 50%, transparent 0 11%, rgba(255, 255, 255, .12) 11.4% 12%, rgb(32, 34, 39) 12.4% 45%, rgb(28, 30, 34) 45.4% 46%, rgb(32, 34, 39) 46.4%),
-    repeating-conic-gradient(from 0deg at 54% 50%, rgba(255, 255, 255, .22) 0 6deg, rgb(26, 27, 31) 6deg 30deg);
-  box-shadow: 0 24px 50px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 255, 255, .1), inset 0 0 0 5px rgba(255, 255, 255, .04);
+    linear-gradient(90deg, rgba(0, 0, 0, .55), rgba(255, 255, 255, .25) 1.2%, rgba(0, 0, 0, .35) 2.4%, rgba(255, 255, 255, .14) 3.6%, rgba(0, 0, 0, .2) 4.8%, transparent 6%),
+    linear-gradient(115deg, transparent calc(var(--mx, 35%) - 22%), rgba(255, 255, 255, .2) calc(var(--mx, 35%) - 4%), rgba(255, 255, 255, .05) var(--mx, 35%), transparent calc(var(--mx, 35%) + 12%)),
+    linear-gradient(160deg, rgba(255, 255, 255, .1), transparent 30%);
 }
-body.look-case #cover-art { z-index: 2; transform-origin: left center; transition: transform 800ms var(--ease-out), background-image 400ms ease;
-  box-shadow: 0 24px 50px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 255, 255, .08); }
-body.look-case #cover-art.open { transform: rotateY(-106deg); }
-/* The lid's inside: the booklet's back page through the clear plastic — shown once the lid has swung past its edge. */
+body.look-case #cover-art:hover:not(.open) { filter: brightness(1.06); }
+/* No cover on it yet (nothing's been in the player): a plain dark case, a note on it — the way to the shelf. */
+body.look-case #cover-art:not([style*="url("]) { background: linear-gradient(150deg, rgb(58, 59, 64), rgb(30, 31, 35)); }
+body.look-case #cover-art:not([style*="url("])::after { content: "♪"; position: absolute; inset: 0; display: grid; place-items: center; color: rgba(var(--text), .18); font-weight: normal; }
+body.look-case #cover-art::after, body.look-case #cover-art.none::after { font-size: calc(min(74cqh, 45cqw) * .34); }
+body.look-case #cover-art.open::after { visibility: hidden; transition: visibility 0s 140ms; }
+/* Its inside, seen once it's swung past its edge: the booklet's back page through the plastic, held by the tabs. */
 body.look-case .lid-inside {
-  display: block; position: absolute; inset: 0; border-radius: inherit; opacity: 0; transition: opacity 0s 40ms;
-  background: linear-gradient(110deg, rgba(255, 255, 255, .28), transparent 40%), linear-gradient(to left, rgba(0, 0, 0, .45) 0 5%, transparent 5%),
-    linear-gradient(160deg, rgb(226, 222, 212), rgb(176, 172, 164));
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .3), inset 0 0 0 6px rgba(0, 0, 0, .12);
+  display: block; position: absolute; inset: 0; border-radius: inherit; opacity: 0; transition: opacity 0s 60ms;
+  background: linear-gradient(70deg, rgba(255, 255, 255, .3), transparent 40%), linear-gradient(to left, rgba(0, 0, 0, .45) 0 5%, transparent 5%),
+    radial-gradient(circle at 92% 8%, rgba(0, 0, 0, .25) 0 2.5%, transparent 2.6%), radial-gradient(circle at 92% 92%, rgba(0, 0, 0, .25) 0 2.5%, transparent 2.6%),
+    linear-gradient(160deg, rgb(232, 228, 218), rgb(184, 180, 170));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .35), inset 0 0 0 6px rgba(0, 0, 0, .1);
 }
-body.look-case #cover-art.open .lid-inside { opacity: 1; transition-delay: 160ms; }
-body.look-case #cover-art.open::after { visibility: hidden; transition: visibility 0s 160ms; }
-/* The disc on the tray's hub: seen only on its way between the case and the player (the player draws it there). */
-body.look-case #album-disc, body.look-case #album-disc.out { z-index: 3; opacity: 0; transform: none; transition: none; pointer-events: none;
-  left: calc(40cqw - var(--s) + var(--s) * .14); top: calc(50% - var(--s) * .4); }
-body.no-anim.look-case #cover-art { transition: none; }
-body.look-case #cover-art, body.look-case #case-tray { cursor: pointer; }
-body.look-case #cover-art:hover:not(.open) { filter: brightness(1.08); }
-/* The case turned over: its back inlay — the album's name and its songs, between the two folded spines; turning it
-   back, a click anywhere but a song. */
-body.look-case #case-back {
-  --s: min(66cqh, 30cqw); display: flex; flex-direction: column; position: absolute; z-index: 4; box-sizing: border-box;
-  --w: min(80cqw, var(--s) * 2); --h: min(94cqh, var(--s) * 1.45); /* (picked up and turned over: nearer, bigger, over the player) */
-  left: calc(42cqw - var(--w) / 2); top: calc(50% - var(--h) / 2); width: var(--w); height: var(--h); padding: 4.5% 7%;
-  background: linear-gradient(115deg, rgba(255, 255, 255, .22), transparent 38%),
-    linear-gradient(to right, rgba(0, 0, 0, .18) 0 5%, transparent 5% 95%, rgba(0, 0, 0, .18) 95%), linear-gradient(160deg, rgb(234, 231, 222), rgb(196, 192, 182));
-  box-shadow: 0 24px 50px rgba(0, 0, 0, .5), inset 0 0 0 1px rgba(255, 255, 255, .4), 0 0 0 1px rgba(255, 255, 255, .12);
-  color: rgb(34, 34, 40); cursor: pointer; overflow: hidden; border-radius: 3px;
-  visibility: hidden; opacity: 0; transform: rotateY(90deg); transition: transform 320ms var(--ease-out), opacity 0s 320ms, visibility 0s 320ms;
+body.look-case #cover-art.open .lid-inside { opacity: 1; transition-delay: 140ms; }
+/* The tray: smoky clear plastic over the back inlay, the hub's teeth in the middle, the hinge down its left. */
+body.look-case #case-tray {
+  display: block; position: absolute; inset: 0; border-radius: 3px; overflow: hidden;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, .55), inset 0 0 0 1px rgba(255, 255, 255, .25);
 }
-body.look-case.case-turned #case-back { visibility: visible; opacity: 1; transform: none; transition: transform 420ms var(--ease-out) 160ms, opacity 0s 160ms; }
-body.look-case.case-turned #cover-art, body.look-case.case-turned #case-tray { opacity: 0; transition: opacity 160ms ease; pointer-events: none; }
-body.look-case #cover-art, body.look-case #case-tray { transition: transform 800ms var(--ease-out), opacity 200ms ease 300ms, background-image 400ms ease; }
-.back-title { font-size: 16px; line-height: 1.35; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.back-artist { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; opacity: .7; margin: 2px 0 8px; }
-.back-songs { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: none; }
-.back-song { display: flex; gap: 10px; align-items: baseline; padding: 3px 6px; border-radius: 2px; font-size: 12px; cursor: pointer; font-weight: normal; }
-.back-song:hover { background: rgba(0, 0, 0, .08); }
-.back-song.on { color: rgb(var(--accent)); font-weight: 700; }
-.back-song .no { flex: 0 0 auto; opacity: .55; }
-.back-song .name { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.back-song .time { opacity: .55; }
-body.no-anim.look-case #case-back, body.no-anim.look-case.case-turned #case-back { transition: none; }
+body.look-case #case-inlay {
+  position: absolute; inset: 0; box-sizing: border-box; padding: 7% 9% 7% 11%; display: flex; flex-direction: column;
+  background: linear-gradient(160deg, rgb(236, 233, 224), rgb(200, 196, 186)); color: rgb(30, 30, 36);
+}
+body.look-case .tray-plastic {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(circle at 54% 50%, rgba(255, 255, 255, .4) 0 2.6%, rgba(40, 42, 48, .18) 2.8% 6%, rgba(255, 255, 255, .3) 6.2% 6.8%, transparent 7%),
+    linear-gradient(90deg, rgba(20, 22, 26, .5) 0 4.5%, rgba(255, 255, 255, .35) 4.5% 5%, transparent 5%),
+    linear-gradient(115deg, rgba(255, 255, 255, .22), transparent 35%, transparent 70%, rgba(255, 255, 255, .08)),
+    rgba(40, 44, 52, .12);
+}
+/* The hub's teeth, only round the hub. */
+body.look-case .tray-plastic::before {
+  content: ""; position: absolute; inset: 0;
+  background: repeating-conic-gradient(from 0deg at 54% 50%, transparent 0 5deg, rgba(50, 54, 62, .13) 5deg 25deg, transparent 25deg 30deg);
+  -webkit-mask: radial-gradient(circle at 54% 50%, transparent 0 7%, #000 7.2% 12.5%, transparent 12.7%);
+}
+.inlay-title { font-size: 17px; line-height: 1.35; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inlay-artist { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; opacity: .65; margin: 1px 0 10px; }
+.inlay-songs { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.inlay-song { display: flex; gap: 10px; align-items: baseline; padding: 3px 6px; border-radius: 2px; font-size: 12px; font-weight: normal; cursor: pointer; }
+.inlay-song:hover { background: rgba(0, 0, 0, .08); }
+.inlay-song.on { color: rgb(var(--accent)); font-weight: 700; }
+.inlay-song .no { opacity: .55; }
+.inlay-song .name { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inlay-song .time { opacity: .55; }
+/* The disc on the hub: seen only on its way between the tray and the slot (under the shut lid otherwise). */
+body.look-case #album-disc, body.look-case #album-disc.out {
+  z-index: 3; opacity: 0; transform: translateZ(1px); transition: none; pointer-events: none;
+  left: calc(54% - var(--s) * .4); top: 10%; width: calc(var(--s) * .8); height: calc(var(--s) * .8);
+}
+body.look-case #album-disc { --s: 100%; }
+/* The drive under the case: a slot-loading front, its light lit while a disc plays in it. */
+body.look-case #case-slot {
+  display: block; position: absolute; left: 50%; transform: translateX(-50%); top: calc(45% + min(74cqh, 45cqw) / 2 + 5cqh);
+  width: min(70cqw, 92cqh); height: 18px; border-radius: 9px;
+  background: linear-gradient(rgba(255, 255, 255, .08), rgba(0, 0, 0, .25)), rgb(22, 23, 27);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .45), inset 0 1px rgba(255, 255, 255, .12), 0 0 0 1px rgba(255, 255, 255, .06);
+}
+body.look-case #case-slot::before { content: ""; position: absolute; left: 12%; right: 12%; top: 8px; height: 2px; border-radius: 1px; background: rgb(4, 4, 6); box-shadow: 0 1px rgba(255, 255, 255, .08); }
+body.look-case #case-slot::after { content: ""; position: absolute; right: 5%; top: 6px; width: 6px; height: 6px; border-radius: 50%; background: rgba(255, 255, 255, .12); }
+body.look-case.playing #case-slot::after { background: rgb(var(--accent)); box-shadow: 0 0 8px rgb(var(--accent)); }
+body.no-anim.look-case #case-box, body.no-anim.look-case #cover-art { transition: none; }
 body.look-album { --font: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; }
 body.look-album #divider, body.look-visualizer #divider, body.look-lyrics #divider, body.look-album #now-playing-label, body.look-album #visualizer, body.look-album #deck-display, body.look-album #now-row .grow { display: none; }
 body.look-album #times { display: flex; }

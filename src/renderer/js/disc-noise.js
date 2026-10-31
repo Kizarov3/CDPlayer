@@ -67,6 +67,13 @@ export class DiscNoise {
   }
   click(gain = 0.08) { this.burst({ buffer: this.white, type: 'highpass', freq: 1800, gain, attack: 0.002, hold: 0.004, release: 0.03 }); }
 
+  /** A jewel case's lid: opened, the catch letting go and the hinge's tick; shut, the snap of the plastic. */
+  caseSnap(open) {
+    if (!this.enabled) return;
+    this.click(open ? 0.07 : 0.14);
+    this.burst({ freq: open ? 900 : 600, q: 6, gain: open ? 0.05 : 0.09, attack: 0.002, hold: 0.008, release: 0.05 });
+    if (open) setTimeout(() => this.click(0.04), 140);
+  }
   /** The tray motor running for `ms`, ending in the clunk of the tray reaching its stop. */
   tray(ms) {
     if (!this.enabled) return;
