@@ -2589,11 +2589,22 @@ function morphCdView(entering) {
   const canvas = $('disc'), body = document.body;
   // Where the disc sits in both layouts, measured without a paint in between. Leaving, the real layout is switched
   // back first and measured as it is — the CD View title under the disc is gone from it, so the disc sits lower.
-  const from = canvas.getBoundingClientRect();
+  // ALBUM's disc is the one by its cover (the canvas under the cover is never seen): it grows from there and lands back
+  // there — the canvas placed so the disc it draws (520 at most, 30 in from each side) lies over that one.
+  const spot = () => {
+    const d = $('album-disc').getBoundingClientRect(), w = Math.min(d.width, 520) + 60;
+    return { left: d.left + d.width / 2 - w / 2, top: d.top + d.height / 2 - w / 2, width: w, height: w };
+  };
+  const byCover = () => state.look === 'ALBUM' && $('album-disc').getBoundingClientRect().width > 0; // (none in CD View: asked in the layout it's in)
+  const from = entering && byCover() ? spot() : canvas.getBoundingClientRect();
   let to;
   // The divider too: the header above it comes and goes, so it sits higher in CD View. (ALBUM's cover and JEWEL CASE's
   // case go the same way: CD View is the disc's.)
-  const chrome = ['header', 'divider', 'player', 'hint', ...(state.look === 'ALBUM' ? ['cover-art', 'album-disc'] : state.look === 'CASE' ? ['case-box'] : [])].map($);
+  // (ALBUM's and JEWEL CASE's player is display: contents — no box to fade: what's in it faded instead, round the disc)
+  const canvasNode = $('disc');
+  const faded = (node) => node === canvasNode ? []
+    : getComputedStyle(node).display === 'contents' || node.contains(canvasNode) ? [...node.children].flatMap(faded) : [node];
+  const chrome = [...new Set(['header', 'divider', 'player', 'hint', ...(state.look === 'ALBUM' ? ['cover-art', 'album-disc'] : state.look === 'CASE' ? ['case-box'] : [])].map($).flatMap(faded))];
   body.classList.add('cd-morph');
   if (entering) {
     // (measured in CD View as it will be: its title under the disc, and the deck's display under that, taking room)
@@ -2603,10 +2614,10 @@ function morphCdView(entering) {
     for (const node of chrome) node.animate([{ opacity: 1 }, { opacity: 0 }], { duration: CD_MORPH_MS * 0.45, easing: 'ease-out', fill: 'forwards' });
   } else {
     state.cdView = false; applyCdViewState(); // the player is laid out again underneath, and fades in as the disc lands
-    to = canvas.getBoundingClientRect();
+    to = byCover() ? spot() : canvas.getBoundingClientRect();
     for (const node of chrome) node.animate([{ opacity: 0 }, { opacity: 1 }], { duration: CD_MORPH_MS * 0.5, delay: CD_MORPH_MS * 0.5, easing: 'ease-out', fill: 'backwards' }); // (not long half-there: a case half-faded looks grey)
   }
-  Object.assign(canvas.style, { position: 'fixed', right: 'auto', bottom: 'auto', zIndex: '5' });
+  Object.assign(canvas.style, { position: 'fixed', right: 'auto', bottom: 'auto', zIndex: !entering && state.look === 'ALBUM' ? '0' : '5' }); // (ALBUM's going back under its cover, which fades in over it)
   disc.morph = { from: entering ? 'normal' : 'enlarged', to: entering ? 'enlarged' : 'normal', t: 0 };
   return new Promise((resolve) => {
     discMorph = { start: performance.now(), from, to, entering, chrome, resolve };
@@ -2623,7 +2634,7 @@ function stepDiscMorph(now, finish = false) {
   const style = $('disc').style;
   Object.assign(style, { left: lerp('left'), top: lerp('top'), width: lerp('width'), height: lerp('height') });
   disc.morph.t = eased;
-  disc.coverHide = state.look === 'CASE' ? (m.entering ? 1 - eased : eased) : 0; // (CASE: the cover's thumbnail CD View has, faded with it)
+  disc.coverHide = state.look === 'CASE' || state.look === 'ALBUM' ? (m.entering ? 1 - eased : eased) : 0; // (the cover's thumbnail CD View has, faded with it: the page has the cover itself)
   if (p < 1) return;
   discMorph = null; disc.morph = null; disc.coverHide = 0;
   document.body.classList.remove('cd-morph');

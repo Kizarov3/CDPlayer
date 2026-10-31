@@ -552,6 +552,7 @@ body.no-anim #album-disc::before { animation: none; }
 body.look-case:not(.cd-view) #body { grid-template-columns: minmax(420px, 1.7fr) minmax(0, 1fr); column-gap: 32px; }
 body.look-case #disc-column > canvas { visibility: visible; left: auto; right: 0; width: 37%; }
 body.look-case #disc-column { perspective: 1700px; perspective-origin: 20% 45%; }
+body.look-case.cd-morph #disc-column { perspective: none; } /* (a perspective holds fixed children: the disc going to or from CD View measured against the window, not the column) */
 body.look-case #case-box {
   --s: min(80cqh, 37cqw); display: block; position: absolute; width: calc(var(--s) * 1.136); height: var(--s);
   left: calc(61.5cqw - var(--s) * 1.136); top: calc(48% - var(--s) / 2); transform-style: preserve-3d; /* (room on its left for the lid open) */
