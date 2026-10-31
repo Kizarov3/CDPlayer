@@ -1221,6 +1221,30 @@ body.no-anim .queue-row.active .num::after { animation: none; }
 }
 .sticky-note:hover .note-peel { opacity: 1; }
 .case-front .sticker-new { top: 14px; right: 14px; width: 54px; height: 54px; font-size: 14px; letter-spacing: .04em; transform: rotate(14deg); z-index: 3; }
+/* FOUND IT: a NEW sticker's shape in green, on an album that came off the WANT LIST, until it's played. */
+.sticker-found { background: radial-gradient(circle at 35% 30%, rgb(120, 214, 110), rgb(32, 140, 60)); color: rgb(255, 252, 220); text-align: center; line-height: 1; }
+.spine .sticker-found { font-size: 5px; }
+.case-front .sticker-found { font-size: 11px; }
+.spine.found:not(.obi) .spine-text { top: 30px; }
+/* A missing album on the WANT LIST: its place a little more there, a gold star at its foot. */
+.spine.ghost.wanted { opacity: .55; outline-color: rgba(230, 190, 90, .85); }
+.spine-want { position: absolute; left: 0; right: 0; bottom: 6px; text-align: center; font-size: 11px; color: rgb(230, 190, 90); }
+/* The WANT LIST's index cards: ruled card stock, a red line under the title, written on in marker, each a little askew. */
+.want-list { max-height: min(460px, 60vh); display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; padding: 6px 8px 10px 4px; }
+.want-card {
+  position: relative; padding: 10px 12px 8px; transform: rotate(calc(var(--tilt, 0) * .6deg));
+  background: linear-gradient(to bottom, transparent 30px, rgba(214, 60, 60, .55) 30px 31.5px, transparent 31.5px),
+    repeating-linear-gradient(to bottom, transparent 0 17px, rgba(90, 140, 200, .35) 17px 18px) 0 32px / 100% calc(100% - 32px) no-repeat,
+    rgb(252, 249, 238);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 12px -6px rgba(0, 0, 0, .5);
+  color: rgb(34, 38, 84); font: 15px/18px "Marker Felt", "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive;
+}
+.want-title { height: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 17px; }
+.want-artist, .want-price { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.want-price { color: rgb(150, 40, 40); }
+.want-buttons { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; }
+.want-card.found .want-title, .want-card.found .want-artist { text-decoration: line-through; text-decoration-thickness: 2px; text-decoration-color: rgba(214, 40, 40, .8); }
+.want-card.found .want-price { color: rgb(32, 120, 50); }
 /* A missing album's ghost case: see-through, with a dashed edge. */
 .case-card.ghost { background: rgba(var(--card), .82); border: 1.5px dashed rgba(255, 255, 255, .35); }
 .case-card.ghost .case-cover { opacity: .75; }

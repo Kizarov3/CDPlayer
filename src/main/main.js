@@ -299,6 +299,7 @@ handle('plays:add', (p) => {
   const album = shelf.albumOf(p), w = album && wrap();
   if (album) { albumRuns.heard(runsState(), album.id, album.paths.indexOf(p), album.paths.length, Date.now(), (i) => skipped().has(album.paths[i])); runsChanged = true; }
   if (w && !w.torn.has(album.id)) { w.torn.add(album.id); store.writeWrap(w); }
+  if (album) wantList.played(album.id); // a FOUND IT album heard: its card comes off the WANT LIST
   phoneShelf = null; // the phone's shelf counts it (and shows the album unwrapped) when it's next read
   return n;
 });
@@ -549,6 +550,7 @@ handle('tags:forgetOriginal', (p) => {
 // The music folders, watched so an open shelf keeps up with them (library-watch.js); they follow the folders the shelf reads.
 const libraryWatch = require('./library-watch').createLibraryWatch({ onChange: () => {
   phoneShelf = null; // the phone remote's list is read again when it's next asked for
+  if (wantList.waiting()) lookForWanted();
   if (win && !win.isDestroyed()) win.webContents.send('library-changed');
 } });
 const watchMusicFolder = () => { if (!smokeDir) libraryWatch.start(store.musicFolders()); };
@@ -571,6 +573,10 @@ async function shelfListing() {
   // …and which came in shrink-wrap (new since wrapping began, not played yet, not unwrapped by hand).
   const w = wrap();
   for (const a of result.albums) a.wrapped = shelf.isWrapped(a, w);
+  // …and which turned up off the WANT LIST: crossed off, and FOUND IT on them until they're played.
+  wantFound(wantList.crossOff(result.albums));
+  const foundIt = wantList.foundIds();
+  for (const a of result.albums) a.foundIt = foundIt.has(a.id) && !a.plays;
   // …and where one was left part-way through (a bookmark), and how many times each was played through.
   const r = runsState();
   for (const a of result.albums) { a.bookmark = albumRuns.bookmark(r, a.id, a.tracks.length); a.through = albumRuns.throughCount(r, a.id); }
@@ -746,6 +752,30 @@ handle('discography:hide', (groupId) => { const hidden = store.readHiddenMissing
 handle('discography:open', (groupId) => { if (/^[0-9a-f-]{36}$/.test(groupId)) shell.openExternal(`https://musicbrainz.org/release-group/${groupId}`); });
 // A search on YouTube Music, in the browser or its app: playing it inside CDPlayer isn't possible within YouTube's rules.
 handle('youtubeMusic:open', (query) => { const q = String(query || '').trim().slice(0, 300); if (q) shell.openExternal(`https://music.youtube.com/search?q=${encodeURIComponent(q)}`); });
+// The WANT LIST (want-list.js): albums you don't have yet, put on it from their ghost cases on the shelf, each with its
+// lowest Discogs price (asked again after a week at most); crossed off by themselves when they turn up in the music folder.
+const wantList = require('./want-list').createWantList();
+const wantQuery = (x) => ({ id: `want:${x.key}`, artist: x.artist, title: x.title, year: x.year || null });
+// Crossed off just now: said in the status line.
+function wantFound(found) {
+  if (found.length && win && !win.isDestroyed()) win.webContents.send('want-found', found.map((x) => ({ artist: x.artist, title: x.title })));
+}
+// The music folder changed with the shelf closed, maybe: it's read (only what changed is) to see if a wanted album came.
+let wantTimer = null;
+function lookForWanted() {
+  clearTimeout(wantTimer);
+  wantTimer = setTimeout(() => { shelf.scanAlbums().then((r) => wantFound(wantList.crossOff(r.albums))).catch(() => {}); }, 1500);
+}
+handle('want:list', () => {
+  const items = wantList.list();
+  return { items, prices: discogs.known(items.map((x) => wantQuery(x).id)) };
+});
+handle('want:add', (x) => wantList.add(x && typeof x === 'object' ? { artist: x.artist, title: x.title, year: x.year, groupId: x.groupId } : null));
+handle('want:remove', (key) => wantList.remove(key));
+handle('want:price', (key) => {
+  const x = wantList.list().find((i) => i.key === key);
+  return x ? discogs.lookup(wantQuery(x), { priceDays: 7 }).catch(offline) : null;
+});
 // Shrink-wrap on new albums: from the first time the shelf was read with it; unwrapped album by album.
 let wrapState = null;
 function wrap() {

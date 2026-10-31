@@ -6,7 +6,8 @@
 // (with ⇧ held, to play next). An album left unplayed gathers dust (shelf-dust.js): rub the mouse over its spine to
 // wipe it. PULL ONE takes one off the shelf at random, the dustier the likelier. A case can have a sticky note on it
 // (shelf-notes.js), whose corner shows above its spine. A new album comes in shrink-wrap until it's played or
-// unwrapped by hand, dragging the film off its case.
+// unwrapped by hand, dragging the film off its case. A missing album's ghost case puts it on the WANT LIST (★ WANT;
+// want-list.js); when it turns up in the music folder it's crossed off, and its case says FOUND IT until it's played.
 import { el, pill, anim, EASE, growFrom } from './widgets.js';
 import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './booklet.js';
 import { stickersFor } from './shelf-stickers.js';
@@ -21,11 +22,12 @@ import { showsAlbum, showChoices } from './shelf-show.js';
 import { groupEditions, editionName } from './shelf-editions.js';
 import { similarOnShelf, similarPool, createSimilarLookup } from './similar-shelf.js';
 import { SLOTS, slotOfAlbum } from './changer.js';
+import { isWanted, wantKey, stillWanted, foundNote } from './want-list.js';
 import { t } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 const shelf = { open: false, albums: [], loading: false, covers: new Map(), colors: new Map(), observer: null, caseOpen: null, app: null, generation: 0, inPlayer: null,
-  discogs: new Map(), openBoxes: new Set(), pressings: new Map(), appraising: null, appraisalNote: null, countBase: '', settings: null, noCover: new Set(), colorCache: {}, hidden: new Set(), moves: [], show: 'ALL', showLabel: null, boxObserver: null, wantTimer: null, onScreen: new Set() };
+  discogs: new Map(), openBoxes: new Set(), pressings: new Map(), appraising: null, appraisalNote: null, countBase: '', settings: null, noCover: new Set(), colorCache: {}, hidden: new Set(), moves: [], show: 'ALL', showLabel: null, boxObserver: null, wantTimer: null, onScreen: new Set(), wanted: [] };
 
 export const isShelfOpen = () => shelf.open;
 // Discographies arriving redraw the shelf — once for a burst, and not while a case is out, a spine is carried or one
@@ -180,6 +182,9 @@ export function setupShelf(app) {
   $('shelf-fill').addEventListener('click', fillChanger);
   $('shelf-here').addEventListener('click', goToPlayer);
   $('shelf-check').addEventListener('click', () => shelf.app.libraryCheck());
+  $('shelf-want').addEventListener('click', () => shelf.app.showWantList());
+  // Wanted albums that turned up in the music folder: said (the shelf, if it's open, reads the folder again by itself).
+  app.cdp.onWantFound((found) => { if (shelf.open) say(foundNote(found)); else app.setStatus(foundNote(found)); });
   $('shelf-filter').addEventListener('input', render);
   // SORT: every way at once, in a list under the button — one click to any of them, the current one marked.
   const sortBy = (sort) => {
@@ -262,6 +267,7 @@ async function load({ quiet = false } = {}) {
   shelf.settings = await shelf.app.cdp.discogsSettings().catch(() => null);
   shelf.appraisalNote = totalNote();
   shelf.hidden = new Set(result.hiddenMissing || []);
+  shelf.wanted = (await shelf.app.cdp.wantList().catch(() => null) || { items: [] }).items;
   shelf.moves = result.moves || [];
   shelf.folderName = result.name || null;
   render();
@@ -293,6 +299,7 @@ function render() {
   $('shelf-show').classList.toggle('on', showing);
   $('shelf-fill').hidden = !shelf.app.changerMode();
   $('shelf-fill').disabled = !shown.length;
+  showWantCount();
   showFill();
   // (The folder's name is the count's tooltip: the line keeps its room for the albums and what the shelf is worth.)
   shelf.countBase = [n === 1 ? t('1 ALBUM') : t('{n} ALBUMS', { n }), filtering || showing ? t('{n} SHOWN', { n: shown.length }) : null].filter(Boolean).join(' · ');
@@ -320,10 +327,10 @@ function render() {
     if (a.ghost) return ghostSpine(a.ghost, a.artist);
     if (a.divider) return el('div', { class: `shelf-divider${[...a.divider].length <= 2 ? ' short' : ''}`, 'aria-hidden': 'true', 'data-section': a.divider }, el('span', {}, a.divider));
     const st = a.stickers = stickersFor(a, now);
-    const spine = el('button', { class: `spine${a.discs > 1 ? ' double' : ''}${st.obi ? ' obi' : ''}${st.isNew ? ' new' : ''}${spineHolds(a, shelf.inPlayer) ? ' in-player' : ''}${isRare(a.pressing) ? ' rare' : ''}`, title: spineTitle(a), onClick: () => { if (!shelf.dragged) openCase(a, spine); } },
+    const spine = el('button', { class: `spine${a.discs > 1 ? ' double' : ''}${st.obi ? ' obi' : ''}${st.isNew ? ' new' : ''}${a.foundIt ? ' found' : ''}${spineHolds(a, shelf.inPlayer) ? ' in-player' : ''}${isRare(a.pressing) ? ' rare' : ''}`, title: spineTitle(a), onClick: () => { if (!shelf.dragged) openCase(a, spine); } },
       el('span', { class: 'spine-text' }, a.artist ? el('b', {}, a.artist) : null, a.artist ? ' · ' : null, a.title),
       st.obi ? el('span', { class: 'obi-cat' }, st.obi.catalog) : null,
-      st.isNew ? el('span', { class: 'sticker-new' }, t('NEW')) : null,
+      a.foundIt ? el('span', { class: 'sticker-new sticker-found' }, t('FOUND IT')) : st.isNew ? el('span', { class: 'sticker-new' }, t('NEW')) : null,
       a.wrapped ? el('span', { class: 'spine-film' }) : null,
       bookmarkOf(a) ? el('span', { class: 'spine-bookmark' }) : null,
       a.editions ? el('span', { class: `spine-editions${a.editions.length > 2 ? ' more' : ''}` }) : null);
@@ -631,10 +638,12 @@ function watchBox(card) {
   shelf.boxObserver.observe(card);
 }
 function ghostSpine(group, artist) {
-  const spine = el('button', { class: 'spine ghost', title: [artist, group.title, group.year].filter(Boolean).join(' · '),
+  const wanted = isWanted(shelf.wanted, artist, group.title);
+  const spine = el('button', { class: `spine ghost${wanted ? ' wanted' : ''}`, title: [artist, group.title, group.year].filter(Boolean).join(' · '),
     onClick: () => openGhostCase(group, artist, spine) },
-    el('span', { class: 'spine-text' }, group.title, group.year ? ` · ${group.year}` : ''));
-  spine.ghost = group;
+    el('span', { class: 'spine-text' }, group.title, group.year ? ` · ${group.year}` : ''),
+    wanted ? el('span', { class: 'spine-want' }, '★') : null);
+  spine.ghost = group; spine.ghostArtist = artist;
   return spine;
 }
 // A missing album's ghost case: see-through, its cover from the Cover Art Archive and its tracklist from MusicBrainz,
@@ -671,12 +680,45 @@ async function openGhostCase(group, artist, spine) {
       tracks,
       el('div', { class: 'case-actions' },
         pill(t('BACK ON THE SHELF'), () => closeCase()),
+        wantButton(group, artist),
         pill(t('NOT INTERESTED'), () => hideMissing(group), t('Never show this one on the shelf again')),
         el('span', { class: 'grow' }),
         pill(t('MUSICBRAINZ'), () => app.cdp.openMusicBrainz(group.id), t('Open its page on MusicBrainz')),
         pill(t('YOUTUBE MUSIC'), () => app.cdp.openYouTubeMusic(`${artist} ${group.title}`), t('Find it on YouTube Music')),
         spotifyButton)));
   showCase(card, spine, from, hashColor(group.title + artist));
+}
+// ★ WANT: the album onto the WANT LIST (a card with its Discogs price), or, already on it, off it again.
+function wantButton(group, artist) {
+  const label = () => (isWanted(shelf.wanted, artist, group.title) ? t('★ WANTED') : t('★ WANT'));
+  const button = pill(label(), async () => {
+    const on = isWanted(shelf.wanted, artist, group.title);
+    const items = on ? await shelf.app.cdp.unwant(wantKey(artist, group.title)).catch(() => null)
+      : await shelf.app.cdp.want({ artist, title: group.title, year: group.year || null, groupId: group.id }).catch(() => null);
+    if (!items) return;
+    setWanted(items);
+    button.textContent = label();
+    say(on ? t('OFF YOUR WANT LIST') : t('ON YOUR WANT LIST · ITS CARD IS UNDER WANT LIST'));
+  }, t('Put it on your want list, with its lowest price on Discogs — crossed off by itself when it turns up in your music folder'));
+  button.classList.toggle('on', isWanted(shelf.wanted, artist, group.title));
+  return button;
+}
+/** The WANT LIST changed (a card added or removed): the ghost spines' stars and the button's count again. */
+export function setWanted(items) {
+  shelf.wanted = items || [];
+  if (!shelf.open) return;
+  showWantCount();
+  for (const spine of document.querySelectorAll('#shelf-body .spine.ghost')) {
+    if (!spine.ghost) continue;
+    const on = isWanted(shelf.wanted, spine.ghostArtist, spine.ghost.title);
+    spine.classList.toggle('wanted', on);
+    let star = spine.querySelector('.spine-want');
+    if (on && !star) { star = el('span', { class: 'spine-want' }, '★'); spine.append(star); } else if (!on && star) star.remove();
+  }
+}
+function showWantCount() {
+  const n = stillWanted(shelf.wanted);
+  $('shelf-want').textContent = n ? t('WANT LIST · {n}', { n }) : t('WANT LIST');
 }
 function hideMissing(group) {
   shelf.hidden.add(group.id);
@@ -965,7 +1007,7 @@ async function openCase(a, spine) {
         el('div', { class: 'obi-title' }, a.title),
         el('div', { class: 'obi-foot' }, el('div', {}, st.obi.catalog), tag)) : null,
       !st.obi ? tag : null,
-      st.isNew ? el('div', { class: 'sticker-new' }, t('NEW')) : null,
+      a.foundIt ? el('div', { class: 'sticker-new sticker-found' }, t('FOUND IT')) : st.isNew ? el('div', { class: 'sticker-new' }, t('NEW')) : null,
       film,
       a.note ? stickyNote({ id: a.id, text: a.note, onSave: saveNote }) : null);
   const card = el('div', { class: 'case-card' },
