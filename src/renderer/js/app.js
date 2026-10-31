@@ -398,12 +398,19 @@ function updateAlbumHead() {
 // ALBUM's colour: the cover's (as AUTO's theme finds it, on a small copy), lightened to read on the dark — for the
 // artist's name and the song playing. Worked out as the cover comes, only while ALBUM is the look.
 function tintFromCover() {
+  inkSeekBar();
   if (!albumLook()) return;
   const img = state.cover, style = document.body.style;
-  if (!img) { style.removeProperty('--album-tint'); return; }
+  if (!img) { style.removeProperty('--album-tint'); inkSeekBar(); return; }
   const small = new OffscreenCanvas(160, 160); // (as many points as AUTO samples of a big cover: the colour it finds)
   small.getContext('2d').drawImage(img, 0, 0, 160, 160);
   style.setProperty('--album-tint', deriveAutoTheme(small).accent.map((v) => Math.round(v * 0.72 + 255 * 0.28)).join(', '));
+  inkSeekBar();
+}
+// JEWEL CASE: the seek bar and the volume printed in the page's one ink (styles.css --case-ink), square.
+function inkSeekBar() {
+  const ink = state.look === 'CASE' ? `rgb(${getComputedStyle(document.body).getPropertyValue('--case-ink').trim()})` : null;
+  try { progress.setInk(ink); volumeSlider.setInk(ink); } catch { /* (not made yet, at the start: they're inked when first tinted) */ }
 }
 // ALBUM's disc: out of its case, beside the cover, while there's a song in the player (turning while it plays — the
 // body's .playing); back in when the tray opens, or there's nothing to play.
