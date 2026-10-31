@@ -40,7 +40,7 @@ export async function openBooklet(app, from, content = null, lid = null) {
     left: `${Math.round((window.innerWidth - size * 2) / 2)}px`, top: `${Math.round((window.innerHeight - size) / 2)}px`,
   });
   spread.style.setProperty('--page', `${size}px`);
-  applyColors(spread, content.cover);
+  applyColors(spread, content.cover, !!lid);
   root.append(spread);
   layer().append(root);
 
@@ -98,7 +98,7 @@ export async function openBooklet(app, from, content = null, lid = null) {
   if (book && book.spread === spread && book.turned === 0) turn(1);
 }
 
-const LID_MS = 950;
+const LID_MS = 950, LID_BACK_MS = 720; // (put away quicker than it's taken out)
 // Seen as the case is: the same perspective as its lid's.
 function lidView(root, lid) {
   root.style.perspective = `${lid.perspective}px`;
@@ -109,11 +109,13 @@ function lidView(root, lid) {
 // the middle. → { at(u) (u 0 → 1: its transform), faced (the u at which it's turned past edge-on) }.
 function lidPath(from, target, size, lid) {
   const k0 = from.width / size, x0 = from.left - (target.left + size), y0 = from.top - target.top;
-  const angle = (u) => lid.angle * (1 - smooth(0.2, 0.9, u));
+  const angle = (u) => lid.angle * (1 - smooth(0.18, 0.85, u));
   const at = (u) => {
     const move = smooth(0.25, 1, u), out = smooth(0, 0.32, u) * (1 - smooth(0.32, 1, u)), k = k0 + (1 - k0) * move;
+    // Turned round its middle once it's out of the tabs, not swung on its spine like a second door.
+    const p = (size / 2) * smooth(0.02, 0.3, u);
     return `translate3d(${(x0 * (1 - move)).toFixed(1)}px, ${(y0 * (1 - move)).toFixed(1)}px, 0) scale3d(${k.toFixed(4)}, ${k.toFixed(4)}, ${k.toFixed(4)}) `
-      + `rotateY(${angle(u).toFixed(2)}deg) translate3d(${(-0.5 * size * out).toFixed(1)}px, 0, ${(16 * out).toFixed(1)}px)`;
+      + `translate3d(${p.toFixed(1)}px, 0, 0) rotateY(${angle(u).toFixed(2)}deg) translate3d(${(-p - 0.5 * size * out).toFixed(1)}px, 0, ${(16 * out).toFixed(1)}px)`;
   };
   let faced = 1;
   for (let u = 0; u <= 1; u += 0.005) if (Math.abs(angle(u)) < 90) { faced = u; break; }
@@ -161,6 +163,7 @@ export async function closeBooklet() {
     b.leaves.forEach((leaf) => leaf.classList.remove('turned'));
     b.turned = 0;
     await wait(TURN_MS * 0.6);
+    stack(); // (the front cover on top again, shut: it's what's seen as it's put away)
   }
   if (b.from && b.lid && anim.enabled) { // shut, back the way it came, and into the lid's tabs
     const size = b.spread.offsetHeight, target = b.spread.getBoundingClientRect();
@@ -168,9 +171,9 @@ export async function closeBooklet() {
     lidView(b.root, b.lid);
     b.spread.style.transition = 'none'; b.spread.style.transformOrigin = `${size}px 0`;
     const path = lidPath(b.from, target, size, b.lid);
-    const a = b.spread.animate(pathFrames((u) => ({ transform: path.at(1 - u) }), 60), { duration: LID_MS, easing: 'linear', fill: 'forwards' });
-    setTimeout(() => b.spread.classList.add('in-lid'), LID_MS * (1 - path.faced));
-    setTimeout(() => { if (b.lid.back) b.lid.back(); }, LID_MS * 0.97);
+    const a = b.spread.animate(pathFrames((u) => ({ transform: path.at(1 - u) }), 60), { duration: LID_BACK_MS, easing: 'linear', fill: 'forwards' });
+    setTimeout(() => b.spread.classList.add('in-lid'), LID_BACK_MS * (1 - path.faced));
+    setTimeout(() => { if (b.lid.back) b.lid.back(); }, LID_BACK_MS * 0.97);
     await a.finished.catch(() => {});
     b.root.remove();
     book = null;
@@ -256,9 +259,19 @@ const blankPage = () => el('div', { class: 'page blank' });
 const heading = (text, sub) => el('div', { class: 'page-head' }, el('div', { class: 'page-title' }, text), sub ? el('div', { class: 'page-sub' }, sub) : null);
 
 // The album's colours: AUTO's palette from the cover art (so each booklet is printed differently).
-function applyColors(node, cover) {
+function applyColors(node, cover, paper = false) {
   const t = deriveAutoTheme(cover);
   const s = node.style;
+  if (paper) { // a jewel case's: printed on light card — the cover's colour faint in the paper, darkened for the type
+    const mix = (a, b, k) => a.map((v, i) => Math.round(v + (b[i] - v) * k));
+    s.setProperty('--b-paper', rgb(mix([238, 234, 224], t.accent, 0.07)));
+    s.setProperty('--b-ink', rgb([30, 28, 32]));
+    s.setProperty('--b-muted', rgb([104, 100, 104]));
+    s.setProperty('--b-accent', rgb(mix(t.accent, [0, 0, 0], 0.45)));
+    s.setProperty('--b-accent2', rgb(mix(t.accent2, [0, 0, 0], 0.5)));
+    node.classList.add('paper');
+    return;
+  }
   s.setProperty('--b-paper', rgb(t.card));
   s.setProperty('--b-ink', rgb(t.text));
   s.setProperty('--b-muted', rgb(t.muted));
