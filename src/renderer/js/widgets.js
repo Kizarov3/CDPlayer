@@ -211,8 +211,6 @@ export class Slider {
   setMarker(v) { if (v !== this.marker) { this.marker = v; this.draw(); } }
   setWaveform(data) { this.waveform = data; this.draw(); }
   setWaveformEnabled(on) { this.waveformEnabled = on; this.draw(); }
-  /** Printed (JEWEL CASE): drawn in one ink (a CSS colour), square — bars and a square thumb; null: as the theme has it. */
-  setInk(ink) { if (ink !== this.ink) { this.ink = ink; this.draw(); } }
   draw() {
     const c = this.canvas, ctx = c.getContext('2d'), dpr = window.devicePixelRatio || 1;
     if (!c.width) return;
@@ -221,15 +219,15 @@ export class Slider {
     ctx.clearRect(0, 0, w, h);
     const { x: tx, w: tw } = this.track;
     const f = this.max > this.min ? (this.value - this.min) / (this.max - this.min) : 0;
-    const thumbX = tx + f * tw, cy = h / 2, ink = this.ink, r = ink ? 0 : 1;
+    const thumbX = tx + f * tw, cy = h / 2;
     if (this.waveformCapable && this.waveformEnabled && this.waveform && this.waveform.length) {
       const n = this.waveform.length, maxBar = Math.max(4, Math.min(h, this.trackHeight) - 2);
       for (let i = 0; i < n; i++) {
         const x = Math.floor(tx + (i * tw) / n);
         const bw = Math.max(1, Math.floor(tx + ((i + 1) * tw) / n) - x - 1);
         const bh = Math.max(2, Math.round(this.waveform[i] * maxBar));
-        ctx.fillStyle = x <= thumbX ? ink || rgb(colors.accent) : 'rgba(255,255,255,0.137)';
-        roundRect(ctx, x, cy - bh / 2, bw, bh, r);
+        ctx.fillStyle = x <= thumbX ? rgb(colors.accent) : 'rgba(255,255,255,0.137)';
+        roundRect(ctx, x, cy - bh / 2, bw, bh, 1);
       }
     } else {
       ctx.fillStyle = 'rgba(255,255,255,0.07)';
@@ -237,7 +235,7 @@ export class Slider {
       const fill = thumbX - tx;
       if (fill > 0) {
         const g = ctx.createLinearGradient(tx, 0, tx + Math.max(1, fill), 0);
-        g.addColorStop(0, ink || rgb(colors.accent)); g.addColorStop(1, ink || rgb(colors.accent2));
+        g.addColorStop(0, rgb(colors.accent)); g.addColorStop(1, rgb(colors.accent2));
         ctx.fillStyle = g;
         roundRect(ctx, tx, cy - 1.5, fill, 3, 1.5);
       }
@@ -249,11 +247,6 @@ export class Slider {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillStyle = rgb(colors.accent);
       ctx.fillText('?', mx, cy + 0.5);
-    }
-    if (ink) { // a printed square, a shadow offset under it
-      ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(thumbX - THUMB / 2 + 2, cy - THUMB / 2 + 2, THUMB, THUMB);
-      ctx.fillStyle = ink; ctx.fillRect(thumbX - THUMB / 2, cy - THUMB / 2, THUMB, THUMB);
-      return;
     }
     ctx.fillStyle = 'rgba(255,255,255,0.137)';
     ctx.beginPath(); ctx.arc(thumbX, cy, THUMB / 2 + 3, 0, Math.PI * 2); ctx.fill();

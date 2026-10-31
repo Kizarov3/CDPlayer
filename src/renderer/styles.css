@@ -676,46 +676,6 @@ body.look-album .queue-row.active .num::after {
   animation: albumDiscTurn 1.8s linear infinite paused;
 }
 body.look-album.playing .queue-row.active .num::after { animation-play-state: running; }
-/* JEWEL CASE's own page: not ALBUM's streaming-app one but the CD's printed matter — the window a dark printed inlay
-   card (its grain, a keyline round it, the spine down its left), one ink from the cover for everything, a 90s sleeve's
-   type, the queue its tracklist, square printed keys, and a barcode in the corner. */
-body.look-case { --font: "Futura", "Century Gothic", "Avenir Next", "Trebuchet MS", sans-serif; --case-ink: var(--album-tint, 242, 194, 48); --case-paper: 236, 230, 216; --case-mono: "Courier New", Menlo, Consolas, monospace; }
-body.look-case #backdrop-art, body.look-case #backdrop-flow { display: none; }
-body.look-case #backdrop { background: rgb(14, 13, 12); }
-body.look-case #backdrop::before { opacity: 1; background: radial-gradient(circle at 1px 1px, rgba(var(--case-paper), .045) 0 .6px, transparent 1px) 0 0 / 4px 4px, radial-gradient(ellipse at 30% 40%, rgba(var(--case-ink), .07), transparent 60%); }
-body.look-case::after { /* the inlay's keyline */
-  content: ""; position: fixed; inset: 10px 10px 10px 22px; border: 1px solid rgba(var(--case-paper), .09); pointer-events: none; z-index: 0;
-}
-body.look-case::before { /* the spine, as on the case's: who and what (app.js updateAlbumHead) */
-  content: attr(data-spine); position: fixed; left: 0; top: 0; bottom: 0; width: 14px; pointer-events: none;
-  z-index: 1; background: rgb(var(--case-ink)); color: rgba(0, 0, 0, .7); font: bold 8px/14px var(--case-mono); letter-spacing: .3em; text-transform: uppercase; writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; white-space: nowrap; overflow: hidden;
-}
-body.look-case #track-title, body.look-case #cd-title { font-weight: 800; text-transform: uppercase; letter-spacing: .1em; }
-body.look-case #track-title { font-size: 26px; }
-body.look-case #track-artist, body.look-case #cd-artist { font-variant: small-caps; letter-spacing: .14em; color: rgba(var(--case-paper), .7); }
-body.look-case #track-source, body.look-case #times { font-family: var(--case-mono); letter-spacing: .04em; }
-body.look-case #header .pill, body.look-case #status-pill { background: none; border-radius: 0; font-family: var(--case-mono); letter-spacing: .08em; color: rgba(var(--case-paper), .78); }
-body.look-case #header .pill:hover { background: rgb(var(--case-ink)); color: rgb(14, 13, 12); }
-body.look-case .round { border-radius: 2px; }
-body.look-case .round:not(.primary) { box-shadow: inset 0 0 0 1px rgba(var(--case-ink), .45); }
-body.look-case .round:not(.primary):hover { background: rgb(var(--case-ink)); color: rgb(14, 13, 12); }
-body.look-case .round.primary { background: rgb(var(--case-ink)); color: rgb(14, 13, 12); box-shadow: 4px 4px 0 rgba(0, 0, 0, .45); }
-body.look-case .round.on { box-shadow: inset 0 0 0 1px rgb(var(--case-ink)); color: rgb(var(--case-ink)); }
-/* The album's page, the back inlay: flat, the tracklist printed, the one playing a highlighted line. */
-body.look-case:not(.cd-view) #queue-card { background: none; border-radius: 0; border-left: 1px solid rgba(var(--case-paper), .09); padding-left: 26px; position: relative; }
-body.look-case #album-name { text-transform: uppercase; letter-spacing: .08em; font-weight: 800; }
-body.look-case #album-artist { color: rgb(var(--case-ink)); font-variant: small-caps; letter-spacing: .12em; }
-body.look-case #album-line, body.look-case #queue-head { font-family: var(--case-mono); }
-body.look-case #album-head:not([hidden]) { border-bottom: 2px solid rgb(var(--case-ink)); }
-body.look-case .queue-row { font-family: var(--case-mono); font-size: 12.5px; box-shadow: 0 1px 0 rgba(var(--case-paper), .06); }
-body.look-case .queue-row .num { color: rgb(var(--case-ink)); }
-body.look-case .queue-row.active, body.look-case .queue-row.active .duration { color: rgb(14, 13, 12); }
-body.look-case .queue-row.active::before { background: rgb(var(--case-ink)); border-radius: 0; }
-body.look-case:not(.cd-view) #queue-card::after { /* the barcode and the catalogue number, bottom right */
-  content: attr(data-catalog); position: absolute; right: 0; bottom: 4px; padding-top: 34px; width: 190px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  font: 9px var(--case-mono); letter-spacing: .12em; color: rgba(var(--case-paper), .55); pointer-events: none;
-  background: repeating-linear-gradient(90deg, rgba(var(--case-paper), .75) 0 2px, transparent 2px 3px, rgba(var(--case-paper), .75) 3px 4px, transparent 4px 7px, rgba(var(--case-paper), .75) 7px 10px, transparent 10px 11px) top / 100% 30px no-repeat;
-}
 body.no-anim .queue-row.active .num::after { animation: none; }
 
 /* ---- Buttons ---- */
