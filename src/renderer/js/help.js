@@ -26,6 +26,7 @@ export const FEATURES = [
     { title: t('What it’s worth on Discogs'), show: 'discogs', text: t('Discogs is the biggest marketplace for records and CDs. Pull out a case to see the album’s pressing there — label, catalogue number, country — and its lowest price. APPRAISE values the whole shelf, sorting by price stands it dearest first, and a dear or much-wanted pressing gets a gold ★ RARE.') },
     { title: t('A shop’s look'), text: t('The obi strips, the yen and dollar stickers and the shop receipts tucked behind covers are decoration — a collection bought in different shops over the years. The real prices are Discogs’, in the case.') },
     { title: t('Notes on cases'), text: t('+ NOTE sticks a note on a case; its corner shows on the spine, and the shelf’s search finds what you wrote.') },
+    { title: t('Shelfie'), text: t('SHARE on the shelf makes a picture of it as it stands — only the genre, decade or divider SHOW picks, if you like — with how many discs you have, how many artists you have everything by and what it’s worth on Discogs. Copy it into a chat or save it.') },
     { title: t('A check-up'), text: t('CHECK on the shelf finds what’s wrong in your music folder: songs without tags or covers, duplicates, gaps in an album’s track numbers.') },
   ] },
   { group: t('THE DISC'), items: [

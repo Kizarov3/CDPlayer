@@ -38,7 +38,8 @@ import { pickOutput, outputName } from './output.js';
 import { soundOf, sameSound, deviceKey } from './device-sound.js';
 import { note as noteForReport, buildReport } from './report.js';
 import { phoneTagTitle, phoneJoined } from './remote-settings.js';
-import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged } from './shelf.js';
+import { drawShelfie, cutRows, firstCrop } from './shelfie.js';
+import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged, takeShelfie } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke, karaokeCover } from './karaoke.js';
 import { SpotifySession, SpotifyTrackElement, isSpotifyUri, spotifyUpcoming, loadSpotifySdk } from './spotify-deck.js';
 
@@ -1275,6 +1276,30 @@ function shareCard() {
         if (!wasPlaying) { engine.pause(); setPlaying(false); }
       }
     },
+  });
+}
+
+// SHARE on the shelf (or "/"): a picture of the shelf as it stands (shelf.js takes it off the screen, shelfie.js frames
+// it), how much of it picked in a panel, copied to paste into a chat or saved.
+let shelfieBusy = false;
+async function shareShelf() {
+  if (shelfieBusy || state.miniMode) return;
+  if (state.visualizerMode) toggleVisualizerMode();
+  if (isKaraokeOpen()) closeKaraoke();
+  if (state.cdView) toggleCdView();
+  shelfieBusy = true;
+  let shot;
+  try { shot = await takeShelfie(app); } catch { shot = null; } finally { shelfieBusy = false; }
+  if (!shot || !shot.crops.length) { setStatus(t('NOTHING ON THE SHELF TO SHARE')); return; }
+  const png = (i) => drawShelfie(cutRows(shot.crops[i].band, shot.crops[i]), { colors: { ...colors }, heading: shot.heading, line: shot.line, scale: shot.scale });
+  const attempt = (work, done) => async (i) => {
+    try { if (!(await work(await png(i)))) return false; setStatus(done); return true; } catch { setStatus(t("COULDN'T MAKE THE PICTURE")); return false; }
+  };
+  panels.showShelfie(app, {
+    crops: shot.crops, picked: firstCrop(shot.crops), rows: shot.rows, about: [shot.heading, shot.sorted].join(' · '),
+    render: async (i) => URL.createObjectURL(new Blob([await png(i)], { type: 'image/png' })),
+    copy: attempt(async (bytes) => { await cdp.copyImage(bytes); return true; }, t('SHELFIE COPIED · PASTE IT ANYWHERE')),
+    save: attempt((bytes) => cdp.saveCard(bytes, shot.heading), t('SHELFIE SAVED')),
   });
 }
 
@@ -3008,6 +3033,7 @@ function commands() {
     { label: t('OPEN / CLOSE THE TRAY'), also: 'tray eject лоток', key: 'E', run: toggleTray },
     { label: t('TURN THE DISC OVER'), also: 'flip disc data side', key: 'B', run: () => disc.flip() },
     { label: t('NOW PLAYING CARD'), also: 'share card image карточка', key: 'P', run: shareCard },
+    { label: t('SHELFIE'), also: 'share shelf picture image photo wall поделиться полка снимок картинка фото', run: shareShelf },
     { label: t('HISTORY'), also: 'history played история', run: click('history-button') },
     can('lyrics-button') ? { label: t('LYRICS'), also: 'lyrics words', run: click('lyrics-button') } : null,
     can('tags-button') ? { label: t('TAGS'), also: 'tags edit теги', run: click('tags-button') } : null,
@@ -3237,7 +3263,7 @@ function frame(now) {
 // ---- The app object the panels module works through ------------------------------------------------------------
 
 export const app = {
-  state, engine, disc, THEMES, BUILTIN_EQ_PRESETS, cdp, libraryCheck: () => panels.showLibraryCheck(app),
+  state, engine, disc, THEMES, BUILTIN_EQ_PRESETS, cdp, libraryCheck: () => panels.showLibraryCheck(app), shareShelf,
   setStatus, setStreaming, queueDisplay, displayName, formatTime, ensureDetails, load, addToQueue, playNext, appendAndPlay, seekTo,
   detailsFor: (p) => detailsCache.get(p),
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) goTo(i); },

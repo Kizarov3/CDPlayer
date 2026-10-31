@@ -20,6 +20,7 @@ import { dustLevel, pickOne, pickSome, Wiper } from './shelf-dust.js';
 import { showsAlbum, showChoices } from './shelf-show.js';
 import { groupEditions, editionName } from './shelf-editions.js';
 import { SLOTS, slotOfAlbum } from './changer.js';
+import { ROW, ROW_ABOVE, ROW_BELOW, shelfieCrops, shelfieLine, completeCount } from './shelfie.js';
 import { t } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
@@ -177,6 +178,7 @@ export function setupShelf(app) {
   $('shelf-fill').addEventListener('click', fillChanger);
   $('shelf-here').addEventListener('click', goToPlayer);
   $('shelf-check').addEventListener('click', () => shelf.app.libraryCheck());
+  $('shelf-share').addEventListener('click', () => shelf.app.shareShelf());
   $('shelf-filter').addEventListener('input', render);
   // SORT: every way at once, in a list under the button — one click to any of them, the current one marked.
   const sortBy = (sort) => {
@@ -266,7 +268,7 @@ async function load({ quiet = false } = {}) {
 }
 
 // With no folder yet, or nothing in it, there's nothing for these to work on: they're off until there is.
-function dimTools(idle) { for (const id of ['shelf-filter', 'shelf-check', 'shelf-pull', 'shelf-appraise', 'shelf-show', 'shelf-sort']) $(id).disabled = idle; }
+function dimTools(idle) { for (const id of ['shelf-filter', 'shelf-share', 'shelf-check', 'shelf-pull', 'shelf-appraise', 'shelf-show', 'shelf-sort']) $(id).disabled = idle; }
 function render() {
   const body = $('shelf-body');
   if (shelf.observer) shelf.observer.disconnect();
@@ -1190,6 +1192,71 @@ function totalNote() {
   // Only some priced yet: says how many, so a few albums' worth isn't taken for the whole shelf's.
   return count < shelf.albums.length ? t('{n} OF {total} PRICED ≈ {value}', { n: count, total: shelf.albums.length, value: money(value, currency) })
     : t('THE SHELF ≈ {value}', { value: money(value, currency) });
+}
+
+// ---- SHELFIE (shelfie.js): the shelf as it stands, taken off the screen ---------------------------------------------
+
+const frames = (n = 2) => new Promise((resolve) => { const go = () => (--n ? requestAnimationFrame(go) : setTimeout(resolve, 90)); requestAnimationFrame(go); });
+/**
+ * The shelf's rows as pictures, for SHARE: the shelf opened if it isn't, the case put back, then each band of rows
+ * scrolled into view and taken off the screen (main's capturePage) a window's height at a time, and stitched — while
+ * anything over the shelf (the search it was asked from) is out of sight and no spine lifts under the mouse. The
+ * shelf scrolls back to where it was. → null with nothing on it; else { crops, bands, heading, line, scale }, each crop
+ * cut from the band that holds it (shelfie.js's cutRows).
+ */
+export async function takeShelfie(app) {
+  if (!shelf.open) await openShelf(app);
+  for (let i = 0; i < 50 && shelf.loading; i++) await new Promise((r) => setTimeout(r, 100));
+  closeBooklet(); closeCase(true);
+  const body = $('shelf-body'), rows = body.querySelector('.shelf-rows');
+  if (!shelf.open || !rows || !shelf.shown || !shelf.shown.length) return null;
+  const root = $('shelf');
+  // (the spines still rising onto a shelf just opened, the shelf still growing out of its button)
+  await Promise.race([Promise.all(root.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {}))), new Promise((r) => setTimeout(r, 1500))]);
+  const start = body.scrollTop;
+  const rowsTop = Math.round(rows.getBoundingClientRect().top - body.getBoundingClientRect().top - body.clientTop + start);
+  const count = Math.max(1, Math.round(rows.offsetHeight / ROW));
+  const crops = shelfieCrops({ rows: count, first: Math.max(0, Math.round((start - rowsTop + ROW_ABOVE) / ROW)), inView: Math.max(1, Math.floor((body.clientHeight - ROW_ABOVE + 8) / ROW)) });
+  root.classList.add('shooting'); document.body.classList.add('shelfie-shooting');
+  say(t('TAKING THE PICTURE…'));
+  const bands = [];
+  try {
+    const grab = async (from, n) => {
+      const y0 = rowsTop + from * ROW - ROW_ABOVE, y1 = rowsTop + (from + n) * ROW + ROW_BELOW, w = body.clientWidth;
+      const parts = [];
+      for (let y = y0; y < y1;) {
+        body.scrollTop = y;
+        await frames();
+        const box = body.getBoundingClientRect(), at = Math.round(body.scrollTop);
+        const top = Math.max(y, at), bottom = Math.min(y1, at + body.clientHeight);
+        if (bottom <= top) break;
+        const png = await app.cdp.capture({ x: Math.round(box.left + body.clientLeft), y: Math.round(box.top + body.clientTop) + top - at, width: w, height: bottom - top });
+        parts.push({ at: top - y0, height: bottom - top, image: await createImageBitmap(new Blob([png], { type: 'image/png' })) });
+        y = bottom;
+      }
+      if (!parts.length) return null;
+      const scale = parts[0].image.width / w, canvas = new OffscreenCanvas(Math.round(w * scale), Math.round((y1 - y0) * scale));
+      const g = canvas.getContext('2d');
+      for (const p of parts) { g.drawImage(p.image, 0, Math.round(p.at * scale), canvas.width, Math.round(p.height * scale)); p.image.close(); }
+      return { from, count: n, scale, canvas };
+    };
+    const whole = crops[crops.length - 1];
+    bands.push(await grab(0, whole.count));
+    const view = crops[0];
+    if (view.from + view.count > whole.count) bands.push(await grab(view.from, view.count));
+  } finally {
+    body.scrollTop = start;
+    root.classList.remove('shooting'); document.body.classList.remove('shelfie-shooting');
+    shelf.saying = null; renderCount();
+  }
+  if (!bands[0]) return null;
+  // What it shows, over it: THE SHELF, or what SHOW picks and what's searched for.
+  const query = $('shelf-filter').value.trim();
+  const heading = [t('MY SHELF'), shelf.show !== 'ALL' ? shelf.showLabel : null, query ? `“${query}”` : null].filter(Boolean).join(' · ');
+  const line = shelfieLine(shelf.shown, { complete: completeCount(shelf.shown, shelf.albums, shelf.discogs, shelf.hidden), currency: (shelf.settings && shelf.settings.currency) || 'USD' });
+  const sort = shelf.app.state.shelfSort;
+  return { crops: crops.map((c) => ({ ...c, band: bands.find((b) => b && c.from >= b.from && c.from + c.count <= b.from + b.count) })).filter((c) => c.band),
+    heading, line, scale: bands[0].scale, sorted: t('SORTED BY {sort}', { sort: SORT_LABELS[sort] || sort }), rows: count };
 }
 
 /** The ids of the albums on the shelf (null before it's been read): Library Check lists only these as not on Discogs. */

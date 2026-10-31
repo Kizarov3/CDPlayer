@@ -64,6 +64,7 @@ contextBridge.exposeInMainWorld('cdp', {
   setTaskbarDisc: invoke('dock:taskbarDisc'),
   copyImage: invoke('clipboard:image'),
   saveCard: invoke('dialog:saveCard'),
+  capture: invoke('window:capture'),
   saveVideo: invoke('dialog:saveVideo'),
   discMenu: invoke('menu:disc'),
   findCover: invoke('online:cover'),
