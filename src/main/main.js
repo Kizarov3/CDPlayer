@@ -475,12 +475,13 @@ handle('online:coverUrl', (query) => online.findCoverUrl(query));
 // A disc's own printed picture (online.findDiscArt), kept once found — or once found not to be there.
 const discArtDir = () => path.join(store.dataDir(), 'disc-art');
 const discArtLookups = new Map(); // (one lookup per album at a time: a look-ahead and the real ask share it)
-handle('online:discArt', (q) => {
-  if (!q || !q.artist || !q.album) return null;
+handle('online:discArt', (q) => lookupDiscArt(q));
+function lookupDiscArt(q) {
+  if (!q || !q.artist || !q.album) return Promise.resolve(null);
   const name = require('crypto').createHash('sha1').update(`${q.artist}\n${q.album}`.toLowerCase()).digest('hex');
   if (!discArtLookups.has(name)) discArtLookups.set(name, discArtFor(q, name).finally(() => discArtLookups.delete(name)));
   return discArtLookups.get(name);
-});
+}
 async function discArtFor(q, name) {
   const file = path.join(discArtDir(), `${name}.jpg`), none = path.join(discArtDir(), `${name}.none`);
   if (fs.existsSync(file)) return `data:image/jpeg;base64,${fs.readFileSync(file).toString('base64')}`;
@@ -637,7 +638,27 @@ async function shelfListing() {
   result.moves = movedSongs(result.albums);
   return result;
 }
-handle('shelf:albums', () => shelfListing());
+handle('shelf:albums', async () => { const result = await shelfListing(); warmDiscArt(result.albums); return result; });
+// The shelf's discs' pictures looked up in the background (two at a time, the albums played lately first), so a disc
+// put in has its picture already — not seconds later. Each album once a session; one found, or found missing, is kept.
+// …and, a while after the start, without waiting for the shelf to be opened.
+if (!smokeDir) app.whenReady().then(() => setTimeout(() => shelf.scanAlbums(() => {}).then((r) => warmDiscArt(r.albums)).catch(() => {}), 30000));
+const discArtWarmed = new Set(), discArtWaiting = [];
+let discArtWarming = 0;
+function warmDiscArt(albums) {
+  const order = [...albums].filter((a) => a.artist && a.title).sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0) || (b.plays || 0) - (a.plays || 0));
+  for (const a of order) {
+    const key = `${a.artist}\n${a.title}`.toLowerCase();
+    if (discArtWarmed.has(key)) continue;
+    discArtWarmed.add(key);
+    discArtWaiting.push({ artist: a.artist, album: a.title, releaseId: a.mbReleaseId || null });
+  }
+  while (discArtWarming < 2 && discArtWaiting.length) {
+    discArtWarming++;
+    const next = () => { const q = discArtWaiting.shift(); if (!q) { discArtWarming--; return; } lookupDiscArt(q).catch(() => null).then(() => setTimeout(next, 500)); };
+    next();
+  }
+}
 // THE YEAR ON THE SHELF (year-shelf.js): a year of listening (a number), or 'ALL'.
 handle('year:shelf', async (year) => {
   const { albums } = await shelf.scanAlbums(() => {});
