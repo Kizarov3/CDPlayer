@@ -556,6 +556,21 @@ body.look-case #case-box {
   --s: min(80cqh, 37cqw); display: block; position: absolute; width: calc(var(--s) * 1.136); height: var(--s);
   left: calc(61.5cqw - var(--s) * 1.136); top: calc(48% - var(--s) / 2); transform-style: preserve-3d; /* (room on its left for the lid open) */
 }
+/* Set down on something: its shadow on the surface under it. The page beside it a sheet of smoked acrylic, the play key
+   a little domed — touches only, the page otherwise ALBUM's. */
+body.look-case #case-box::after {
+  content: ""; position: absolute; left: 4%; right: -2%; bottom: -9%; height: 14%; pointer-events: none;
+  background: radial-gradient(ellipse at 50% 30%, rgba(0, 0, 0, .5), transparent 70%); transform: translateZ(-3px);
+}
+body.look-case:not(.cd-view) #queue-card {
+  border-radius: 8px; background: linear-gradient(rgba(255, 255, 255, .045), rgba(255, 255, 255, .02));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .07), inset 0 1px 0 rgba(255, 255, 255, .1), 0 18px 40px rgba(0, 0, 0, .25);
+}
+body.look-case .queue-row.active::before { border-radius: 4px; }
+body.look-case .round.primary {
+  background: radial-gradient(circle at 50% 30%, rgb(var(--text)), rgba(var(--text), .82) 75%);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, .7), inset 0 -2px 4px rgba(0, 0, 0, .18), 0 8px 24px rgba(0, 0, 0, .35);
+}
 /* A real one's proportions: 142 × 125 mm, the hinge down its left, the booklet (120 mm square) under the lid's tabs. */
 body.look-case #cover-art { background-size: 84.5% 96%; background-position: 64% 50%; }
 /* The lid: the cover under clear plastic, a few pixels thick (its edge catching the light), hinged down its left;
