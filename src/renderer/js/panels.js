@@ -22,7 +22,7 @@ import { cardOrder, priceWords, stillWanted } from './want-list.js';
 const layer = () => document.getElementById('overlays');
 const panels = new Map(); // name -> { overlay, card, build }
 // Escape closes the closest thing first, in this order.
-const ESC_ORDER = ['changer-full', 'onboarding', 'guide', 'features', 'faq', 'shortcuts', 'changelog', 'tags', 'check', 'want', 'card', 'booklet', 'menu', 'theme', 'lyrics', 'eq', 'rip', 'history', 'spotify', 'search', 'settings'];
+const ESC_ORDER = ['changer-full', 'onboarding', 'guide', 'features', 'faq', 'shortcuts', 'changelog', 'tags', 'check', 'want', 'card', 'booklet', 'menu', 'theme', 'lyrics', 'eq', 'rip', 'take-along', 'history', 'spotify', 'search', 'settings'];
 
 // A panel comes out of the button that opened it, and goes back into it: the one just pressed, or — opened by a key —
 // the header's button for it. (Without one, it rises in as before.)
@@ -985,6 +985,112 @@ function buildRip(app) {
   return [title([heading, (r.album || t('AUDIO CD')).toUpperCase()].join(' · ')), head, list, buttons];
 }
 
+// ---- TAKE ALONG ---------------------------------------------------------------------------------------------------
+// Albums onto a portable player, a phone, an SD card (main/take-along.js): WHAT — the shelf as it is (its search and
+// SHOW), the changer's discs, or the album whose case it was opened from; WHERE — a folder or a drive, remembered;
+// FORMAT — AS THEY ARE, or MP3 320 for players that don't take FLAC. What it would write is worked out first, with the
+// room it needs; once going, it carries on with the panel closed, and the status line says when it's done.
+
+let take = null; // { choice, album, settings, plan, running, progress, result, generation }
+let takeHooked = false;
+const sizeOf = (bytes) => (bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1e6))} MB`);
+const TAKE_FORMATS = { COPY: t('AS THEY ARE'), MP3: t('MP3 320') };
+const TAKE_STOPPED = {
+  cancelled: () => t('STOPPED · WHAT WAS FINISHED IS KEPT'), gone: () => t('THE FOLDER ISN’T THERE — IS THE DRIVE PLUGGED IN?'), busy: () => t('ALREADY TAKING ALBUMS ALONG'),
+  space: (r) => t('NOT ROOM ENOUGH: {need} NEEDED, {free} FREE', { need: sizeOf(r.need || 0), free: sizeOf(r.free || 0) }),
+};
+const takeStopped = (r) => (TAKE_STOPPED[r.reason] || (() => t('STOPPED · {why}', { why: String(r.message || 'unknown').toUpperCase().slice(0, 80) })))(r);
+function takeDone(r) {
+  return [t('DONE · {n} WRITTEN', { n: r.written }), r.there ? t('{n} ALREADY THERE', { n: r.there }) : null,
+    r.failed ? t('{n} COULDN’T BE READ', { n: r.failed }) : null].filter(Boolean).join(' · ');
+}
+// What each choice takes: { what (for main), label, count }; null when there's nothing to take that way.
+function takeChoices(app) {
+  const out = {};
+  const s = app.shelfTakeAlong();
+  out.SHELF = { what: s.all ? { all: true } : { paths: s.paths }, label: s.label ? t('THE SHELF AS SHOWN · {show}', { show: String(s.label).toUpperCase() }) : t('EVERY ALBUM ON THE SHELF') };
+  const discs = app.changerDiscPaths();
+  if (discs.length) out.CHANGER = { what: { paths: discs.flat() }, label: discs.length === 1 ? t('THE CHANGER’S DISC') : t('THE CHANGER’S {n} DISCS', { n: discs.length }) };
+  if (take && take.album) out.ALBUM = { what: { paths: take.album.paths }, label: String(take.album.title || '').toUpperCase() };
+  return out;
+}
+export function showTakeAlong(app, { album = null } = {}) {
+  if (!takeHooked) {
+    takeHooked = true;
+    app.cdp.onTakeAlongProgress((p) => { if (take && take.running) { take.progress = p; if (isOpen('take-along')) refreshPanel('take-along'); } });
+  }
+  if (!take || !take.running) take = { choice: album ? 'ALBUM' : 'SHELF', album, settings: null, plan: null, progress: null, result: null, running: false, generation: 0 };
+  openPanel('take-along', () => buildTakeAlong(app), { width: 600 });
+  if (!take.running) planTakeAlong(app, true);
+}
+// What it would write (asked again whenever WHAT, WHERE or FORMAT changes).
+async function planTakeAlong(app, settingsToo = false) {
+  const generation = ++take.generation;
+  if (settingsToo || !take.settings) take.settings = await app.cdp.takeAlong.settings().catch(() => null);
+  take.plan = null; take.result = null;
+  if (isOpen('take-along')) refreshPanel('take-along');
+  const choice = takeChoices(app)[take.choice] || takeChoices(app).SHELF;
+  const plan = await app.cdp.takeAlong.plan(choice.what).catch(() => null);
+  if (!take || generation !== take.generation) return;
+  take.plan = plan || { error: true };
+  if (isOpen('take-along')) refreshPanel('take-along');
+}
+async function startTakeAlong(app) {
+  const choice = takeChoices(app)[take.choice] || takeChoices(app).SHELF;
+  const mine = take;
+  Object.assign(take, { running: true, result: null, progress: null });
+  refreshPanel('take-along');
+  const r = await app.cdp.takeAlong.start(choice.what).catch((e) => ({ ok: false, reason: 'failed', message: e.message }));
+  Object.assign(mine, { running: false, result: r });
+  app.setStatus(r.ok ? `${t('TAKEN ALONG')} · ${takeDone(r)}` : takeStopped(r));
+  if (take === mine && isOpen('take-along')) refreshPanel('take-along');
+}
+function buildTakeAlong(app) {
+  const { settings: s, plan: p, progress: g, result: r, running } = take;
+  const choices = takeChoices(app);
+  if (!choices[take.choice]) take.choice = 'SHELF';
+  const what = pill(choices[take.choice].label, () => showMenu(what, Object.entries(choices).map(([key, c]) => ({
+    label: c.label, current: key === take.choice, pick: () => { take.choice = key; planTakeAlong(app); },
+  }))), t('Which albums to take'));
+  const where = pill(s && s.dest ? (s.there ? `“${s.name}”` : t('“{name}” · NOT CONNECTED', { name: s.name })) : t('CHOOSE…'),
+    async () => { if (await app.cdp.takeAlong.pickFolder().catch(() => null)) planTakeAlong(app, true); }, s && s.dest ? s.dest : t('The player’s folder, a phone’s or an SD card’s'));
+  const format = (s && s.format) || 'COPY';
+  const formatPill = pill(TAKE_FORMATS[format], () => showMenu(formatPill, Object.keys(TAKE_FORMATS).map((f) => ({
+    label: TAKE_FORMATS[f], current: f === format, pick: async () => { await app.cdp.takeAlong.setFormat(f).catch(() => {}); planTakeAlong(app, true); },
+  }))), t('As they are, or MP3s for players that don’t take FLAC'));
+  for (const b of [what, where, formatPill]) b.disabled = running;
+  const formatHint = format === 'MP3'
+    ? t('FLAC, WAV, AIFF and Apple Lossless made MP3s at 320 kbps, tagged, with the cover, an album still without gaps. MP3, AAC, OGG and Opus are copied as they are: made MP3 again they’d only lose more.')
+    : t('Each file copied as it is, its tags and all.');
+  // What it would do, then how it's going, then how it went.
+  const line = running
+    ? (g ? `${g.done} / ${g.total} · ${g.percent}%${g.album ? ` · ${[g.artist, g.album].filter(Boolean).join(' — ')}` : ''}` : t('WORKING OUT WHAT’S THERE…'))
+    : r ? (r.ok ? takeDone(r) : takeStopped(r))
+    : !s || !s.dest ? t('CHOOSE WHERE TO TAKE THEM')
+    : !s.there ? t('THE FOLDER ISN’T THERE — IS THE DRIVE PLUGGED IN?')
+    : !p ? t('WORKING OUT WHAT’S THERE…')
+    : p.error ? t('UNKNOWN ERROR')
+    : [p.albums === 1 ? t('1 ALBUM') : t('{n} ALBUMS', { n: p.albums }), p.songs === 1 ? t('1 SONG') : t('{n} SONGS', { n: p.songs }),
+      p.toWrite ? t('{size} TO WRITE', { size: sizeOf(p.bytes) }) : t('NOTHING NEW TO WRITE'), p.there ? t('{n} ALREADY THERE', { n: p.there }) : null,
+      p.free != null ? t('{size} FREE', { size: sizeOf(p.free) }) : null].filter(Boolean).join(' · ');
+  const notes = !running && !r && p && !p.error ? [
+    p.free != null && p.bytes > p.free ? t('Not room enough there for all of it.') : null,
+    p.keptLossy ? t('{n} already lossy — copied as they are.', { n: p.keptLossy }) : null,
+    p.images ? t('Albums kept as one file with a cue sheet go as they are, the sheet with them.') : null,
+  ].filter(Boolean) : [];
+  const ready = !running && s && s.there && p && !p.error && p.toWrite > 0 && !(p.free != null && p.bytes > p.free);
+  const bar = el('div', { class: 'take-bar' }, el('div', { style: `width:${running && g ? g.percent : r && r.ok ? 100 : 0}%` }));
+  return [title(t('TAKE ALONG')), el('div', { class: 'subtitle' }, t('Albums onto a portable player, a phone or an SD card')), gap(12),
+    row(t('WHAT'), what), row(t('WHERE'), where), row(t('FORMAT'), formatPill), hint(formatHint), gap(10),
+    el('div', { class: 'take-line' }, line), ...notes.map((n) => quietHint(n)), running || (r && r.ok) ? bar : null,
+    el('div', { class: 'close-row split' },
+      running ? pill(t('CANCEL'), () => app.cdp.takeAlong.cancel(), t('Stop; the songs already written are kept'))
+        : r && r.ok ? pill(t('SHOW IN FOLDER'), () => app.cdp.takeAlong.showFolder()) : el('span', {}),
+      el('span', { class: 'grow' }),
+      pill(t('CLOSE'), () => closePanel('take-along')),
+      running ? null : (() => { const go = el('button', { class: 'pill go', onClick: () => startTakeAlong(app) }, t('TAKE ALONG')); go.disabled = !ready; return go; })())];
+}
+
 // ---- Search ------------------------------------------------------------------------------------------------------
 
 const search = { index: [], labels: {}, tags: {}, folder: null, scanning: false, generation: 0, lastSpotifyUrl: null, field: null, results: null, status: null, online: 0, source: 'library' };
@@ -1676,6 +1782,7 @@ const CHANGELOG = [
   { version: '2.21.0', changes: [
     '<b>From your shelf</b>: a case pulled out shows IF YOU LIKE THIS &mdash; albums you already have by artists like its own, from Last.fm, one click to pull them out; the changer&rsquo;s FILL can fill it, or keep it full, with albums like what&rsquo;s playing, and the search (<kbd>/</kbd>) has PLAY SIMILAR TO the album playing',
     '<b>WANT LIST</b>: ★ WANT on a missing album&rsquo;s case on the shelf puts it on an index card with its lowest Discogs price; when it turns up in your music folder it&rsquo;s crossed off by itself, and its case says FOUND IT until you play it',
+    '<b>TAKE ALONG</b>: the albums the shelf shows, the changer&rsquo;s discs or one album copied onto a portable player, a phone or an SD card &mdash; as they are, or as MP3s at 320 kbps for players that don&rsquo;t take FLAC (the lossless ones made MP3, tagged, with the cover, still gapless); taken again, only what&rsquo;s new is written, and nothing already there is touched',
   ] },
   { version: '2.20.1', changes: [
     '<b>The Now Playing video plays to the end</b> wherever it&rsquo;s opened or shared: saved as a plain MP4, nothing re-encoded, so players that stopped after the first few seconds play all of it',

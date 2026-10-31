@@ -179,6 +179,7 @@ export function setupShelf(app) {
   $('shelf-close').addEventListener('click', closeShelf);
   $('shelf-folder').addEventListener('click', folderMenu);
   $('shelf-pull').addEventListener('click', pullOne);
+  $('shelf-take').addEventListener('click', () => shelf.app.takeAlong());
   $('shelf-fill').addEventListener('click', fillChanger);
   $('shelf-here').addEventListener('click', goToPlayer);
   $('shelf-check').addEventListener('click', () => shelf.app.libraryCheck());
@@ -275,7 +276,23 @@ async function load({ quiet = false } = {}) {
 }
 
 // With no folder yet, or nothing in it, there's nothing for these to work on: they're off until there is.
-function dimTools(idle) { for (const id of ['shelf-filter', 'shelf-check', 'shelf-pull', 'shelf-appraise', 'shelf-show', 'shelf-sort']) $(id).disabled = idle; }
+function dimTools(idle) { for (const id of ['shelf-filter', 'shelf-check', 'shelf-pull', 'shelf-take', 'shelf-appraise', 'shelf-show', 'shelf-sort']) $(id).disabled = idle; }
+// The albums the shelf shows: those its search finds, of the ones SHOW stands on it.
+function foundAlbums() {
+  const query = $('shelf-filter').value, now = Date.now();
+  return shelf.albums.filter((a) => matchesFilter(a, query, (stickersFor(a).obi || {}).catalog) // the number on its obi too
+    && showsAlbum(a, shelf.show, now));
+}
+/**
+ * TAKE ALONG's "the shelf as it is": every album (`all`, also while the shelf hasn't been read yet), or the songs of
+ * the ones it shows (`paths`) with a search typed or SHOW at something; `count` albums (null: not known yet), `label`.
+ */
+export function shelfTakeAlong() {
+  const filtering = shelf.albums.length && (shelf.show !== 'ALL' || $('shelf-filter').value.trim());
+  if (!filtering) return { all: true, count: shelf.albums.length ? groupEditions(shelf.albums).length : null, label: null };
+  const found = foundAlbums();
+  return { paths: found.flatMap((a) => a.tracks.map((tr) => tr.path)), count: found.length, label: shelf.show !== 'ALL' ? shelf.showLabel : `“${$('shelf-filter').value.trim()}”` };
+}
 function render() {
   const body = $('shelf-body');
   if (shelf.observer) shelf.observer.disconnect();
@@ -288,9 +305,8 @@ function render() {
     return;
   }
   const query = $('shelf-filter').value, filtering = !!query.trim();
-  const showing = shelf.show !== 'ALL', nowShow = Date.now();
-  const found = shelf.albums.filter((a) => matchesFilter(a, query, (stickersFor(a).obi || {}).catalog) // the number on its obi too
-    && showsAlbum(a, shelf.show, nowShow));
+  const showing = shelf.show !== 'ALL';
+  const found = foundAlbums();
   // An album's editions behind one spine, and counted as one (first all of them, then the ones shown: each sets them)
   const n = groupEditions(shelf.albums).length;
   dimTools(!n);
@@ -1017,7 +1033,8 @@ async function openCase(a, spine) {
       el('div', { class: 'case-artist' }, [a.artist, a.year].filter(Boolean).join(' · ')),
       el('div', { class: 'case-meta' }, [a.tracks.length === 1 ? t('1 TRACK') : t('{n} TRACKS', { n: a.tracks.length }), a.duration ? app.formatTime(a.duration) : null, a.discs > 1 ? t('{n} DISCS', { n: a.discs }) : null, holds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ')),
       // (small, in one row with its editions: the actions underneath keep the track list its room in a small window)
-      el('div', { class: 'case-tools' }, ...editionButtons(a, spine), addNote, fileButton),
+      el('div', { class: 'case-tools' }, ...editionButtons(a, spine), addNote, fileButton,
+        pill(t('TAKE ALONG'), () => app.takeAlong({ album: { title: a.title, paths: a.tracks.map((tr) => tr.path) } }), t('Copy this album to a portable player, a phone or an SD card'))),
       pressingBlock(a, rare, (entry) => { if (receipt) receipt.showPressing(entry); showTag(entry); }),
       trackList,
       similarRow(a),

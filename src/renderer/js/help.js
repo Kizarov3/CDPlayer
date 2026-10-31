@@ -29,6 +29,7 @@ export const FEATURES = [
     { title: t('A shop’s look'), text: t('The obi strips, the yen and dollar stickers and the shop receipts tucked behind covers are decoration — a collection bought in different shops over the years. The real prices are Discogs’, in the case.') },
     { title: t('Notes on cases'), text: t('+ NOTE sticks a note on a case; its corner shows on the spine, and the shelf’s search finds what you wrote.') },
     { title: t('A check-up'), text: t('CHECK on the shelf finds what’s wrong in your music folder: songs without tags or covers, duplicates, gaps in an album’s track numbers.') },
+    { title: t('Take it along'), text: t('TAKE ALONG copies the albums the shelf shows, the changer’s discs or one album onto a portable player, a phone or an SD card — as they are, or as MP3s for players that don’t take FLAC. Taken again, only what’s new is written.') },
   ] },
   { group: t('THE DISC'), items: [
     { title: t('Wear'), text: t('A disc played a lot looks it: hairline scratches after ten plays of its album, fingerprints after fifty, chips after a hundred.') },

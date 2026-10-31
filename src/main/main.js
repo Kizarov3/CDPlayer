@@ -1411,6 +1411,66 @@ handle('rip:deleteKept', async () => {
   return files.length;
 });
 
+// ---- TAKE ALONG -------------------------------------------------------------------------------------------------
+// Albums copied (or made MP3) onto a portable player, a phone, an SD card (take-along.js). Where to and how are
+// remembered in take-along.json in the data folder. One at a time; CANCEL stops it, leaving no half files.
+const takeAlongLib = require('./take-along');
+const TAKE_ALONG_FILE = 'take-along.json';
+function takeAlongSettings() {
+  try { const s = JSON.parse(store.readText(TAKE_ALONG_FILE) || ''); return { dest: typeof s.dest === 'string' ? s.dest : null, format: takeAlongLib.FORMATS.includes(s.format) ? s.format : 'COPY' }; } catch { return { dest: null, format: 'COPY' }; }
+}
+const saveTakeAlong = (changes) => store.writeText(TAKE_ALONG_FILE, JSON.stringify({ ...takeAlongSettings(), ...changes }));
+// What's chosen ({ all: true } — every album on the shelf — or { paths }: the songs of the albums shown, the changer's
+// discs, one album) as the shelf's albums, each with only the songs chosen; songs not on the shelf grouped by their tags.
+async function takeAlongAlbums(what) {
+  const { albums } = await shelf.scanAlbums(() => {});
+  if (what && what.all) return albums;
+  const wanted = new Set(Array.isArray(what && what.paths) ? what.paths.filter((p) => typeof p === 'string') : []);
+  const out = [], onShelf = new Set();
+  for (const a of albums) {
+    const tracks = a.tracks.filter((tr) => wanted.has(tr.path));
+    tracks.forEach((tr) => onShelf.add(tr.path));
+    if (tracks.length) out.push({ ...a, tracks });
+  }
+  const rest = [...wanted].filter((p) => !onShelf.has(p) && !/^[a-z]+:\/\//i.test(p) && cue.entryExists(p));
+  const infos = [];
+  for (const p of rest) { try { infos.push({ path: p, info: await shelf.trackInfo(p) }); } catch { /* unreadable: left out */ } }
+  return [...out, ...shelf.groupAlbums(infos)];
+}
+handle('takeAlong:settings', () => { const s = takeAlongSettings(); return { ...s, there: !!s.dest && store.isDir(s.dest), name: s.dest ? path.basename(s.dest) || s.dest : null }; });
+handle('takeAlong:pickFolder', async () => {
+  const s = takeAlongSettings();
+  const r = await dialog.showOpenDialog(win, { title: t('Take Along To'), defaultPath: s.dest && store.isDir(s.dest) ? s.dest : dialogDefaultPath(), properties: ['openDirectory', 'createDirectory'] });
+  if (r.canceled || !r.filePaths.length) return null;
+  saveTakeAlong({ dest: r.filePaths[0] });
+  return r.filePaths[0];
+});
+handle('takeAlong:setFormat', (format) => { if (takeAlongLib.FORMATS.includes(format)) saveTakeAlong({ format }); });
+handle('takeAlong:plan', async (what) => {
+  const s = takeAlongSettings();
+  return takeAlongLib.plan(await takeAlongAlbums(what), { dest: s.dest && store.isDir(s.dest) ? s.dest : null, format: s.format });
+});
+let takingAlong = null; // its AbortController
+handle('takeAlong:start', async (what) => {
+  if (takingAlong) return { ok: false, reason: 'busy' };
+  const s = takeAlongSettings();
+  if (!s.dest || !store.isDir(s.dest)) return { ok: false, reason: 'gone' };
+  const controller = takingAlong = new AbortController();
+  try {
+    const albums = await takeAlongAlbums(what);
+    const r = await takeAlongLib.takeAlong({
+      albums, dest: s.dest, format: s.format, signal: controller.signal,
+      coverFor: (a) => (a.tracks[0] ? shelf.albumCoverFull(a.tracks[0].path) : null),
+      onProgress: (p) => { if (win && !win.isDestroyed()) win.webContents.send('take-along-progress', p); },
+    });
+    return { ok: true, ...r, failed: r.failed.length, dest: s.dest };
+  } catch (e) {
+    return { ok: false, reason: e.reason || 'failed', message: e.reason ? null : e.message, need: e.need || null, free: e.free || null };
+  } finally { takingAlong = null; }
+});
+handle('takeAlong:cancel', () => { if (takingAlong) takingAlong.abort(); return true; });
+handle('takeAlong:showFolder', () => { const s = takeAlongSettings(); return s.dest && store.isDir(s.dest) ? shell.openPath(s.dest) : null; });
+
 // ---- Windows Start menu shortcut ----------------------------------------------------------------------------------
 // Without a Start menu shortcut carrying the app's ID, Windows can't tell whose media session it is and shows
 // "Unknown app" in its media controls. The portable .exe installs nothing, so the app keeps this one shortcut up to

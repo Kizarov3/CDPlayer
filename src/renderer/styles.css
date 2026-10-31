@@ -1425,6 +1425,11 @@ body.no-anim .queue-row.active .num::after { animation: none; }
 .rip-row.reading, .rip-row.encoding { color: rgb(var(--accent)); }
 .rip-result { font-size: 11px; color: rgb(var(--muted)); align-self: center; }
 
+/* ---- TAKE ALONG (panels.js showTakeAlong): what it would write, then how far it's got ---- */
+.take-line { font-size: 11px; color: rgb(var(--accent)); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.take-bar { height: 3px; margin-top: 8px; border-radius: 2px; background: rgba(var(--muted), .25); overflow: hidden; }
+.take-bar > div { height: 100%; background: rgb(var(--accent)); transition: width .3s; }
+
 /* Help (panels.js showGuide / showFaq / showShortcuts): the guide's step dots, the FAQ's questions opening into
    answers, and the shortcuts with their keys drawn as keys. */
 .guide-actions { display: flex; gap: 8px; align-items: center; }

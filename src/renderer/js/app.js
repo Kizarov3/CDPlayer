@@ -38,7 +38,7 @@ import { pickOutput, outputName } from './output.js';
 import { soundOf, sameSound, deviceKey } from './device-sound.js';
 import { note as noteForReport, buildReport } from './report.js';
 import { phoneTagTitle, phoneJoined } from './remote-settings.js';
-import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged, playSimilarTo, setWanted } from './shelf.js';
+import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged, playSimilarTo, setWanted, shelfTakeAlong } from './shelf.js';
 import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke, karaokeCover } from './karaoke.js';
 import { SpotifySession, SpotifyTrackElement, isSpotifyUri, spotifyUpcoming, loadSpotifySdk } from './spotify-deck.js';
 
@@ -3018,6 +3018,7 @@ function commands() {
     can('tags-button') ? { label: t('TAGS'), also: 'tags edit теги', run: click('tags-button') } : null,
     { label: t('SPOTIFY'), run: click('spotify-button') },
     { label: t('LOAD A TRACK'), also: 'open files load открыть', key: state.platform === 'darwin' ? '⌘O' : 'Ctrl+O', run: click('load-button') },
+    { label: t('TAKE ALONG'), also: 'copy export phone portable player sd card usb mp3 dap ipod скопировать телефон плеер флешка карта', run: () => panels.showTakeAlong(app) },
     { label: t('LIBRARY CHECK'), also: 'check problems проверка', run: () => panels.showLibraryCheck(app) },
     { label: t('WANT LIST'), also: 'want wanted wishlist buy discogs список желаний хочу купить', run: () => panels.showWantList(app) },
     { label: t('KEYBOARD SHORTCUTS'), also: 'keys shortcuts клавиши', key: '?', run: () => panels.showShortcuts() },
@@ -3269,6 +3270,9 @@ export const app = {
   choosePressingFor: (album, anchor, onChosen) => choosePressing(album, anchor, null, onChosen),
   shelfAlbumIds, discogsCurrencyChanged,
   showWantList: () => panels.showWantList(app), wantChanged: setWanted,
+  // TAKE ALONG (panels.js): the shelf as it is, or the changer's discs, or one album (`album`: { title, paths }) from its case
+  takeAlong: (opts) => panels.showTakeAlong(app, opts), shelfTakeAlong,
+  changerDiscPaths: () => state.changerMode ? state.changer.slots.filter(Boolean).map((d) => state.queue.slice(d.start, d.end)) : [],
   setLanguage: (code) => { state.language = code; cdp.saveSettings(settingsSnapshot()); },
   relaunch: async () => { await cdp.saveSettings(settingsSnapshot()); cdp.relaunch(); },
   saveEq: () => cdp.saveEqPresets(state.customPresets),
