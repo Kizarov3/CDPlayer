@@ -17,11 +17,12 @@ import { qrSvg } from './qr.js';
 import { phoneLine, addressWords, errorWords } from './remote-settings.js';
 import { isBookletOpen, closeBooklet } from './booklet.js';
 import { formatLyricsForDisplay } from './lyrics.js';
+import { cardOrder, priceWords, stillWanted } from './want-list.js';
 
 const layer = () => document.getElementById('overlays');
 const panels = new Map(); // name -> { overlay, card, build }
 // Escape closes the closest thing first, in this order.
-const ESC_ORDER = ['changer-full', 'onboarding', 'guide', 'features', 'faq', 'shortcuts', 'changelog', 'tags', 'check', 'card', 'booklet', 'menu', 'theme', 'lyrics', 'eq', 'rip', 'history', 'spotify', 'search', 'settings'];
+const ESC_ORDER = ['changer-full', 'onboarding', 'guide', 'features', 'faq', 'shortcuts', 'changelog', 'tags', 'check', 'want', 'card', 'booklet', 'menu', 'theme', 'lyrics', 'eq', 'rip', 'history', 'spotify', 'search', 'settings'];
 
 // A panel comes out of the button that opened it, and goes back into it: the one just pressed, or — opened by a key —
 // the header's button for it. (Without one, it rises in as before.)
@@ -1567,6 +1568,59 @@ function buildCheck(app) {
     el('div', { class: 'close-row guide-actions' }, pill(t('CHECK AGAIN'), () => runCheck(app)), el('span', { class: 'grow' }), pill(t('CLOSE'), () => closePanel('check')))];
 }
 
+// ---- The WANT LIST (the shelf's WANT LIST, or "/"): albums you don't have yet, as index cards ----------------------
+
+let want = null; // { items: null (being read) | [cards], prices: Map(want:<key> → Discogs entry) }
+export function showWantList(app) {
+  want = { items: null, prices: new Map() };
+  const p = openPanel('want', () => buildWant(app), { width: 560 });
+  p.onClose = () => { want = null; };
+  readWant(app);
+}
+// The cards, with the prices Discogs gave before at once; then each still wanted is asked about (main keeps to
+// Discogs' pace, and a price under a week old is just read back), the card filled in as its answer comes.
+async function readWant(app) {
+  const r = await app.cdp.wantList().catch(() => null) || { items: [], prices: {} };
+  if (!want) return;
+  want.items = r.items; want.prices = new Map(Object.entries(r.prices || {}));
+  refreshPanel('want');
+  const asking = want;
+  for (const x of r.items.filter((i) => !i.found)) {
+    const entry = await app.cdp.wantPrice(x.key).catch(() => ({ error: 'OFFLINE' }));
+    if (want !== asking) return;
+    want.prices.set(`want:${x.key}`, entry);
+    refreshPanel('want');
+    if (entry && entry.error === 'OFFLINE') break; // no connection: the rest wouldn't answer either
+  }
+}
+function buildWant(app) {
+  const items = want.items;
+  const remove = async (x) => {
+    const next = await app.cdp.unwant(x.key).catch(() => null);
+    if (!next || !want) return;
+    want.items = next;
+    app.wantChanged(next);
+    refreshPanel('want');
+  };
+  const card = (x, i) => {
+    const entry = want.prices.get(`want:${x.key}`);
+    const link = !x.found && entry && entry.releaseId && entry.info ? pill(t('DISCOGS'), () => app.cdp.openDiscogs(entry.info.uri), t('Open it on Discogs')) : null;
+    // (each card a little askew, the same way each time)
+    return el('div', { class: `want-card${x.found ? ' found' : ''}`, style: `--tilt:${((i * 7) % 5) - 2}` },
+      el('div', { class: 'want-title' }, x.title),
+      el('div', { class: 'want-artist' }, [x.artist, x.year].filter(Boolean).join(' · ')),
+      el('div', { class: 'want-price' }, x.found ? t('FOUND IT ★ ON THE SHELF') : priceWords(entry)),
+      el('div', { class: 'want-buttons' }, link, pill(t('REMOVE'), () => remove(x), t('Take it off the list'))));
+  };
+  const n = items ? stillWanted(items) : 0;
+  const status = !items ? t('READING…') : !items.length ? t('Nothing on it yet. On the shelf, sorted by artist, open an artist’s box of albums you don’t have, take one out and press ★ WANT.')
+    : n === 1 ? t('1 ALBUM WANTED') : t('{n} ALBUMS WANTED', { n });
+  return [title(t('WANT LIST')), el('div', { class: 'subtitle' }, status), gap(12),
+    items && items.length ? el('div', { class: 'scroll want-list' }, cardOrder(items).map(card)) : null,
+    hint(t('An album that turns up in your music folder is crossed off by itself, and its case says FOUND IT until you play it.')),
+    closeRow(() => closePanel('want'))];
+}
+
 // ---- Help: the guide, the FAQ and the keyboard shortcuts (help.js; also Settings → HELP) --------------------------
 
 export function showFaq() {
@@ -1599,6 +1653,9 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.21.0', changes: [
+    '<b>WANT LIST</b>: ★ WANT on a missing album&rsquo;s case on the shelf puts it on an index card with its lowest Discogs price; when it turns up in your music folder it&rsquo;s crossed off by itself, and its case says FOUND IT until you play it',
+  ] },
   { version: '2.20.1', changes: [
     '<b>The Now Playing video plays to the end</b> wherever it&rsquo;s opened or shared: saved as a plain MP4, nothing re-encoded, so players that stopped after the first few seconds play all of it',
     '<b>YouTube Music &amp; SoundCloud</b>: turned on in Settings &rarr; LIBRARY, the search finds their albums and songs, and they play like your own discs &mdash; in the best sound each gives without signing in; a playlist&rsquo;s link pasted in the search opens it',

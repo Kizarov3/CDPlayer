@@ -1,7 +1,7 @@
 'use strict';
 /**
  * A backup of what's yours in CDPlayer, in one .cdbackup file: the queue and the changer, HISTORY, plays, dust, sticky
- * notes, shrink-wrap, settings, EQ presets, your music folders' list and your themes — for a new computer, or after
+ * notes, shrink-wrap, the WANT LIST, settings, EQ presets, your music folders' list and your themes — for a new computer, or after
  * reinstalling. Not in it: sign-ins (Spotify's and Discogs' keys, the phone remote's pairing), which shouldn't travel
  * in a file that can be sent around, and caches, which come back by themselves. Your music isn't in it either.
  *
@@ -15,7 +15,7 @@ const FORMAT = 'cdplayer-backup';
 const FILES = [
   'queue.txt', 'changer.txt', 'changer-queue.txt', 'settings.txt', 'eq-presets.txt', 'history.txt', 'plays.txt',
   'lastplayed.txt', 'firstplayed.txt', 'dust.txt', 'notes.txt', 'dividers.txt', 'missing-hidden.txt', 'wrap.txt', 'music-folders.txt',
-  'lastpath.txt', 'onboarded', 'lastversion.txt', 'mini-position.txt', 'moves-declined.txt', 'tags-before.json', 'album-runs.json', 'skipped.txt', 'streams.json', 'imports.json', 'device-sound.json',
+  'lastpath.txt', 'onboarded', 'lastversion.txt', 'mini-position.txt', 'moves-declined.txt', 'tags-before.json', 'album-runs.json', 'skipped.txt', 'streams.json', 'imports.json', 'device-sound.json', 'want-list.json',
 ];
 const THEMES = 'themes', THEME_FILE = /^[0-9a-f]{16}\.cdtheme$/;
 const BEFORE = 'before-restore';

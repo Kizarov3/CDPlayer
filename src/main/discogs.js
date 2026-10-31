@@ -67,12 +67,13 @@ function summarize(r) {
   };
 }
 
-/** What of a cached entry needs asking again: 'all', just its 'price', or nothing (null). */
-function staleness(entry, now, currency) {
+/** What of a cached entry needs asking again: 'all', just its 'price', or nothing (null). A price is asked again after
+ * `priceDays` (a month; a week for the WANT LIST's, where what it's going for now is the point). */
+function staleness(entry, now, currency, priceDays = PRICE_DAYS) {
   if (!entry) return 'all';
   if (entry.releaseId === null) return now - entry.checkedAt > MISSING_DAYS * DAY ? 'all' : null;
   if (now - entry.checkedAt > INFO_DAYS * DAY) return 'all';
-  if (!entry.price || entry.price.currency !== currency || now - (entry.pricedAt || 0) > PRICE_DAYS * DAY) return 'price';
+  if (!entry.price || entry.price.currency !== currency || now - (entry.pricedAt || 0) > priceDays * DAY) return 'price';
   return null;
 }
 
@@ -159,13 +160,13 @@ function createDiscogs({ fetchJson, mbFetch, read = (f) => store.readText(f), wr
   // A release (or master) Discogs no longer has: as good as not found. Anything else goes on up.
   const gone = (e) => { if (e && e.status === 404) return null; throw e; };
   const inFlight = new Map();
-  function lookup(album) {
+  function lookup(album, { priceDays = PRICE_DAYS } = {}) {
     if (inFlight.has(album.id)) return inFlight.get(album.id);
     const p = (async () => {
       const old = albums()[album.id];
       // (A pressing found before CDs were insisted on, that isn't one: found again.)
       const notCd = old && old.by !== 'user' && old.info && old.info.formats && !/\b(CD|CDr|SACD|Hybrid)\b/.test(old.info.formats);
-      const stale = notCd ? 'release' : staleness(old, now(), settingsOf().currency);
+      const stale = notCd ? 'release' : staleness(old, now(), settingsOf().currency, priceDays);
       if (!stale) return old;
       if (stale === 'price') return keep(album, await priced(old));
       const id = old && old.by === 'user' ? old.releaseId : await findRelease(album).catch(gone);
@@ -220,7 +221,8 @@ function createDiscogs({ fetchJson, mbFetch, read = (f) => store.readText(f), wr
     return keep(album, await priced({ releaseId: id, by: 'user', info: summarize(await request(`releases/${id}`)), checkedAt: now() }));
   }
   const known = (ids) => Object.fromEntries((ids || []).filter((id) => typeof id === 'string' && Object.hasOwn(albums(), id)).map((id) => [id, albums()[id]]));
-  const notFound = (ids = null) => Object.entries(albums()).filter(([id, e]) => e.releaseId === null && (!ids || ids.includes(id))).map(([id, e]) => ({ id, title: e.title, artist: e.artist }));
+  // (the WANT LIST's albums, kept as want:…, aren't the shelf's: never among those not found)
+  const notFound = (ids = null) => Object.entries(albums()).filter(([id, e]) => e.releaseId === null && (ids ? ids.includes(id) : !id.startsWith('want:'))).map(([id, e]) => ({ id, title: e.title, artist: e.artist }));
   const settings = () => ({ token: !!settingsOf().token, tokenDropped, currency: settingsOf().currency, currencies: CURRENCIES });
 
   async function setToken(token, { paste = false } = {}) {

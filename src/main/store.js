@@ -30,7 +30,7 @@ const file = (name) => path.join(dataDir(), name);
 const FILES = {
   queue: 'queue.txt', onboarded: 'onboarded', lastVersion: 'lastversion.txt', lastPath: 'lastpath.txt', musicFolders: 'music-folders.txt',
   settings: 'settings.txt', eqPresets: 'eq-presets.txt', history: 'history.txt', spotify: 'spotify.txt',
-  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt', firstPlayed: 'firstplayed.txt', shelfColors: 'shelf-colors.json', changer: 'changer.txt', changerQueue: 'changer-queue.txt', remote: 'remote.json', movesDeclined: 'moves-declined.txt', skipped: 'skipped.txt', dividers: 'dividers.txt',
+  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt', firstPlayed: 'firstplayed.txt', shelfColors: 'shelf-colors.json', changer: 'changer.txt', changerQueue: 'changer-queue.txt', remote: 'remote.json', movesDeclined: 'moves-declined.txt', skipped: 'skipped.txt', dividers: 'dividers.txt', wantList: 'want-list.json',
 };
 
 function readText(name) {
