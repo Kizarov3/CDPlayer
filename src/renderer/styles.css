@@ -1307,6 +1307,7 @@ body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: 
 .case-lid { position: absolute; inset: 0; z-index: 1; transform-origin: left center; transition: transform 700ms var(--ease-out); }
 .case-front { perspective: 2000px; perspective-origin: 0 50%; } /* (the lid swings out towards you, not off to the side) */
 .case-front.open .case-lid { transform: rotateY(-106deg); }
+@media (max-width: 1000px) { .case-front.open .case-lid { transform: rotateY(-97deg); } } /* (a narrow window: the lid kept inside it) */
 .case-front.open .receipt:not(.out) { visibility: hidden; } /* (in the case, under the disc) */
 .case-front.open .case-lid-inside { opacity: 1; visibility: visible; transition-delay: 150ms; }
 .case-lid-face { position: absolute; inset: 0; transition: visibility 0s 40ms; }
