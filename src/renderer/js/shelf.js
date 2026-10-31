@@ -1004,7 +1004,13 @@ async function openCase(a, spine) {
   });
   // The jewel case opens on its hinge: the lid swings out to the left, the booklet held inside it (clicked, it comes
   // out), the disc on the tray (clicked, it's played); a click on the tray beside the disc shuts the lid.
-  const lidInside = el('div', { class: 'case-lid-inside', title: t('Open the booklet'), onClick: () => openAlbumBooklet(a, lidInside, wholeList) });
+  const lidInside = el('div', { class: 'case-lid-inside', title: t('Open the booklet'), onClick: () => openAlbumBooklet(a, lidInside, wholeList, caseLid()) });
+  // The lid, open, that the booklet's taken out of (and put back into): its front cover is what's seen on the case shut.
+  const caseLid = () => {
+    const r = caseFront.getBoundingClientRect();
+    return { rect: r, angle: matchMedia('(max-width: 1000px)').matches ? -97 : -106, perspective: 2000, origin: { x: r.left, y: r.top + r.height / 2 },
+      out: () => caseFront.classList.add('booklet-out'), back: () => caseFront.classList.remove('booklet-out') };
+  };
   const caseCd = el('button', { class: 'case-cd', title: t('Play'), style: cover ? `--art: url("${cover}")` : '', onClick: (e) => {
     e.stopPropagation();
     if (!anim.enabled) { play(a, 0); return; }
@@ -1208,7 +1214,7 @@ function showCase(card, spine, from, color) {
 }
 
 // The album's booklet, rising out of the case's cover (full size, not the spine's thumbnail).
-async function openAlbumBooklet(a, front, wholeList = null) {
+async function openAlbumBooklet(a, front, wholeList = null, lid = null) {
   const { app } = shelf;
   if (isBookletOpen() || front.classList.contains('opening')) return;
   front.classList.add('opening');
@@ -1219,12 +1225,12 @@ async function openAlbumBooklet(a, front, wholeList = null) {
     const content = await albumBooklet(app, a, img, {
       wholeList,
       play: (i) => { closeBooklet(); play(a, i); },
-      onClose: () => { front.style.visibility = ''; },
+      onClose: () => { if (!lid) front.style.visibility = ''; },
     });
     if (!shelf.caseOpen || shelf.caseOpen.card !== front.closest('.case-card')) return; // put back while it loaded
-    const from = front.getBoundingClientRect();
-    front.style.visibility = 'hidden'; // it's the booklet's front cover now
-    await openBooklet(app, from, content);
+    const from = lid ? lid.rect : front.getBoundingClientRect();
+    if (!lid) front.style.visibility = 'hidden'; // it's the booklet's front cover now
+    await openBooklet(app, from, content, lid);
   } finally { front.classList.remove('opening'); }
 }
 

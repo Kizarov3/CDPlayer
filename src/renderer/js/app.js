@@ -8,7 +8,7 @@ import { Disc } from './disc.js';
 import { Visualizer } from './visualizer.js';
 import { Particles } from './particles.js';
 import { anim, EASE, el, pill, roundButton, modeButton, Slider, fitText, pulse, followPlaying } from './widgets.js';
-import { openBooklet, closeBooklet } from './booklet.js';
+import { openBooklet, closeBooklet, isBookletOpen } from './booklet.js';
 import { setLookLyrics, showLookSongs, followLookLyrics } from './look-lyrics.js';
 import { VuMeters } from './vu-meters.js';
 import { withoutHeader, parseLrc, currentLineIndex, heardPosition, playbackTimeFor, looksOnlineFor, takesOnline } from './lyrics.js';
@@ -3003,12 +3003,19 @@ function buildStaticUi() {
   disc.onJog = turnJog;
   disc.onJogEnd = endJog;
   disc.onArtClick = (from) => { if (!spotifyActive()) openBooklet(app, from); };
-  // CASE's case: clicked, its booklet comes out; with nothing in the player, it's the way to the shelf. The light on
-  // its plastic follows the pointer.
-  $('cover-art').addEventListener('click', () => {
-    if (state.look !== 'CASE' || caseFlying) return;
+  // CASE's case: clicked, it opens and its booklet comes out of the lid's tabs (the cover seen on the case is the
+  // booklet's: the lid's clear while it's out), put back in, the lid shuts; with nothing in the player, it's the way to
+  // the shelf. The light on its plastic follows the pointer.
+  $('cover-art').addEventListener('click', async () => {
+    if (state.look !== 'CASE' || caseFlying || isBookletOpen() || $('cover-art').classList.contains('open')) return;
     if (!caseDiscOut) { toggleShelf(); return; }
-    if (!spotifyActive()) openBooklet(app, $('cover-art').getBoundingClientRect());
+    if (spotifyActive()) return;
+    const box = $('case-box').getBoundingClientRect(), col = $('disc-column').getBoundingClientRect();
+    setLid(true, true);
+    if (anim.enabled) await new Promise((r) => setTimeout(r, 560));
+    openBooklet(app, box, null, { angle: -112, perspective: 1700, origin: { x: col.left + col.width * 0.2, y: col.top + col.height * 0.45 },
+      out: () => $('case-box').classList.add('booklet-out'),
+      back: () => { $('case-box').classList.remove('booklet-out'); setTimeout(() => { if (!caseFlying) setLid(false, true); }, anim.enabled ? 260 : 0); } });
   });
   $('disc-column').addEventListener('pointermove', (e) => {
     if (state.look !== 'CASE') return;
@@ -3221,6 +3228,7 @@ function setLook(kind, { save = true } = {}) {
   document.body.classList.toggle('look-album', albumLook());
   showQueueDrawer(false);
   disc.offstage = state.look === 'ALBUM'; // (its canvas hidden under the cover there: not drawn for nothing)
+  disc.coverInCase = state.look === 'CASE'; // (the cover's on the case beside it: not on the player too)
   showAlbumDisc(); // (CASE's lid as the disc is: open while one's in)
   tintFromCover(); renderQueue(); // (ALBUM's heading, and its rows by their titles)
   if (state.look === 'LYRICS') { showLookWords(); requestAnimationFrame(showLookWords); } // (again once it's laid out: where a line or song sits needs the room)

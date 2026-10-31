@@ -40,6 +40,7 @@ export class Disc {
     this.trayDone = null;      // resolves the open/close in progress
     this.discPresent = true;   // false: an empty tray (nothing loaded)
     this.inCase = false;       // CASE's disc, in its case beside the player: none drawn in the player
+    this.coverInCase = false;  // CASE: the cover's on the case beside the player, no thumbnail of it in the player's
     this.cover = null;         // HTMLImageElement
     this.lookingUp = false;
     this.label = null;         // { title, artist }: handwritten on a disc that has no cover, like a burned CD-R
@@ -617,7 +618,7 @@ export class Disc {
     const eject = Math.max(this.ejectProgress(now), 0.8 * this.swapProgress(now)), wobble = this.wobbleOffset(now);
     this.stepLight(now, dt);
     this.artRect = null;
-    if (!mini && this.cover && !(tray > 0)) {
+    if (!mini && this.cover && !(tray > 0) && !this.coverInCase) {
       const cs = side + 60, thumb = Math.round(side * 0.193), full = cs - 28, size = thumb + (full - thumb) * art;
       this.artRect = { x: cx - cs / 2 + 14, y: cy - cs / 2 + 14, w: size, h: size };
     }
@@ -629,7 +630,7 @@ export class Disc {
     const l = this.light;
     const look = [pw, ph, side, x, y, this.angle, this.speed, this.shineOn && l.angle, this.shineOn && l.strength, tray, art, eject, wobble, this.mode,
       this.faceKey, this.coverVersion, this.lookingUp, this.label && this.label.title, this.label && this.label.artist,
-      this.discPresent, this.inCase, colors.accent, colors.accent2, colors.bg, dpr, this.flipT, this.data && this.data.key, this.theme,
+      this.discPresent, this.inCase, this.coverInCase, colors.accent, colors.accent2, colors.bg, dpr, this.flipT, this.data && this.data.key, this.theme,
       this.flipT > 0 && this.data && this.position ? Math.round(radiusAt(this.data.layout, this.position()) * 2000) : 0].join('|');
     if (look === this.lastLook) return bounds;
     this.lastLook = look;
@@ -725,7 +726,7 @@ export class Disc {
       g.beginPath(); g.arc(cx, cy, side / 2, 0, Math.PI * 2); g.fill();
     }
     g.restore();
-    if (drawArt && tray < 1) { // the case's cover thumbnail steps aside while the tray is out
+    if (drawArt && tray < 1 && !this.coverInCase) { // the case's cover thumbnail steps aside while the tray is out
       g.save(); g.globalAlpha = 1 - tray; drawArt(this.cover); g.restore();
     }
     // The ⟲ in the case's corner that turns the disc over.
