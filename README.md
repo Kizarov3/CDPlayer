@@ -2,6 +2,8 @@
 
 A desktop music player that feels like a real CD player — for your local music, your CDs, YouTube Music and SoundCloud, and (with Spotify Premium) your Spotify albums. No account, nothing else to install: MP3, M4A/ALAC, FLAC, WAV, AIFF, AU, OGG and Opus all play out of the box on macOS, Windows and Linux.
 
+[![Support CDPlayer on Ko-fi](https://img.shields.io/badge/Ko--fi-support%20CDPlayer-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/Kizarov3)
+
 <p align="center">
   <img src="docs/screenshots/main-changer.jpg" width="49%" alt="CDPlayer main window in CD changer mode: Linkin Park's Hybrid Theory playing, the deck's glowing display under the seek bar, five discs in the carousel and the disc's tracklist beside it">
   <img src="docs/screenshots/look-album.jpg" width="49%" alt="The ALBUM player look: Nirvana's Nevermind in its jewel case with the disc sliding out of it, the album's name, artist, genre, year and label over its songs">
@@ -159,3 +161,7 @@ Pushing a `v*` tag builds, smoke-tests and releases all three platforms via [Git
 ## License
 
 MIT — see [LICENSE](LICENSE). Tags are written with [node-taglib-sharp](https://github.com/benrr101/node-taglib-sharp) (LGPL-2.1-or-later), used unmodified.
+
+## Support
+
+CDPlayer is free and made by one person. If it brings back the feeling of your CD shelf, you can [buy me a coffee on Ko-fi](https://ko-fi.com/Kizarov3) ☕
