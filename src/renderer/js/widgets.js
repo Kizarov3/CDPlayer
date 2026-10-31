@@ -7,6 +7,43 @@ import { glyphSvg } from './glyphs.js';
 export const anim = { enabled: true };
 // The motion curves of styles.css (--ease-out, --ease-in, --ease-in-out), for animations made in JS.
 export const EASE = { out: 'cubic-bezier(.22, 1, .36, 1)', in: 'cubic-bezier(.4, 0, 1, 1)', inOut: 'cubic-bezier(.65, 0, .35, 1)' };
+/** 0 → 1, smoothly (no jolt at either end), as x goes from a to b. */
+export const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+/** Keyframes sampled along `at(u)` (u from 0 to 1, → the frame's properties): a path no two keyframes would make. */
+export function pathFrames(at, n = 48) { return Array.from({ length: n + 1 }, (_, i) => ({ offset: i / n, ...at(i / n) })); }
+/**
+ * A jewel case's lid swung on its hinge to `to` (its rotateY, degrees; 0 shut): opened, it lets go and slows as it
+ * goes; shut, it speeds up, hits the case and bounces back off it a hair. `base`: the transform it's swung after;
+ * onCross(inside): it's past its edge, its inside seen (or not); onShut(): it's hit the case. → a promise, once still.
+ */
+export function swingLid(node, to, { base = '', onCross = () => {}, onShut = () => {} } = {}) {
+  const from = node._angle || 0;
+  cancelAnimationFrame(node._swing);
+  let inside = Math.abs(from) > 90;
+  const set = (a) => {
+    node._angle = a; node.style.transform = `${base} rotateY(${a.toFixed(2)}deg)`;
+    if ((Math.abs(a) > 90) !== inside) { inside = !inside; onCross(inside); }
+  };
+  if (!anim.enabled || from === to) { set(to); if (to === 0 && from !== 0) onShut(); return Promise.resolve(); }
+  const shutting = Math.abs(to) < Math.abs(from), ms = shutting ? 340 : 560, bounce = 120, t0 = performance.now();
+  return new Promise((done) => {
+    let hit = false;
+    const step = (now) => {
+      const t = Math.min(1, (now - t0) / ms);
+      const k = shutting ? Math.pow(t, 2.2) : 1 - Math.pow(1 - t, 3);
+      if (t < 1) set(from + (to - from) * k);
+      else if (!shutting || to !== 0) { set(to); done(); return; }
+      else { // off the case and back
+        if (!hit) { hit = true; onShut(); }
+        const r = Math.min(1, (now - t0 - ms) / bounce);
+        set(Math.sign(from) * 2.5 * Math.sin(Math.PI * r));
+        if (r >= 1) { set(0); done(); return; }
+      }
+      node._swing = requestAnimationFrame(step);
+    };
+    node._swing = requestAnimationFrame(step);
+  });
+}
 /** A spring, as Apple's animations move: settling by the end of the animation, past its mark a little first while
  *  `damping` is under 1 (0.8: about 2%). → a CSS linear() easing. */
 export function spring(damping) {

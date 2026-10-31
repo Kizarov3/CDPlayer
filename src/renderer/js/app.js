@@ -7,7 +7,7 @@ import { snapshot as remoteSnapshot, fullSlots, commandError, isStale, musicKey 
 import { Disc } from './disc.js';
 import { Visualizer } from './visualizer.js';
 import { Particles } from './particles.js';
-import { anim, EASE, el, pill, roundButton, modeButton, Slider, fitText, pulse, followPlaying } from './widgets.js';
+import { anim, EASE, el, pill, roundButton, modeButton, Slider, fitText, pulse, followPlaying, smooth, pathFrames, swingLid } from './widgets.js';
 import { openBooklet, closeBooklet, isBookletOpen } from './booklet.js';
 import { setLookLyrics, showLookSongs, followLookLyrics } from './look-lyrics.js';
 import { VuMeters } from './vu-meters.js';
@@ -371,49 +371,69 @@ let caseDiscOut = null, caseFlying = false;
 function showAlbumDisc() {
   const out = !!disc.discPresent && !disc.trayOpen;
   $('album-disc').classList.toggle('out', out);
-  disc.inCase = false;
-  if (state.look !== 'CASE') { setLid(out); caseDiscOut = null; holdInCase(false); return; }
+  if (state.look !== 'CASE') {
+    disc.inCase = false; caseDiscOut = null; holdInCase(false);
+    const lid = $('cover-art'); lid.style.transform = ''; lid._angle = 0; lid.classList.remove('inside');
+    lid.classList.toggle('open', out);
+    return;
+  }
   const inPlayer = !!disc.discPresent && !!state.loadedPath; // (the tray out, it's still the player's)
   if (caseDiscOut === inPlayer) { if (!caseFlying) { disc.inCase = !inPlayer; holdInCase(!inPlayer); } return; }
   const first = caseDiscOut === null;
   caseDiscOut = inPlayer;
   if (first || !anim.enabled) { setLid(false); disc.inCase = !inPlayer; holdInCase(!inPlayer); return; }
-  if (inPlayer) { handOver(true); return; }
-  disc.inCase = true; // (the player's empty now: the disc's on its way back)
-  handOver(false);
+  handOver(inPlayer);
 }
-// The case opened, the disc across (into the player, or back onto the hub), and the case shut.
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+// The case opened, the disc across (into the player, or back onto the hub), and the case shut — into the player, shut
+// as soon as the disc's clear of it; back, once it's on the hub.
 async function handOver(intoPlayer) {
   caseFlying = true;
-  if (!intoPlayer) holdInCase(false);
-  else { holdInCase(true); disc.inCase = true; }
+  holdInCase(intoPlayer); // (back: it's the player's, still drawn there, till it's lifted off)
+  if (intoPlayer) disc.inCase = true;
   setLid(true, true);
-  await new Promise((r) => setTimeout(r, 480));
-  await flyCaseDisc(intoPlayer);
+  await pause(300); // (the lid most of the way open as the disc's taken)
+  await flyCaseDisc(intoPlayer, () => setLid(false, true));
   holdInCase(!intoPlayer);
   disc.inCase = !intoPlayer;
+  if (!intoPlayer) await pause(140);
   caseFlying = false;
-  setTimeout(() => setLid(false, true), 120);
+  if (!intoPlayer) setLid(false, true);
 }
 // The disc sitting on the case's hub (seen while the lid's open), or not.
 function holdInCase(on) { $('case-box').classList.toggle('holding', on); }
-// The lid; `heard`: the plastic's snap (DISC NOISE).
+// The lid swung open or shut on its hinge (widgets.swingLid); `heard`: the catch letting go, the plastic's snap as it
+// shuts (DISC NOISE). → a promise, once it's still.
 function setLid(open, heard = false) {
   const lid = $('cover-art');
-  if (lid.classList.contains('open') === open) return;
+  if (lid.classList.contains('open') === open) return lid._still || Promise.resolve();
   lid.classList.toggle('open', open);
-  if (heard) noise.caseSnap(open);
+  if (heard && open) noise.caseSnap(true);
+  return (lid._still = swingLid(lid, open ? -112 : 0, {
+    base: 'translateZ(2px)', onCross: (inside) => lid.classList.toggle('inside', inside), onShut: () => { if (heard) noise.caseSnap(false); },
+  }));
 }
-// The disc between the case's hub and the player's tray (where the player draws it): lifted off, across, and down.
-function flyCaseDisc(intoPlayer) {
+// The disc between the case's hub and the player's tray (where the player draws it): lifted off the hub, carried over
+// in an arc and set down — the player's own drawing of it taking over (or giving way) as it's there, not a jump.
+// `onClear`: into the player, once it's clear of the case.
+function flyCaseDisc(intoPlayer, onClear) {
   const d = $('album-disc'), c = disc.center, from = d.getBoundingClientRect();
   if (!c || !from.width) return Promise.resolve();
   const out = disc.trayT; // (on the player's tray when it's out: lower, and a little bigger — disc.js frame)
   const k = (c.r * 2 * (1 + 0.05 * out)) / from.width, dx = c.x - (from.left + from.width / 2), dy = c.y + c.r * 2 * 0.16 * out - (from.top + from.height / 2);
-  const hub = { opacity: 1, transform: 'translateZ(1px)' }, lifted = { opacity: 1, transform: 'translateZ(60px) translateY(-6%) scale(1.04)' };
-  const player = { opacity: 1, transform: `translateZ(60px) translate(${dx}px, ${dy}px) scale(${k})` }, gone = { ...player, opacity: 0 };
-  const frames = intoPlayer ? [hub, { ...lifted, offset: 0.2 }, { ...player, offset: 0.9 }, gone] : [gone, { ...player, offset: 0.1 }, { ...lifted, offset: 0.8 }, hub];
-  return d.animate(frames, { duration: 950, easing: EASE.inOut }).finished.catch(() => {});
+  const ms = 1050, fade = 0.1, arc = Math.min(110, Math.hypot(dx, dy) * 0.16);
+  const at = (u) => {
+    const m = intoPlayer ? u : 1 - u; // 0 on the hub, 1 in the player
+    const go = smooth(0.12, 0.92, m), lift = Math.sin(Math.PI * smooth(0, 1, m));
+    const scale = (1 + (k - 1) * go) * (1 + 0.05 * lift);
+    return {
+      transform: `translateZ(${(1 + 70 * lift).toFixed(1)}px) translate(${(dx * go).toFixed(1)}px, ${(dy * go - arc * lift).toFixed(1)}px) scale(${scale.toFixed(4)})`,
+      opacity: intoPlayer ? 1 - smooth(1 - fade, 1, u) : smooth(0, fade, u),
+    };
+  };
+  setTimeout(() => { disc.inCase = !intoPlayer; }, ms * (intoPlayer ? 1 - fade : fade));
+  if (intoPlayer && onClear) setTimeout(onClear, ms * 0.42);
+  return d.animate(pathFrames(at), { duration: ms, easing: 'linear' }).finished.catch(() => {});
 }
 function renderQueue() {
   drawQueue();
@@ -3012,10 +3032,10 @@ function buildStaticUi() {
     if (spotifyActive()) return;
     const box = $('case-box').getBoundingClientRect(), col = $('disc-column').getBoundingClientRect();
     setLid(true, true);
-    if (anim.enabled) await new Promise((r) => setTimeout(r, 560));
+    if (anim.enabled) await pause(380); // (the lid most of the way open)
     openBooklet(app, box, null, { angle: -112, perspective: 1700, origin: { x: col.left + col.width * 0.2, y: col.top + col.height * 0.45 },
       out: () => $('case-box').classList.add('booklet-out'),
-      back: () => { $('case-box').classList.remove('booklet-out'); setTimeout(() => { if (!caseFlying) setLid(false, true); }, anim.enabled ? 260 : 0); } });
+      back: () => { $('case-box').classList.remove('booklet-out'); setTimeout(() => { if (!caseFlying) setLid(false, true); }, anim.enabled ? 120 : 0); } });
   });
   $('disc-column').addEventListener('pointermove', (e) => {
     if (state.look !== 'CASE') return;

@@ -8,7 +8,7 @@
 // (shelf-notes.js), whose corner shows above its spine. A new album comes in shrink-wrap until it's played or
 // unwrapped by hand, dragging the film off its case. A missing album's ghost case puts it on the WANT LIST (★ WANT;
 // want-list.js); when it turns up in the music folder it's crossed off, and its case says FOUND IT until it's played.
-import { el, pill, anim, EASE, growFrom } from './widgets.js';
+import { el, pill, anim, EASE, growFrom, swingLid } from './widgets.js';
 import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './booklet.js';
 import { stickersFor } from './shelf-stickers.js';
 import { todaySticker, todayLine, pullToday } from './on-this-day.js';
@@ -1017,7 +1017,10 @@ async function openCase(a, spine) {
     caseCd.animate([{ transform: 'none' }, { transform: 'translateY(-10%) scale(1.06)', opacity: 0 }], { duration: 260, easing: EASE.in, fill: 'forwards' }).onfinish = () => play(a, 0);
   } });
   const tray = el('div', { class: 'case-tray', title: t('Close the case'), onClick: () => openLid(false) }, caseCd);
-  const openLid = (open) => caseFront.classList.toggle('open', open);
+  const openLid = (open) => {
+    caseFront.classList.toggle('open', open);
+    return swingLid(lidEl, open ? (matchMedia('(max-width: 1000px)').matches ? -97 : -106) : 0, { onCross: (inside) => caseFront.classList.toggle('inside', inside) }); // (narrow: kept in the window)
+  };
   const st = a.stickers || stickersFor(a);
   // The sticky note: on the front when there is one; + NOTE sticks a blank one on to write.
   const saveNote = (text) => {
@@ -1062,7 +1065,8 @@ async function openCase(a, spine) {
       todaySticker(a) ? el('div', { class: `sticker-today ${todaySticker(a).kind}` }, todaySticker(a).label) : null,
       film,
       a.note ? stickyNote({ id: a.id, text: a.note, onSave: saveNote }) : null);
-  const caseFront = el('div', { class: 'case-front' }, tray, receipt, el('div', { class: 'case-lid' }, lidFace, lidInside));
+  const lidEl = el('div', { class: 'case-lid' }, lidFace, lidInside);
+  const caseFront = el('div', { class: 'case-front' }, tray, receipt, lidEl);
   const card = el('div', { class: 'case-card' },
     caseFront,
     el('div', { class: 'case-info' },

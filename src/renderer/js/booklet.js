@@ -4,7 +4,7 @@
 // clicking outside puts it back in the case. Pages are HTML (real text), laid over the canvas-drawn case.
 // The shelf opens an album's booklet the same way (albumBooklet): its whole tracklist, every song's lyrics (found
 // online while it's open, slotting in without moving the page being read), and the album's credits.
-import { el, anim } from './widgets.js';
+import { el, anim, smooth, pathFrames } from './widgets.js';
 import { deriveAutoTheme, rgb } from './theme.js';
 import { parseLrc, formatLyricsForDisplay, currentLineIndex } from './lyrics.js';
 import { paginate, leavesFor, ean13 } from './booklet-layout.js';
@@ -75,11 +75,12 @@ export async function openBooklet(app, from, content = null, lid = null) {
     root.classList.add('entering');
     lidView(root, lid);
     spread.style.transformOrigin = `${size}px 0`;
-    const frames = lidFrames(from, target, size, lid);
-    const a = spread.animate(frames, { duration: LID_MS + LIFT_MS, easing: 'linear', fill: 'backwards' });
+    const path = lidPath(from, target, size, lid);
+    const a = spread.animate(pathFrames((u) => ({ transform: path.at(u) }), 60), { duration: LID_MS, easing: 'linear', fill: 'backwards' });
     spread.classList.add('in-lid');
-    setTimeout(() => { if (lid.out) lid.out(); }, LID_MS * 0.4);
-    setTimeout(() => { root.classList.remove('entering'); spread.classList.remove('in-lid'); }, LID_MS);
+    setTimeout(() => { if (lid.out) lid.out(); }, LID_MS * 0.04);
+    setTimeout(() => spread.classList.remove('in-lid'), LID_MS * path.faced);
+    setTimeout(() => root.classList.remove('entering'), LID_MS * 0.3);
     await a.finished.catch(() => {});
     root.style.perspective = ''; root.style.perspectiveOrigin = '';
   } else if (from && anim.enabled) {
@@ -97,24 +98,26 @@ export async function openBooklet(app, from, content = null, lid = null) {
   if (book && book.spread === spread && book.turned === 0) turn(1);
 }
 
-const LID_MS = 520;
+const LID_MS = 950;
 // Seen as the case is: the same perspective as its lid's.
 function lidView(root, lid) {
   root.style.perspective = `${lid.perspective}px`;
   root.style.perspectiveOrigin = `${lid.origin.x}px ${lid.origin.y}px`;
 }
-// The shut booklet's way out of the lid and to the middle: in the lid (its angle, the booklet's front cover on `from`),
-// lifted out of the tabs past the lid's free edge, turned to face you, and grown to its place.
-function lidFrames(from, target, size, lid) {
-  const k = from.width / size, x = from.left - (target.left + size), y = from.top - target.top;
-  const at = (dx, dy, kk, angle) => `translate(${dx}px, ${dy}px) scale3d(${kk}, ${kk}, ${kk}) rotateY(${angle}deg)`;
-  const t = LID_MS / (LID_MS + LIFT_MS);
-  return [
-    { offset: 0, transform: `${at(x, y, k, lid.angle)} translateZ(1px)`, easing: 'cubic-bezier(.4, 0, .6, 1)' },
-    { offset: t * 0.55, transform: `${at(x, y, k, lid.angle)} translate3d(${-0.55 * size}px, 0, 6px)`, easing: 'cubic-bezier(.4, 0, .4, 1)' },
-    { offset: t, transform: `${at(x - from.width * 0.3, y, k * 1.08, lid.angle * 0.25)}`, easing: 'cubic-bezier(.2, .7, .2, 1)' },
-    { offset: 1, transform: 'none' },
-  ];
+// The shut booklet's way out of the lid to the middle, as one movement: lying in the open lid (its front cover on
+// `from`, seen from behind), slid out from under the tabs and lifted off, turned round to face you as it's brought to
+// the middle. → { at(u) (u 0 → 1: its transform), faced (the u at which it's turned past edge-on) }.
+function lidPath(from, target, size, lid) {
+  const k0 = from.width / size, x0 = from.left - (target.left + size), y0 = from.top - target.top;
+  const angle = (u) => lid.angle * (1 - smooth(0.2, 0.9, u));
+  const at = (u) => {
+    const move = smooth(0.25, 1, u), out = smooth(0, 0.32, u) * (1 - smooth(0.32, 1, u)), k = k0 + (1 - k0) * move;
+    return `translate3d(${(x0 * (1 - move)).toFixed(1)}px, ${(y0 * (1 - move)).toFixed(1)}px, 0) scale3d(${k.toFixed(4)}, ${k.toFixed(4)}, ${k.toFixed(4)}) `
+      + `rotateY(${angle(u).toFixed(2)}deg) translate3d(${(-0.5 * size * out).toFixed(1)}px, 0, ${(16 * out).toFixed(1)}px)`;
+  };
+  let faced = 1;
+  for (let u = 0; u <= 1; u += 0.005) if (Math.abs(angle(u)) < 90) { faced = u; break; }
+  return { at, faced };
 }
 
 function onKey(e) {
@@ -164,11 +167,10 @@ export async function closeBooklet() {
     b.root.classList.add('leaving');
     lidView(b.root, b.lid);
     b.spread.style.transition = 'none'; b.spread.style.transformOrigin = `${size}px 0`;
-    const frames = lidFrames(b.from, target, size, b.lid).reverse().map((f) => ({ ...f, offset: 1 - f.offset }));
-    frames.forEach((f, i) => { f.easing = i === 0 ? 'cubic-bezier(.5, 0, .7, .3)' : 'cubic-bezier(.4, 0, .6, 1)'; });
-    const a = b.spread.animate(frames, { duration: LID_MS + LIFT_MS, easing: 'linear', fill: 'forwards' });
-    setTimeout(() => b.spread.classList.add('in-lid'), LIFT_MS);
-    setTimeout(() => { if (b.lid.back) b.lid.back(); }, LIFT_MS + LID_MS * 0.6);
+    const path = lidPath(b.from, target, size, b.lid);
+    const a = b.spread.animate(pathFrames((u) => ({ transform: path.at(1 - u) }), 60), { duration: LID_MS, easing: 'linear', fill: 'forwards' });
+    setTimeout(() => b.spread.classList.add('in-lid'), LID_MS * (1 - path.faced));
+    setTimeout(() => { if (b.lid.back) b.lid.back(); }, LID_MS * 0.97);
     await a.finished.catch(() => {});
     b.root.remove();
     book = null;
