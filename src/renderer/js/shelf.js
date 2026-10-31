@@ -1027,8 +1027,11 @@ async function openCase(a, spine) {
     img.decode().then(async () => { const p = await photo; printedDisc(caseCd, await labelImage(img, print, 520, p), p); }).catch(() => {});
   }
   const openLid = (open) => {
-    caseFront.classList.toggle('open', open);
-    return swingLid(lidEl, open ? (matchMedia('(max-width: 1000px)').matches ? -97 : -106) : 0, { onCross: (inside) => caseFront.classList.toggle('inside', inside) }); // (narrow: kept in the window)
+    if (open) caseFront.classList.add('open');
+    lidEl._shutting = !open;
+    const swung = swingLid(lidEl, open ? (matchMedia('(max-width: 1000px)').matches ? -97 : -106) : 0, { onCross: (inside) => caseFront.classList.toggle('inside', inside) }); // (narrow: kept in the window)
+    if (!open) Promise.resolve(swung).then(() => { if (lidEl._shutting) caseFront.classList.remove('open'); }); // (shut first: the receipt under the disc not shown as it swings)
+    return swung;
   };
   const st = a.stickers || stickersFor(a);
   // The sticky note: on the front when there is one; + NOTE sticks a blank one on to write.
