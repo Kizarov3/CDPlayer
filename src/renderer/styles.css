@@ -688,10 +688,11 @@ body.look-case::after { /* the inlay's keyline */
 }
 body.look-case::before { /* the spine, as on the case's */
   content: "COMPACT DISC · DIGITAL AUDIO"; position: fixed; left: 0; top: 0; bottom: 0; width: 14px; pointer-events: none;
-  z-index: 50; background: rgb(var(--case-ink)); color: rgba(0, 0, 0, .7); font: bold 8px/14px var(--case-mono); letter-spacing: .4em; writing-mode: vertical-rl; transform: rotate(180deg); text-align: center;
+  z-index: 1; background: rgb(var(--case-ink)); color: rgba(0, 0, 0, .7); font: bold 8px/14px var(--case-mono); letter-spacing: .4em; writing-mode: vertical-rl; transform: rotate(180deg); text-align: center;
 }
-body.look-case #track-title { font-weight: 800; text-transform: uppercase; letter-spacing: .1em; font-size: 26px; }
-body.look-case #track-artist { font-variant: small-caps; letter-spacing: .14em; color: rgba(var(--case-paper), .7); }
+body.look-case #track-title, body.look-case #cd-title { font-weight: 800; text-transform: uppercase; letter-spacing: .1em; }
+body.look-case #track-title { font-size: 26px; }
+body.look-case #track-artist, body.look-case #cd-artist { font-variant: small-caps; letter-spacing: .14em; color: rgba(var(--case-paper), .7); }
 body.look-case #track-source, body.look-case #times { font-family: var(--case-mono); letter-spacing: .04em; }
 body.look-case #header .pill, body.look-case #status-pill { background: none; border-radius: 0; font-family: var(--case-mono); letter-spacing: .08em; color: rgba(var(--case-paper), .78); }
 body.look-case #header .pill:hover { background: rgb(var(--case-ink)); color: rgb(14, 13, 12); }
