@@ -53,7 +53,7 @@ function openPanel(name, build, { width } = {}) {
     p.overlay.classList.remove('closing');
     layer().append(p.overlay); // bring to front
   }
-  p.card.replaceChildren(...[build()].flat(Infinity));
+  p.card.replaceChildren(...[build()].flat(Infinity).filter((n) => n != null && n !== false));
   const from = opening && anim.enabled ? originOf(name) : null;
   pressed = null;
   if (from) { p.card.classList.add('morph'); p.origin = from; morph(p.card, from, false); }
@@ -75,7 +75,7 @@ function refreshPanel(name) {
   const p = panels.get(name);
   if (!p) return;
   const scrollers = [...p.card.querySelectorAll('.scroll')].map((s) => s.scrollTop);
-  p.card.replaceChildren(...[p.build()].flat(Infinity)); // (the card stays: its arriving or leaving goes on as it was)
+  p.card.replaceChildren(...[p.build()].flat(Infinity).filter((n) => n != null && n !== false)); // (a part left out is null; the card stays: its arriving or leaving goes on as it was)
   p.card.querySelectorAll('.scroll').forEach((s, i) => { s.scrollTop = scrollers[i] || 0; });
 }
 export const isOpen = (name) => panels.has(name);

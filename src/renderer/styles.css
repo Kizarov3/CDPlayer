@@ -1116,7 +1116,7 @@ body.no-anim .queue-row.active .num::after { animation: none; }
   box-shadow: 0 1px 2px rgba(0, 0, 0, .5), inset 0 0 0 1px rgba(255, 255, 255, .3); border-radius: 2px;
 }
 .sticker-today.played { background: linear-gradient(135deg, rgb(240, 242, 246), rgb(176, 182, 192)); color: rgb(40, 44, 52); }
-.spine .sticker-today { top: 30px; left: 50%; transform: translateX(-50%); writing-mode: vertical-rl; padding: 5px 1px; font-size: 6px; line-height: 9px; }
+.spine .sticker-today { bottom: 10px; left: 50%; transform: translateX(-50%); writing-mode: vertical-rl; padding: 5px 1px; font-size: 6px; line-height: 9px; }
 .case-front .sticker-today { left: 14px; bottom: 16px; padding: 5px 9px 4px; font-size: 11px; transform: rotate(-4deg); z-index: 3; }
 /* Dust (shelf-dust.js), settled on the top of a case left unplayed: a grey film with specks in it, thicker and further
    down the spine the longer it's been. Rubbed off with the mouse. */
