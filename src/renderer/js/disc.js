@@ -114,6 +114,13 @@ function discBox(photo) {
   return box;
 }
 
+// A disc drawn in the page (ALBUM's, the case's, a shelf case's) given its printed face; `photo`: it's the disc's own
+// photo — its own hub and plastic, none drawn over it.
+export function printedDisc(el, url, photo) {
+  el.style.setProperty('--art', `url("${url}")`); el.style.setProperty('--art-size', '100%');
+  el.classList.toggle('photo', !!photo);
+}
+
 /**
  * A pressed CD's printed face, the way a real one's done: printed in the cover's main colour, the picture from the
  * cover in the middle round the hub, the album's name round the top of the rim and who it's by round the bottom,
@@ -484,7 +491,13 @@ export class Disc {
     const g = face.getContext('2d');
     g.scale(scale, scale);
     const c = side / 2;
-    if (this.cover) {
+    if (this.discArt) {
+      // The disc's own photo: all of it, its own mirror band and clear plastic, but the hole.
+      g.save();
+      g.beginPath(); g.arc(c, c, c, 0, Math.PI * 2); g.arc(c, c, c * 0.155, 0, Math.PI * 2, true); g.clip('evenodd');
+      drawLabelPrint(g, c, side, this.cover, null, this.discArt);
+      g.restore();
+    } else if (this.cover) {
       // Pressed and printed: the label from the mirror band out (drawLabelPrint).
       g.save();
       g.beginPath(); g.arc(c, c, c, 0, Math.PI * 2); g.arc(c, c, c * LABEL_R, 0, Math.PI * 2, true); g.clip('evenodd');

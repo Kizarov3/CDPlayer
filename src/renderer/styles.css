@@ -535,6 +535,12 @@ body.playing #album-disc::before { animation-play-state: running; }
     conic-gradient(from 200deg, transparent, rgba(255, 130, 200, .2) 18deg, rgba(120, 200, 255, .24) 36deg, rgba(160, 255, 170, .18) 54deg, transparent 80deg 180deg,
       rgba(255, 220, 120, .16) 204deg, rgba(140, 180, 255, .2) 224deg, transparent 252deg); /* (a CD's rainbow where the light falls) */
 }
+/* The disc's own photo on it: its own hub and clear plastic, only the hole and the rim's light added. */
+#album-disc.photo::before, .case-cd.photo::before { -webkit-mask: radial-gradient(circle closest-side, transparent 0 15.5%, #000 16%); }
+#album-disc.photo::after, .case-cd.photo::after {
+  background: radial-gradient(circle closest-side, rgb(22, 23, 27) 0 15.5%, rgba(255, 255, 255, .3) 16% 16.5%, transparent 17% 97%, rgba(255, 255, 255, .4) 98%, rgba(0, 0, 0, .35) 99.5%),
+    conic-gradient(from 200deg, transparent, rgba(255, 130, 200, .14) 18deg, rgba(120, 200, 255, .16) 36deg, transparent 70deg 190deg, rgba(140, 180, 255, .14) 224deg, transparent 252deg);
+}
 body.no-anim #album-disc { transition: none; }
 body.no-anim #album-disc::before { animation: none; }
 /* CASE: the album's jewel case, big and shut, its cover under the plastic, beside a smaller player where the disc turns
@@ -554,7 +560,7 @@ body.look-case #case-box {
 body.look-case #cover-art {
   --s: 100%; z-index: 2; left: 0; top: 0; width: 100%; height: 100%; border-radius: 3px; transform-origin: left center;
   box-shadow: 0 30px 70px rgba(0, 0, 0, .55), 1px 1px 0 rgba(255, 255, 255, .35), 3px 3px 0 rgba(170, 180, 190, .22), 5px 5px 0 rgba(0, 0, 0, .25);
-  transition: none; cursor: pointer; /* (another album's case: there at once, not faded into) */
+  transition: scale 240ms var(--ease-out), filter 240ms ease; cursor: pointer; /* (another album's case: there at once, not faded into) */
 }
 body.look-case #cover-art { transform: translateZ(2px); } /* (over the tray: the two are in one 3D space; swung open by app.js setLid) */
 body.look-case #cover-art::before {
@@ -563,7 +569,7 @@ body.look-case #cover-art::before {
     linear-gradient(115deg, transparent calc(var(--mx, 35%) - 22%), rgba(255, 255, 255, .2) calc(var(--mx, 35%) - 4%), rgba(255, 255, 255, .05) var(--mx, 35%), transparent calc(var(--mx, 35%) + 12%)),
     linear-gradient(160deg, rgba(255, 255, 255, .1), transparent 30%);
 }
-body.look-case #cover-art:hover:not(.open) { filter: brightness(1.06); }
+body.look-case #cover-art:hover:not(.open) { filter: brightness(1.08); scale: 1.012; } /* (it can be picked up: lifted a little under the pointer) */
 /* No cover on it yet (nothing's been in the player): a plain dark case, a note on it — the way to the shelf. */
 body.look-case #cover-art:not([style*="url("]) { background: linear-gradient(150deg, rgb(58, 59, 64), rgb(30, 31, 35)); }
 body.look-case #cover-art:not([style*="url("])::after { content: "♪"; position: absolute; inset: 0; display: grid; place-items: center; color: rgba(var(--text), .18); font-weight: normal; }

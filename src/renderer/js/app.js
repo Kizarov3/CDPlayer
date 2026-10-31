@@ -4,7 +4,7 @@ import { THEMES, colors, setColors, deriveAutoTheme, visualizerModeFor, particle
 import { AudioEngine } from './audio.js';
 import { moveItem } from './queue-move.js';
 import { snapshot as remoteSnapshot, fullSlots, commandError, isStale, musicKey } from './remote-state.js';
-import { Disc, labelImage } from './disc.js';
+import { Disc, labelImage, printedDisc } from './disc.js';
 import { Visualizer } from './visualizer.js';
 import { Particles } from './particles.js';
 import { anim, EASE, el, pill, roundButton, modeButton, Slider, fitText, pulse, followPlaying, smooth, pathFrames, swingLid } from './widgets.js';
@@ -226,14 +226,15 @@ function printDisc() {
   const cover = state.cover;
   if (!print) disc.setDiscArt(null);
   if (cover && print) {
-    discArtFor(print).then(async (photo) => {
+    let photo = null;
+    discArtFor(print).then(async (found) => {
       if (JSON.stringify(printOf(state.loadedPath && state.details)) !== JSON.stringify(print)) return;
-      disc.setDiscArt(photo);
+      disc.setDiscArt(photo = found);
       return labelImage(cover, print, 520, photo);
     }).then((url) => {
       if (!url) return;
       if (state.cover !== cover || JSON.stringify(printOf(state.loadedPath && state.details)) !== JSON.stringify(print)) return;
-      $('album-disc').style.setProperty('--art', `url("${url}")`); $('album-disc').style.setProperty('--art-size', '100%');
+      printedDisc($('album-disc'), url, photo);
     }).catch(() => {});
   }
 }
@@ -415,11 +416,12 @@ function showAlbumDisc() {
   $('album-disc').classList.toggle('out', out);
   if (state.look !== 'CASE') {
     disc.inCase = false; caseDiscOut = null; holdInCase(false);
-    const lid = $('cover-art'); lid.style.transform = ''; lid._angle = 0; lid.classList.remove('inside');
+    const lid = $('cover-art'); lid.style.transform = ''; lid._angle = 0; lid.classList.remove('inside'); lid.title = '';
     lid.classList.toggle('open', out);
     return;
   }
   const inPlayer = !!disc.discPresent && !!state.loadedPath; // (the tray out, it's still the player's)
+  $('cover-art').title = inPlayer ? t('Open the booklet') : t('Pick an album off the shelf');
   if (caseDiscOut === inPlayer) { if (!caseFlying) { disc.inCase = !inPlayer; holdInCase(!inPlayer); } return; }
   const first = caseDiscOut === null;
   caseDiscOut = inPlayer;
@@ -463,7 +465,7 @@ function flyCaseDisc(intoPlayer, onClear) {
   if (!c || !from.width) return Promise.resolve();
   const out = disc.trayT; // (on the player's tray when it's out: lower, and a little bigger — disc.js frame)
   const k = (c.r * 2 * (1 + 0.05 * out)) / from.width, dx = c.x - (from.left + from.width / 2), dy = c.y + c.r * 2 * 0.16 * out - (from.top + from.height / 2);
-  const ms = 1050, fade = 0.1, arc = Math.min(110, Math.hypot(dx, dy) * 0.16);
+  const ms = 900, fade = 0.1, arc = Math.min(110, Math.hypot(dx, dy) * 0.16);
   const at = (u) => {
     const m = intoPlayer ? u : 1 - u; // 0 on the hub, 1 in the player
     const go = smooth(0.12, 0.92, m), lift = Math.sin(Math.PI * smooth(0, 1, m));
@@ -1345,7 +1347,7 @@ function applyCover(img) {
   $('cover-art').style.backgroundImage = img ? `url("${img.src}")` : '';
   $('cover-art').classList.toggle('none', !img);
   $('album-disc').style.setProperty('--art', img ? `url("${img.src}")` : 'none');
-  $('album-disc').style.removeProperty('--art-size');
+  $('album-disc').style.removeProperty('--art-size'); $('album-disc').classList.remove('photo');
   printDisc();
   tintFromCover();
   showAlbumDisc();
@@ -1993,27 +1995,51 @@ function toggleShelf() {
  */
 async function insertDisc(paths, { status, start = 0, disc: given = null, kind = null, title = null } = {}) {
   if (!paths.length || state.miniMode) return;
+  const ready = caseReady(paths[0]); // (CASE: its cover and disc's picture got ready while the tray comes out)
   if (!disc.trayOpen) await openTray();
   if (state.trayBusy) return;
-  await caseToTray(paths[0]);
+  await caseToTray(ready);
   await putDiscOnTray(paths, start, status, { disc: given, kind, title });
   await new Promise((r) => setTimeout(r, 450));
   await closeTray();
 }
-// CASE: the new disc out of its case (its cover on the lid, as the shelf has it) onto the player's open tray, before
-// the player shows it there.
-async function caseToTray(firstTrack) {
-  if (state.look !== 'CASE' || state.cdView || !anim.enabled) return;
-  const art = await Promise.race([cdp.shelfCover(firstTrack, { online: false }).catch(() => null), new Promise((r) => setTimeout(r, 400, null))]);
-  if (art) {
-    $('cover-art').style.backgroundImage = `url("${art}")`; $('cover-art').classList.remove('none');
-    $('album-disc').style.setProperty('--art', `url("${art}")`); $('album-disc').style.removeProperty('--art-size');
-    const img = await decodeCover(art), print = printOf(detailsCache.get(firstTrack));
-    const photo = await Promise.race([discArtFor(print), pause(600).then(() => null)]);
-    if (img) { const url = await labelImage(img, print, 520, photo).catch(() => null); if (url) { $('album-disc').style.setProperty('--art', `url("${url}")`); $('album-disc').style.setProperty('--art-size', '100%'); } }
-  }
+// CASE: what the new disc's case and disc look like — its cover, and its face printed once (the disc's own photo when
+// it's found in time), the same picture all the way from its case into the player.
+async function caseReady(firstTrack) {
+  if (state.look !== 'CASE' || state.cdView || !anim.enabled) return null;
+  const details = detailsCache.get(firstTrack) || await Promise.race([cdp.details(firstTrack, { withCover: false }).catch(() => null), pause(800).then(() => null)]);
+  const art = await Promise.race([cdp.shelfCover(firstTrack, { online: false }).catch(() => null), pause(800).then(() => null)]);
+  const img = art ? await decodeCover(art) : null, print = printOf(details);
+  const photo = await Promise.race([discArtFor(print), pause(1500).then(() => null)]);
+  const url = img ? await labelImage(img, print, 520, photo).catch(() => null) : null;
+  return { art, img, print, photo, url };
+}
+// CASE, a disc changed as it's done by hand: the one in the player back into its case first and the case shut, the
+// new album's case there in its place, opened, and its disc out onto the player's open tray — before the player
+// shows it there.
+async function caseToTray(ready) {
+  const next = await ready;
+  if (!next || state.look !== 'CASE' || state.cdView) return;
+  if (caseDiscOut && disc.discPresent && state.loadedPath) { caseDiscOut = false; await handOver(false); await pause(300); }
+  if (next.art) await swapCaseCover(next.art);
+  if (next.url) printedDisc($('album-disc'), next.url, next.photo);
+  else if (next.art) { $('album-disc').style.setProperty('--art', `url("${next.art}")`); $('album-disc').style.removeProperty('--art-size'); $('album-disc').classList.remove('photo'); }
+  // The player's drawing of it the same disc as the one flying in (not the last one's, nor a made print for a photo).
+  if (next.img) disc.setCover(next.img);
+  disc.setPrint(next.print); disc.setDiscArt(next.photo);
   caseDiscOut = true; // (in the player now: not handed over again once it's loaded)
   await handOver(true);
+}
+// The case on the left another album's: its cover crossfaded in under the plastic.
+async function swapCaseCover(art) {
+  const lid = $('cover-art'), was = lid.style.backgroundImage, now = `url("${art}")`;
+  lid.style.backgroundImage = now; lid.classList.remove('none');
+  if (!was || was === 'none' || was === now || !anim.enabled) return;
+  const ghost = document.createElement('div');
+  ghost.style.cssText = `position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;background:${was} center / cover no-repeat`;
+  lid.prepend(ghost);
+  ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 340, easing: 'ease-in-out', fill: 'forwards' }).finished.catch(() => {}).then(() => ghost.remove());
+  await pause(240);
 }
 // Music dropped (or picked) while the tray is out: that's a new disc in the changer, the one in the player — loaded but
 // not playing. `given`: the disc it is (a shelf album); else it's worked out from the tracks.
