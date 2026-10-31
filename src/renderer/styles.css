@@ -480,6 +480,7 @@ body.look-hifi #transport .round.mode.on { color: rgb(var(--text)); }
    the cover, out of its case behind it while a song's in, turning while it plays (app.js showAlbumDisc); the album's
    colour (--album-tint, app.js tintFromCover) on its artist and the song playing. */
 #cover-art, #album-disc { display: none; }
+body.booting #cover-art, body.booting #album-disc, body.booting #case-box { visibility: hidden; } /* (till the look's set: app.js setLook) */
 body.look-album:not(.cd-view) #body {
   grid-template-columns: minmax(300px, 1fr) minmax(0, 1.2fr); grid-template-rows: minmax(0, 1fr) repeat(8, auto); column-gap: 56px;
 }
@@ -1351,7 +1352,7 @@ body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: 
   display: flex; gap: 28px; padding: 24px; width: min(880px, calc(100vw - 80px)); height: min(430px, calc(100vh - 80px));
   background: rgb(var(--card)); border: 1px solid rgba(255, 255, 255, .16); box-shadow: 0 30px 80px rgba(0, 0, 0, .6);
 }
-.case-front { flex: 0 0 auto; height: 100%; aspect-ratio: 1; position: relative; }
+.case-front { flex: 0 0 auto; height: 100%; aspect-ratio: 142 / 125; position: relative; } /* (a jewel case's: wider than tall) */
 .case-cover { width: 100%; height: 100%; object-fit: cover; display: block; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
 .case-front .case-cover { cursor: pointer; position: relative; z-index: 1; } /* over the receipt tucked behind it */
 .case-front .case-cover.opening { cursor: progress; }
@@ -1367,7 +1368,7 @@ body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: 
 /* The lid's face: the cover under clear plastic a little bigger than it (its rim and the hinge round it), a few pixels
    thick, its edge catching the light. */
 .case-lid-face {
-  position: absolute; inset: 0; box-sizing: border-box; padding: 2.2% 2.2% 2.2% 6.5%; border-radius: 4px;
+  position: absolute; inset: 0; box-sizing: border-box; padding: 1.76% 5.6% 1.76% 9.9%; border-radius: 4px; /* (the booklet a square under the tabs, the hinge's band on its left) */
   background: linear-gradient(160deg, rgba(255, 255, 255, .22), rgba(255, 255, 255, .06) 40%, rgba(255, 255, 255, .12)), rgb(26, 27, 31);
   box-shadow: 0 14px 34px rgba(0, 0, 0, .6), inset 0 0 0 1px rgba(255, 255, 255, .4), 1px 1px 0 rgba(255, 255, 255, .3), 3px 3px 0 rgba(170, 180, 190, .25), 5px 5px 0 rgba(0, 0, 0, .3);
 }

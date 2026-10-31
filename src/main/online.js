@@ -295,7 +295,7 @@ async function findDiscArt({ artist, album, releaseId }) {
     const images = (index && index.images) || [];
     const disc = images.find((i) => (i.types || []).length === 1 && i.types[0] === 'Medium') || images.find((i) => (i.types || []).includes('Medium'));
     if (!disc) throw new Error('no disc');
-    const art = await fetchImageDataUrl((disc.thumbnails && (disc.thumbnails['500'] || disc.thumbnails.large)) || disc.image, 20000).catch(() => null);
+    const art = await fetchImageDataUrl((disc.thumbnails && (disc.thumbnails['1200'] || disc.thumbnails['500'] || disc.thumbnails.large)) || disc.image, 20000).catch(() => null);
     if (!art) { failed = true; throw new Error('no picture'); }
     return art;
   };

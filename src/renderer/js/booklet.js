@@ -249,7 +249,7 @@ function buildLeaves() {
 // ---- Pages ---------------------------------------------------------------------------------------------------------
 
 function pageSize() {
-  return Math.round(Math.max(240, Math.min(520, window.innerHeight - 150, (window.innerWidth - 100) / 2)));
+  return Math.round(Math.max(240, Math.min(520, window.innerHeight - 200, (window.innerWidth - 100) / 2)));
 }
 function face(page, side) {
   const f = el('div', { class: `face ${side}` }, page);

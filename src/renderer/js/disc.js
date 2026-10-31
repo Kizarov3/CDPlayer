@@ -890,7 +890,7 @@ export class Disc {
     }
     g.restore();
     if (drawArt && tray < 1 && !this.coverInCase) { // the case's cover thumbnail steps aside while the tray is out
-      g.save(); g.globalAlpha = 1 - tray; drawArt(this.cover); g.restore();
+      g.save(); g.globalAlpha = (1 - tray) * (1 - (this.coverHide || 0)); drawArt(this.cover); g.restore();
     }
     // The ⟲ in the case's corner that turns the disc over.
     this.flipRect = null;

@@ -127,7 +127,7 @@ const vuMeters = new VuMeters($('vu-meters')); // (HI-FI's)
 const particles = new Particles($('particles'));
 const noise = new DiscNoise(engine);
 const shake = new ShakeDetector();
-const TRAY_MS = 650, READING_MS = 1300;
+const TRAY_MS = 650, READING_MS = 900;
 const detailsCache = new Map(); // path -> details without cover (queue labels, durations)
 const spotifyTracks = new Map(); // spotify:track:… -> { uri, title, artist, album, durationMs, cover } of the Spotify disc
 
@@ -410,17 +410,17 @@ function tintFromCover() {
 // CASE: the album's jewel case, big, shut, its cover under the plastic, beside a smaller player where the disc turns.
 // The case opens only to hand the disc over: as one goes in, the lid swings open, the disc lifts off the hub onto the
 // player's tray and the lid snaps shut; once there's none in the player, it opens for the disc to come back.
-let caseDiscOut = null, caseFlying = false;
+let caseDiscOut = null, caseFlying = false, caseTookBack = false; // (caseTookBack: the tray out, its disc put back in the case)
 function showAlbumDisc() {
   const out = !!disc.discPresent && !disc.trayOpen;
   $('album-disc').classList.toggle('out', out);
   if (state.look !== 'CASE') {
-    disc.inCase = false; caseDiscOut = null; holdInCase(false);
+    disc.inCase = false; caseDiscOut = null; caseTookBack = false; holdInCase(false);
     const lid = $('cover-art'); lid.style.transform = ''; lid._angle = 0; lid.classList.remove('inside'); lid.title = '';
     lid.classList.toggle('open', out);
     return;
   }
-  const inPlayer = !!disc.discPresent && !!state.loadedPath; // (the tray out, it's still the player's)
+  const inPlayer = !!disc.discPresent && !!state.loadedPath && !caseTookBack;
   $('cover-art').title = inPlayer ? t('Open the booklet') : t('Pick an album off the shelf');
   if (caseDiscOut === inPlayer) { if (!caseFlying) { disc.inCase = !inPlayer; holdInCase(!inPlayer); } return; }
   const first = caseDiscOut === null;
@@ -1785,6 +1785,11 @@ async function openTray({ eject = false } = {}) {
   const opened = disc.setTray(true);
   showAlbumDisc();
   await opened;
+  // CASE: the disc off the tray and back into its case, as it's done by hand — and out again as the tray closes.
+  if (state.look === 'CASE' && !state.cdView && anim.enabled && caseDiscOut && disc.discPresent && state.loadedPath) {
+    caseTookBack = true; caseDiscOut = false;
+    await handOver(false);
+  }
   state.trayBusy = false;
   setStatus(state.queue.length ? t('OPEN · DROP IN A NEW DISC, OR PRESS E TO CLOSE') : t('OPEN · DROP MUSIC ON THE TRAY'));
   $('tray-button').classList.add('on');
@@ -1792,6 +1797,11 @@ async function openTray({ eject = false } = {}) {
 async function closeTray({ play = true } = {}) {
   if (!disc.trayOpen || state.trayBusy) return;
   state.trayBusy = true;
+  if (caseTookBack) {
+    caseTookBack = false;
+    if (state.look === 'CASE' && disc.discPresent && state.loadedPath) { caseDiscOut = true; await handOver(true); await pause(120); }
+    else showAlbumDisc();
+  }
   setStatus(t('CLOSING'));
   noise.tray(TRAY_MS);
   const closed = disc.setTray(false);
@@ -2027,7 +2037,7 @@ async function caseToTray(ready) {
   // The player's drawing of it the same disc as the one flying in (not the last one's, nor a made print for a photo).
   if (next.img) disc.setCover(next.img);
   disc.setPrint(next.print); disc.setDiscArt(next.photo);
-  caseDiscOut = true; // (in the player now: not handed over again once it's loaded)
+  caseDiscOut = true; caseTookBack = false; // (in the player now: not handed over again once it's loaded)
   await handOver(true);
 }
 // The case on the left another album's: its cover crossfaded in under the plastic.
@@ -2594,7 +2604,7 @@ function morphCdView(entering) {
   } else {
     state.cdView = false; applyCdViewState(); // the player is laid out again underneath, and fades in as the disc lands
     to = canvas.getBoundingClientRect();
-    for (const node of chrome) node.animate([{ opacity: 0 }, { opacity: 1 }], { duration: CD_MORPH_MS * 0.5, delay: CD_MORPH_MS * 0.5, easing: 'ease-in', fill: 'backwards' });
+    for (const node of chrome) node.animate([{ opacity: 0 }, { opacity: 1 }], { duration: CD_MORPH_MS * 0.5, delay: CD_MORPH_MS * 0.5, easing: 'ease-out', fill: 'backwards' }); // (not long half-there: a case half-faded looks grey)
   }
   Object.assign(canvas.style, { position: 'fixed', right: 'auto', bottom: 'auto', zIndex: '5' });
   disc.morph = { from: entering ? 'normal' : 'enlarged', to: entering ? 'enlarged' : 'normal', t: 0 };
@@ -2613,8 +2623,9 @@ function stepDiscMorph(now, finish = false) {
   const style = $('disc').style;
   Object.assign(style, { left: lerp('left'), top: lerp('top'), width: lerp('width'), height: lerp('height') });
   disc.morph.t = eased;
+  disc.coverHide = state.look === 'CASE' ? (m.entering ? 1 - eased : eased) : 0; // (CASE: the cover's thumbnail CD View has, faded with it)
   if (p < 1) return;
-  discMorph = null; disc.morph = null;
+  discMorph = null; disc.morph = null; disc.coverHide = 0;
   document.body.classList.remove('cd-morph');
   stageDisc();
   for (const key of ['position', 'left', 'top', 'right', 'bottom', 'width', 'height', 'zIndex']) style[key] = '';
@@ -3335,6 +3346,7 @@ function setLook(kind, { save = true } = {}) {
   state.look = LOOKS.includes(kind) ? kind : 'CLASSIC';
   lookInsetSet = false;
   for (const k of LOOKS) document.body.classList.toggle(`look-${k.toLowerCase()}`, state.look === k);
+  document.body.classList.remove('booting'); // (the look's own case and disc shown from its first frame, not another's)
   document.body.classList.toggle('look-album', albumLook());
   showQueueDrawer(false);
   stageDisc();
