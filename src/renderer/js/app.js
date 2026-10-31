@@ -4,7 +4,7 @@ import { THEMES, colors, setColors, deriveAutoTheme, visualizerModeFor, particle
 import { AudioEngine } from './audio.js';
 import { moveItem } from './queue-move.js';
 import { snapshot as remoteSnapshot, fullSlots, commandError, isStale, musicKey } from './remote-state.js';
-import { Disc } from './disc.js';
+import { Disc, labelImage } from './disc.js';
 import { Visualizer } from './visualizer.js';
 import { Particles } from './particles.js';
 import { anim, EASE, el, pill, roundButton, modeButton, Slider, fitText, pulse, followPlaying, smooth, pathFrames, swingLid } from './widgets.js';
@@ -196,9 +196,24 @@ export function formatTime(seconds) {
 }
 const formatDuration = (sec) => (sec > 0 ? formatTime(sec) : '--:--');
 
+// What's printed round a pressed disc's rim (disc.js drawLabelPrint): the album's name, who it's by, the year and the
+// record label — the same on the disc the page draws (ALBUM's, the case's), printed as a picture.
+const printOf = (d) => (d ? { album: d.album || null, artist: d.albumArtist || d.artist || null, year: yearOf(d), label: (d.credits && d.credits.label) || null } : null);
+function printDisc() {
+  const print = printOf(state.loadedPath && state.details);
+  disc.setPrint(print);
+  const cover = state.cover;
+  if (cover && print) {
+    labelImage(cover, print).then((url) => {
+      if (state.cover !== cover || JSON.stringify(printOf(state.loadedPath && state.details)) !== JSON.stringify(print)) return;
+      $('album-disc').style.setProperty('--art', `url("${url}")`); $('album-disc').style.setProperty('--art-size', '100%');
+    }).catch(() => {});
+  }
+}
 function setTrackTitle(name, artist) {
   state.titleText = name; state.artistText = artist;
   disc.setLabel(state.loadedPath ? name : null, artist); // written on the disc when it has no cover
+  printDisc();
   refreshDockSoon();
   fitText($('track-title'), name, 456, 34, 20, true);
   fitText($('cd-title'), name, 860, 30, 18, true);
@@ -1036,7 +1051,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   // (a streamed song's quality is known once its sound has been found: asked again, now; its cover is kept in main)
   const details = (await (isStream(path) ? cdp.details(path, { withCover: true }).catch(() => null) : detailsPromise)) || { title: displayName(path), artist: null, album: null, lyrics: null, cover: null, ext: extension(path), duration: engine.duration };
   if (token !== state.loadToken) return;
-  state.details = details; state.detailsPath = path;
+  state.details = details; state.detailsPath = path; printDisc();
   showSetDisc(details);
   detailsCache.set(path, { ...details, cover: undefined, duration: details.duration || engine.duration });
   setTrackTitle(details.title, details.artist); // (A of "A / B" once it's known to hide B: followHidden)
@@ -1303,6 +1318,8 @@ function applyCover(img) {
   $('cover-art').style.backgroundImage = img ? `url("${img.src}")` : '';
   $('cover-art').classList.toggle('none', !img);
   $('album-disc').style.setProperty('--art', img ? `url("${img.src}")` : 'none');
+  $('album-disc').style.removeProperty('--art-size');
+  printDisc();
   tintFromCover();
   showAlbumDisc();
   karaokeCover();
@@ -1847,7 +1864,7 @@ async function loadSpotify(path, token, { autoPlay, startAt }) {
   renderQueue(); saveQueueSoon();
   panels.refreshSettingsIfOpen(app);
   const details = { title: track.title, artist: track.artist, album: track.album, lyrics: null, cover: null, coverUrl: track.cover, duration: track.durationMs / 1000, ext: 'SPOTIFY' };
-  state.details = details; state.detailsPath = path;
+  state.details = details; state.detailsPath = path; printDisc();
   showSetDisc(null); // (Spotify doesn't say which disc)
   setTrackTitle(details.title, details.artist);
   updateWear();
@@ -1928,7 +1945,7 @@ async function ripAudioCd() {
 async function refreshLoadedDetails() {
   const path = state.loadedPath, d = await cdp.details(path, { withCover: true }).catch(() => null);
   if (!d || state.loadedPath !== path) return;
-  state.details = d; state.detailsPath = path;
+  state.details = d; state.detailsPath = path; printDisc();
   detailsCache.set(path, { ...d, cover: undefined });
   setTrackTitle(d.title, d.artist);
   updateWear();
@@ -1961,7 +1978,12 @@ async function insertDisc(paths, { status, start = 0, disc: given = null, kind =
 async function caseToTray(firstTrack) {
   if (state.look !== 'CASE' || state.cdView || !anim.enabled) return;
   const art = await Promise.race([cdp.shelfCover(firstTrack, { online: false }).catch(() => null), new Promise((r) => setTimeout(r, 400, null))]);
-  if (art) { $('cover-art').style.backgroundImage = `url("${art}")`; $('cover-art').classList.remove('none'); $('album-disc').style.setProperty('--art', `url("${art}")`); }
+  if (art) {
+    $('cover-art').style.backgroundImage = `url("${art}")`; $('cover-art').classList.remove('none');
+    $('album-disc').style.setProperty('--art', `url("${art}")`); $('album-disc').style.removeProperty('--art-size');
+    const img = await decodeCover(art), print = printOf(detailsCache.get(firstTrack));
+    if (img) { const url = await labelImage(img, print).catch(() => null); if (url) { $('album-disc').style.setProperty('--art', `url("${url}")`); $('album-disc').style.setProperty('--art-size', '100%'); } }
+  }
   caseDiscOut = true; // (in the player now: not handed over again once it's loaded)
   await handOver(true);
 }

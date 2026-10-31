@@ -25,6 +25,108 @@ const MARKER_FONT = '"Marker Felt", "Segoe Print", "Bradley Hand", "Comic Sans M
 const CLEAR_R = 0.27, LABEL_R = 0.36;
 const WEAR_MIN_SIDE = 150; // too small to see (Mini Mode): no wear drawn
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+const PRINT_FONT = '"Helvetica Neue", "Arial Narrow", Arial, sans-serif';
+const ART_R = 0.7; // a printed disc's picture, from the middle out to here; its name and who round the rim outside it
+
+// The cover's main colour (the ink the disc is printed in): its pixels by hue, the most of one hue, averaged.
+const inks = new WeakMap();
+function inkOf(img) {
+  if (inks.has(img)) return inks.get(img);
+  const n = 24, cv = new OffscreenCanvas(n, n), x = cv.getContext('2d', { willReadFrequently: true });
+  x.drawImage(img, 0, 0, n, n);
+  const d = x.getImageData(0, 0, n, n).data, groups = new Map();
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], g = d[i + 1], b = d[i + 2], max = Math.max(r, g, b), min = Math.min(r, g, b), sat = max ? (max - min) / max : 0;
+    let key;
+    if (sat < 0.2) key = max < 70 ? 'black' : max > 200 ? 'white' : 'grey';
+    else {
+      const h = max === r ? (g - b) / (max - min) : max === g ? 2 + (b - r) / (max - min) : 4 + (r - g) / (max - min);
+      key = Math.round(((h + 6) % 6) * 2) % 12;
+    }
+    const e = groups.get(key) || { n: 0, w: 0, r: 0, g: 0, b: 0 };
+    e.n++; e.w += 1 + sat; e.r += r; e.g += g; e.b += b; groups.set(key, e);
+  }
+  const best = [...groups.values()].sort((a, b) => b.w - a.w)[0];
+  const ink = [best.r / best.n, best.g / best.n, best.b / best.n].map(Math.round);
+  inks.set(img, ink);
+  return ink;
+}
+// Text set round a circle about (c, c): along the top (reading clockwise) or along the bottom (upright), centred on
+// it, shrunk to fit `span` (radians). → the size it was set at.
+function arcText(g, text, c, radius, px, span, bottom, spacing = 0.08) {
+  const fit = (size) => {
+    g.font = `bold ${size}px ${PRINT_FONT}`;
+    const ws = [...text].map((ch) => g.measureText(ch).width + size * spacing);
+    return { ws, total: ws.reduce((a, b) => a + b, 0) - size * spacing };
+  };
+  let m = fit(px);
+  if (m.total / radius > span) { px = Math.max(px * 0.5, px * span * radius / m.total); m = fit(px); }
+  g.save();
+  g.translate(c, c);
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  let a = (bottom ? Math.PI / 2 + m.total / radius / 2 : -Math.PI / 2 - m.total / radius / 2);
+  [...text].forEach((ch, i) => {
+    const w = m.ws[i], mid = a + (bottom ? -1 : 1) * (w - px * spacing) / 2 / radius;
+    g.save();
+    g.rotate(mid + (bottom ? -Math.PI / 2 : Math.PI / 2));
+    g.translate(0, bottom ? radius : -radius);
+    g.fillText(ch, 0, 0);
+    g.restore();
+    a += (bottom ? -1 : 1) * w / radius;
+  });
+  g.restore();
+  return px;
+}
+/**
+ * A pressed CD's printed face, the way a real one's done: printed in the cover's main colour, the picture from the
+ * cover in the middle round the hub, the album's name round the top of the rim and who it's by round the bottom,
+ * the small print just inside the edge. `print`: { album, artist, year, label } (any of them missing: left off).
+ */
+export function drawLabelPrint(g, c, side, cover, print) {
+  const [r, gr, b] = inkOf(cover), light = (0.299 * r + 0.587 * gr + 0.114 * b) / 255 > 0.6;
+  const text = light ? 'rgba(18,18,22,0.92)' : 'rgba(255,255,255,0.95)';
+  g.save();
+  g.beginPath(); g.arc(c, c, c, 0, Math.PI * 2); g.clip();
+  g.fillStyle = `rgb(${r},${gr},${b})`; g.fillRect(0, 0, side, side);
+  // The picture: the middle of the cover, filling a circle round the hub.
+  g.save();
+  g.beginPath(); g.arc(c, c, c * ART_R, 0, Math.PI * 2); g.clip();
+  const iw = cover.naturalWidth || cover.width, ih = cover.naturalHeight || cover.height, s = Math.min(iw, ih), d = c * ART_R * 2.3;
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(cover, (iw - s) / 2, (ih - s) / 2, s, s, c - d / 2, c - d / 2, d, d);
+  g.restore();
+  g.lineWidth = Math.max(1, side / 220); g.strokeStyle = text;
+  g.globalAlpha = 0.5; g.beginPath(); g.arc(c, c, c * ART_R, 0, Math.PI * 2); g.stroke(); g.globalAlpha = 1;
+  if (print) {
+    g.fillStyle = text;
+    const band = c * (0.97 - ART_R), radius = c * (ART_R + 0.97) / 2, px = band * 0.62;
+    const up = (v) => String(v || '').toLocaleUpperCase();
+    if (print.album) arcText(g, up(print.album), c, radius, px, Math.PI * 0.82, false);
+    if (print.artist) arcText(g, up(print.artist), c, radius, px * 0.92, Math.PI * 0.62, true);
+    // ★ either side, between the two
+    for (const side2 of [-1, 1]) {
+      g.save(); g.translate(c + side2 * radius, c); g.font = `${px * 0.6}px ${PRINT_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText('★', 0, 0); g.restore();
+    }
+    const small = [print.year && `℗ ${print.year}`, print.label, 'ALL RIGHTS RESERVED'].filter(Boolean).join('  ·  ');
+    g.globalAlpha = 0.7;
+    arcText(g, up(small), c, c * 0.93 - band * 0.0, Math.max(3, side / 130), Math.PI * 0.5, true, 0.12);
+    g.globalAlpha = 1;
+  }
+  g.restore();
+}
+// The printed face as a picture (for a disc drawn by the page, not the canvas — the case's, the shelf's). → its URL.
+const labelURLs = new Map();
+export async function labelImage(cover, print, px = 520) {
+  const key = `${cover.src || ''}|${JSON.stringify(print || null)}|${px}`;
+  if (labelURLs.has(key)) return labelURLs.get(key);
+  const cv = new OffscreenCanvas(px, px);
+  drawLabelPrint(cv.getContext('2d'), px / 2, px, cover, print);
+  const url = URL.createObjectURL(await cv.convertToBlob({ type: 'image/png' }));
+  if (labelURLs.size > 12) { const [k, v] = labelURLs.entries().next().value; URL.revokeObjectURL(v); labelURLs.delete(k); }
+  labelURLs.set(key, url);
+  return url;
+}
 const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
 export class Disc {
@@ -44,6 +146,7 @@ export class Disc {
     this.cover = null;         // HTMLImageElement
     this.lookingUp = false;
     this.label = null;         // { title, artist }: handwritten on a disc that has no cover, like a burned CD-R
+    this.print = null;         // { album, artist, year, label }: printed round a pressed disc's rim (setPrint)
     this.wear = null;          // the scratches, scuffs and prints of a much-played disc (disc-wear.js), or null
     // The data side (disc-data.js): B, or the ⟲ on the case, turns the disc over to the rings its tracks are written in,
     // with the laser where it's reading. data: { layout, titles, key }; position() → seconds into the disc.
@@ -138,6 +241,8 @@ export class Disc {
     if (!c || !this.data) return -1;
     return trackAt(this.data.layout, Math.hypot(e.clientX - c.x, e.clientY - c.y) / c.r);
   }
+  /** What's printed on a pressed disc round its rim: { album, artist, year, label }, or null. */
+  setPrint(print) { if (JSON.stringify(print) !== JSON.stringify(this.print)) this.print = print; }
   setLabel(title, artist) {
     const label = title ? { title, artist: artist || '' } : null;
     if (JSON.stringify(label) !== JSON.stringify(this.label)) this.label = label;
@@ -324,7 +429,7 @@ export class Disc {
 
   renderFace(side, dpr) {
     const label = this.cover || !this.label ? '' : `${this.label.title}\n${this.label.artist}`;
-    const key = `${side}|${dpr}|${colors.bg}|${this.coverVersion || 0}|${this.lookingUp}|${label}|${this.wear ? this.wear.key : ''}`;
+    const key = `${side}|${dpr}|${colors.bg}|${this.coverVersion || 0}|${this.lookingUp}|${label}|${this.wear ? this.wear.key : ''}|${JSON.stringify(this.print)}`;
     if (this.faceCache && (this.faceKey === key || (this.suppressRebuild && this.faceCache.side === side))) return this.faceCache;
     const scale = dpr * (dpr >= 2 ? 1 : 2); // supersample on low-DPI screens for a clean rim
     const px = Math.max(1, Math.round(side * scale));
@@ -333,12 +438,10 @@ export class Disc {
     g.scale(scale, scale);
     const c = side / 2;
     if (this.cover) {
-      // A picture disc: the cover printed on the label, out from the mirror band (center-cropped if not square).
+      // Pressed and printed: the label from the mirror band out (drawLabelPrint).
       g.save();
       g.beginPath(); g.arc(c, c, c, 0, Math.PI * 2); g.arc(c, c, c * LABEL_R, 0, Math.PI * 2, true); g.clip('evenodd');
-      const iw = this.cover.naturalWidth, ih = this.cover.naturalHeight, s = Math.min(iw, ih);
-      g.imageSmoothingQuality = 'high';
-      g.drawImage(this.cover, (iw - s) / 2, (ih - s) / 2, s, s, 0, 0, side, side);
+      drawLabelPrint(g, c, side, this.cover, side >= WEAR_MIN_SIDE ? this.print : null);
       g.restore();
       this.drawHub(g, c, side, true);
     } else {
@@ -629,7 +732,7 @@ export class Disc {
     // redrawing it 60 times a second anyway kept the GPU busy for nothing.
     const l = this.light;
     const look = [pw, ph, side, x, y, this.angle, this.speed, this.shineOn && l.angle, this.shineOn && l.strength, tray, art, eject, wobble, this.mode,
-      this.faceKey, this.coverVersion, this.lookingUp, this.label && this.label.title, this.label && this.label.artist,
+      this.faceKey, this.coverVersion, this.lookingUp, this.label && this.label.title, this.label && this.label.artist, JSON.stringify(this.print),
       this.discPresent, this.inCase, this.coverInCase, colors.accent, colors.accent2, colors.bg, dpr, this.flipT, this.data && this.data.key, this.theme,
       this.flipT > 0 && this.data && this.position ? Math.round(radiusAt(this.data.layout, this.position()) * 2000) : 0].join('|');
     if (look === this.lastLook) return bounds;

@@ -516,7 +516,7 @@ body.look-album #album-disc.out { transform: translateX(50%); }
 /* Its label, printed with the middle of the cover from the silver ring to the edge, turning. */
 #album-disc::before {
   content: ""; position: absolute; inset: 0; border-radius: 50%;
-  background: var(--art, none) center / 160% no-repeat;
+  background: var(--art, none) center / var(--art-size, 160%) no-repeat; /* (100%: the printed face, app.js printDisc) */
   -webkit-mask: radial-gradient(circle closest-side, transparent 0 35%, #000 36%);
   animation: albumDiscTurn 3.6s linear infinite paused;
 }
@@ -1382,7 +1382,7 @@ body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: 
   position: relative; width: 86%; aspect-ratio: 1; border: none; padding: 0; border-radius: 50%; cursor: pointer; box-shadow: 0 6px 18px rgba(0, 0, 0, .5);
   background: conic-gradient(from 30deg, #b4b8bf, #e6e8ec, #a9aeb6, #d6dae0, #b1b6be, #eceef1, #b4b8bf);
 }
-.case-cd::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--art, none) center / 150% no-repeat;
+.case-cd::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--art, none) center / var(--art-size, 150%) no-repeat;
   -webkit-mask: radial-gradient(circle closest-side, transparent 0 34%, #000 35%); }
 .case-cd::after {
   content: ""; position: absolute; inset: 0; border-radius: 50%;

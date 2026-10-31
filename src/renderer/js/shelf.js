@@ -9,6 +9,7 @@
 // unwrapped by hand, dragging the film off its case. A missing album's ghost case puts it on the WANT LIST (★ WANT;
 // want-list.js); when it turns up in the music folder it's crossed off, and its case says FOUND IT until it's played.
 import { el, pill, anim, EASE, growFrom, swingLid } from './widgets.js';
+import { labelImage } from './disc.js';
 import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './booklet.js';
 import { stickersFor } from './shelf-stickers.js';
 import { todaySticker, todayLine, pullToday } from './on-this-day.js';
@@ -1017,6 +1018,11 @@ async function openCase(a, spine) {
     caseCd.animate([{ transform: 'none' }, { transform: 'translateY(-10%) scale(1.06)', opacity: 0 }], { duration: 260, easing: EASE.in, fill: 'forwards' }).onfinish = () => play(a, 0);
   } });
   const tray = el('div', { class: 'case-tray', title: t('Close the case'), onClick: () => openLid(false) }, caseCd);
+  if (cover) { // printed as a pressed disc is (disc.js drawLabelPrint)
+    const img = new Image(); img.src = cover;
+    img.decode().then(() => labelImage(img, { album: a.title || null, artist: a.artist || null, year: a.year || null, label: a.label || null }))
+      .then((url) => { caseCd.style.setProperty('--art', `url("${url}")`); caseCd.style.setProperty('--art-size', '100%'); }).catch(() => {});
+  }
   const openLid = (open) => {
     caseFront.classList.toggle('open', open);
     return swingLid(lidEl, open ? (matchMedia('(max-width: 1000px)').matches ? -97 : -106) : 0, { onCross: (inside) => caseFront.classList.toggle('inside', inside) }); // (narrow: kept in the window)
