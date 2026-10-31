@@ -1268,6 +1268,18 @@ body.no-anim .queue-row.active .num::after { animation: none; }
 .case-skip.on { color: rgb(var(--accent)); border-color: rgb(var(--accent)); }
 .case-track.skipped .name, .queue-row.skipped .entry { text-decoration: line-through; opacity: .55; }
 .case-tools .divider-name { width: 150px; padding: 4px 10px; font-size: 10px; }
+/* IF YOU LIKE THIS (shelf.js similarRow): albums of yours by artists like this one's — one row of small covers above the
+   actions; those that don't fit are cut off rather than taking the track list's room. */
+.case-similar { display: flex; gap: 8px; align-items: center; margin: -4px 0 12px; overflow: hidden; }
+.case-similar[hidden] { display: none; }
+.case-similar .similar-label { flex: none; font-size: 9px; letter-spacing: .08em; color: rgb(var(--accent)); }
+.case-similar-album { flex: 0 1 auto; min-width: 0; max-width: 170px; display: flex; gap: 6px; align-items: center; padding: 3px 8px 3px 3px;
+  border: 1px solid rgba(var(--muted), .35); border-radius: 4px; background: none; color: rgb(var(--text)); font: 10px/1.25 var(--font, inherit); text-align: left; cursor: pointer; }
+.case-similar-album:hover, .case-similar-album:focus-visible { border-color: rgb(var(--accent)); background: rgba(255, 255, 255, .05); }
+.case-similar-album .thumb { flex: none; width: 26px; height: 26px; border-radius: 2px; background: rgba(var(--muted), .25) center / cover no-repeat; }
+.case-similar-album .words { min-width: 0; display: flex; flex-direction: column; }
+.case-similar-album .words span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.case-similar-album .by { color: rgb(var(--muted)); font-size: 9px; }
 .case-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; align-items: center; } /* a row, or two when it can't fit */
 
 /* ---- Canvases layered over everything ---- */

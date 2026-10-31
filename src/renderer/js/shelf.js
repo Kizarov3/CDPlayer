@@ -19,6 +19,7 @@ import { withMissing, boxLabel, sameName, boxesFor, renderGate, groupFor, pickEd
 import { dustLevel, pickOne, pickSome, Wiper } from './shelf-dust.js';
 import { showsAlbum, showChoices } from './shelf-show.js';
 import { groupEditions, editionName } from './shelf-editions.js';
+import { similarOnShelf, similarPool, createSimilarLookup } from './similar-shelf.js';
 import { SLOTS, slotOfAlbum } from './changer.js';
 import { t } from './i18n.js';
 
@@ -53,6 +54,8 @@ const spineTitle = (a) => [a.artist, a.title, a.year, spineHolds(a, shelf.inPlay
 // Where an album played from its start was left (album-runs.js): its bookmark's words.
 const leftAt = (a) => t('Left at track {n} · {song}', { n: a.bookmark.track + 1, song: (a.tracks[a.bookmark.track] || {}).title || '' });
 /** The track now in the player (null: none), so its album's spine can show it. */
+// Artists like an album's, as Last.fm has them (main/similar-artists.js): asked once each while CDPlayer runs.
+const similar = createSimilarLookup((artist) => shelf.app.cdp.similarArtists(artist));
 // A shelf album as a changer disc: the shelf's own album id, so loading it again is ALREADY IN SLOT n.
 const discOfAlbum = (a) => ({ id: a.id, kind: 'album', title: a.title, artist: a.artist });
 // The changer slot number on the spine of an album that's in the changer.
@@ -843,16 +846,33 @@ function pullOne() {
 // FILL (changer mode): albums at random from those shown — the dustier, the likelier, as PULL ONE — into the changer's
 // free and finished slots. (Twice as many picked as there are slots: some may be in the changer already.) KEEP IT FULL
 // goes on doing it from the same albums each time a disc is played to its end, till it's picked again.
-const picksFrom = (albums) => () => pickSome(albums, SLOTS * 2).map((a) => ({ disc: discOfAlbum(a), tracks: a.tracks.map((t) => t.path) }));
+const asPick = (a) => ({ disc: discOfAlbum(a), tracks: a.tracks.map((t) => t.path) });
+const picksFrom = (albums) => () => pickSome(albums, SLOTS * 2).map(asPick);
+// …WITH SIMILAR ALBUMS (similar-shelf.js): of those shown, albums by artists Last.fm finds like the one playing at the
+// time — the likest twenty to pick from, dustier likelier — and the usual picks after them, for the slots they don't fill
+// (and all of it the usual way while the one playing isn't on the shelf or Last.fm's answer isn't in).
+const albumPlaying = () => (shelf.inPlayer && shelf.albums.find((a) => holds(a, shelf.inPlayer))) || null;
+const similarPicksFrom = (albums) => () => {
+  const here = albumPlaying(), list = here && similar.known(here.artist);
+  if (here && !list) similar.get(here.artist); // for the next time
+  const like = list ? pickSome(similarPool(here.artist, albums, list).slice(0, 20).map((p) => p.album), SLOTS * 2) : [];
+  const usual = picksFrom(albums.filter((a) => !like.includes(a)))();
+  return [...like.map(asPick), ...usual];
+};
+// Last.fm's answer for the album playing waited for, a few seconds at most.
+const similarReady = () => { const here = albumPlaying(); return here ? Promise.race([similar.get(here.artist), new Promise((r) => setTimeout(r, 3000))]) : Promise.resolve(); };
 function fillChanger() {
   if (!shelf.shown || !shelf.shown.length || !shelf.app.changerMode()) return;
-  const { app } = shelf, albums = shelf.shown.slice(), keeping = app.keepingFull();
+  const { app } = shelf, albums = shelf.shown.slice(), keeping = app.keepingFull(), playing = albumPlaying();
   app.menu($('shelf-fill'), [
     { label: t('FILL IT NOW'), pick: () => app.fillChanger(picksFrom(albums)()) },
+    playing && albums.length > 1 ? { label: t('FILL IT WITH SIMILAR ALBUMS'), pick: () => similarReady().then(() => app.fillChanger(similarPicksFrom(albums)())) } : null,
     // (from one album there's nothing to keep it full with)
     keeping ? { label: t('STOP KEEPING IT FULL'), current: true, pick: () => { app.keepChangerFull(null); app.setStatus(t('THE CHANGER NO LONGER FILLS ITSELF')); showFill(); } }
       : albums.length > 1 ? { label: t('KEEP IT FULL FROM THESE {n} ALBUMS', { n: albums.length }),
         pick: () => { app.keepChangerFull(picksFrom(albums)); app.setStatus(t('A FINISHED DISC MAKES ROOM FOR ANOTHER')); showFill(); } } : null,
+    !keeping && playing && albums.length > 1 ? { label: t('KEEP IT FULL WITH SIMILAR ALBUMS'),
+      pick: () => similarReady().then(() => { app.keepChangerFull(similarPicksFrom(albums)); app.setStatus(t('A FINISHED DISC MAKES ROOM FOR ONE LIKE WHAT’S PLAYING')); showFill(); }) } : null,
   ].filter(Boolean), { alignEnd: true });
 }
 // FILL lit while the changer keeps itself full.
@@ -958,6 +978,7 @@ async function openCase(a, spine) {
       el('div', { class: 'case-tools' }, ...editionButtons(a, spine), addNote, fileButton),
       pressingBlock(a, rare, (entry) => { if (receipt) receipt.showPressing(entry); showTag(entry); }),
       trackList,
+      similarRow(a),
       el('div', { class: 'case-actions' },
         pill(t('BACK ON THE SHELF'), () => closeCase()),
         el('span', { class: 'grow' }),
@@ -967,6 +988,49 @@ async function openCase(a, spine) {
         a.bookmark ? pill(t('CONTINUE · TRACK {n}', { n: a.bookmark.track + 1 }), () => play(a, a.bookmark.track), leftAt(a)) : null,
         el('button', { class: 'pill go', onClick: unwrapped(() => play(a, 0)) }, t('PLAY')))));
   showCase(card, spine, from, shelf.colors.get(a.id) || hashColor(a.title + a.artist));
+}
+
+// IF YOU LIKE THIS (similar-shelf.js): up to five albums of yours by artists Last.fm finds like this one's — the row
+// comes in once its answer has (from similar-artists.json at once when it's been asked before, offline too), and isn't
+// there when the shelf has none. One clicked is pulled out in this one's place; one the shelf isn't showing (SHOW, the
+// filter) goes straight on the tray.
+function similarRow(a) {
+  const row = el('div', { class: 'case-similar', hidden: true });
+  if (!a.artist) return row;
+  similar.get(a.artist).then((list) => {
+    const found = similarOnShelf(a, shelf.albums, list);
+    if (!found.length || !row.isConnected) return;
+    row.replaceChildren(el('span', { class: 'similar-label' }, t('IF YOU LIKE THIS')), ...found.map(similarButton));
+    row.hidden = false;
+  }).catch(() => {});
+  return row;
+}
+function similarButton(b) {
+  const thumb = el('span', { class: 'thumb' });
+  coverFor(b, { online: false }).then((url) => { if (url) thumb.style.backgroundImage = `url("${url}")`; }).catch(() => {});
+  return el('button', { class: 'case-similar-album', title: [b.artist, b.title, b.year].filter(Boolean).join(' · '), onClick: () => {
+    const spine = spineOf(b);
+    closeCase(true);
+    if (!spine) { play(b, 0); return; }
+    spine.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
+    openCase(b, spine);
+  } }, thumb, el('span', { class: 'words' }, el('span', {}, b.title), el('span', { class: 'by' }, b.artist)));
+}
+
+/**
+ * PLAY SIMILAR TO (the search): an album of yours like the one playing — of the likest twenty, the dustier the likelier,
+ * as FILL picks — onto the tray. The album playing found on the shelf by the song's path, else by the artist named.
+ */
+export async function playSimilarTo(app, path, artist) {
+  shelf.app = shelf.app || app;
+  const albums = shelf.albums.length ? shelf.albums : (((await app.cdp.shelfAlbums().catch(() => null)) || {}).albums || []);
+  const here = albums.find((a) => holds(a, path));
+  const who = (here && here.artist) || artist;
+  const pool = who ? similarPool(who, albums, await similar.get(who)).slice(0, 20).map((p) => p.album) : [];
+  const pick = pool.length ? pickOne(pool) : null;
+  if (!pick) { app.setStatus(t('NOTHING LIKE IT ON YOUR SHELF YET')); return; }
+  if (shelf.open) closeShelf();
+  app.insertDisc(pick.tracks.map((tr) => tr.path), { status: t('{disc} ON THE TRAY', { disc: pick.title.toUpperCase() }), disc: discOfAlbum(pick) });
 }
 
 // An album with other editions on the shelf: a button for each, the one out lit; another one's case takes its place.

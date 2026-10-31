@@ -190,4 +190,5 @@ function createScrobbler({ store, fetch = globalThis.fetch, version = '', wait =
   return { status, ownSince, signIn, connectLastfm, signOut, nowPlaying, scrobble, flush };
 }
 
-module.exports = { createScrobbler };
+// (the key and the address for similar-artists.js's lookups, which need no sign-in)
+module.exports = { createScrobbler, LASTFM, LASTFM_KEY };
