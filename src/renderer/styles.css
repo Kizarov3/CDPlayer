@@ -709,6 +709,11 @@ body.no-anim .queue-row.active .num::after { animation: none; }
 .card-line.none { color: rgb(var(--muted)); font-size: 10px; }
 .card-line.none.on { color: rgb(var(--accent)); }
 .card-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+/* SHELFIE (shelfie.js): the picture shown whole, however tall the rows in it make it. */
+.card-preview.shelfie { width: 560px; height: 380px; aspect-ratio: auto; object-fit: contain; background: none; box-shadow: none; }
+.shelfie-crops { flex: 1 1 auto; min-width: 0; }
+.shelfie-list { max-height: 300px; }
+.card-pick-note { margin-top: 10px; font-size: 10px; color: rgb(var(--muted)); }
 .card-note { align-self: center; font-size: 10px; color: rgb(var(--accent)); }
 .card .close-row.split { justify-content: flex-start; }
 .card .close-row.split > :last-child { margin-left: auto; } /* CLOSE stays on the right when the row wraps */
@@ -1157,6 +1162,13 @@ body.no-anim .queue-row.active .num::after { animation: none; }
   outline: 1.5px dashed rgba(255, 255, 255, .6); outline-offset: -2px;
 }
 .spine.ghost:hover { opacity: .7; }
+/* While a SHELFIE is taken off the screen: nothing over the shelf, nothing moving on it, no spine lifted by the mouse
+   (the one in the player still stands proud). */
+body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: hidden; }
+#shelf.shooting .spine, #shelf.shooting .missing-box { transition: none; animation: none; }
+#shelf.shooting .spine:not(.in-player):hover { transform: none; box-shadow: 0 2px 6px rgba(0, 0, 0, .5); }
+#shelf.shooting .spine.in-player:hover { transform: translateY(-12px); }
+#shelf.shooting .missing-box:not(.open):not(.waiting):hover { background: rgba(214, 200, 172, .08); }
 /* Carrying a spine off the shelf: the shelf all but disappears, so the player shows through to drop it on. */
 #shelf { transition: background-color 160ms ease, opacity 160ms ease; }
 #shelf.carrying { opacity: .06; pointer-events: none; }

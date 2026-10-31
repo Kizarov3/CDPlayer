@@ -28,6 +28,7 @@ export const FEATURES = [
     { title: t('If you like this'), text: t('A case pulled out shows albums you already have by artists like its own, from Last.fm — click one to pull it out. FILL can fill the changer, or keep it full, with albums like the one playing, and the search (/) plays one: PLAY SIMILAR TO.') },
     { title: t('A shop’s look'), text: t('The obi strips, the yen and dollar stickers and the shop receipts tucked behind covers are decoration — a collection bought in different shops over the years. The real prices are Discogs’, in the case.') },
     { title: t('Notes on cases'), text: t('+ NOTE sticks a note on a case; its corner shows on the spine, and the shelf’s search finds what you wrote.') },
+    { title: t('Shelfie'), text: t('SHARE on the shelf makes a picture of it as it stands — only the genre, decade or divider SHOW picks, if you like — with how many discs you have, how many artists you have everything by and what it’s worth on Discogs. Copy it into a chat or save it.') },
     { title: t('A check-up'), text: t('CHECK on the shelf finds what’s wrong in your music folder: songs without tags or covers, duplicates, gaps in an album’s track numbers.') },
     { title: t('Take it along'), text: t('TAKE ALONG copies the albums the shelf shows, the changer’s discs or one album onto a portable player, a phone or an SD card — as they are, or as MP3s for players that don’t take FLAC. Taken again, only what’s new is written.') },
   ] },

@@ -364,6 +364,13 @@ handle('automix:get', (files) => automixCache.get(Array.isArray(files) ? files.f
 handle('automix:put', (file, edges) => { if (typeof file === 'string' && (edges === null || typeof edges === 'object')) automixCache.put(file, edges); });
 // The now-playing card (share-card.js), onto the clipboard as a picture.
 handle('clipboard:image', (png) => clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]));
+// SHELFIE (shelfie.js): a part of the window as it is on screen — the shelf's rows, a window's height at a time.
+handle('window:capture', async (rect) => {
+  const n = (v) => Math.max(0, Math.round(Number(v) || 0));
+  const r = rect && { x: n(rect.x), y: n(rect.y), width: n(rect.width), height: n(rect.height) };
+  if (!r || !r.width || !r.height || !win || win.isDestroyed()) return null;
+  return (await win.webContents.capturePage(r)).toPNG();
+});
 // …or saved as a picture, named after the song, in the Pictures folder to start with. → true once saved.
 // The card as a video (share-video.js): saved as MP4 (or WebM), named after the song, in the Movies folder to start with.
 handle('dialog:saveVideo', async (bytes, name, ext) => {

@@ -196,6 +196,50 @@ export function showCard(app, { choices, maxLines, render, copy, save, video }) 
   requestAnimationFrame(() => set(picked, anchor, true));
 }
 
+// ---- SHELFIE -----------------------------------------------------------------------------------------------------
+// SHARE on the shelf (or "/"): the picture of it as it will look, and how much of the shelf goes in it — the rows in
+// view, the first few, or all of it (its first rows, for a long one) — then COPY or SAVE…, as the Now Playing card
+// does. ↑/↓ pick another; Enter copies. `crops`: [{ label, from, count }]; `render(i)` → a URL of the picture with
+// crop i; `about`: what's on the shelf as it's shown (SHOW, the search, the sort); `rows`: how many rows it has.
+
+export function showShelfie(app, { crops, picked: start, about, rows, render, copy, save }) {
+  let picked = start, shownUrl = null, drawing = 0, busy = false;
+  const preview = el('img', { class: 'card-preview shelfie', alt: '' });
+  const where = el('div', { class: 'card-pick-note' });
+  const items = crops.map((c, i) => el('div', { class: 'list-row card-line', onClick: () => set(i) }, el('span', { class: 'entry' }, c.label)));
+  async function redraw() {
+    const n = ++drawing, url = await render(picked);
+    if (n !== drawing || !isOpen('card')) { URL.revokeObjectURL(url); return; }
+    if (shownUrl) URL.revokeObjectURL(shownUrl);
+    preview.src = shownUrl = url;
+  }
+  function set(i) {
+    picked = i;
+    items.forEach((r, j) => r.classList.toggle('on', j === i));
+    const c = crops[i];
+    where.textContent = [about, c.count === 1 ? t('ROW {from} OF {n}', { from: c.from + 1, n: rows }) : t('ROWS {from}–{to} OF {n}', { from: c.from + 1, to: c.from + c.count, n: rows })].filter(Boolean).join(' · ');
+    redraw();
+  }
+  const finish = (action) => async () => {
+    if (busy) return;
+    busy = true;
+    try { if (await action(picked)) closePanel('card'); } finally { busy = false; }
+  };
+  const onKey = (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); set((picked + (e.key === 'ArrowDown' ? 1 : crops.length - 1)) % crops.length); }
+    else if (e.key === 'Enter') { e.preventDefault(); finish(copy)(); }
+  };
+  const p = openPanel('card', () => [
+    title(t('SHELFIE')),
+    el('div', { class: 'card-pick' }, preview, el('div', { class: 'shelfie-crops' }, el('div', { class: 'scroll shelfie-list' }, items), where)),
+    el('div', { class: 'close-row split' }, pill(t('CANCEL'), () => closePanel('card')), el('div'),
+      el('div', { class: 'card-actions' }, pill(t('SAVE…'), finish(save), t('Save the picture')), el('button', { class: 'pill go', onClick: finish(copy) }, t('COPY')))),
+  ], { width: 940 });
+  window.addEventListener('keydown', onKey);
+  p.onClose = () => { window.removeEventListener('keydown', onKey); drawing++; if (shownUrl) URL.revokeObjectURL(shownUrl); };
+  requestAnimationFrame(() => set(picked));
+}
+
 // ---- Settings ----------------------------------------------------------------------------------------------------
 
 let themeButton = null, presetButton = null;
@@ -1783,6 +1827,7 @@ const CHANGELOG = [
     '<b>From your shelf</b>: a case pulled out shows IF YOU LIKE THIS &mdash; albums you already have by artists like its own, from Last.fm, one click to pull them out; the changer&rsquo;s FILL can fill it, or keep it full, with albums like what&rsquo;s playing, and the search (<kbd>/</kbd>) has PLAY SIMILAR TO the album playing',
     '<b>WANT LIST</b>: ★ WANT on a missing album&rsquo;s case on the shelf puts it on an index card with its lowest Discogs price; when it turns up in your music folder it&rsquo;s crossed off by itself, and its case says FOUND IT until you play it',
     '<b>TAKE ALONG</b>: the albums the shelf shows, the changer&rsquo;s discs or one album copied onto a portable player, a phone or an SD card &mdash; as they are, or as MP3s at 320 kbps for players that don&rsquo;t take FLAC (the lossless ones made MP3, tagged, with the cover, still gapless); taken again, only what&rsquo;s new is written, and nothing already there is touched',
+    '<b>SHELFIE</b>: SHARE on the shelf (or &ldquo;shelfie&rdquo; in the search) makes a picture of your wall of spines as it stands &mdash; dust, obis, stickers, COMPLETE ★ and all, only what SHOW and the search let stand, as it&rsquo;s sorted &mdash; the rows in view, the first few or the whole shelf, framed in your theme with how many discs, how many artists complete and what it&rsquo;s worth on Discogs; copied to paste anywhere, or saved',
   ] },
   { version: '2.20.1', changes: [
     '<b>The Now Playing video plays to the end</b> wherever it&rsquo;s opened or shared: saved as a plain MP4, nothing re-encoded, so players that stopped after the first few seconds play all of it',
