@@ -40,7 +40,8 @@ import { note as noteForReport, buildReport } from './report.js';
 import { phoneTagTitle, phoneJoined } from './remote-settings.js';
 import { drawShelfie, cutRows, firstCrop } from './shelfie.js';
 import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged, playSimilarTo, setWanted, shelfTakeAlong, takeShelfie } from './shelf.js';
-import { openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke, karaokeCover } from './karaoke.js';
+import { voiceEnvelope, voiceBreaks, lyricsMove, holdLongWords, holdLastWords, SYNC_RATE } from './lyrics-sync.js';
+import { retimeKaraoke, openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke, karaokeCover } from './karaoke.js';
 import { discChange, discOfDetails } from './box-set.js';
 import { SpotifySession, SpotifyTrackElement, isSpotifyUri, spotifyUpcoming, loadSpotifySdk } from './spotify-deck.js';
 
@@ -1299,8 +1300,41 @@ function setLyricsOffset(ms) { state.lyricsOffset = ms; saveSettingsSoon(); }
 // Where the song is for the lyrics: what's being heard (the output's latency taken off — only while playing: paused,
 // nothing is on its way to the speakers) and the user's offset. A clicked line plays from where it's heard.
 const heardLatency = () => (engine.playing ? engine.outputLatency : 0);
-const lyricsPosition = () => heardPosition(engine.position, heardLatency(), state.lyricsOffset);
-const seekToLyric = (time) => seekTo(playbackTimeFor(time, heardLatency(), state.lyricsOffset));
+const lyricsPosition = () => heardPosition(engine.position, heardLatency(), state.lyricsOffset + fitted.ms);
+const seekToLyric = (time) => seekTo(playbackTimeFor(time, heardLatency(), state.lyricsOffset + fitted.ms));
+// The lyrics moved to where the voice is in this file (lyrics-sync.js), on top of the user's offset: worked out when
+// karaoke's open, as it decodes the whole file; a song in a file of its own only (not a CD image's part, nor a stream).
+const fitted = { ms: 0, key: null };
+const fittedMoves = new Map();
+const LONGEST_TO_FIT = 20 * 60; // seconds
+async function fitLyricsToVoice() {
+  const path = state.loadedPath, lyrics = state.lyrics, key = path && lyrics ? `${path}\n${lyrics}` : null;
+  if (key === fitted.key) return;
+  fitted.key = key; fitted.ms = 0;
+  const lines = key && canKaraoke(lyrics) && isKaraokeOpen() ? parseLrc(lyrics) : null;
+  const deck = engine.deck;
+  if (!lines) { fitted.key = null; return; }
+  if (!deck || deck.start || deck.end !== null || !/^(\/|[A-Za-z]:[\\/])/.test(path) || !(engine.duration < LONGEST_TO_FIT)) return;
+  let fit = fittedMoves.get(key);
+  if (!fit) {
+    fit = { ms: 0, lines: null };
+    try {
+      const data = await (await fetch(cdp.mediaUrl(path))).arrayBuffer();
+      if (fitted.key !== key) return;
+      const decoded = await new OfflineAudioContext(2, 1, SYNC_RATE).decodeAudioData(data);
+      const left = decoded.getChannelData(0), right = decoded.numberOfChannels > 1 ? decoded.getChannelData(1) : left;
+      const envelope = await voiceEnvelope(left, right, () => new Promise((go) => { setTimeout(go); }));
+      const move = lyricsMove(envelope, lines), held = holdLongWords(voiceBreaks(envelope), lines, move) || lines;
+      fit = { ms: Math.round(move * 1000), lines: holdLastWords(envelope.centre, held, move) || (held === lines ? null : held) };
+    } catch { /* (it can't be read this way: as they are) */ }
+    fittedMoves.set(key, fit);
+    if (fittedMoves.size > 200) fittedMoves.delete(fittedMoves.keys().next().value);
+  }
+  if (fitted.key !== key) return;
+  fitted.ms = fit.ms;
+  retimeKaraoke(lyrics, fit.lines);
+  if (fit.ms) setStatus(t('WORDS MOVED TO THE VOICE: {n} S', { n: `${fit.ms > 0 ? '+' : '−'}${(Math.abs(fit.ms) / 1000).toFixed(2)}` }));
+}
 // The lyrics for the loaded song arrived or went: the LYRICS and KARAOKE buttons, and anything showing them, follow.
 function lyricsChanged() {
   $('lyrics-button').hidden = !state.lyrics;
@@ -1308,6 +1342,7 @@ function lyricsChanged() {
   panels.refreshLyricsIfOpen(app);
   refreshKaraoke();
   showLookWords();
+  fitLyricsToVoice();
 }
 function showLookWords() {
   setLookLyrics($('look-lyrics'), state.lyrics, seekToLyric, lookSongs());
@@ -1330,7 +1365,7 @@ function toggleKaraoke() {
   if (state.miniMode) return;
   if (state.visualizerMode) toggleVisualizerMode();
   if (!openKaraoke(app)) setStatus(state.lyrics ? t('THESE LYRICS AREN’T TIMED') : t('NO LYRICS FOR THIS SONG'));
-  else panels.closeLyricsPanel();
+  else { panels.closeLyricsPanel(); fitLyricsToVoice(); }
 }
 
 async function setCover(dataUrl) { applyCover(await decodeCover(dataUrl)); }

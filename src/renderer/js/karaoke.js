@@ -13,6 +13,12 @@ const $ = (id) => document.getElementById(id);
 let view = null; // { lines, nodes, words: [[span]], current, lyrics }
 
 export const isKaraokeOpen = () => !!view;
+// These lyrics' lines with their words retimed to the voice (lyrics-sync.js): shown from now on, at once if open.
+let retimed = { lyrics: null, lines: null };
+export function retimeKaraoke(lyrics, lines) {
+  retimed = { lyrics, lines };
+  if (view && view.lyrics === lyrics && lines) rebuild();
+}
 /** Karaoke needs timed lyrics: true when these lyrics have them. */
 export const canKaraoke = (lyrics) => !!lyrics && parseLrc(lyrics).length > 0;
 
@@ -95,7 +101,7 @@ function rebuild() {
   const { app } = view;
   const d = app.state.details;
   view.lyrics = app.state.lyrics;
-  view.lines = parseLrc(view.lyrics);
+  view.lines = retimed.lyrics === view.lyrics && retimed.lines ? retimed.lines : parseLrc(view.lyrics);
   // A word timed in syllables ("be", "neath") is kept on one line: the syllables with no space between are held together.
   const wholeWords = (spans) => {
     const groups = [];
