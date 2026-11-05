@@ -153,7 +153,7 @@ const keepAwake = ({ on, phones, lastSeen, now }) => !!on && (phones > 0 || (las
 const shelfCacheFor = (cache, folder) => (cache && cache.folder === folder ? cache.data : null);
 
 // The phone's page (src/remote/) and the player's own modules it imports (src/renderer/js/, served under /js/).
-const PAGE_MODULES = ['disc.js', 'theme.js', 'jog.js', 'disc-wear.js', 'disc-data.js', 'i18n.js', 'i18n-format.js', 'shelf-order.js',
+const PAGE_MODULES = ['disc.js', 'theme.js', 'jog.js', 'disc-wear.js', 'disc-data.js', 'disc-centre.js', 'i18n.js', 'i18n-format.js', 'shelf-order.js',
   'shelf-dust.js', 'shelf-discogs.js', 'glyphs.js', 'queue-move.js', 'remote-view.js'];
 const JS = 'text/javascript; charset=utf-8';
 /**

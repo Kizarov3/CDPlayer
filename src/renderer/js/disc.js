@@ -6,6 +6,7 @@ import { colors, rgb, FONT } from './theme.js';
 import { angleDelta, coast, releaseVelocity } from './jog.js';
 import { random } from './disc-wear.js';
 import { discLayout, radiusAt, trackAt, R0 } from './disc-data.js';
+import { holeCentre } from './disc-centre.js';
 import { t } from './i18n.js';
 
 const SIZES = {
@@ -108,10 +109,33 @@ function discBox(photo) {
     if (x0 >= 0 && y0 >= 0 && Math.min(bw, bh) > Math.max(w, h) * 0.3 && Math.abs(bw - bh) < Math.max(bw, bh) * 0.12) {
       const s = Math.max(bw, bh) / k, cx = (x0 + x1 + 1) / 2 / k, cy = (y0 + y1 + 1) / 2 / k;
       box = { x: cx - s / 2, y: cy - s / 2, s };
-    }
+      // (only the sides of its outline that the picture's edge didn't cut off say how big it is)
+      const sides = [x0 > m + 1 && x0 / k, x1 < w - m - 2 && (x1 + 1) / k, y0 > m + 1 && y0 / k, y1 < h - m - 2 && (y1 + 1) / k];
+      box = onItsHole(photo, iw, ih, box, sides);
+    } else box = onItsHole(photo, iw, ih, box, [false, false, false, false]);
   } catch { /* (a picture that can't be read back: the middle) */ }
   discBoxes.set(photo, box);
   return box;
+}
+/**
+ * The box moved to turn round the disc's real hole (disc-centre.js), if one's seen: as big as its outline's uncut sides
+ * say, taking off what the picture cuts off of it (up to a tenth; the rest of the rim is left without print).
+ * `sides`: [left, right, top, bottom] of the outline in the picture, false where it's cut off.
+ */
+function onItsHole(photo, iw, ih, box, sides) {
+  const k = Math.min(1, 320 / Math.max(iw, ih)), w = Math.max(1, Math.round(iw * k)), h = Math.max(1, Math.round(ih * k));
+  const g = new OffscreenCanvas(w, h).getContext('2d', { willReadFrequently: true });
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(photo, 0, 0, w, h);
+  const d = g.getImageData(0, 0, w, h).data, grey = new Float32Array(w * h);
+  for (let i = 0; i < grey.length; i++) grey[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+  const hole = holeCentre(grey, w, h, { x: (box.x + box.s / 2) * k, y: (box.y + box.s / 2) * k, r: (box.s / 2) * k });
+  if (!hole) return box;
+  const cx = hole.x / k, cy = hole.y / k;
+  const [l, r, t, b] = sides, seen = [l !== false && cx - l, r !== false && r - cx, t !== false && cy - t, b !== false && b - cy].filter((v) => v !== false).sort((p, q) => p - q);
+  const full = seen.length ? seen[seen.length >> 1] : box.s / 2;
+  const R = Math.max(Math.min(full, cx, iw - cx, cy, ih - cy), full * 0.9);
+  return { x: cx - R, y: cy - R, s: R * 2 };
 }
 
 // A disc drawn in the page (ALBUM's, the case's, a shelf case's) given its printed face; `photo`: it's the disc's own
