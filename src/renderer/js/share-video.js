@@ -4,6 +4,7 @@
 // Each PLAYER LOOK is its own film, moved by the music and the words rather than dressed up:
 //   CLASSIC — the disc slides out of its case and spins up, the camera creeping in; the lyrics set like liner notes.
 //   ALBUM — the cover big and drifting slowly over a field of its own colours; the words light up as they're sung.
+//   JEWEL CASE — the shut case swings open on its hinge, the disc turning in its tray; the words light up on a sheet of smoked acrylic.
 //   HI-FI — the deck's black glass display is the stage: the lyrics lit in its dots, the meters on the real levels.
 //   VISUALIZER — the cover breathing on the bass inside a ring of the music's own spectrum; the line pulsing with it.
 //   LYRICS — the words, big, landing one by one as they're sung, the line swept away for the next; the cover a blur.
@@ -453,6 +454,211 @@ function album(L, s, lines, start) {
   };
 }
 
+// ---- JEWEL CASE: the case opened on its hinge, the disc turning in its tray, the words on smoked acrylic ---------------
+
+/** Where JEWEL CASE's things stand: { case: { x, y, w, h } (open: the lid out to its left), near (how much bigger it's seen shut), sheet (the page the words are on) }. */
+export function caseLayout(format) {
+  // (a real one's proportions, 142 × 125 mm)
+  if (format === '9:16') return { case: { x: 220, y: 110, w: 820, h: 722 }, near: 1.18, sheet: { x: 70, y: 880, w: 940, h: 950 } };
+  return { case: { x: 420, y: 34, w: 620, h: 546 }, near: 1.45, sheet: { x: 50, y: 612, w: 980, h: 434 } };
+}
+
+// A case's parts are drawn this much bigger than they stand, for the camera starting close.
+const CASE_SCALE = 1.5;
+
+// The lid from the front: the cover under the plastic, the hinge's band down its left. (Column 0 is the hinge, on both sides.)
+function lidFront(s, w, h) {
+  const c = canvas(w, h), g = c.getContext('2d'), band = w * 0.12, side = w * (120 / 142), top = (h - side) / 2;
+  g.beginPath(); g.roundRect(0, 0, w, h, w * 0.008); g.clip();
+  g.fillStyle = '#17181b'; g.fillRect(0, 0, w, h);
+  g.drawImage(squareCover(s, Math.round(side)), band, top, side, side);
+  // the band: dark plastic, its ridges catching the light
+  const hinge = g.createLinearGradient(0, 0, band, 0);
+  hinge.addColorStop(0, '#0d0e10'); hinge.addColorStop(0.3, '#34363b'); hinge.addColorStop(0.62, '#1b1c20'); hinge.addColorStop(1, '#0c0d0f');
+  g.fillStyle = hinge; g.fillRect(0, 0, band, h);
+  g.fillStyle = 'rgba(255,255,255,0.1)';
+  for (let x = band * 0.2; x < band * 0.9; x += band * 0.17) g.fillRect(x, 0, Math.max(1, w * 0.002), h);
+  g.fillStyle = 'rgba(0,0,0,0.42)'; g.fillRect(band, 0, w * 0.007, h);
+  const gloss = g.createLinearGradient(0, 0, w * 0.8, h);
+  gloss.addColorStop(0, 'rgba(255,255,255,0.2)'); gloss.addColorStop(0.42, 'rgba(255,255,255,0.03)'); gloss.addColorStop(0.43, 'rgba(255,255,255,0)');
+  g.fillStyle = gloss; g.fillRect(0, 0, w, h);
+  g.strokeStyle = 'rgba(255,255,255,0.28)'; g.lineWidth = Math.max(2, w * 0.003); g.strokeRect(1, 1, w - 2, h - 2);
+  return c;
+}
+// The lid from the inside, the booklet out of it: clear smoked plastic and the tabs that hold it.
+function lidInside(s, mean, w, h) {
+  const c = canvas(w, h), g = c.getContext('2d');
+  g.beginPath(); g.roundRect(0, 0, w, h, w * 0.008); g.clip();
+  g.fillStyle = rgb(lerpColor(mean, [12, 12, 14], 0.82)); g.fillRect(0, 0, w, h);
+  const light = g.createLinearGradient(w, 0, 0, h);
+  light.addColorStop(0, 'rgba(255,255,255,0.15)'); light.addColorStop(0.5, 'rgba(255,255,255,0.02)'); light.addColorStop(1, 'rgba(0,0,0,0.25)');
+  g.fillStyle = light; g.fillRect(0, 0, w, h);
+  g.fillStyle = 'rgba(255,255,255,0.1)'; g.strokeStyle = 'rgba(255,255,255,0.26)'; g.lineWidth = Math.max(2, w * 0.003);
+  const tab = (x, y, from) => { g.beginPath(); g.arc(x, y, w * 0.055, from, from + Math.PI); g.closePath(); g.fill(); g.stroke(); };
+  for (const y of [h * 0.28, h * 0.72]) { tab(w * 0.96, y, Math.PI / 2); tab(w * 0.12, y, -Math.PI / 2); }
+  g.strokeRect(1, 1, w - 2, h - 2);
+  return c;
+}
+// The tray under the disc: dark plastic, the round well the disc sits in.
+function trayPlastic(w, h, cx, cy, r) {
+  const c = canvas(w, h), g = c.getContext('2d');
+  g.beginPath(); g.roundRect(0, 0, w, h, w * 0.008); g.clip();
+  const base = g.createLinearGradient(0, 0, w, h);
+  base.addColorStop(0, '#2b2c30'); base.addColorStop(1, '#141518');
+  g.fillStyle = base; g.fillRect(0, 0, w, h);
+  g.fillStyle = 'rgba(255,255,255,0.08)';
+  for (let x = w * 0.024; x < w * 0.1; x += w * 0.02) g.fillRect(x, 0, Math.max(1, w * 0.002), h);
+  const well = g.createRadialGradient(cx, cy, r * 0.5, cx, cy, r * 1.03);
+  well.addColorStop(0, '#0b0b0d'); well.addColorStop(0.93, '#0d0d10'); well.addColorStop(1, '#000');
+  g.fillStyle = well; g.beginPath(); g.arc(cx, cy, r * 1.03, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.09)'; g.lineWidth = Math.max(2, w * 0.002); g.stroke();
+  g.strokeStyle = 'rgba(255,255,255,0.22)'; g.strokeRect(1, 1, w - 2, h - 2);
+  return c;
+}
+// The hub that holds the disc, its teeth round a dark middle.
+function caseHub(r) {
+  const size = Math.ceil(r * 2), c = canvas(size, size), g = c.getContext('2d'), m = size / 2;
+  const body = g.createRadialGradient(m - r * 0.3, m - r * 0.3, r * 0.1, m, m, r);
+  body.addColorStop(0, '#4a4c52'); body.addColorStop(1, '#1b1c20');
+  g.fillStyle = body; g.beginPath(); g.arc(m, m, r * 0.98, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = 'rgba(0,0,0,0.75)'; g.lineWidth = Math.max(2, r * 0.05);
+  for (let k = 0; k < 12; k++) {
+    const a = (k / 12) * Math.PI * 2;
+    g.beginPath(); g.moveTo(m + Math.cos(a) * r * 0.42, m + Math.sin(a) * r * 0.42); g.lineTo(m + Math.cos(a) * r * 0.97, m + Math.sin(a) * r * 0.97); g.stroke();
+  }
+  g.fillStyle = '#08080a'; g.beginPath(); g.arc(m, m, r * 0.38, 0, Math.PI * 2); g.fill();
+  return c;
+}
+/**
+ * A lid swung `angle` round its hinge at x = hx (0 shut over its case, π flat out to the left): cut into columns, each
+ * as tall and as far along as it stands nearer the camera. Past its edge, the inside shows.
+ */
+function swingLid(g, front, back, hx, y, w, h, angle) {
+  const cos = Math.cos(angle), sin = Math.sin(angle), img = cos >= 0 ? front : back, focal = w * 2.8, N = 72;
+  const at = (u) => { const k = focal / (focal - sin * u * w); return { x: hx + cos * u * w * k, h: h * k }; };
+  for (let i = 0; i < N; i++) {
+    const a = at(i / N), b = at((i + 1) / N), left = Math.min(a.x, b.x), span = Math.abs(b.x - a.x) + 0.7;
+    const sx = (i / N) * img.width, tall = (a.h + b.h) / 2, top = y + (h - tall) / 2;
+    g.drawImage(img, sx, 0, img.width / N, img.height, left, top, span, tall);
+  }
+  // Turned from the light, it darkens: one shape over it all (column by column, the overlaps would show as stripes).
+  const end = at(1), mid = y + h / 2;
+  g.fillStyle = `rgba(0,0,0,${0.5 * sin})`;
+  g.beginPath(); g.moveTo(hx, y); g.lineTo(end.x, mid - end.h / 2); g.lineTo(end.x, mid + end.h / 2); g.lineTo(hx, y + h); g.closePath(); g.fill();
+}
+// The page the words are on: a sheet of smoked acrylic, the cover's colour deep in it, its edge catching the light. → { canvas, pad }.
+function acrylicSheet(w, h, mean) {
+  const pad = 44, radius = 10, c = canvas(w + pad * 2, h + pad * 2), g = c.getContext('2d');
+  g.save(); g.shadowColor = 'rgba(0,0,0,0.55)'; g.shadowBlur = 36; g.shadowOffsetY = 12;
+  g.beginPath(); g.roundRect(pad, pad, w, h, radius); g.fillStyle = rgb(lerpColor(mean, [8, 8, 10], 0.86)); g.fill(); g.restore();
+  g.save(); g.beginPath(); g.roundRect(pad, pad, w, h, radius); g.clip();
+  const sheen = g.createLinearGradient(pad, pad, pad + w * 0.6, pad + h);
+  sheen.addColorStop(0, 'rgba(255,255,255,0.1)'); sheen.addColorStop(0.3, 'rgba(255,255,255,0.02)'); sheen.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = sheen; g.fillRect(pad, pad, w, h); g.restore();
+  g.beginPath(); g.roundRect(pad + 1, pad + 1, w - 2, h - 2, radius); g.strokeStyle = 'rgba(255,255,255,0.16)'; g.lineWidth = 2; g.stroke();
+  return { canvas: c, pad };
+}
+
+function caseFilm(L, s, lines, start) {
+  const tall = L.h > L.w, W = L.w, H = L.h, F = caseLayout(tall ? '9:16' : '1:1'), C = F.case, P = F.sheet;
+  const pal = coverColors(s) || { mean: s.colors.bg, vivid: s.colors.accent };
+  // What it all lies on: smoked acrylic, the cover's colours deep under it.
+  const back = canvas(W, H), bg = back.getContext('2d');
+  bg.fillStyle = rgb(lerpColor(pal.mean, [0, 0, 0], 0.72)); bg.fillRect(0, 0, W, H);
+  const field = coverField(s, pal.mean), D = Math.hypot(W, H) * 1.2;
+  bg.globalAlpha = 0.34; bg.drawImage(field, (W - D) / 2, (H - D) / 2, D, D); bg.globalAlpha = 1;
+  const under = bg.createRadialGradient(W / 2, H * 0.3, W * 0.15, W / 2, H * 0.45, Math.max(W, H) * 0.8);
+  under.addColorStop(0, 'rgba(0,0,0,0)'); under.addColorStop(1, 'rgba(0,0,0,0.6)');
+  bg.fillStyle = under; bg.fillRect(0, 0, W, H);
+  // The case's parts, made once.
+  const q = CASE_SCALE, cw = Math.round(C.w * q), ch = Math.round(C.h * q);
+  const front = lidFront(s, cw, ch), inside = lidInside(s, pal.mean, cw, ch);
+  const dx = C.w * (77 / 142), dy = C.h / 2, r = C.w * (60 / 142) * 0.985;
+  const tray = trayPlastic(cw, ch, dx * q, dy * q, r * q), hub = caseHub(r * 0.17 * q);
+  const light = discLight(Math.round(r * q)), shade = discShadow(Math.round(r * q));
+  const flat = canvas(C.w + 120, C.h + 120), fg = flat.getContext('2d');
+  fg.shadowColor = 'rgba(0,0,0,0.65)'; fg.shadowBlur = 42; fg.shadowOffsetY = 18;
+  fg.fillStyle = '#000'; fg.fillRect(60, 60, C.w, C.h);
+  // The page: the track's number and the song's name, who it's by, a rule in the cover's colour; the credit at its foot.
+  const page = acrylicSheet(P.w, P.h, pal.mean), inset = tall ? 64 : 44, colour = lit(pal.vivid, 0.5);
+  const textW = P.w - inset * 2, cap = tall ? 34 : 24, headH = tall ? 124 : 78;
+  const notes = lines.length ? lines : nameAsLine(s, start), noLyrics = !lines.length;
+  const size = noLyrics ? (tall ? 84 : 54) : tall ? 58 : 36, face = (px) => `${px}px ${SERIF}`;
+  const layoutOf = (line) => cachedLayout(line, `case${H}`, () => fit(scratch(), line.words, face, size, size * 0.8, textW, tall ? 4 : 2, 1.28));
+  const box = { x: P.x + inset, y: P.y + (tall ? 36 : 22) + headH, w: textW, h: P.h - headH - (tall ? 96 : 62) };
+  // (no lyrics: the song's name in the middle of the page, rather than a line at the top of an empty one)
+  const anchor = noLyrics && notes.length ? Math.max(0, (box.h - layoutOf(notes[0]).height) / 2) : tall ? 104 : 42;
+  let glow = 0;
+  return (g, at) => {
+    const pos = s.position();
+    // The lid swings open, slowing as it goes; the camera draws back from the shut case as it does.
+    const open = (at - 0.3) / 1.15, angle = Math.PI * (1 - Math.pow(1 - clamp01(open), 2.6));
+    const away = inOut((at - 0.12) / 1.3), creep = 0.018 * (1 - Math.exp(-at / 8));
+    const k = F.near + (1 - F.near) * away;
+    const shutX = (W - C.w) / 2 - C.x, shutY = (H - C.h) / 2 - C.y;
+    const moveX = shutX * (1 - away), moveY = shutY * (1 - away), midX = C.x + C.w / 2, midY = C.y + C.h / 2;
+    g.save(); g.translate(W / 2, H / 2); g.scale(1 + creep, 1 + creep); g.drawImage(back, -W / 2, -H / 2); g.restore();
+    g.save();
+    g.translate(midX + moveX, midY + moveY); g.scale(k * (1 + creep), k * (1 + creep)); g.translate(-midX, -midY);
+    g.globalAlpha = Math.min(1, 0.85 + away * 0.15);
+    g.drawImage(flat, C.x - 60, C.y - 60);
+    // Out flat, the lid's shadow lies beside the tray's.
+    if (angle > Math.PI * 0.55) { g.globalAlpha = clamp01((angle / Math.PI - 0.55) / 0.45); g.drawImage(flat, C.x - C.w - 60, C.y - 60); }
+    g.globalAlpha = 1;
+    g.drawImage(tray, C.x, C.y, C.w, C.h);
+    // The disc on its hub, spinning up as the lid clears it; the light on it leaps with the bass.
+    const X = C.x + dx, Y = C.y + dy, up = 1.6, spun = Math.max(0, at - 0.45), spin = 0.3 * Math.PI * 2;
+    const turn = spun < up ? (spin * spun * spun) / (2 * up) : spin * (spun - up / 2);
+    const sp = s.spectrum && s.spectrum(8), bass = sp ? Math.min(1, (sp[0] + sp[1]) / 2) : 0;
+    glow = Math.max(bass, glow * 0.88);
+    const sr = shade.canvas.width / 2 / q;
+    g.drawImage(shade.canvas, X - sr, Y - sr, sr * 2, sr * 2);
+    g.save(); g.translate(X, Y); g.rotate(turn); g.drawImage(s.face, -r, -r, r * 2, r * 2); g.restore();
+    g.save(); g.globalCompositeOperation = 'screen'; g.globalAlpha = Math.min(1, 0.55 + glow * 0.45);
+    g.drawImage(light, X - r, Y - r, r * 2, r * 2); g.restore();
+    g.drawImage(hub, X - r * 0.17, Y - r * 0.17, r * 0.34, r * 0.34);
+    if (angle < 0.002) {
+      g.drawImage(front, C.x, C.y, C.w, C.h);
+      // Light crossing the shut plastic.
+      const sweep = C.x + C.w * (at / 0.6 * 1.5 - 0.3), gl = g.createLinearGradient(sweep - C.w * 0.2, C.y, sweep + C.w * 0.2, C.y + C.h * 0.4);
+      gl.addColorStop(0, 'rgba(255,255,255,0)'); gl.addColorStop(0.5, 'rgba(255,255,255,0.2)'); gl.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = gl; g.fillRect(C.x, C.y, C.w, C.h);
+    } else if (angle >= Math.PI - 0.002) {
+      // (flat: the hinge's edge meets the tray, the lid's inside mirrored away from it)
+      g.save(); g.translate(C.x, 0); g.scale(-1, 1); g.drawImage(inside, 0, C.y, C.w, C.h); g.restore();
+    } else swingLid(g, front, inside, C.x, C.y, C.w, C.h, angle);
+    g.restore();
+    // The page slides in from below, once there's room.
+    const slid = (H - P.y + page.pad) * (1 - ease((at - 0.55) / 0.85));
+    if (slid >= H - P.y + page.pad) return;
+    g.save(); g.translate(0, slid);
+    g.drawImage(page.canvas, P.x - page.pad, P.y - page.pad);
+    g.textBaseline = 'top'; g.textAlign = 'left';
+    const hx = P.x + inset, hy = P.y + (tall ? 42 : 24);
+    g.font = `700 ${cap}px ${SANS}`; g.letterSpacing = `${cap * 0.16}px`;
+    const no = String(s.track || 1).padStart(2, '0');
+    g.fillStyle = rgb(colour); g.fillText(no, hx, hy);
+    const nw = g.measureText(`${no}  `).width;
+    g.fillStyle = 'rgba(255,255,255,0.97)';
+    const title = noLyrics ? '' : wrap(g, String(s.title || '').toUpperCase(), textW - nw, 1)[0];
+    if (title) g.fillText(title, hx + nw, hy);
+    g.font = `500 ${Math.round(cap * 0.7)}px ${SANS}`; g.letterSpacing = `${cap * 0.12}px`; g.fillStyle = 'rgba(255,255,255,0.62)';
+    const who = [s.artist, s.subtitle].filter(Boolean).join(' · ').toUpperCase();
+    if (who) g.fillText(wrap(g, who, textW - nw, 1)[0], hx + nw, title ? hy + cap * 1.32 : hy + cap * 0.15);
+    g.letterSpacing = '0px';
+    g.fillStyle = rgb(colour); g.fillRect(hx, P.y + (tall ? 36 : 22) + headH - 12, textW * inOut((at - 0.9) / 0.8), 3);
+    // The verses: the line being sung lit word by word, the others dim.
+    stack(g, notes, pos, box, { start, anchor, gap: size * 0.5, layoutOf, ahead: tall ? 3 : 1,
+      draw: (line, x, y, st) => drawLine(g, layoutOf(line), x, y, box.w, 'left', (part, px, py) => {
+        if (noLyrics) { g.fillStyle = `rgba(255,255,255,${clamp01((pos - part.time) / 0.3)})`; g.fillText(part.text, px, py); return; }
+        if (!st.current || st.gone) { g.fillStyle = `rgba(255,255,255,${0.26 + 0.6 * st.alpha})`; g.fillText(part.text, px, py); return; }
+        wipe(g, part.text, px, py, part.w, sung(part, pos), 'rgba(255,255,255,1)', `rgba(255,255,255,${0.26 + 0.24 * st.alpha})`);
+      }, st.edges) });
+    mark(g, L, 'rgba(255,255,255,0.5)', P.x + P.w - inset, P.y + P.h - (tall ? 28 : 16));
+    g.restore();
+  };
+}
+
 // ---- HI-FI: the deck's display --------------------------------------------------------------------------------------
 
 // Text as a vacuum-fluorescent display's dots: drawn small in a bold face, each pixel a dot. → { cols, rows, on: Uint8Array }.
@@ -777,7 +983,7 @@ function kinetic(L, s, lines, start) {
 let measuring = null;
 const scratch = () => measuring || (measuring = canvas(8, 8).getContext('2d'));
 
-const FILMS = { CLASSIC: classic, ALBUM: album, CASE: album, HIFI: hifi, VISUALIZER: visualizer, LYRICS: kinetic };
+const FILMS = { CLASSIC: classic, ALBUM: album, CASE: caseFilm, HIFI: hifi, VISUALIZER: visualizer, LYRICS: kinetic };
 /** A look's film for `song`, ready to draw: → draw(g, at) (at: seconds into the video). What doesn't move is drawn here. */
 function film(format, song) {
   const L = videoLayout(format), lines = lyricLines(song.timed || []);

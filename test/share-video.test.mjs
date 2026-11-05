@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { videoLayout, lyricsAt, lyricLines, videoSpan, pickVideoType, VIDEO_SECONDS } from '../src/renderer/js/share-video.js';
+import { videoLayout, caseLayout, lyricsAt, lyricLines, videoSpan, pickVideoType, VIDEO_SECONDS } from '../src/renderer/js/share-video.js';
 
 const inside = (box, f) => box.x >= 0 && box.y >= 0 && box.x + box.w <= f.w && box.y + box.h <= f.h;
 const apart = (a, b) => a.y + a.h <= b.y || b.y + b.h <= a.y || a.x + a.w <= b.x || b.x + b.w <= a.x;
@@ -13,6 +13,16 @@ test('a vertical and a square video: everything in the frame, nothing on top of 
     assert.ok(apart(l.case, l.names) && apart(l.case, l.lyrics) && apart(l.names, l.lyrics), format);
   }
   assert.strictEqual(VIDEO_SECONDS, 8);
+});
+
+test("JEWEL CASE's video: the case in a real one's proportions, in the frame shut and close or open, clear of the booklet's page", () => {
+  for (const format of ['9:16', '1:1']) {
+    const l = videoLayout(format), { case: c, near, sheet } = caseLayout(format);
+    assert.ok(Math.abs(c.w / c.h - 142 / 125) < 0.01, format);
+    assert.ok(inside(c, l) && inside(sheet, l) && apart(c, sheet), format);
+    const closeW = c.w * near, closeH = c.h * near; // (seen close, shut, in the middle of the frame)
+    assert.ok(closeW <= l.w && closeH <= l.h, format);
+  }
 });
 
 test('the lyrics on screen at a moment: the line being sung, and the next', () => {
