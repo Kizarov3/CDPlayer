@@ -639,7 +639,7 @@ body.look-case #album-disc, body.look-case #album-disc.out {
 }
 body.look-case #case-box.holding #album-disc { opacity: 1; }
 body.look-case #album-disc { --s: 100%; }
-body.look-album { --font: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; }
+body.look-album, body.look-case { --font: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; }
 body.look-album #divider, body.look-visualizer #divider, body.look-lyrics #divider, body.look-album #now-playing-label, body.look-album #visualizer, body.look-album #deck-display, body.look-album #now-row .grow { display: none; }
 body.look-album #times { display: flex; }
 body.look-album #backdrop-art { filter: saturate(1.6) brightness(1.1); }

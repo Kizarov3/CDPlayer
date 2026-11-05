@@ -583,8 +583,8 @@ function caseFilm(L, s, lines, start) {
   const page = acrylicSheet(P.w, P.h, pal.mean), inset = tall ? 64 : 44, colour = lit(pal.vivid, 0.5);
   const textW = P.w - inset * 2, cap = tall ? 34 : 24, headH = tall ? 124 : 78;
   const notes = lines.length ? lines : nameAsLine(s, start), noLyrics = !lines.length;
-  const size = noLyrics ? (tall ? 84 : 54) : tall ? 58 : 36, face = (px) => `${px}px ${SERIF}`;
-  const layoutOf = (line) => cachedLayout(line, `case${H}`, () => fit(scratch(), line.words, face, size, size * 0.8, textW, tall ? 4 : 2, 1.28));
+  const size = noLyrics ? (tall ? 84 : 54) : tall ? 64 : 38, face = (px) => `700 ${px}px ${SANS}`;
+  const layoutOf = (line) => cachedLayout(line, `case${H}`, () => fit(scratch(), line.words, face, size, size * 0.8, textW, tall ? 4 : 2, 1.18));
   const box = { x: P.x + inset, y: P.y + (tall ? 36 : 22) + headH, w: textW, h: P.h - headH - (tall ? 96 : 62) };
   // (no lyrics: the song's name in the middle of the page, rather than a line at the top of an empty one)
   const anchor = noLyrics && notes.length ? Math.max(0, (box.h - layoutOf(notes[0]).height) / 2) : tall ? 104 : 42;
