@@ -473,6 +473,7 @@ handle('dock:taskbarDisc', (on) => { settings.taskbarDisc = !!on; persistSetting
 handle('online:cover', (query) => online.findCover(query));
 handle('online:coverUrl', (query) => online.findCoverUrl(query));
 // A disc's own printed picture (online.findDiscArt), kept once found — or once found not to be there.
+const discPhoto = require('./disc-photo');
 const discArtDir = () => path.join(store.dataDir(), 'disc-art');
 const discArtLookups = new Map(); // (one lookup per album at a time: a look-ahead and the real ask share it)
 handle('online:discArt', (q) => lookupDiscArt(q));
@@ -482,9 +483,25 @@ function lookupDiscArt(q) {
   if (!discArtLookups.has(name)) discArtLookups.set(name, discArtFor(q, name).finally(() => discArtLookups.delete(name)));
   return discArtLookups.get(name);
 }
+// A small photo kept from when the first to answer was taken: the album's others looked through once, one album at a
+// time, behind what's shown (a bigger one's there from the next start). Offline: tried again another time.
+let biggerDiscArtQueue = Promise.resolve();
+function lookForBiggerDiscArt(q, name, file) {
+  const checked = path.join(discArtDir(), `${name}.checked`);
+  if (fs.existsSync(checked)) return;
+  fs.writeFileSync(checked, ''); // (marked at once: asked twice this run, it's looked for once)
+  const width = nativeImage.createFromPath(file).getSize().width;
+  if (width >= discPhoto.GOOD_WIDTH) return;
+  biggerDiscArtQueue = biggerDiscArtQueue.then(async () => {
+    try {
+      const art = await online.findDiscArt(q);
+      if (art && nativeImage.createFromDataURL(art).getSize().width > width) fs.writeFileSync(file, Buffer.from(art.split(',')[1], 'base64'));
+    } catch { fs.rmSync(checked, { force: true }); }
+  });
+}
 async function discArtFor(q, name) {
   const file = path.join(discArtDir(), `${name}.jpg`), none = path.join(discArtDir(), `${name}.none`);
-  if (fs.existsSync(file)) return `data:image/jpeg;base64,${fs.readFileSync(file).toString('base64')}`;
+  if (fs.existsSync(file)) { lookForBiggerDiscArt(q, name, file); return `data:image/jpeg;base64,${fs.readFileSync(file).toString('base64')}`; }
   if (fs.existsSync(none) && Date.now() - fs.statSync(none).mtimeMs < 30 * 86400000) return null; // (looked again in a month)
   let art;
   try { art = await online.findDiscArt(q); } catch { return null; } // (offline: looked for another time)

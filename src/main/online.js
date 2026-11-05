@@ -6,6 +6,7 @@
  */
 const { httpFetch } = require('./http');
 const { nativeImage } = require('electron');
+const { bestDiscPhoto } = require('./disc-photo');
 const { getSpotifyAppToken } = require('./spotify');
 const { searchVariants, nameVariants, bareTitle } = require('./track-names');
 const { ttmlToLrc, ttmlDuration } = require('./ttml');
@@ -279,7 +280,7 @@ function bareAlbum(album) {
  * → data URL, or null when nobody has uploaded one.
  */
 async function findDiscArt({ artist, album, releaseId }) {
-  const ids = releaseId ? [releaseId] : [], cds = new Set(releaseId ? [releaseId] : []);
+  const ids = releaseId ? [releaseId] : [], cds = new Set(releaseId ? [releaseId] : []), sets = new Set();
   // (offline: it throws — not "none"). An edition's name ("… (Special Edition)", "[Remastered 2011]") found as the album.
   const bare = bareAlbum(album);
   let group = artist && album ? await musicBrainzAlbum({ artist, album, title: album }) : null;
@@ -291,10 +292,10 @@ async function findDiscArt({ artist, album, releaseId }) {
     const isCd = (r) => (r.media || []).some((m) => /\bCD\b/.test(m.format || '') && m.format !== 'CD-R');
     const rank = (r) => [isCd(r) ? 0 : 1, (r.media || []).length > 1 ? 1 : 0, -((r['cover-art-archive'] || {}).count || 0)]; // (a one-disc edition's photo shows one disc, not a CD and its DVD side by side)
     ((json && json.releases) || []).filter((r) => ((r['cover-art-archive'] || {}).count || 0) > 1)
-      .sort((a, b) => (rankBefore(rank(a), rank(b)) ? -1 : rankBefore(rank(b), rank(a)) ? 1 : 0)).forEach((r) => { ids.push(r.id); if (isCd(r)) cds.add(r.id); });
+      .sort((a, b) => (rankBefore(rank(a), rank(b)) ? -1 : rankBefore(rank(b), rank(a)) ? 1 : 0)).forEach((r) => { ids.push(r.id); if (isCd(r)) cds.add(r.id); if ((r.media || []).length > 1) sets.add(r.id); });
   }
   // The archive takes seconds to answer for each release (and now and then fails): all of them asked at once, the
-  // first with a photo of the disc taken.
+  // biggest photo of the disc taken (disc-photo.js).
   const discOf = async (id) => {
     const index = await fetchJson(`https://coverartarchive.org/release/${id}`, { timeout: 20000 }).catch(lost);
     const images = (index && index.images) || [];
@@ -302,13 +303,13 @@ async function findDiscArt({ artist, album, releaseId }) {
     if (!disc) throw new Error('no disc');
     const art = await fetchImageDataUrl((disc.thumbnails && (disc.thumbnails['1200'] || disc.thumbnails['500'] || disc.thumbnails.large)) || disc.image, 20000).catch(() => null);
     if (!art) { failed = true; throw new Error('no picture'); }
-    return art;
+    return { art, width: nativeImage.createFromDataURL(art).getSize().width };
   };
   // The CDs' first — a vinyl's label (or a cassette's) only when no CD of it has its disc photographed.
-  const unique = [...new Set(ids)];
-  const art = await Promise.any(unique.filter((id) => cds.has(id)).slice(0, 12).map(discOf)).catch(() => null)
-    || await Promise.any(unique.filter((id) => !cds.has(id)).slice(0, 6).map(discOf)).catch(() => null);
-  if (art) return art;
+  const unique = [...new Set(ids)], asked = (list) => list.map((id) => ({ ask: () => discOf(id), multi: sets.has(id) }));
+  const photo = await bestDiscPhoto(asked(unique.filter((id) => cds.has(id)).slice(0, 12)))
+    || await bestDiscPhoto(asked(unique.filter((id) => !cds.has(id)).slice(0, 6)));
+  if (photo) return photo.art;
   if (failed) throw new Error('disc art: lookup failed');
   return null;
 }
