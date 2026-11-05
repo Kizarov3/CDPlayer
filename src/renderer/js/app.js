@@ -1314,7 +1314,7 @@ async function fitLyricsToVoice() {
   const lines = key && canKaraoke(lyrics) && isKaraokeOpen() ? parseLrc(lyrics) : null;
   const deck = engine.deck;
   if (!lines) { fitted.key = null; return; }
-  if (!deck || deck.start || deck.end !== null || !/^(\/|[A-Za-z]:[\\/])/.test(path) || !(engine.duration < LONGEST_TO_FIT)) return;
+  if (!deck || deck.start || deck.end !== null || !/^(\/|[A-Za-z]:[\\/])/.test(path) || !engine.duration || !(engine.duration < LONGEST_TO_FIT)) return;
   let fit = fittedMoves.get(key);
   if (!fit) {
     fit = { ms: 0, lines: null };
@@ -1322,6 +1322,7 @@ async function fitLyricsToVoice() {
       const data = await (await fetch(cdp.mediaUrl(path))).arrayBuffer();
       if (fitted.key !== key) return;
       const decoded = await new OfflineAudioContext(2, 1, SYNC_RATE).decodeAudioData(data);
+      if (decoded.duration >= LONGEST_TO_FIT) throw new Error('longer than its tags said');
       const left = decoded.getChannelData(0), right = decoded.numberOfChannels > 1 ? decoded.getChannelData(1) : left;
       const envelope = await voiceEnvelope(left, right, () => new Promise((go) => { setTimeout(go); }));
       const move = lyricsMove(envelope, lines), held = holdLongWords(voiceBreaks(envelope), lines, move) || lines;
