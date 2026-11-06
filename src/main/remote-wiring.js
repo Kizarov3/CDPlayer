@@ -88,10 +88,10 @@ function unpairedPage() {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#000000">
+<meta name="theme-color" content="#111113">
 <title>CDPlayer</title>
 </head>
-<body bgcolor="#000000" text="#e8e9ec">
+<body bgcolor="#111113" text="#e8e9ec">
 <table width="100%" cellpadding="24"><tr><td align="center">
 <font face="${font}" size="5"><b>${esc(t('THIS PHONE ISN’T PAIRED'))}</b></font>
 <p><font face="${font}" size="4" color="#a9adb6">${esc(t('Open CDPlayer on the computer, go to Settings → PHONE REMOTE and scan the code with this phone’s camera.'))}</font></p>
@@ -154,7 +154,7 @@ const shelfCacheFor = (cache, folder) => (cache && cache.folder === folder ? cac
 
 // The phone's page (src/remote/) and the player's own modules it imports (src/renderer/js/, served under /js/).
 const PAGE_MODULES = ['disc.js', 'theme.js', 'jog.js', 'disc-wear.js', 'disc-data.js', 'disc-centre.js', 'i18n.js', 'i18n-format.js', 'shelf-order.js',
-  'shelf-dust.js', 'shelf-discogs.js', 'glyphs.js', 'queue-move.js', 'remote-view.js'];
+  'shelf-dust.js', 'shelf-discogs.js', 'glyphs.js', 'queue-move.js', 'remote-view.js', 'deck-display.js'];
 const JS = 'text/javascript; charset=utf-8';
 /**
  * The files the phone remote serves, by exact path — remote.js serves nothing else. `read(rel)` → the bytes of a

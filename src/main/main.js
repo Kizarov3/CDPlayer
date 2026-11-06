@@ -1264,6 +1264,10 @@ function newRemoteServer(address, port) {
     album: async (key) => { const a = (await phoneShelfData()).byKey.get(key); return a ? remoteShelf.phoneAlbum(a) : null; },
     coverFor: phoneCover,
     nowCover: () => remoteKept.cover,
+    discPhoto: async (forCover) => { // (the same lookup, and the same kept photos, as the player's own disc)
+      const now = remoteKept.state && remoteKept.state.track;
+      return now && now.print && now.coverKey && now.coverKey === forCover ? remoteWiring.dataUrlBytes(await lookupDiscArt(now.print)) : null;
+    },
     unpairedPage: () => remoteWiring.unpairedPage(),
     onPhones: phonesChanged,
     log: (text) => console.error(text),

@@ -2,8 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import {
   PHONE_SORTS, nextSort, shelfRows, dropTarget, connectionAfter, canSend, connectionWords, retryDelay,
-  outcome, errorWords, modeWords, badges, formatTime, livePosition, withTick, discHeading, pickableSlots,
-} from '../src/renderer/js/remote-view.js';
+  outcome, errorWords, modeWords, badges, formatTime, livePosition, withTick, discHeading, pickableSlots, deckTrack } from '../src/renderer/js/remote-view.js';
 
 const DAY = 86400000, now = Date.UTC(2026, 9, 17);
 const albums = [
@@ -145,4 +144,12 @@ test('the changer’s playing disc, as its heading reads', () => {
   assert.strictEqual(discHeading(changer), 'DISC 3 · Debut');
   assert.strictEqual(discHeading({ ...changer, playing: 0 }), 'DISC 1 · Moon Safari · Air');
   assert.strictEqual(discHeading({ ...changer, playing: -1 }), '');
+});
+
+test('the deck display on the phone: the song in the queue, or on the changer\'s disc; nothing playing: no number', () => {
+  assert.deepStrictEqual(deckTrack({ queue: [{}, {}, {}], index: 1 }), { n: 2, of: 3 });
+  assert.deepStrictEqual(deckTrack({ queue: [], index: -1 }), { n: 0, of: 0 });
+  assert.deepStrictEqual(deckTrack({ changerMode: true, changer: { tracks: [{}, { current: true }, {}, {}] } }), { n: 2, of: 4 });
+  assert.deepStrictEqual(deckTrack({ changerMode: true, changer: { tracks: [{}] } }), { n: 0, of: 1 });
+  assert.deepStrictEqual(deckTrack({ changerMode: true, changer: null }), { n: 0, of: 0 });
 });

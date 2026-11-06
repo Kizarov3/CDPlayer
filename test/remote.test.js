@@ -465,3 +465,15 @@ test('start() with port 0 resolves the port the system picked, and Host is check
   assert.strictEqual((await request(port, { path: '/', headers: { cookie: COOKIE, host: `127.0.0.1:${port}` } })).status, 200);
   assert.strictEqual((await request(port, { path: '/', headers: { cookie: COOKIE, host: '127.0.0.1:0' } })).status, 421);
 });
+
+test('/disc/now: the disc\'s photo for the cover it goes with, paired only; none: 404', async (t) => {
+  const asked = [], photo = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+  const { port } = await serve(t, { discPhoto: async (v) => { asked.push(v); return v === 'k1' ? photo : null; } });
+  const got = await request(port, { path: '/disc/now?v=k1', headers: { cookie: COOKIE } });
+  assert.strictEqual(got.status, 200);
+  assert.strictEqual(got.headers['content-type'], 'image/jpeg');
+  assert.strictEqual((await request(port, { path: '/disc/now?v=other', headers: { cookie: COOKIE } })).status, 404);
+  const before = asked.length;
+  assert.strictEqual((await request(port, { path: '/disc/now?v=k1' })).status, 401);
+  assert.strictEqual(asked.length, before);
+});

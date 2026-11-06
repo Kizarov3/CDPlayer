@@ -93,6 +93,16 @@ export function modeWords({ shuffle, repeat }) {
 /** The one character on the SHUFFLE and REPEAT buttons, as the desktop's: ◉ for a disc, 1 for one song. */
 export const badges = ({ shuffle, repeat }) => ({ shuffle: shuffle === 'DISC' ? '◉' : '', repeat: repeat === 'TRACK' ? '1' : repeat === 'DISC' ? '◉' : '' });
 
+/** The deck display's track number and how many there are: in the queue, or on the changer's disc playing. → { n, of }. */
+export function deckTrack(s) {
+  if (s.changerMode) {
+    const tracks = (s.changer && s.changer.tracks) || [];
+    return { n: tracks.findIndex((tr) => tr.current) + 1, of: tracks.length };
+  }
+  const of = (s.queue || []).length;
+  return { n: of && s.index >= 0 ? s.index + 1 : 0, of };
+}
+
 export function formatTime(sec) {
   const s = Math.max(0, Math.floor(Number(sec) || 0));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;

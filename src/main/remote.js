@@ -44,7 +44,7 @@ const wantsPage = (req, path) => !API.test(path) && (path === '/' || /\btext\/ht
  * `unpairedPage()` → the HTML shown to a browser that opens the page without the cookie (it says to scan the code),
  * or none: JSON, as the API answers.
  */
-function createRemote({ address, port, token, files = {}, snapshot, command, albums, album, coverFor, nowCover, unpairedPage = null, onPhones = () => {}, log = () => {} }) {
+function createRemote({ address, port, token, files = {}, snapshot, command, albums, album, coverFor, nowCover, discPhoto = async () => null, unpairedPage = null, onPhones = () => {}, log = () => {} }) {
   let server = null;
   let boundPort = null;
   let ping = null;
@@ -193,6 +193,10 @@ function createRemote({ address, port, token, files = {}, snapshot, command, alb
       const now = nowCover();
       if (!now || !now.bytes || now.key !== query.get('v')) return fail(res, 404, 'cover');
       return sendImage(req, res, now.bytes, 'max-age=86400');
+    }
+    if (path === '/disc/now') { // the photo of the disc playing, if the album has one (`v`: the cover it goes with)
+      const bytes = await limited(() => discPhoto(query.get('v')));
+      return bytes ? sendImage(req, res, bytes, 'max-age=86400') : fail(res, 404, 'disc');
     }
     if (path.startsWith('/cover/')) {
       const key = path.slice('/cover/'.length);

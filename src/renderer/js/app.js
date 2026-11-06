@@ -2872,9 +2872,9 @@ function remoteState() {
   const cover = currentCover(), coverKey = cover ? `${COVER_RUN}.${miniCoverKey}` : null;
   const s = remoteSnapshot({
     state, player: { playing: engine.playing, position: engine.position, duration: engine.duration },
-    track: { title: state.titleText || t('Pick a track to get started.'), artist: state.artistText || null, album: state.details && state.details.album ? state.details.album : null, coverKey },
+    track: { title: state.titleText || t('Pick a track to get started.'), artist: state.artistText || null, album: state.details && state.details.album ? state.details.album : null, coverKey, print: printOf(state.loadedPath && state.details) },
     details: (p) => { const d = detailsCache.get(p); return { title: queueDisplay(p), duration: d ? d.duration : 0 }; },
-    changerView: shownChanger, slotCover, statusWord: statusWords(), statusFallback: stateStatus(), rev: state.rev, canUndo: !!undoClear, colors,
+    changerView: shownChanger, slotCover, statusWord: statusWords(), statusFallback: stateStatus(), rev: state.rev, canUndo: !!undoClear, colors, theme: document.body.dataset.theme || '',
   });
   if (coverKey !== sentRemoteCoverKey) { sentRemoteCoverKey = coverKey; s.cover = cover && cover.startsWith('data:') ? cover : null; }
   return s;

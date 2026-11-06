@@ -7,7 +7,7 @@ const paths = ['/Users/me/Music/Air/Moon Safari/01 La Femme d’Argent.flac', '/
 const names = { [paths[0]]: ['Air · La Femme d’Argent', 430], [paths[1]]: ['Air · Sexy Boy', 298], [paths[2]]: ['Air · All I Need', 268], [paths[3]]: ['Björk · Human Behaviour', 252] };
 const details = (p) => ({ title: names[p][0], duration: names[p][1] });
 const player = { playing: true, position: 12.5, duration: 298 };
-const track = { title: 'Sexy Boy', artist: 'Air', album: 'Moon Safari', coverKey: 'k.3' };
+const track = { title: 'Sexy Boy', artist: 'Air', album: 'Moon Safari', coverKey: 'k.3', print: null };
 const base = { queue: paths, index: 1, nextUp: { start: 2, end: 4 }, shuffle: 'OFF', repeat: 'ALL', changerMode: false, volume: 70, volumeBeforeMute: -1 };
 
 const changerView = {
@@ -47,7 +47,7 @@ test('in queue mode the snapshot has every row, its NEXT tag, and the index play
   assert.deepStrictEqual({ rev: s.rev, playing: s.playing, position: s.position, duration: s.duration, volume: s.volume, muted: s.muted,
     shuffle: s.shuffle, repeat: s.repeat, changerMode: s.changerMode, status: s.status, canUndo: s.canUndo },
   { rev: 7, playing: true, position: 12.5, duration: 298, volume: 70, muted: false, shuffle: 'OFF', repeat: 'ALL', changerMode: false, status: 'NOW SPINNING', canUndo: false });
-  assert.deepStrictEqual(s.track, track);
+  assert.deepStrictEqual(s.track, { ...track, print: null });
   noPaths(s);
 });
 
@@ -94,9 +94,10 @@ test('in changer mode the snapshot has five slots with covers, the playing disc�
 test('the phone gets the theme’s accent colours (only those: its page stays dark), copied, not the live arrays', () => {
   const colors = { bg: [17, 17, 19], card: [31, 31, 34], accent: [196, 20, 28], accent2: [180, 186, 194], text: [232, 233, 236], muted: [138, 142, 148] };
   const s = snapshot({ state: base, player, track, details, statusWord: '', rev: 1, colors });
-  assert.deepStrictEqual(s.colors, { accent: [196, 20, 28], accent2: [180, 186, 194] });
+  assert.deepStrictEqual(s.colors, colors);
+  const was = s.colors.accent[0];
   colors.accent[0] = 0;
-  assert.strictEqual(s.colors.accent[0], 196);
+  assert.strictEqual(s.colors.accent[0], was);
   assert.strictEqual(snapshot({ state: base, player, track, details, statusWord: '', rev: 1 }).colors, null);
 });
 

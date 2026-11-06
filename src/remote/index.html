@@ -3,16 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <!-- Dark before anything else loads: the page's CSP allows no inline style, so the browser's own canvas is made dark
+  <!-- Dark, in the default theme's colour, before anything else loads: the page's CSP allows no inline style, so the browser's own canvas is made dark
        (color-scheme), the bars around the page (theme-color), and the body's colour by its attribute. -->
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#000000">
+  <meta name="theme-color" content="#111113">
   <title>CDPlayer</title>
   <link rel="stylesheet" href="/remote.css">
   <script src="/boot.js"></script>
   <script type="module" src="/remote.js"></script>
 </head>
-<body bgcolor="#000000" text="#e8e9ec" class="waiting">
+<body bgcolor="#111113" text="#e8e9ec" class="waiting">
+  <img id="ambient" alt="" hidden>
   <div id="banner" hidden></div>
 
   <main id="views">
@@ -24,17 +25,24 @@
         <div id="status" class="line"></div>
       </div>
       <div id="seek" class="bar"><div class="track"><div class="fill"></div></div><div class="knob"></div></div>
+      <div id="deck-display">
+        <div class="vfd-row">
+          <div class="vfd-track"><span class="vfd-label" data-i18n>TRACK</span><div class="vfd-digits"><canvas id="vfd-track" data-h="24"></canvas><span id="vfd-of"></span></div></div>
+          <div class="vfd-time" id="vfd-time-button"><span id="vfd-total" class="vfd-label"><span data-i18n>TOTAL|display</span><span> --:--</span></span><canvas id="vfd-time" data-h="24"></canvas></div>
+        </div>
+        <div class="vfd-flags"><span class="vfd-flag" data-flag="play" data-i18n>PLAY|display</span><span class="vfd-flag" data-flag="pause" data-i18n>PAUSE|display</span><span class="vfd-flag" data-flag="shuffle" data-i18n>SHUFFLE|display</span><span class="vfd-flag" data-flag="repeat" data-i18n>REPEAT|display</span><span class="vfd-flag" data-flag="one">1</span></div>
+      </div>
       <div id="times"><span id="elapsed">0:00</span><span id="remaining">-0:00</span></div>
       <div id="transport">
-        <button id="shuffle" class="mode" title="Shuffle" data-i18n-title><span class="badge"></span></button>
-        <button id="prev" class="skip" title="Previous track" data-i18n-title></button>
-        <button id="play" title="Play/Pause" data-i18n-title></button>
-        <button id="next" class="skip" title="Next track" data-i18n-title></button>
-        <button id="repeat" class="mode" title="Repeat" data-i18n-title><span class="badge"></span></button>
+        <button id="shuffle" class="round mode" title="Shuffle" data-i18n-title><span class="badge"></span></button>
+        <button id="prev" class="round skip" title="Previous track" data-i18n-title></button>
+        <button id="play" class="round primary" title="Play/Pause" data-i18n-title></button>
+        <button id="next" class="round skip" title="Next track" data-i18n-title></button>
+        <button id="repeat" class="round mode" title="Repeat" data-i18n-title><span class="badge"></span></button>
       </div>
       <div id="modes" class="line"></div>
       <div id="volume-row">
-        <button id="mute" title="Mute / unmute" data-i18n-title>
+        <button id="mute" class="round" title="Mute / unmute" data-i18n-title>
           <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="waves" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="cross" d="M16.5 9.5l5 5M21.5 9.5l-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
         <div id="volume" class="bar"><div class="track"><div class="fill"></div></div><div class="knob"></div></div>
@@ -75,7 +83,7 @@
     <div class="actions">
       <button id="case-next" class="pill" data-i18n>PLAY NEXT</button>
       <button id="case-add" class="pill"></button>
-      <button id="case-play" class="pill on" data-i18n>PLAY</button>
+      <button id="case-play" class="pill go" data-i18n>PLAY</button>
     </div>
   </div>
 

@@ -1,14 +1,15 @@
 // The phone remote's page: what the PC is playing on a turning disc, the shelf as a list with its cases, and the queue
 // or the changer. Everything it shows comes from the PC (GET /events, the state as it changes); everything pressed goes
 // back as a command (POST /command) — and only while it's connected: a press while it's down is never sent later.
-import { colors } from './js/theme.js';
+import { colors, contrast } from './js/theme.js';
+import { DeckDisplay } from './js/deck-display.js';
 import { Disc } from './js/disc.js';
 import { glyphSvg } from './js/glyphs.js';
 import { t, translatePage } from './js/i18n.js';
 import { moveItem } from './js/queue-move.js';
 import {
   PHONE_SORTS, nextSort, sortLabel, shelfRows, dropTarget, connectionAfter, canSend, connectionWords, retryDelay,
-  outcome, errorWords, modeWords, badges, formatTime, livePosition, withTick, discHeading, pickableSlots,
+  outcome, errorWords, modeWords, badges, formatTime, livePosition, withTick, discHeading, pickableSlots, deckTrack,
 } from './js/remote-view.js';
 
 translatePage(document);
@@ -164,11 +165,18 @@ function take(s) {
   real = s; shown = s; heardAt = performance.now();
   document.body.classList.remove('waiting');
   if (s.colors && changed('colors', s.colors)) {
-    for (const k of ['accent', 'accent2']) {
+    const root = document.documentElement.style;
+    for (const k of Object.keys(s.colors)) {
       colors[k] = s.colors[k];
-      document.documentElement.style.setProperty(`--${k}`, s.colors[k].join(', '));
+      root.setProperty(`--${k}`, s.colors[k].join(', '));
     }
+    root.setProperty('--on-accent', contrast(colors.accent, [255, 255, 255]) >= contrast(colors.accent, colors.bg) ? '255, 255, 255' : colors.bg.join(', '));
+    document.querySelector('meta[name="theme-color"]').content = `rgb(${colors.bg.join(',')})`;
+    deck.tick();
   }
+  document.body.dataset.theme = s.theme || '';
+  document.body.classList.toggle('classic-display', !!s.classicDisplay);
+  if (!deckOn) { deckOn = true; deck.powerOn(); }
   drawPlaying();
   drawTabs();
   if (!drag) drawQueue();
@@ -188,6 +196,7 @@ function showViews() {
   const view = tab === 'third' ? third : tab;
   for (const v of ['playing', 'shelf', 'queue', 'changer']) $(`view-${v}`).hidden = v !== view;
   for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === tab);
+  document.body.classList.toggle('listing', view !== 'playing');
 }
 function showTab(name) {
   tab = name;
@@ -210,14 +219,14 @@ function flash(words) {
 
 // ---- PLAYING ----------------------------------------------------------------------------------------------------
 
-$('prev').append(glyphSvg('REWIND', 34));
-$('next').append(glyphSvg('FAST_FORWARD', 34));
-$('shuffle').prepend(glyphSvg('SHUFFLE', 26));
-$('repeat').prepend(glyphSvg('REPEAT', 26));
+$('prev').append(glyphSvg('REWIND', 28));
+$('next').append(glyphSvg('FAST_FORWARD', 28));
+$('shuffle').prepend(glyphSvg('SHUFFLE', 22));
+$('repeat').prepend(glyphSvg('REPEAT', 22));
 let playGlyph = null;
 function setPlayGlyph(playing) {
   const name = playing ? 'SOLID_PAUSE' : 'SOLID_PLAY';
-  if (playGlyph !== name) { playGlyph = name; $('play').replaceChildren(glyphSvg(name, 34)); }
+  if (playGlyph !== name) { playGlyph = name; $('play').replaceChildren(glyphSvg(name, 30)); }
 }
 setPlayGlyph(false);
 $('play').addEventListener('click', () => sendNow('toggle'));
@@ -226,6 +235,19 @@ $('next').addEventListener('click', () => sendNow('next'));
 $('shuffle').addEventListener('click', () => sendNow('shuffle'));
 $('repeat').addEventListener('click', () => sendNow('repeat'));
 $('mute').addEventListener('click', () => sendNow('mute'));
+
+// The deck's display, as the desktop's (deck-display.js): tapped, the time counts down what's left, and stays so.
+const deck = new DeckDisplay({
+  track: $('vfd-track'), time: $('vfd-time'), of: $('vfd-of'), total: $('vfd-total'),
+  flags: [...document.querySelectorAll('.vfd-flag')],
+});
+let deckOn = false;
+try { deck.left = localStorage.getItem('timeLeft') === '1'; } catch { /* as it starts */ }
+$('vfd-time-button').addEventListener('click', () => {
+  deck.left = !deck.left;
+  try { localStorage.setItem('timeLeft', deck.left ? '1' : '0'); } catch { /* for now only */ }
+  drawTime();
+});
 
 // The cover printed on a disc that turns while it plays: the desktop's disc face (disc.js, as Mini Mode has it — no
 // wear, no shine), turned here at the size the phone has room for.
@@ -248,7 +270,7 @@ function drawDisc(now) {
   const pw = Math.round(r.width * dpr);
   if (canvas.width !== pw) { canvas.width = pw; canvas.height = pw; }
   const side = Math.floor(r.width) - 8, c = r.width / 2;
-  const look = [pw, angle, speed, disc.coverVersion, disc.label && disc.label.title].join('|');
+  const look = [pw, angle, speed, disc.coverVersion, disc.discArtVersion, JSON.stringify(disc.print), disc.label && disc.label.title].join('|');
   if (look === lastLook) return;
   lastLook = look;
   const g = canvas.getContext('2d');
@@ -274,6 +296,13 @@ function drawDisc(now) {
 }
 requestAnimationFrame(drawDisc);
 
+// Behind it all, the cover blurred, as behind the desktop's player.
+function showAmbient(src) {
+  const a = $('ambient');
+  a.hidden = !src;
+  if (src) a.src = src; else a.removeAttribute('src');
+}
+
 function hasSong(s) { return s.changerMode ? !!s.changer && s.changer.playing >= 0 : s.index >= 0; }
 function drawPlaying() {
   const s = real;
@@ -290,15 +319,22 @@ function drawPlaying() {
   $('modes').textContent = modeWords(s);
   $('mute').classList.toggle('on', s.muted || s.volume === 0);
   if (!volume.held && performance.now() > volumeKeptUntil) showVolume(s.volume);
+  const here = deckTrack(s);
+  deck.setTrack(here.n, here.of);
+  deck.setFlags({ playing: s.playing, paused: !s.playing && hasSong(s) && s.position > 0, shuffle: s.shuffle !== 'OFF', repeat: s.repeat !== 'OFF', repeatOne: s.repeat === 'TRACK' });
   disc.setLabel(hasSong(s) ? s.track.title : null, s.track.artist);
+  disc.setPrint(s.track.print);
   if (s.track.coverKey !== coverKey) {
     const key = s.track.coverKey;
     coverKey = key;
-    if (!key) disc.setCover(null);
-    else {
-      const img = new Image();
-      img.src = `/cover/now?v=${encodeURIComponent(key)}`;
-      img.decode().then(() => { if (coverKey === key) disc.setCover(img); }, () => { if (coverKey === key) disc.setCover(null); });
+    disc.setDiscArt(null);
+    if (!key) { disc.setCover(null); showAmbient(null); } else {
+      const v = encodeURIComponent(key), img = new Image(), photo = new Image();
+      img.src = `/cover/now?v=${v}`;
+      img.decode().then(() => { if (coverKey === key) { disc.setCover(img); showAmbient(img.src); } }, () => { if (coverKey === key) { disc.setCover(null); showAmbient(null); } });
+      // The album's own disc, photographed, where there's a photo: as on the desktop, printed from the cover otherwise.
+      photo.src = `/disc/now?v=${v}`;
+      photo.decode().then(() => { if (coverKey === key) disc.setDiscArt(photo); }, () => {});
     }
   }
   drawTime();
@@ -334,6 +370,7 @@ function showTime(position, duration) {
   setBar($('seek'), duration > 0 ? Math.max(0, Math.min(1, position / duration)) : 0);
   $('elapsed').textContent = formatTime(position);
   $('remaining').textContent = `-${formatTime(Math.max(0, duration - position))}`;
+  deck.setTime(position, duration);
 }
 const seek = slider($('seek'), {
   onMove: (f) => showTime(f * real.duration, real.duration),
@@ -353,7 +390,7 @@ setInterval(drawTime, 250);
 
 // Volume: the app's own, where to (not by how much), as the finger moves — a few times a second — and where it lifts.
 let volumeSentAt = 0, volumeKeptUntil = 0;
-function showVolume(v) { setBar($('volume'), v / 100); $('volume-value').textContent = String(v); }
+function showVolume(v) { setBar($('volume'), v / 100); $('volume-value').textContent = `${v}%`; }
 const volume = slider($('volume'), {
   onMove: (f) => {
     const v = Math.round(f * 100);
