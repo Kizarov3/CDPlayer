@@ -9,7 +9,10 @@ const fs = require('fs');
 // ./store is loaded, so a real user's ~/.cdplayer is never read or written.
 const smokeArg = process.argv.find((a) => a.startsWith('--smoke-test='));
 const smokeDir = smokeArg ? path.resolve(smokeArg.slice('--smoke-test='.length)) : null;
-if (smokeDir) process.env.CDPLAYER_HOME = fs.mkdtempSync(path.join(require('os').tmpdir(), 'cdplayer-smoke-'));
+if (smokeDir) {
+  process.env.CDPLAYER_HOME = fs.mkdtempSync(path.join(require('os').tmpdir(), 'cdplayer-smoke-'));
+  process.on('exit', () => { try { fs.rmSync(process.env.CDPLAYER_HOME, { recursive: true, force: true }); } catch { /* left for the system to clear */ } });
+}
 // An isolated data folder (tests) also gets its own Electron profile, so it's a separate single instance and never
 // hands off to — or shares browser storage with — a CDPlayer the user already has open.
 if (process.env.CDPLAYER_HOME) app.setPath('userData', path.join(process.env.CDPLAYER_HOME, 'electron-profile'));
@@ -399,6 +402,7 @@ const wordFit = require('./word-fit').createWordFit({
 });
 handle('wordFit:get', (file, lyrics) => (typeof file === 'string' && typeof lyrics === 'string' && wordFit.available() ? wordFit.get(file, lyrics) ?? 'none' : null));
 handle('wordFit:reads', (file, lyrics, lines, move) => (typeof file === 'string' && typeof lyrics === 'string' && Array.isArray(lines) && Number.isFinite(move) ? wordFit.reads(file, lyrics, lines, move) : false));
+handle('wordFit:cancel', () => wordFit.cancel());
 handle('wordFit:run', (file, lyrics, song) => {
   if (typeof file !== 'string' || typeof lyrics !== 'string' || !song || !(song.left instanceof Float32Array) || !(song.right instanceof Float32Array) || !Array.isArray(song.lines)) return null;
   return wordFit.run(file, lyrics, song);

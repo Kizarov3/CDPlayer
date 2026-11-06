@@ -81,7 +81,7 @@ const SOUND_CHECKS = ['OFF', 'TRACK', 'ALBUM'];
 const TRANSITIONS = ['OFF', 'AUTOMIX', 'CROSSFADE'];
 const DISPLAYS = ['DECK', 'CLASSIC'];
 const RIP_FORMATS = ['FLAC', 'MP3', 'WAV'];
-const LOOKS = ['CLASSIC', 'VISUALIZER', 'LYRICS', 'HIFI', 'ALBUM', 'CASE'];
+const LOOKS = ['CLASSIC', 'VISUALIZER', 'LYRICS', 'HIFI', 'ALBUM', 'CASE', 'TERMINAL'];
 // (the looks' older names: the same looks, done again; GLASS is gone)
 const OLD_LOOKS = { DOCK: 'VISUALIZER', STAGE: 'LYRICS', PANEL: 'HIFI', COVER: 'ALBUM' };
 // SHUFFLE and REPEAT: each mode keeps its own.

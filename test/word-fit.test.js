@@ -166,3 +166,37 @@ test("a word's sounds each get time to fill over, as far as the word has it; non
   assert.deepStrictEqual(round(spacedBeats(10, 10.3, [10.01, 10.02])), [10.1, 10.2]); // (a short word: evenly)
   assert.deepStrictEqual(round(spacedBeats(10, 14, [11, 12])), [11, 12]); // (with room already: as they were)
 });
+
+test('cancel: what is going is stopped, what is waiting answers undefined, and the next song still gets timed', async () => {
+  const workers = [];
+  const fake = () => {
+    const handlers = {};
+    const w = {
+      on: (n, f) => { (handlers[n] = handlers[n] || new Set()).add(f); }, off: (n, f) => handlers[n] && handlers[n].delete(f),
+      emit: (n, v) => { for (const f of [...(handlers[n] || [])]) f(v); },
+      postMessage: (m) => { w.last = m; }, terminate: () => { w.terminated = true; w.emit('exit', 1); },
+    };
+    workers.push(w);
+    return w;
+  };
+  const files = new Map();
+  const memFs = {
+    existsSync: () => true, mkdirSync: () => {}, statSync: () => ({ size: 1, mtimeMs: 1 }),
+    writeFileSync: (p, s) => files.set(p, s), readFileSync: (p) => { if (!files.has(p)) throw new Error('none'); return files.get(p); },
+  };
+  const { createWordFit } = require('../src/main/word-fit');
+  const fit = createWordFit({ dir: '/d', modelsDir: '/m', fs: memFs, createWorker: fake });
+  const song = () => ({ left: new Float32Array(1), right: new Float32Array(1), lines: [], move: 0 });
+  const going = fit.run('/a', 'x', song()), waiting = fit.run('/b', 'x', song());
+  fit.cancel();
+  await assert.rejects(going);
+  assert.strictEqual(await waiting, undefined);
+  assert.ok(workers[0].terminated);
+  assert.strictEqual(fit.get('/a', 'x'), undefined); // (nothing kept for a song left)
+  const next = fit.run('/c', 'x', song());
+  await new Promise((go) => { setImmediate(go); });
+  const w = workers[workers.length - 1];
+  assert.notStrictEqual(w, workers[0]);
+  w.emit('message', { id: w.last.id, words: [[{ time: 1, end: 2 }]] });
+  assert.deepStrictEqual((await next).words, [[{ time: 1, end: 2 }]]);
+});

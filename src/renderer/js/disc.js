@@ -8,6 +8,7 @@ import { random } from './disc-wear.js';
 import { discLayout, radiusAt, trackAt, R0 } from './disc-data.js';
 import { holeCentre } from './disc-centre.js';
 import { t } from './i18n.js';
+import { traySlide, trayReveal, TRAY_TRAVEL, TRAY_GROW } from './tray-motion.js';
 
 const SIZES = {
   normal: { cap: 520, margin: 40 },
@@ -790,7 +791,7 @@ export class Disc {
     if (cnv.width !== pw || cnv.height !== ph) { cnv.width = pw; cnv.height = ph; }
 
     const mini = this.mode === 'mini';
-    const tray = mini ? 0 : easeInOutCubic(this.trayT);
+    const tray = mini ? 0 : this.trayT, slide = traySlide(tray), reveal = trayReveal(tray);
     const a = SIZES[this.morph ? this.morph.from : this.mode], b = SIZES[this.morph ? this.morph.to : this.mode];
     const t = this.morph ? this.morph.t : 0;
     const cap = a.cap + (b.cap - a.cap) * t, margin = a.margin + (b.margin - a.margin) * t;
@@ -865,15 +866,24 @@ export class Disc {
       }
     }
 
-    // The tray: a dark plate with a recess for the disc, coming forward out of the case (drawn over it, with a shadow)
-    // and carrying the disc with it.
-    const trayDy = side * 0.16 * tray, trayScale = 1 + 0.05 * tray;
+    // The tray: a dark plate with a recess for the disc, running out of the case on its rails (tray-motion.js) and
+    // carrying the disc with it, the opening it came out of left dark behind it.
+    const trayDy = side * TRAY_TRAVEL * slide, trayScale = 1 + TRAY_GROW * Math.max(0, slide);
     if (tray > 0) {
-      g.save();
-      g.globalAlpha = Math.min(1, tray * 1.6);
-      g.translate(cx, cy + trayDy); g.scale(trayScale, trayScale);
       const plate = side * 1.1;
-      g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = 24 * tray; g.shadowOffsetY = 10 * tray;
+      g.save();
+      g.globalAlpha = reveal;
+      g.fillStyle = 'rgb(7,7,9)';
+      g.beginPath(); g.roundRect(cx - plate / 2, cy - plate / 2, plate, plate, side * 0.03); g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineWidth = 1; g.stroke();
+      g.fillStyle = 'rgba(255,255,255,0.09)';
+      for (const rail of [-0.44, 0.44]) g.fillRect(cx + plate * rail - 1, cy - plate / 2 + 3, 2, plate + trayDy - 3);
+      g.restore();
+      g.save();
+      g.globalAlpha = reveal;
+      g.translate(cx, cy + trayDy); g.scale(trayScale, trayScale);
+      const out = Math.max(0, slide);
+      g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = 24 * out; g.shadowOffsetY = 10 * out;
       const grad = g.createLinearGradient(0, -plate / 2, 0, plate / 2);
       grad.addColorStop(0, 'rgb(34,35,41)'); grad.addColorStop(1, 'rgb(16,16,20)');
       g.fillStyle = grad;
@@ -914,7 +924,7 @@ export class Disc {
     }
     g.restore();
     if (drawArt && tray < 1 && !this.coverInCase) { // the case's cover thumbnail steps aside while the tray is out
-      g.save(); g.globalAlpha = (1 - tray) * (1 - (this.coverHide || 0)); drawArt(this.cover); g.restore();
+      g.save(); g.globalAlpha = (1 - reveal) * (1 - (this.coverHide || 0)); drawArt(this.cover); g.restore();
     }
     // The ⟲ in the case's corner that turns the disc over.
     this.flipRect = null;

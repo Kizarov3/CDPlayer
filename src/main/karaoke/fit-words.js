@@ -12,6 +12,9 @@ const BEFORE = 0.3, AFTER = 0.2; // seconds either side of a line's own time it'
 const LEVEL_HOP = 320, LEVEL_DT = LEVEL_HOP / VOICE_RATE, AROUND = 3, SILENT_FOR = 10, UNDER = 18;
 
 const LEAST_SOUND = 0.12; // seconds
+// How clearly the model must hear the words (heardLevel), measured on real songs' first 150 s: 16 as sung .06–.56, Radiohead's
+// Bones the least; 7 with another song's words on them 0–.04; 7 with the voice taken out 0–.04; a tone or noise 0.
+const SURE = 0.05;
 const SPLEETER = { size: 4096, hop: 1024, bins: 1024, split: 512 };
 
 // The voice's level per 20 ms, and when it falls silent.
@@ -31,6 +34,17 @@ function voiceStops(voice) {
     }
     return limit;
   };
+}
+
+/** How clearly the model hears a song's sounds where it placed them: each sound's best moment in its span, the middle one of those. `song`: log-probabilities, `frames` × `classes`; `placed[k]`: { first, last } of `ids[k]`. */
+function heardLevel(song, classes, frames, ids, placed) {
+  if (!ids.length) return 0;
+  const best = ids.map((id, k) => {
+    let most = -Infinity;
+    for (let f = placed[k].first, end = Math.min(frames - 1, placed[k].last); f <= end; f++) if (song[f * classes + id] > most) most = song[f * classes + id];
+    return most;
+  }).sort((x, y) => x - y);
+  return Math.exp(best[best.length >> 1]);
 }
 
 // A word's sounds, each given a little time to fill over: its first and last not a blink against a long held one between.
@@ -80,6 +94,10 @@ async function fitWords(song, lines, models, onProgress = () => {}) {
     const placed = to > from ? alignPhones(all, classes, from, to, own) : null;
     return placed && { spans, placed };
   });
+  // (no such voice in this file, or these aren't its words: nothing to go by)
+  const said = [], where = [];
+  timed.forEach((x, i) => { if (x) parsed[i].ids.forEach((id, k) => { said.push(id); where.push(x.placed[k]); }); });
+  if (heardLevel(all, classes, total, said, where) < SURE) return null;
   const out = lines.map((line, i) => {
     if (!timed[i]) return null;
     const { spans, placed } = timed[i];
@@ -103,4 +121,4 @@ async function fitWords(song, lines, models, onProgress = () => {}) {
   onProgress(1);
   return out;
 }
-module.exports = { fitWords, spacedBeats, SONG_RATE, SPLEETER };
+module.exports = { fitWords, heardLevel, spacedBeats, SONG_RATE, SPLEETER };

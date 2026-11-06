@@ -13,12 +13,26 @@ import { romanFor, backingText } from './romanize.js';
 const $ = (id) => document.getElementById(id);
 let view = null; // { lines, nodes, words: [[span]], current, lyrics }
 
+const CLICK_SETTLES = 1500; // ms
 export const isKaraokeOpen = () => !!view;
+// A word on what's going on, under the title (the status line is under karaoke, out of sight); for `ms`, or until changed.
+let noteTimer = null;
+export function karaokeNote(words, ms = 0) {
+  clearTimeout(noteTimer);
+  const node = $('karaoke-note');
+  node.textContent = words || '';
+  node.hidden = !words;
+  if (words && ms) noteTimer = setTimeout(() => { node.hidden = true; }, ms);
+}
 // These lyrics' lines with their words retimed to the voice (lyrics-sync.js): shown from now on, at once if open.
 let retimed = { lyrics: null, lines: null };
 export function retimeKaraoke(lyrics, lines) {
   retimed = { lyrics, lines };
-  if (view && view.lyrics === lyrics && lines) rebuild();
+  if (!view || view.lyrics !== lyrics || !lines) return;
+  // The light would jump along the line being sung, and a scroll to a line just clicked would be cut short: they get
+  // the new times as the next line comes.
+  if (view.singing || performance.now() - (view.clickedAt || 0) < CLICK_SETTLES) view.retimeNext = true;
+  else rebuild();
 }
 /** Karaoke needs timed lyrics: true when these lyrics have them. */
 export const canKaraoke = (lyrics) => !!lyrics && parseLrc(lyrics).length > 0;
@@ -54,7 +68,7 @@ export function refreshKaraoke() {
   $('karaoke-lines').style.transform = '';
   view.intro = null;
   showCover();
-  $('karaoke-lines').replaceChildren(el('div', { class: 'k-line current k-none' }, view.lyrics ? t('THESE LYRICS AREN’T TIMED') : t('NO LYRICS FOR THIS SONG')));
+  $('karaoke-lines').replaceChildren(el('div', { class: 'k-line current k-none' }, view.lyrics ? t('THESE LYRICS HAVE NO TIMES, SO THEY CAN’T FOLLOW THE SONG') : t('NO LYRICS FOR THIS SONG')));
 }
 
 /** The words in Latin letters came or went: the lines laid out again. */
@@ -128,14 +142,14 @@ function rebuild() {
     const roman = romanWords(line.text), bgRoman = romanWords(backingText(line));
     view.romans.push(roman); view.bgRomans.push(bgRoman);
     const cls = ['k-line', line.text ? '' : 'gap', duet && line.agent ? `k-${line.agent}` : ''].filter(Boolean).join(' ');
-    return el('div', { class: cls, onClick: () => app.seekToLyric(line.time) },
+    return el('div', { class: cls, onClick: () => { view.clickedAt = performance.now(); app.seekToLyric(line.time); } },
       line.text ? el('div', { class: 'k-main' }, wholeWords(words)) : '♪',
       roman.length ? el('div', { class: 'k-roman' }, roman) : null,
       bg.length ? el('div', { class: 'k-bg' }, wholeWords(bg)) : null,
       bgRoman.length ? el('div', { class: 'k-roman' }, bgRoman) : null,
       dots());
   });
-  view.current = -2;
+  view.current = -2; view.soon = -1; view.retimeNext = false; view.singing = false;
   // Before the first line, when the song takes a while to begin: the dots count in to it.
   view.intro = view.lines.length && view.lines[0].time > REST ? el('div', { class: 'k-line k-intro' }, dots()) : null;
   $('karaoke-lines').replaceChildren(...(view.intro ? [view.intro] : []), ...view.nodes);
@@ -167,6 +181,8 @@ export function updateKaraoke(position, force = false) {
   if (!view || !view.nodes || !view.nodes.length) return;
   const { lines, nodes, words, bgWords, romans, bgRomans } = view;
   const { index, singing } = lineState(lines, position);
+  view.singing = singing && index >= 0;
+  if (view.retimeNext && (index !== view.current || !singing) && performance.now() - (view.clickedAt || 0) >= CLICK_SETTLES) { rebuild(); return; }
   if (index !== view.current || force) {
     for (let i = 0; i < nodes.length; i++) {
       nodes[i].classList.toggle('sung', i < index);

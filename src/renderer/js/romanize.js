@@ -1,8 +1,15 @@
 // The song's words in Latin letters too, under each line (main's romanize.js), when that's turned on and they aren't already.
-const NEEDS = /[々〇぀-ヿ㐀-鿿豈-﫿가-힣Ѐ-ӿㄱ-ㆎｦ-ﾟ]/;
+import { locale } from './i18n.js';
+
+const NEEDS = /[々〇぀-ヿ㐀-鿿豈-﫿가-힣ㄱ-ㆎｦ-ﾟ]/, CYRILLIC = /[\u0400-\u04FF]/;
 let on = false, known = { lyrics: null, lines: new Map() };
 
-export const needsRoman = (raw) => !!raw && NEEDS.test(raw.replace(/^\[[^\]]*\]/gm, ''));
+// (Cyrillic not for someone reading the app in Russian: it's their own alphabet.)
+export function needsRoman(raw) {
+  if (!raw) return false;
+  const words = raw.replace(/^\[[^\]]*\]/gm, '');
+  return NEEDS.test(words) || (locale !== 'ru' && CYRILLIC.test(words));
+}
 export const romanOn = () => on;
 /** A line's backing vocals as one text. */
 export const backingText = (line) => (line.bg ? line.bg.map((w) => w.text).join('') : '');

@@ -7,6 +7,8 @@ import { snapshot as remoteSnapshot, fullSlots, commandError, isStale, musicKey 
 import { Disc, labelImage, printedDisc } from './disc.js';
 import { Visualizer } from './visualizer.js';
 import { Particles } from './particles.js';
+import { TerminalLook } from './look-terminal.js';
+import { traySlide, TRAY_TRAVEL, TRAY_GROW } from './tray-motion.js';
 import { anim, EASE, el, pill, roundButton, modeButton, Slider, fitText, pulse, followPlaying, smooth, pathFrames, swingLid } from './widgets.js';
 import { openBooklet, closeBooklet, isBookletOpen } from './booklet.js';
 import { setLookLyrics, showLookSongs, followLookLyrics } from './look-lyrics.js';
@@ -42,7 +44,7 @@ import { phoneTagTitle, phoneJoined } from './remote-settings.js';
 import { drawShelfie, cutRows, firstCrop } from './shelfie.js';
 import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged, playSimilarTo, setWanted, shelfTakeAlong, takeShelfie } from './shelf.js';
 import { voiceEnvelope, voiceBreaks, lyricsMove, holdLongWords, holdLastWords, wordFitRequest, linesFittedToWords, SYNC_RATE } from './lyrics-sync.js';
-import { retimeKaraoke, redrawKaraoke, openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke, karaokeCover } from './karaoke.js';
+import { retimeKaraoke, redrawKaraoke, openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke, karaokeCover, karaokeNote } from './karaoke.js';
 import { discChange, discOfDetails } from './box-set.js';
 import { SpotifySession, SpotifyTrackElement, isSpotifyUri, spotifyUpcoming, loadSpotifySdk } from './spotify-deck.js';
 
@@ -141,6 +143,7 @@ let remoteTimer = null; // a full state for the phone, coming (remoteSoon)
 function stateStatus() {
   if (disc.trayOpen) return state.queue.length ? t('OPEN · DROP IN A NEW DISC, OR PRESS E TO CLOSE') : t('OPEN · DROP MUSIC ON THE TRAY');
   if (engine.playing && state.hidden && state.hiddenPhase === 'silence') return countdown(state.hidden, engine.position);
+  if (engine.playing && matchingWords) return t('MATCHING THE WORDS TO THE SINGING · KEEP LISTENING');
   if (engine.playing) return state.volume === 0 ? t('NOW SPINNING · SOUND OFF') : t('NOW SPINNING'); // (silent: said, so it isn't taken for broken)
   if (spotifyActive() && spotifyTrouble) return spotifyTrouble;
   return state.loadedPath ? t('PAUSED') : t('READY TO PLAY');
@@ -465,8 +468,8 @@ function setLid(open, heard = false) {
 function flyCaseDisc(intoPlayer, onClear) {
   const d = $('album-disc'), c = disc.center, from = d.getBoundingClientRect();
   if (!c || !from.width) return Promise.resolve();
-  const out = disc.trayT; // (on the player's tray when it's out: lower, and a little bigger — disc.js frame)
-  const k = (c.r * 2 * (1 + 0.05 * out)) / from.width, dx = c.x - (from.left + from.width / 2), dy = c.y + c.r * 2 * 0.16 * out - (from.top + from.height / 2);
+  const out = Math.max(0, traySlide(disc.trayT)); // (on the player's tray when it's out: lower, and a little bigger — disc.js frame)
+  const k = (c.r * 2 * (1 + TRAY_GROW * out)) / from.width, dx = c.x - (from.left + from.width / 2), dy = c.y + c.r * 2 * TRAY_TRAVEL * out - (from.top + from.height / 2);
   const ms = 900, fade = 0.1, arc = Math.min(110, Math.hypot(dx, dy) * 0.16);
   const at = (u) => {
     const m = intoPlayer ? u : 1 - u; // 0 on the hub, 1 in the player
@@ -1306,11 +1309,13 @@ const seekToLyric = (time) => seekTo(playbackTimeFor(time, heardLatency(), state
 // The lyrics moved to where the voice is in this file (lyrics-sync.js), on top of the user's offset: worked out when
 // karaoke's open, as it decodes the whole file; a song in a file of its own only (not a CD image's part, nor a stream).
 const fitted = { ms: 0, key: null };
+let matchingWords = null; // the song whose words are being timed
 const fittedMoves = new Map();
 const LONGEST_TO_FIT = 20 * 60; // seconds
 async function fitLyricsToVoice() {
   const path = state.loadedPath, lyrics = state.lyrics, key = path && lyrics ? `${path}\n${lyrics}` : null;
   if (key === fitted.key) return;
+  if (matchingWords && matchingWords !== key) { matchingWords = null; karaokeNote(''); cdp.wordFit.cancel().catch(() => {}); } // (another song now: that one's not worth finishing)
   fitted.key = key; fitted.ms = 0;
   const lines = key && canKaraoke(lyrics) && isKaraokeOpen() ? parseLrc(lyrics) : null;
   const deck = engine.deck;
@@ -1324,42 +1329,59 @@ async function fitLyricsToVoice() {
   const asked = state.lyricsSource === 'Unison' ? null : await cdp.wordFit.get(path, lyrics).catch(() => null);
   if (fitted.key !== key) return;
   if (asked && asked !== 'none' && asked.words) {
-    const fit = { ms: 0, lines: linesFittedToWords(lines, asked.words, asked.move) };
-    keep(fit); apply(fit);
-    return;
+    let fit = null;
+    try { fit = { ms: 0, lines: linesFittedToWords(lines, asked.words, asked.move) }; } catch { /* (kept in another shape: as if not kept) */ }
+    if (fit) { keep(fit); apply(fit); return; }
   }
-  let fit = { ms: 0, lines: null }, data = null, move = 0;
+  // Read twice rather than held between: a long song decoded takes hundreds of MB.
+  const decode = async (rate) => new OfflineAudioContext(2, 1, rate).decodeAudioData(await (await fetch(cdp.mediaUrl(path))).arrayBuffer());
+  let fit = { ms: 0, lines: null }, readable = false, move = 0;
   try {
-    data = await (await fetch(cdp.mediaUrl(path))).arrayBuffer();
+    const decoded = await decode(SYNC_RATE);
     if (fitted.key !== key) return;
-    const decoded = await new OfflineAudioContext(2, 1, SYNC_RATE).decodeAudioData(data.slice(0));
     if (decoded.duration >= LONGEST_TO_FIT) throw new Error('longer than its tags said');
     const left = decoded.getChannelData(0), right = decoded.numberOfChannels > 1 ? decoded.getChannelData(1) : left;
     const envelope = await voiceEnvelope(left, right, () => new Promise((go) => { setTimeout(go); }));
     move = lyricsMove(envelope, lines);
     const held = holdLongWords(voiceBreaks(envelope), lines, move) || lines;
     fit = { ms: Math.round(move * 1000), lines: holdLastWords(envelope.centre, held, move) || (held === lines ? null : held) };
-  } catch { data = null; /* (it can't be read this way: as they are) */ }
+    readable = true;
+  } catch { /* (it can't be read this way: as they are) */ }
   keep(fit);
   if (fitted.key !== key) return;
   apply(fit);
-  if (fit.ms) setStatus(t('WORDS MOVED TO THE VOICE: {n} S', { n: `${fit.ms > 0 ? '+' : '−'}${(Math.abs(fit.ms) / 1000).toFixed(2)}` }));
+  if (fit.ms) setStatus(t('LYRICS LINED UP WITH THE SINGER'));
   // Then, not seen before and the models there: each word timed by the voice itself, in the background.
-  if (asked !== 'none' || !data) return;
+  if (asked !== 'none' || !readable) return;
   try {
-    if (!await cdp.wordFit.reads(path, lyrics, wordFitRequest(lines), move) || fitted.key !== key) return;
-    const decoded = await new OfflineAudioContext(2, 1, 44100).decodeAudioData(data);
+    if (!await cdp.wordFit.reads(path, lyrics, wordFitRequest(lines), move)) {
+      if (fitted.key === key && isKaraokeOpen()) sayEnglishOnlyOnce();
+      return;
+    }
+    if (fitted.key !== key) return;
+    const decoded = await decode(44100);
     if (fitted.key !== key) return;
     const left = decoded.getChannelData(0), right = decoded.numberOfChannels > 1 ? decoded.getChannelData(1) : left;
-    setStatus(t('TIMING THE WORDS TO THE VOICE…'));
+    matchingWords = key;
+    const saying = t('MATCHING THE WORDS TO THE SINGING · KEEP LISTENING');
+    setStatus(saying); karaokeNote(saying);
     const done = await cdp.wordFit.run(path, lyrics, { left, right, lines: wordFitRequest(lines), move });
-    if (!done || !done.words) return;
+    if (matchingWords === key) { matchingWords = null; karaokeNote(''); }
+    if (!done || !done.words || fitted.key !== key) { if (fitted.key === key) setStatus(stateStatus()); return; }
     const best = { ms: 0, lines: linesFittedToWords(lines, done.words, done.move) };
     keep(best);
-    if (fitted.key !== key) return;
     apply(best);
-    setStatus(t('WORDS TIMED TO THE VOICE'));
-  } catch { /* (the words stay as the fit above left them) */ }
+    const said = t('WORDS NOW FOLLOW THE SINGER');
+    setStatus(said); karaokeNote(said, 4000);
+  } catch { if (matchingWords === key) { matchingWords = null; karaokeNote(''); } /* (the words stay as the fit above left them) */ }
+}
+// Other languages' words go by the lyrics' own times: said once, so it isn't taken for something wrong.
+function sayEnglishOnlyOnce() {
+  try {
+    if (localStorage.getItem('englishOnlySaid')) return;
+    localStorage.setItem('englishOnlySaid', '1');
+  } catch { return; }
+  karaokeNote(t('Following the singer word by word works on English songs so far'), 7000);
 }
 // The lyrics for the loaded song arrived or went: the LYRICS and KARAOKE buttons, and anything showing them, follow.
 function lyricsChanged() {
@@ -1411,7 +1433,7 @@ function toggleKaraoke() {
   if (isKaraokeOpen()) { closeKaraoke(); return; }
   if (state.miniMode) return;
   if (state.visualizerMode) toggleVisualizerMode();
-  if (!openKaraoke(app)) setStatus(state.lyrics ? t('THESE LYRICS AREN’T TIMED') : t('NO LYRICS FOR THIS SONG'));
+  if (!openKaraoke(app)) setStatus(state.lyrics ? t('THESE LYRICS HAVE NO TIMES, SO THEY CAN’T FOLLOW THE SONG') : t('NO LYRICS FOR THIS SONG'));
   else { panels.closeLyricsPanel(); fitLyricsToVoice(); }
 }
 
@@ -2398,7 +2420,7 @@ let glowFade = 0, glowResize = 0;
 const glowSmall = Object.assign(document.createElement('canvas'), { width: 48, height: 48 }); // the glow, before stretching
 function paintCoverGlow() {
   const backdrop = $('backdrop'), art = $('backdrop-art');
-  if (!shownTheme.image && state.ambient && state.cover) {
+  if (!shownTheme.image && state.ambient && state.cover && state.look !== 'TERMINAL') {
     // A 48×48 center crop, stretched to fill the window — the browser's bilinear upscale makes it a soft glow. Drawn
     // without the graphics card, it's stretched here once instead (render-budget.js), as the upscale would be redone on
     // every frame. The glow there before (another album's) fades into this one, rather than the background jumping.
@@ -3432,7 +3454,7 @@ function setDisplay(kind, { save = true } = {}) {
   document.body.classList.toggle('classic-display', state.display === 'CLASSIC');
   if (save) saveSettingsSoon();
 }
-const LOOKS = ['CLASSIC', 'VISUALIZER', 'LYRICS', 'HIFI', 'ALBUM', 'CASE'];
+const LOOKS = ['CLASSIC', 'VISUALIZER', 'LYRICS', 'HIFI', 'ALBUM', 'CASE', 'TERMINAL'];
 // CASE (the jewel case) is ALBUM's page with the case seen whole: its lid opens on its hinge while a disc is in.
 const albumLook = () => state.look === 'ALBUM' || state.look === 'CASE';
 function setLook(kind, { save = true } = {}) {
@@ -3445,10 +3467,82 @@ function setLook(kind, { save = true } = {}) {
   showQueueDrawer(false);
   stageDisc();
   showAlbumDisc(); // (CASE's lid as the disc is: open while one's in)
+  paintCoverGlow(); // (TERMINAL has none)
   tintFromCover(); renderQueue(); // (ALBUM's heading, and its rows by their titles)
   if (state.look === 'LYRICS') { showLookWords(); requestAnimationFrame(showLookWords); } // (again once it's laid out: where a line or song sits needs the room)
   if (save) saveSettingsSoon();
 }
+// TERMINAL's screen, from what the page's own controls say (look-terminal.js): their buttons are there, unseen, and
+// are what's pressed, so it does what they do, under the names they have now.
+const buttonKey = (id, label) => {
+  const b = $(id);
+  return b && !b.hidden ? { label: label || b.textContent.replace(/\s+/g, ' ').trim(), act: 'click', arg: id, disabled: b.disabled, on: b.classList.contains('on') } : null;
+};
+const textOf = (id) => { const n = $(id); return n && !n.hidden ? n.textContent.replace(/\s+/g, ' ').trim() : ''; };
+function terminalQueue() {
+  const changerOn = state.changerMode && shownChanger, tracks = changerOn ? shownChanger.tracks.filter((tr) => !tr.ghost) : null;
+  const up = state.nextUp;
+  return {
+    info: textOf('queue-info'), next: textOf('queue-next'), nextWord: t('NEXT'), removable: !changerOn,
+    actions: ['search-button', 'save-playlist-button', 'load-playlist-button', 'disc-skip-button', 'eject-disc-button', 'clear-queue-button'].map((id) => buttonKey(id)),
+    slots: changerOn ? shownChanger.slots.map((d, i) => (d ? { title: d.title, done: d.done, playing: i === shownChanger.playingSlot } : null)) : null,
+    total: changerOn ? tracks.length : state.queue.length,
+    active: changerOn ? tracks.findIndex((tr) => tr.current) : state.index,
+    rowAt: (i) => {
+      if (changerOn) { const tr = tracks[i]; return tr && { index: tr.index, no: tr.no, title: tr.title, time: tr.time, active: tr.current }; }
+      const p = state.queue[i];
+      if (!p) return null;
+      ensureDetails(p);
+      const d = detailsCache.get(p);
+      return { index: i, no: i + 1, title: rowName(p), time: formatDuration(d ? d.duration : 0), active: i === state.index, skipped: isSkipped(i), next: !!up && i > state.index && i >= up.start && i < up.end };
+    },
+  };
+}
+function terminalModel() {
+  const d = state.loadedPath && state.details, name = { TRACK: t('TRACK'), DISC: t('DISC'), ALL: t('ALL'), OFF: t('OFF') };
+  const position = engine.position, duration = engine.duration;
+  return {
+    words: { now: t('NOW PLAYING'), volume: t('VOLUME'), disc: 'CD', tray: t('TRAY'), noDisc: t('NO DISC') }, tray: disc.trayT,
+    title: textOf('track-title'), artist: textOf('track-artist'), album: d ? d.album : '', year: d ? yearOf(d) : '',
+    source: [textOf('track-source'), textOf('quality-badge')].filter(Boolean).join(' · '), status: textOf('status').replace(/^●\s*/, ''),
+    elapsed: formatTime(position), remaining: duration > 0 ? `-${formatTime(Math.max(0, duration - position))}` : '--:--',
+    fraction: duration > 0 ? position / duration : 0, volume: state.volume, muted: state.volumeBeforeMute >= 0,
+    waveform: state.waveform ? progress.waveform : null,
+    spectrum: (n) => { const s = engine.playing ? engine.spectrum(n) : null; return s ? Array.from(s, (v) => (v > 1 ? v / 255 : v)) : []; },
+    transport: [
+      { label: t('SHUFFLE: {m}', { m: name[state.shuffle] || state.shuffle }), act: 'shuffle', on: state.shuffle !== 'OFF' },
+      { label: '-5', act: 'back' }, { label: '|<', act: 'prev' },
+      { label: engine.playing ? ' || ' : ' |> ', act: 'toggle', bold: true, on: true },
+      { label: '>|', act: 'next' }, { label: '+5', act: 'forward' },
+      { label: t('REPEAT: {m}', { m: name[state.repeat] || state.repeat }), act: 'repeat', on: state.repeat !== 'OFF' },
+    ],
+    tools: [buttonKey('karaoke-button'), buttonKey('lyrics-button'), buttonKey('tags-button'), buttonKey('tray-button'), buttonKey('load-button')],
+    queue: terminalQueue(), hint: document.body.classList.contains('keys-learnt') ? $('hint').querySelector('b').textContent : textOf('hint'),
+  };
+}
+function terminalAct(hit, fraction) {
+  switch (hit.act) {
+    case 'click': $(hit.arg).click(); break;
+    case 'toggle': toggle(); break;
+    case 'prev': previousTrack(); break;
+    case 'next': userNext(); break;
+    case 'back': seek(-SKIP_SECONDS); break;
+    case 'forward': seek(SKIP_SECONDS); break;
+    case 'shuffle': toggleShuffle(); break;
+    case 'repeat': cycleRepeat(); break;
+    case 'mute': toggleMute(); break;
+    case 'seek': if (engine.duration > 0) seekTo(fraction * engine.duration); break;
+    case 'volume': setVolume(Math.round(fraction * 100)); break;
+    case 'row': goTo(hit.arg); break;
+    case 'remove': removeFromQueue(hit.arg); break;
+    case 'slot': playSlot(hit.arg); break;
+    default: break;
+  }
+}
+const terminalLook = new TerminalLook($('look-terminal'), {
+  model: terminalModel, act: terminalAct,
+  discFace: (side) => (disc.discPresent === false ? null : disc.renderFace(side, 1).canvas),
+});
 function showQueueDrawer(open) {
   document.body.classList.toggle('queue-open', open);
   $('queue-toggle').classList.toggle('on', open);
@@ -3566,6 +3660,7 @@ function frame(now) {
     lookVisualizer.setSpectrum(engine.playing ? engine.spectrum(lookVisualizer.n) : null, dt);
     lookVisualizer.draw(now);
   }
+  if (state.look === 'TERMINAL' && !state.cdView && !state.miniMode && !isKaraokeOpen()) terminalLook.frame(now, engine.playing && anim.enabled);
   if (isKaraokeOpen()) updateKaraoke(lyricsPosition());
   watchForShake(now);
   stepDiscMorph(now);

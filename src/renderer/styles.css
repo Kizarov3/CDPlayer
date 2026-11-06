@@ -273,6 +273,22 @@ body.cursor-hidden #cd-exit.noted { opacity: 1; }
 #faceplate > * { flex-shrink: 0; }
 #queue-toggle, #more-button { display: none; }
 
+/* TERMINAL: the player as a console's screen, a grid of character cells on one canvas (look-terminal.js). The controls
+   it stands in for stay in the page, unseen: it presses them. Everything else, the shelf and the panels too, in the
+   console's font and with square corners. */
+#look-terminal { display: none; }
+body.look-terminal { --font: "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace; }
+body.look-terminal:not(.cd-view) #main { padding: 32px 12px 8px; }
+body.look-terminal:not(.cd-view) #body { display: block; position: relative; overflow: clip; }
+body.look-terminal:not(.cd-view) #disc-column { display: none; }
+body.look-terminal:not(.cd-view) #player { position: absolute; top: 0; width: 590px; height: 100%; visibility: hidden; pointer-events: none; }
+body.look-terminal:not(.cd-view) #look-terminal { display: block; position: absolute; inset: 0; width: 100%; height: 100%; }
+body.look-terminal:not(.cd-view) #divider, body.look-terminal:not(.cd-view) #south, body.look-terminal:not(.cd-view) #status-pill { display: none; } /* (what it says is on the screen's top edge) */
+body.look-terminal .pill { border-radius: 0; }
+body.look-terminal .pill::before { border-radius: 0; }
+body.look-terminal .round { border-radius: 0; }
+body.look-terminal .round.mode::before, body.look-terminal .round.mode::after { border-radius: 0; }
+
 /* VISUALIZER: the music drawn across the window (the theme's own scene, as Visualizer Mode's), the song's name over it,
    the seek bar, the keys and the volume in a bar along the bottom; the queue slides in at the side (QUEUE) */
 #look-visualizer { display: none; }
@@ -1000,6 +1016,9 @@ body.no-anim .queue-row.active .num::after { animation: none; }
 .theme-name { width: 170px; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .118); color: rgb(var(--text)); font: inherit; font-size: 12px; padding: 5px 8px; }
 .swatch { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .235); }
 
+/* What's New and the like: however long, it scrolls and the button under it stays in the window. */
+.tips-list { max-height: calc(100vh - 220px); overflow-y: auto; padding-right: 8px; }
+
 /* ---- Visualizer Mode ---- */
 #vis-mode {
   position: fixed; inset: 0; z-index: 10;
@@ -1018,7 +1037,9 @@ body.no-anim .queue-row.active .num::after { animation: none; }
   background: radial-gradient(ellipse at 50% 40%, rgba(var(--accent), .16), rgba(0, 0, 0, 0) 60%), rgb(var(--bg));
   display: flex; flex-direction: column; padding: 34px 50px 40px;
 }
-#karaoke-title { text-align: center; font-size: 11px; color: rgb(var(--accent2)); letter-spacing: .08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#karaoke-note { position: relative; z-index: 1; text-align: center; font-size: 10px; line-height: 14px; margin-top: 4px; padding: 0 200px; color: rgb(var(--muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* (the room either side is the buttons': a long title stops short of them) */
+#karaoke-title { padding: 0 200px; text-align: center; font-size: 11px; color: rgb(var(--accent2)); letter-spacing: .08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #karaoke-stage {
   flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; margin: 14px 0 20px;
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 78%, transparent 100%);

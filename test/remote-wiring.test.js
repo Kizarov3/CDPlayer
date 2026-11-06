@@ -168,7 +168,7 @@ test('the phone page\'s files: the page, its style and script, boot.js, and the 
   const files = w.pageFiles({ read: (rel) => { asked.push(rel); return Buffer.from(rel); }, dict: () => ({ code: 'en', dict: {} }) });
   assert.deepStrictEqual(Object.keys(files).sort(), ['/', '/boot.js', '/remote.css', '/remote.js',
     ...['disc.js', 'theme.js', 'jog.js', 'disc-wear.js', 'disc-data.js', 'disc-centre.js', 'i18n.js', 'i18n-format.js', 'shelf-order.js', 'shelf-dust.js',
-      'shelf-discogs.js', 'glyphs.js', 'queue-move.js', 'remote-view.js', 'deck-display.js'].map((n) => `/js/${n}`)].sort());
+      'shelf-discogs.js', 'glyphs.js', 'queue-move.js', 'remote-view.js', 'deck-display.js', 'tray-motion.js'].map((n) => `/js/${n}`)].sort());
   assert.strictEqual(files['/'].type, 'text/html; charset=utf-8');
   assert.strictEqual(files['/remote.css'].type, 'text/css; charset=utf-8');
   for (const [p, f] of Object.entries(files)) if (p.endsWith('.js')) assert.strictEqual(f.type, 'text/javascript; charset=utf-8', p);

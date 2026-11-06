@@ -154,7 +154,7 @@ const shelfCacheFor = (cache, folder) => (cache && cache.folder === folder ? cac
 
 // The phone's page (src/remote/) and the player's own modules it imports (src/renderer/js/, served under /js/).
 const PAGE_MODULES = ['disc.js', 'theme.js', 'jog.js', 'disc-wear.js', 'disc-data.js', 'disc-centre.js', 'i18n.js', 'i18n-format.js', 'shelf-order.js',
-  'shelf-dust.js', 'shelf-discogs.js', 'glyphs.js', 'queue-move.js', 'remote-view.js', 'deck-display.js'];
+  'shelf-dust.js', 'shelf-discogs.js', 'glyphs.js', 'queue-move.js', 'remote-view.js', 'deck-display.js', 'tray-motion.js'];
 const JS = 'text/javascript; charset=utf-8';
 /**
  * The files the phone remote serves, by exact path — remote.js serves nothing else. `read(rel)` → the bytes of a

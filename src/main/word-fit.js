@@ -13,8 +13,8 @@ function createWordFit({ dir, modelsDir, fs, createWorker }) {
   const stampOf = (file) => { try { const st = fs.statSync(file); return `${st.size}:${Math.round(st.mtimeMs)}`; } catch { return null; } };
   let waiting = null, going = false, worker = null, nextId = 1;
 
-  function keep(file, lyrics, out) {
-    try { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(fileOf(file, lyrics), JSON.stringify({ stamp: stampOf(file), ...out })); } catch { /* (it's just done again next time) */ }
+  function keep(file, lyrics, out, stamp = stampOf(file)) {
+    try { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(fileOf(file, lyrics), JSON.stringify({ stamp, ...out })); } catch { /* (it's just done again next time) */ }
   }
   function work({ left, right, lines }) {
     return new Promise((resolve, reject) => {
@@ -70,13 +70,19 @@ function createWordFit({ dir, modelsDir, fs, createWorker }) {
         w.postMessage({ id, lines, onlyRead: true });
       });
     },
+    /** The song's been left: nothing more done for it (what's going is stopped, its promise rejected; what's waiting answers undefined). */
+    cancel() {
+      if (waiting) { waiting.finish.dropped(); waiting = null; }
+      if (going && worker) { const w = worker; worker = null; w.terminate(); }
+    },
     /** `song`: { left, right, lines, move } → { move, words } (kept), or undefined when another song took its place. */
     run(file, lyrics, song) {
       return new Promise((resolve, reject) => {
         if (waiting) waiting.finish.dropped();
+        const stamp = stampOf(file); // (changed while it's timed, what's kept isn't taken for the new file's)
         const finish = (words) => {
           const out = { move: song.move, words: words || null };
-          keep(file, lyrics, out);
+          keep(file, lyrics, out, stamp);
           resolve(out);
         };
         finish.dropped = () => resolve(undefined);

@@ -48,7 +48,7 @@ export const FEATURES = [
     { title: t('Every song as loud'), text: t('Settings → SOUND CHECK: an old CD and a new remaster play at the same loudness, and LEVEL under the title says by how much.') },
   ] },
   { group: t('LYRICS AND THE BOOKLET'), items: [
-    { title: t('Karaoke'), show: 'karaoke', text: t('Y: the lyrics fill the window and light up word by word as they’re sung — backing vocals under the line, a duet’s singers left and right. Click a line to jump to it.') },
+    { title: t('Karaoke'), show: 'karaoke', text: t('Y: the lyrics fill the window and light up word by word as they’re sung — backing vocals under the line, a duet’s singers left and right. Click a line to jump to it. ABC, for words in another alphabet, shows how they sound in English letters.') },
     { title: t('The booklet'), text: t('Click the small cover in the case’s corner, then the big one: the album’s booklet — tracklist, ABOUT THE ALBUM from Wikipedia, lyrics, credits, and tally marks by the songs you play most.') },
     { title: t('A card to share'), text: t('P: a card of the song with the lines you pick — copy it, save it, or record a video of the disc turning while they’re sung, for Stories.') },
   ] },
