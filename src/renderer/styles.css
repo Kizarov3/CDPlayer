@@ -1039,6 +1039,7 @@ body.no-anim .queue-row.active .num::after { animation: none; }
 .k-line.k-v2 { text-align: right; }
 .k-bg { font-size: .56em; margin-top: 4px; opacity: .75; }
 .k-roman { font-size: .5em; margin-top: 6px; opacity: .75; }
+.k-line.current .k-roman { opacity: 1; }
 .lyrics-actions { display: flex; gap: 8px; }
 .roman-line { display: block; font-size: .72em; opacity: .7; margin-top: 2px; }
 .k-whole { white-space: nowrap; }
@@ -1053,6 +1054,7 @@ body.no-anim .queue-row.active .num::after { animation: none; }
   transition: transform 260ms cubic-bezier(.3, 1.4, .5, 1), text-shadow 300ms ease;
 }
 .k-line.current .k-word.singing { transform: translateY(-3px); }
+.k-line.current .k-roman .k-word.singing { transform: none; }
 .k-line.current .k-word.held.singing { text-shadow: 0 0 calc(var(--p) * 18px) rgba(var(--accent), calc(var(--p) * .8)); }
 /* A long break: three dots breathing where the next line will come. */
 .k-dots { display: none; justify-content: center; gap: 10px; padding-top: 14px; }

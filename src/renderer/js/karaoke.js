@@ -6,7 +6,7 @@
 // a moment before it's sung, to read ahead; behind it all, the album's cover, blurred, breathing with the music.
 // Click a line to jump there.
 import { el, anim, EASE } from './widgets.js';
-import { parseLrc, lineState, lineWords, wordProgress, songPace } from './lyrics.js';
+import { parseLrc, lineState, lineWords, wordProgress, sharedProgress, songPace } from './lyrics.js';
 import { t } from './i18n.js';
 import { romanFor, backingText } from './romanize.js';
 
@@ -48,7 +48,7 @@ export function refreshKaraoke() {
   if (view.lyrics === view.app.state.lyrics && view.nodes) return;
   if (canKaraoke(view.app.state.lyrics)) { rebuild(); return; }
   view.lyrics = view.app.state.lyrics;
-  view.lines = []; view.nodes = []; view.words = []; view.bgWords = []; view.current = -2;
+  view.lines = []; view.nodes = []; view.words = []; view.bgWords = []; view.romans = []; view.bgRomans = []; view.current = -2;
   const d = view.app.state.details;
   $('karaoke-title').textContent = d ? [d.title, d.artist].filter(Boolean).join(' · ') : '';
   $('karaoke-lines').style.transform = '';
@@ -115,7 +115,9 @@ function rebuild() {
   };
   view.pace = songPace(view.lines);
   const duet = new Set(view.lines.map((l) => l.agent).filter(Boolean)).size > 1;
-  view.words = []; view.bgWords = [];
+  view.words = []; view.bgWords = []; view.romans = []; view.bgRomans = [];
+  // (a line's Latin letters fill with it, word by word)
+  const romanWords = (text) => (romanFor(text).match(/\S+\s*/g) || []).map((w) => el('span', { class: 'k-word' }, w));
   // (An empty timed line is an instrumental break: shown as a note.)
   view.nodes = view.lines.map((line, i) => {
     const words = lineWords(line, endOf(view.lines, i), view.pace)
@@ -123,12 +125,14 @@ function rebuild() {
     view.words.push(words);
     const bg = line.bg ? line.bg.map((w) => el('span', { class: 'k-word' }, w.text)) : [];
     view.bgWords.push(bg);
+    const roman = romanWords(line.text), bgRoman = romanWords(backingText(line));
+    view.romans.push(roman); view.bgRomans.push(bgRoman);
     const cls = ['k-line', line.text ? '' : 'gap', duet && line.agent ? `k-${line.agent}` : ''].filter(Boolean).join(' ');
     return el('div', { class: cls, onClick: () => app.seekToLyric(line.time) },
       line.text ? el('div', { class: 'k-main' }, wholeWords(words)) : '♪',
-      romanFor(line.text) ? el('div', { class: 'k-roman' }, romanFor(line.text)) : null,
+      roman.length ? el('div', { class: 'k-roman' }, roman) : null,
       bg.length ? el('div', { class: 'k-bg' }, wholeWords(bg)) : null,
-      romanFor(backingText(line)) ? el('div', { class: 'k-roman' }, romanFor(backingText(line))) : null,
+      bgRoman.length ? el('div', { class: 'k-roman' }, bgRoman) : null,
       dots());
   });
   view.current = -2;
@@ -155,17 +159,20 @@ const fill = (spans, progress) => progress.forEach((p, i) => {
   s.classList.toggle('singing', p > 0 && p < 1);
 });
 
+const letters = (spans) => spans.map((s) => s.textContent.trim().length);
+const fillRoman = (spans, progress, words) => { if (spans.length) fill(spans, sharedProgress(progress, letters(words), letters(spans))); };
+
 /** Every frame while open: the current line centered, its words (and backing vocals) filled up to `position`. */
 export function updateKaraoke(position, force = false) {
   if (!view || !view.nodes || !view.nodes.length) return;
-  const { lines, nodes, words, bgWords } = view;
+  const { lines, nodes, words, bgWords, romans, bgRomans } = view;
   const { index, singing } = lineState(lines, position);
   if (index !== view.current || force) {
     for (let i = 0; i < nodes.length; i++) {
       nodes[i].classList.toggle('sung', i < index);
       nodes[i].classList.toggle('current', i === index);
       nodes[i].style.setProperty('--d', String(Math.min(4, Math.abs(i - Math.max(0, index)))));
-      if (i !== index) { fill(words[i], words[i].map(() => (i < index ? 1 : 0))); fill(bgWords[i], bgWords[i].map(() => (i < index ? 1 : 0))); }
+      if (i !== index) for (const spans of [words[i], bgWords[i], romans[i], bgRomans[i]]) fill(spans, spans.map(() => (i < index ? 1 : 0)));
     }
     view.current = index;
     if (view.intro) view.intro.classList.toggle('current', index < 0);
@@ -180,8 +187,14 @@ export function updateKaraoke(position, force = false) {
   }
   if (index >= 0) {
     const end = endOf(lines, index);
-    fill(words[index], wordProgress(lines[index], end, position, view.pace));
-    if (lines[index].bg) fill(bgWords[index], wordProgress({ time: lines[index].bg[0].time, text: '', words: lines[index].bg }, end, position));
+    const progress = wordProgress(lines[index], end, position, view.pace);
+    fill(words[index], progress);
+    fillRoman(romans[index], progress, words[index]);
+    if (lines[index].bg) {
+      const backing = wordProgress({ time: lines[index].bg[0].time, text: '', words: lines[index].bg }, end, position);
+      fill(bgWords[index], backing);
+      fillRoman(bgRomans[index], backing, bgWords[index]);
+    }
     // A long break after the line: it settles, and the dots breathe until the next one.
     const next = index + 1 < lines.length ? lines[index + 1].time : Infinity;
     // (a line with no words is an instrumental break itself: from its start)

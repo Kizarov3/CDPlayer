@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { parseLrc, formatLyricsForDisplay, currentLineIndex, wordProgress, lineState, lineWords, syllables, songPace, heardPosition, looksOnlineFor, takesOnline, playbackTimeFor } from '../src/renderer/js/lyrics.js';
+import { parseLrc, formatLyricsForDisplay, currentLineIndex, wordProgress, sharedProgress, lineState, lineWords, syllables, songPace, heardPosition, looksOnlineFor, takesOnline, playbackTimeFor } from '../src/renderer/js/lyrics.js';
 
 test('LRC parsing: multiple stamps per line, headers skipped, sorted by time', () => {
   const lines = parseLrc('[ti:Song]\n[00:12.50]Second\n[00:01.00][01:00]Chorus\nuntimed');
@@ -61,6 +61,15 @@ test("a word with its sounds' times fills slowly along a held one, quickly past 
   // (a sound the voice was already silent for: at once)
   const cut = { time: 10, text: 'x', words: [{ text: 'x', time: 10, end: 11, beats: [11, 11] }] };
   assert.strictEqual(Math.round(wordProgress(cut, 20, 10.5)[0] * 1000) / 1000, 0.167);
+});
+
+test("a line's Latin letters fill as far as the line has, by letters", () => {
+  // Two words of 2 and 6 kana; three Latin words of 4, 4 and 8 letters.
+  assert.deepStrictEqual(sharedProgress([0, 0], [2, 6], [4, 4, 8]), [0, 0, 0]);
+  assert.deepStrictEqual(sharedProgress([1, 0], [2, 6], [4, 4, 8]), [1, 0, 0]); // (a quarter of it)
+  assert.deepStrictEqual(sharedProgress([1, 0.5], [2, 6], [4, 4, 8]), [1, 1, 0.25]); // (five eighths)
+  assert.deepStrictEqual(sharedProgress([1, 1], [2, 6], [4, 4, 8]), [1, 1, 1]);
+  assert.deepStrictEqual(sharedProgress([], [], [3]), [0]);
 });
 
 test('syllables, roughly', () => {

@@ -211,6 +211,16 @@ export function lineWords(line, end, pace = DEFAULT_PACE) {
 }
 
 /**
+ * The same line in other words (its Latin letters): as much of it filled as of the line, by letters. `progress`:
+ * [0…1] per word of the line; `from`, `to`: how many letters each word has, in the line and in the other. → [0…1] per other word.
+ */
+export function sharedProgress(progress, from, to) {
+  const sum = (list) => list.reduce((s, n) => s + n, 0), total = sum(from);
+  let left = total ? (progress.reduce((s, p, i) => s + p * from[i], 0) / total) * sum(to) : 0;
+  return to.map((n) => { const p = n ? Math.max(0, Math.min(1, left / n)) : 1; left -= n; return p; });
+}
+
+/**
  * How far through each word of `line` the singer is at `position`: [0…1] per word of lineWords(line, end, pace). A
  * word with an end fills over its own length and stays full through a pause after it; one without lasts until the
  * next starts — the last until `end` (the next line), at most 1.2 s. A word with `beats`, the times its later sounds
