@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { voiceEnvelope, voiceBreaks, lyricsMove, holdLongWords, holdLastWords, SYNC_RATE } from '../src/renderer/js/lyrics-sync.js';
+import { voiceEnvelope, voiceBreaks, lyricsMove, holdLongWords, holdLastWords, wordFitRequest, linesFittedToWords, SYNC_RATE } from '../src/renderer/js/lyrics-sync.js';
 
 const DT = 0.02;
 // Twenty-four lines of uneven length and gap, as a song has.
@@ -152,4 +152,21 @@ test('a line timed as a whole has its last word held too', () => {
   const [timed] = holdLastWords(whole, [{ time: 10, text: 'one two' }, { time: 30, text: 'next' }]);
   assert.ok(Math.abs(timed.end - 12.6) < 0.4, `to ${timed.end}`);
   assert.deepStrictEqual(timed.words.map((w) => w.text.trim()), ['one', 'two']);
+});
+
+test("what's asked of the word timing: the sung lines, their words, at their own times", () => {
+  const asked = wordFitRequest([{ time: 5, text: '' }, { time: 10, text: 'one two', words: [{ time: 10, text: 'o' }, { time: 11, text: 'ne two' }] }, { time: 20, text: 'three' }]);
+  assert.deepStrictEqual(asked, [{ time: 10, next: 20, words: ['one', 'two'] }, { time: 20, next: 32, words: ['three'] }]);
+});
+
+test('lines take the voice\'s times; one without keeps its own, moved; none starts before the one before it', () => {
+  const lines = [{ time: 2, text: '' }, { time: 10, text: 'one two' }, { time: 20, text: 'kept', end: 21, words: [{ time: 20, end: 21, text: 'kept' }] }, { time: 22, text: 'early' }];
+  const out = linesFittedToWords(lines, [[{ time: 10.4, end: 11, sung: 11 }, { time: 11, end: 12.5 }], null, [{ time: 20.2, end: 23 }]], 0.5);
+  assert.strictEqual(out[0].time, 2.5);
+  assert.strictEqual(out[1].time, 10.4);
+  assert.deepStrictEqual(out[1].words, [{ text: 'one ', time: 10.4, end: 11 }, { text: 'two', time: 11, end: 12.5 }]);
+  assert.strictEqual(out[1].end, 12.5);
+  assert.deepStrictEqual(out[2].words, [{ time: 20.5, end: 21.5, text: 'kept' }]);
+  assert.strictEqual(out[2].end, 21.5);
+  assert.strictEqual(out[3].time, 20.5); // (later than the line before it, whatever it was found at)
 });

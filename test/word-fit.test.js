@@ -1,0 +1,133 @@
+'use strict';
+const test = require('node:test'), assert = require('node:assert'), fs = require('fs'), os = require('os'), path = require('path');
+const { EventEmitter } = require('events');
+const { createWordFit } = require('../src/main/word-fit');
+const { alignPhones, alignSong } = require('../src/main/karaoke/align');
+const { phonesOf, readsAsEnglish, linePhones, BLANK, PHONES } = require('../src/main/karaoke/phones');
+const { fft, resample, melSpectrogram, maskedMono } = require('../src/main/karaoke/dsp');
+
+function fakeWorkers(reply) {
+  const made = [];
+  const createWorker = () => { const w = new EventEmitter(); w.terminate = () => { w.gone = true; }; w.postMessage = (m) => { w.last = m; setImmediate(() => reply(w, m)); }; made.push(w); return w; };
+  return { createWorker, made };
+}
+function setup(reply) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wordfit-')), song = path.join(dir, 'song.flac'), models = path.join(dir, 'models');
+  fs.writeFileSync(song, 'x'); fs.mkdirSync(models);
+  const f = fakeWorkers(reply);
+  return { dir, song, models, ...f, fit: createWordFit({ dir: path.join(dir, 'kept'), modelsDir: models, fs, createWorker: f.createWorker }) };
+}
+const pcm = () => ({ left: new Float32Array(4), right: new Float32Array(4), lines: [], move: 0.5 });
+
+test('only with the models there', () => {
+  const s = setup(() => {});
+  assert.strictEqual(s.fit.available(), false);
+  for (const m of ['vocals.int8.onnx', 'accompaniment.int8.onnx', 'aligner.onnx']) fs.writeFileSync(path.join(s.models, m), '');
+  assert.strictEqual(s.fit.available(), true);
+});
+test('a song is timed once, and again only if its file or lyrics change', async () => {
+  const s = setup((w, m) => w.emit('message', { id: m.id, words: [[{ time: 1, end: 2 }]] }));
+  assert.strictEqual(s.fit.get(s.song, 'la'), undefined);
+  const out = await s.fit.run(s.song, 'la', pcm());
+  assert.deepStrictEqual(out, { move: 0.5, words: [[{ time: 1, end: 2 }]] });
+  assert.deepStrictEqual(s.fit.get(s.song, 'la'), out);
+  assert.strictEqual(s.fit.get(s.song, 'other'), undefined);
+  fs.writeFileSync(s.song, 'changed');
+  assert.strictEqual(s.fit.get(s.song, 'la'), undefined);
+});
+test("a song its words can't be read for is remembered as such", async () => {
+  const s = setup((w, m) => w.emit('message', { id: m.id, words: null }));
+  await s.fit.run(s.song, 'la', pcm());
+  assert.deepStrictEqual(s.fit.get(s.song, 'la'), { move: 0.5, words: null });
+});
+test('the newest song takes the place of one waiting, and the worker goes when none is left', async () => {
+  const s = setup((w, m) => w.emit('message', { id: m.id, words: [] }));
+  const first = s.fit.run(s.song, 'a', pcm()), second = s.fit.run(s.song, 'b', pcm()), third = s.fit.run(s.song, 'c', pcm());
+  assert.deepStrictEqual(await first, { move: 0.5, words: [] });
+  assert.strictEqual(await second, undefined);
+  assert.deepStrictEqual(await third, { move: 0.5, words: [] });
+  assert.ok(s.made.every((w) => w.gone));
+});
+test('a failure is told, is not kept, and the next song still goes', async () => {
+  let n = 0;
+  const s = setup((w, m) => (n++ ? w.emit('message', { id: m.id, words: [] }) : w.emit('message', { id: m.id, error: 'no' })));
+  await assert.rejects(s.fit.run(s.song, 'a', pcm()), /no/);
+  assert.strictEqual(s.fit.get(s.song, 'a'), undefined);
+  assert.deepStrictEqual(await s.fit.run(s.song, 'b', pcm()), { move: 0.5, words: [] });
+});
+
+test('words read from the dictionary, an unknown one by its letters, swear words unstarred, punctuation as nothing', () => {
+  assert.deepStrictEqual(phonesOf('Rain'), ['ɹ', 'eɪ', 'n']);
+  assert.deepStrictEqual(phonesOf("Fallin'"), phonesOf('falling'));
+  assert.deepStrictEqual(phonesOf('f**king'), phonesOf('fucking'));
+  assert.deepStrictEqual(phonesOf('card'), ['k', 'ɑːɹ', 'd']);
+  assert.deepStrictEqual(phonesOf(','), []);
+  assert.ok(phonesOf('zzgrblt').length > 2);
+  assert.ok(['Rain', 'runneth', 'zzgrblt', 'boy'].flatMap(phonesOf).every((p) => PHONES.includes(p)));
+});
+test('a song in another language or run together is not taken for English', () => {
+  assert.strictEqual(readsAsEnglish([['I', 'think', "it's", 'gonna', 'rain']]), true);
+  assert.strictEqual(readsAsEnglish([['Я', 'иду', 'домой', 'сейчас']]), false);
+  assert.strictEqual(readsAsEnglish([['Thehellishumongous', 'thedevil\'samongus', 'Whatdoesanybodydowith', 'freedom']]), false);
+});
+test('a line as phones, spaces between its words, a word without any skipped', () => {
+  const { ids, spans } = linePhones(['we', ',', 'go']);
+  assert.deepStrictEqual(spans.map((s) => s.word), [0, 2]);
+  assert.strictEqual(ids[spans[0].last + 1], PHONES.indexOf(' '));
+});
+test('phones land where the frames say they are, a held one for all its frames', () => {
+  const classes = 72, plan = [BLANK, BLANK, 3, 3, 3, 3, 3, BLANK, 7, 7, 3, BLANK], song = new Float32Array(plan.length * classes).fill(-10);
+  plan.forEach((c, t) => { song[t * classes + c] = 0; });
+  assert.deepStrictEqual(alignPhones(song, classes, 0, plan.length, [3, 7, 3]), [{ first: 2, last: 6 }, { first: 8, last: 9 }, { first: 10, last: 10 }]);
+});
+test('too few frames for the phones: none, and it asks only of the frames given', () => {
+  const song = new Float32Array(6 * 72);
+  assert.strictEqual(alignPhones(song, 72, 0, 3, [1, 2, 3]), null);
+  assert.ok(alignPhones(song, 72, 1, 6, [1, 2]));
+});
+
+test('a whole song in one path: phones found where the frames say, within their reach', () => {
+  const classes = 72, plan = [BLANK, 3, 3, 3, BLANK, BLANK, 7, 7, BLANK, 5, BLANK, BLANK], song = new Float32Array(plan.length * classes).fill(-10);
+  plan.forEach((c, t) => { song[t * classes + c] = 0; });
+  const all = [[0, 12], [0, 12], [0, 12]];
+  assert.deepStrictEqual(alignSong(song, classes, plan.length, [3, 7, 5], all), [{ first: 1, last: 3 }, { first: 6, last: 7 }, { first: 9, last: 9 }]);
+});
+test('a phone kept to its reach, however the frames look, and none found out of order', () => {
+  const classes = 72, plan = [BLANK, 3, 3, 3, BLANK, BLANK, 7, 7, BLANK, 5, BLANK, BLANK], song = new Float32Array(plan.length * classes).fill(-10);
+  plan.forEach((c, t) => { song[t * classes + c] = 0; });
+  const out = alignSong(song, classes, plan.length, [3, 7, 5], [[5, 9], [5, 9], [5, 11]]);
+  assert.ok(out[0].first >= 5 && out[0].last < 9);
+  assert.ok(out[0].last < out[1].first && out[1].last < out[2].first);
+});
+test("phones that can't fit in their reach: none, and the song isn't taken to have been timed", () => {
+  const song = new Float32Array(12 * 72);
+  assert.strictEqual(alignSong(song, 72, 12, [1, 2, 3], [[0, 1], [0, 1], [0, 1]]), null);
+  assert.strictEqual(alignSong(song, 72, 3, [1, 2, 3], [[0, 3], [0, 3], [0, 3]]), null);
+});
+
+test('a transform there and back', () => {
+  const re = Float64Array.from({ length: 64 }, (_, i) => Math.sin(i)), im = new Float64Array(64), was = Array.from(re);
+  fft(re, im); fft(re, im, true);
+  re.forEach((v, i) => assert.ok(Math.abs(v - was[i]) < 1e-9));
+});
+test('a tone keeps its pitch and level through a change of rate', () => {
+  const tone = (rate, n) => Float32Array.from({ length: n }, (_, i) => Math.sin((2 * Math.PI * 440 * i) / rate));
+  const out = resample(tone(44100, 44100), 44100, 16000), want = tone(16000, 16000);
+  assert.ok(Math.abs(out.length - 16000) <= 1);
+  for (let i = 200; i < 15800; i += 37) assert.ok(Math.abs(out[i] - want[i]) < 0.01, `at ${i}: ${out[i]} vs ${want[i]}`);
+});
+test('the spectrogram: as many bands and frames as asked, the tone in its band', () => {
+  const x = Float32Array.from({ length: 22050 }, (_, i) => Math.sin((2 * Math.PI * 1000 * i) / 22050)), { data, T } = melSpectrogram(x);
+  assert.strictEqual(T, 1 + Math.floor(22050 / 256));
+  assert.strictEqual(data.length, 128 * T);
+  let top = 0; for (let m = 0; m < 128; m++) if (data[m * T + 40] > data[top * T + 40]) top = m;
+  assert.ok(top > 25 && top < 50, `band ${top}`);
+});
+test('all let through by the mask, a song comes back as itself; nothing let through, as silence', async () => {
+  const n = 40000, left = Float32Array.from({ length: n }, (_, i) => Math.sin(i * 0.03)), right = Float32Array.from({ length: n }, (_, i) => Math.sin(i * 0.05));
+  const spec = { size: 1024, hop: 256, bins: 512, split: 32 };
+  const whole = await maskedMono(left, right, spec, (m) => [m[0].map(() => 1), m[1].map(() => 1)]);
+  for (let i = 2000; i < n - 2000; i += 97) assert.ok(Math.abs(whole[i] - (left[i] + right[i]) / 2) < 0.02, `at ${i}`);
+  const none = await maskedMono(left, right, spec, (m) => [m[0].map(() => 0), m[1].map(() => 0)]);
+  assert.ok(none.every((v) => v === 0));
+});

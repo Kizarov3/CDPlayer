@@ -1,4 +1,5 @@
 'use strict';
+const { Worker } = require('worker_threads');
 const { app, BrowserWindow, ipcMain, dialog, protocol, screen, shell, Menu, nativeTheme, components, clipboard, ClipboardItem, nativeImage, powerSaveBlocker } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -382,6 +383,18 @@ const automixCache = require('./automix-cache').createAutomixCache({
 });
 handle('automix:get', (files) => automixCache.get(Array.isArray(files) ? files.filter((f) => typeof f === 'string') : []));
 handle('automix:put', (file, edges) => { if (typeof file === 'string' && (edges === null || typeof edges === 'object')) automixCache.put(file, edges); });
+// Karaoke's words timed by the voice in the file (word-fit.js).
+const wordFit = require('./word-fit').createWordFit({
+  dir: path.join(store.dataDir(), 'karaoke-words'),
+  modelsDir: path.join(__dirname, 'karaoke', 'models').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`),
+  fs,
+  createWorker: () => new Worker(path.join(__dirname, 'karaoke', 'worker.js').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`)),
+});
+handle('wordFit:get', (file, lyrics) => (typeof file === 'string' && typeof lyrics === 'string' && wordFit.available() ? wordFit.get(file, lyrics) ?? 'none' : null));
+handle('wordFit:run', (file, lyrics, song) => {
+  if (typeof file !== 'string' || typeof lyrics !== 'string' || !song || !(song.left instanceof Float32Array) || !(song.right instanceof Float32Array) || !Array.isArray(song.lines)) return null;
+  return wordFit.run(file, lyrics, song);
+});
 // The now-playing card (share-card.js), onto the clipboard as a picture.
 handle('clipboard:image', (png) => clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]));
 // SHELFIE (shelfie.js): a part of the window as it is on screen — the shelf's rows, a window's height at a time.

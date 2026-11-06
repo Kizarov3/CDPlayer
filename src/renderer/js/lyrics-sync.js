@@ -220,6 +220,42 @@ export function holdLastWords(centre, lines, move = 0, pace = songPace(lines)) {
 }
 
 /**
+ * What's asked of the word timing (main's word-fit): `lines`' sung ones, with their words, at their own times. (Not moved
+ * first by lyricsMove: its small errors cost more here, against real word stamps, than the lines' own times do.)
+ */
+export function wordFitRequest(lines) {
+  const out = [];
+  lines.forEach((line, n) => {
+    if (!line.text) return;
+    const next = n + 1 < lines.length ? lines[n + 1].time : line.time + 12;
+    out.push({ time: line.time, next, words: lineWords({ time: line.time, text: line.text }, next).map((w) => w.text.trim()) });
+  });
+  return out;
+}
+/**
+ * `lines` with what came back for wordFitRequest's: each line timed by the voice takes its words' times (and starts
+ * with its first word, not before the line before it); one that didn't get them keeps its own, moved by `move`, as all
+ * these are in the file's time. → the lines (none then needs a whole-song move).
+ */
+export function linesFittedToWords(lines, words, move = 0) {
+  let k = 0, last = -Infinity;
+  return lines.map((line, n) => {
+    const fitted = line.text ? words[k++] : null;
+    let out;
+    if (fitted) {
+      const next = n + 1 < lines.length ? lines[n + 1].time : line.time + 12;
+      const parts = lineWords({ time: line.time, text: line.text }, next);
+      out = { ...line, time: Math.max(fitted[0].time, last), end: fitted[fitted.length - 1].end, words: parts.map((w, i) => ({ text: w.text, time: fitted[i].time, end: fitted[i].end })) };
+    } else {
+      const shift = (w) => ({ ...w, time: w.time + move, ...(w.end !== undefined ? { end: w.end + move } : {}) });
+      out = { ...line, time: Math.max(line.time + move, last), ...(line.end !== undefined ? { end: line.end + move } : {}), ...(line.words ? { words: line.words.map(shift) } : {}), ...(line.bg ? { bg: line.bg.map(shift) } : {}) };
+    }
+    last = out.time;
+    return out;
+  });
+}
+
+/**
  * How far to move `lines` (parseLrc's) to lay them over `envelope` (voiceEnvelope's), + later: seconds, or 0 when it
  * isn't sure — the voice has to stand out clearly at one place, and at least two of the song's three thirds have to
  * say the same on their own (a song whose parts disagree isn't simply moved) — or it would hardly matter, or be so

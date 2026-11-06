@@ -21,7 +21,8 @@
   },
   "dependencies": {
     "music-metadata": "^11.16.1",
-    "node-taglib-sharp": "^6.0.3"
+    "node-taglib-sharp": "^6.0.3",
+    "onnxruntime-web": "^1.31.1"
   },
   "devDependencies": {
     "acorn": "^8.18.0",
@@ -45,7 +46,16 @@
     "afterSign": "build/vmp-sign-after-sign.js",
     "files": [
       "src/**/*",
-      "package.json"
+      "package.json",
+      "!node_modules/onnxruntime-web/lib/**",
+      "!node_modules/onnxruntime-web/types/**",
+      "!node_modules/onnxruntime-web/**/*.map",
+      "!node_modules/onnxruntime-web/**/*.d.ts",
+      "!node_modules/onnxruntime-web/dist/ort.{all,webgl,webgpu,wasm,bundle,training}*",
+      "!node_modules/onnxruntime-web/dist/ort.m*",
+      "!node_modules/onnxruntime-web/dist/ort.b*",
+      "!node_modules/onnxruntime-web/dist/ort.js",
+      "!node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.{asyncify,jsep,jspi}*"
     ],
     "fileAssociations": [
       {
@@ -135,7 +145,10 @@
       "src/main/decoders/**",
       "src/main/win-cd/**",
       "src/main/win-rate/**",
-      "src/main/encoders/**"
+      "src/main/encoders/**",
+      "src/main/karaoke/**",
+      "node_modules/onnxruntime-web/**",
+      "node_modules/onnxruntime-common/**"
     ],
     "electronLanguages": [
       "en",

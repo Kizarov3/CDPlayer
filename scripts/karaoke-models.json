@@ -1,0 +1,5 @@
+{
+  "vocals.int8.onnx": "6e9721864c0c1a6d86eaae92de71637b2daeb3df769c9c536053b46be8dd10aa",
+  "accompaniment.int8.onnx": "53a96a0d1520b45b8f3cc53262e3725defb686fc3a17490932f050721f4583f1",
+  "aligner.onnx": "73a244b0d3798abc62a37c6fe2e7349cc68a1db3fc4ce296a691600a51145591"
+}

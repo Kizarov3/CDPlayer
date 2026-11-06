@@ -40,7 +40,7 @@ import { note as noteForReport, buildReport } from './report.js';
 import { phoneTagTitle, phoneJoined } from './remote-settings.js';
 import { drawShelfie, cutRows, firstCrop } from './shelfie.js';
 import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged, playSimilarTo, setWanted, shelfTakeAlong, takeShelfie } from './shelf.js';
-import { voiceEnvelope, voiceBreaks, lyricsMove, holdLongWords, holdLastWords, SYNC_RATE } from './lyrics-sync.js';
+import { voiceEnvelope, voiceBreaks, lyricsMove, holdLongWords, holdLastWords, wordFitRequest, linesFittedToWords, SYNC_RATE } from './lyrics-sync.js';
 import { retimeKaraoke, openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke, karaokeCover } from './karaoke.js';
 import { discChange, discOfDetails } from './box-set.js';
 import { SpotifySession, SpotifyTrackElement, isSpotifyUri, spotifyUpcoming, loadSpotifySdk } from './spotify-deck.js';
@@ -1315,26 +1315,49 @@ async function fitLyricsToVoice() {
   const deck = engine.deck;
   if (!lines) { fitted.key = null; return; }
   if (!deck || deck.start || deck.end !== null || !/^(\/|[A-Za-z]:[\\/])/.test(path) || !engine.duration || !(engine.duration < LONGEST_TO_FIT)) return;
-  let fit = fittedMoves.get(key);
-  if (!fit) {
-    fit = { ms: 0, lines: null };
-    try {
-      const data = await (await fetch(cdp.mediaUrl(path))).arrayBuffer();
-      if (fitted.key !== key) return;
-      const decoded = await new OfflineAudioContext(2, 1, SYNC_RATE).decodeAudioData(data);
-      if (decoded.duration >= LONGEST_TO_FIT) throw new Error('longer than its tags said');
-      const left = decoded.getChannelData(0), right = decoded.numberOfChannels > 1 ? decoded.getChannelData(1) : left;
-      const envelope = await voiceEnvelope(left, right, () => new Promise((go) => { setTimeout(go); }));
-      const move = lyricsMove(envelope, lines), held = holdLongWords(voiceBreaks(envelope), lines, move) || lines;
-      fit = { ms: Math.round(move * 1000), lines: holdLastWords(envelope.centre, held, move) || (held === lines ? null : held) };
-    } catch { /* (it can't be read this way: as they are) */ }
-    fittedMoves.set(key, fit);
-    if (fittedMoves.size > 200) fittedMoves.delete(fittedMoves.keys().next().value);
-  }
+  const apply = (fit) => { fitted.ms = fit.ms; retimeKaraoke(lyrics, fit.lines); };
+  const keep = (fit) => { fittedMoves.set(key, fit); if (fittedMoves.size > 200) fittedMoves.delete(fittedMoves.keys().next().value); };
+  const known = fittedMoves.get(key);
+  if (known) { apply(known); return; }
+  // Timed by the voice before, in an earlier session: kept. (Hand-timed words are left as they are: better than this.)
+  const asked = state.lyricsSource === 'Unison' ? null : await cdp.wordFit.get(path, lyrics).catch(() => null);
   if (fitted.key !== key) return;
-  fitted.ms = fit.ms;
-  retimeKaraoke(lyrics, fit.lines);
+  if (asked && asked !== 'none' && asked.words) {
+    const fit = { ms: 0, lines: linesFittedToWords(lines, asked.words, asked.move) };
+    keep(fit); apply(fit);
+    return;
+  }
+  let fit = { ms: 0, lines: null }, data = null, move = 0;
+  try {
+    data = await (await fetch(cdp.mediaUrl(path))).arrayBuffer();
+    if (fitted.key !== key) return;
+    const decoded = await new OfflineAudioContext(2, 1, SYNC_RATE).decodeAudioData(data.slice(0));
+    if (decoded.duration >= LONGEST_TO_FIT) throw new Error('longer than its tags said');
+    const left = decoded.getChannelData(0), right = decoded.numberOfChannels > 1 ? decoded.getChannelData(1) : left;
+    const envelope = await voiceEnvelope(left, right, () => new Promise((go) => { setTimeout(go); }));
+    move = lyricsMove(envelope, lines);
+    const held = holdLongWords(voiceBreaks(envelope), lines, move) || lines;
+    fit = { ms: Math.round(move * 1000), lines: holdLastWords(envelope.centre, held, move) || (held === lines ? null : held) };
+  } catch { data = null; /* (it can't be read this way: as they are) */ }
+  keep(fit);
+  if (fitted.key !== key) return;
+  apply(fit);
   if (fit.ms) setStatus(t('WORDS MOVED TO THE VOICE: {n} S', { n: `${fit.ms > 0 ? '+' : '−'}${(Math.abs(fit.ms) / 1000).toFixed(2)}` }));
+  // Then, not seen before and the models there: each word timed by the voice itself, in the background.
+  if (asked !== 'none' || !data) return;
+  try {
+    const decoded = await new OfflineAudioContext(2, 1, 44100).decodeAudioData(data);
+    if (fitted.key !== key) return;
+    const left = decoded.getChannelData(0), right = decoded.numberOfChannels > 1 ? decoded.getChannelData(1) : left;
+    setStatus(t('TIMING THE WORDS TO THE VOICE…'));
+    const done = await cdp.wordFit.run(path, lyrics, { left, right, lines: wordFitRequest(lines), move });
+    if (!done || !done.words) return;
+    const best = { ms: 0, lines: linesFittedToWords(lines, done.words, done.move) };
+    keep(best);
+    if (fitted.key !== key) return;
+    apply(best);
+    setStatus(t('WORDS TIMED TO THE VOICE'));
+  } catch { /* (the words stay as the fit above left them) */ }
 }
 // The lyrics for the loaded song arrived or went: the LYRICS and KARAOKE buttons, and anything showing them, follow.
 function lyricsChanged() {
