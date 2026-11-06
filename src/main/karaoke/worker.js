@@ -4,6 +4,7 @@ const { parentPort, workerData } = require('worker_threads');
 const path = require('path'), fs = require('fs');
 const ort = require('onnxruntime-web');
 const { fitWords, SPLEETER } = require('./fit-words');
+const { readsAsEnglish } = require('./phones');
 
 const THREADS = Math.max(1, Math.min(4, (workerData && workerData.threads) || 4));
 ort.env.wasm.numThreads = THREADS;
@@ -40,8 +41,9 @@ async function phoneProbabilities(mel, T) {
   }
   return { data, frames, classes };
 }
-parentPort.on('message', async ({ id, left, right, lines }) => {
+parentPort.on('message', async ({ id, left, right, lines, onlyRead }) => {
   try {
+    if (onlyRead) { parentPort.postMessage({ id, reads: readsAsEnglish(lines.map((l) => l.words)) }); return; }
     const words = await fitWords({ left, right }, lines, { voiceMask, phoneProbabilities }, (progress) => parentPort.postMessage({ id, progress }));
     parentPort.postMessage({ id, words });
   } catch (e) {

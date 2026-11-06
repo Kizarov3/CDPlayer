@@ -129,7 +129,7 @@ contextBridge.exposeInMainWorld('cdp', {
   soundCheck: { get: invoke('soundcheck:get'), put: invoke('soundcheck:put'), album: invoke('soundcheck:album') },
   hidden: { get: invoke('hidden:get'), put: invoke('hidden:put'), update: invoke('hidden:update'), name: invoke('hidden:name') },
   automix: { get: invoke('automix:get'), put: invoke('automix:put') },
-  wordFit: { get: invoke('wordFit:get'), run: invoke('wordFit:run') },
+  wordFit: { get: invoke('wordFit:get'), reads: invoke('wordFit:reads'), run: invoke('wordFit:run') },
   romanizeLyrics: invoke('lyrics:romanize'),
   onShelfProgress: on('shelf-progress'),
   onLibraryChanged: on('library-changed'),

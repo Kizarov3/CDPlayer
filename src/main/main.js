@@ -398,6 +398,7 @@ const wordFit = require('./word-fit').createWordFit({
   createWorker: () => new Worker(path.join(__dirname, 'karaoke', 'worker.js').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`)),
 });
 handle('wordFit:get', (file, lyrics) => (typeof file === 'string' && typeof lyrics === 'string' && wordFit.available() ? wordFit.get(file, lyrics) ?? 'none' : null));
+handle('wordFit:reads', (file, lyrics, lines, move) => (typeof file === 'string' && typeof lyrics === 'string' && Array.isArray(lines) && Number.isFinite(move) ? wordFit.reads(file, lyrics, lines, move) : false));
 handle('wordFit:run', (file, lyrics, song) => {
   if (typeof file !== 'string' || typeof lyrics !== 'string' || !song || !(song.left instanceof Float32Array) || !(song.right instanceof Float32Array) || !Array.isArray(song.lines)) return null;
   return wordFit.run(file, lyrics, song);

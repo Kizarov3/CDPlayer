@@ -143,3 +143,18 @@ test("a word's sounds over its frames: the held note goes to the vowel, even whe
   assert.strictEqual(soundsInside(song, classes, 0, 2, own), null); // (fewer frames than sounds)
   assert.strictEqual(soundsInside(song, classes, 0, frames, own.slice(0, 1)), null); // (one sound: nothing to share)
 });
+
+test("words that can't be read are found out before the song is decoded, and remembered", async () => {
+  const s = setup((w, m) => w.emit('message', { id: m.id, reads: false }));
+  assert.strictEqual(await s.fit.reads(s.song, 'la', [{ words: ['世界'] }], 0.5), false);
+  assert.deepStrictEqual(s.fit.get(s.song, 'la'), { move: 0.5, words: null });
+  assert.strictEqual(s.made[0].gone, true); // (its memory back)
+  assert.strictEqual(s.made[0].last.onlyRead, true);
+});
+test('words that can be read, or a worker that fails to say: on to the timing, nothing kept', async () => {
+  const s = setup((w, m) => w.emit('message', { id: m.id, reads: true }));
+  assert.strictEqual(await s.fit.reads(s.song, 'la', [{ words: ['rain'] }], 0), true);
+  assert.strictEqual(s.fit.get(s.song, 'la'), undefined);
+  const lost = setup((w) => w.emit('error', new Error('gone')));
+  assert.strictEqual(await lost.fit.reads(lost.song, 'la', [], 0), true);
+});

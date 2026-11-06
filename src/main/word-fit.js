@@ -13,6 +13,9 @@ function createWordFit({ dir, modelsDir, fs, createWorker }) {
   const stampOf = (file) => { try { const st = fs.statSync(file); return `${st.size}:${Math.round(st.mtimeMs)}`; } catch { return null; } };
   let waiting = null, going = false, worker = null, nextId = 1;
 
+  function keep(file, lyrics, out) {
+    try { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(fileOf(file, lyrics), JSON.stringify({ stamp: stampOf(file), ...out })); } catch { /* (it's just done again next time) */ }
+  }
   function work({ left, right, lines }) {
     return new Promise((resolve, reject) => {
       const id = nextId++, w = worker || (worker = createWorker());
@@ -47,13 +50,33 @@ function createWordFit({ dir, modelsDir, fs, createWorker }) {
         return kept.stamp === stampOf(file) ? { move: kept.move, words: kept.words } : undefined;
       } catch { return undefined; }
     },
+    /**
+     * Whether these lines can be timed at all, asked before the song is decoded for them. → false (and kept) if not: their
+     * words don't read as English. (If it can't be told, true: the timing itself finds out.)
+     */
+    reads(file, lyrics, lines, move) {
+      return new Promise((resolve) => {
+        const id = nextId++, w = worker || (worker = createWorker());
+        const done = () => { w.off('message', onMessage); w.off('error', onLost); w.off('exit', onLost); };
+        const onMessage = (m) => {
+          if (m.id !== id) return;
+          done();
+          if (m.reads === false) keep(file, lyrics, { move, words: null });
+          if (!going && !waiting && worker === w) { worker = null; w.terminate(); }
+          resolve(m.reads !== false);
+        };
+        const onLost = () => { done(); if (worker === w) worker = null; resolve(true); };
+        w.on('message', onMessage); w.on('error', onLost); w.on('exit', onLost);
+        w.postMessage({ id, lines, onlyRead: true });
+      });
+    },
     /** `song`: { left, right, lines, move } → { move, words } (kept), or undefined when another song took its place. */
     run(file, lyrics, song) {
       return new Promise((resolve, reject) => {
         if (waiting) waiting.finish.dropped();
         const finish = (words) => {
           const out = { move: song.move, words: words || null };
-          try { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(fileOf(file, lyrics), JSON.stringify({ stamp: stampOf(file), ...out })); } catch { /* (it's just done again next time) */ }
+          keep(file, lyrics, out);
           resolve(out);
         };
         finish.dropped = () => resolve(undefined);

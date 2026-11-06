@@ -1347,6 +1347,7 @@ async function fitLyricsToVoice() {
   // Then, not seen before and the models there: each word timed by the voice itself, in the background.
   if (asked !== 'none' || !data) return;
   try {
+    if (!await cdp.wordFit.reads(path, lyrics, wordFitRequest(lines), move) || fitted.key !== key) return;
     const decoded = await new OfflineAudioContext(2, 1, 44100).decodeAudioData(data);
     if (fitted.key !== key) return;
     const left = decoded.getChannelData(0), right = decoded.numberOfChannels > 1 ? decoded.getChannelData(1) : left;
