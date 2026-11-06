@@ -766,7 +766,7 @@ function buildLyrics(app) {
   const lines = app.lyricsLines();
   let body;
   if (!lines.length) {
-    body = el('div', { class: 'scroll' }, el('div', { class: 'lyrics-plain' }, formatLyricsForDisplay(app.state.lyrics).split('\n').map((l) => (romanFor(l) ? `${l}\n${romanFor(l)}` : l)).join('\n')));
+    body = el('div', { class: 'scroll' }, el('div', { class: 'lyrics-plain' }, formatLyricsForDisplay(app.state.lyrics).split('\n').map((l) => el('div', {}, l || '\u00a0', romanFor(l) ? el('span', { class: 'roman-line' }, romanFor(l)) : null))));
     lyricsView = null;
   } else {
     const nodes = lines.map((l) => el('div', { class: 'lyrics-line', onClick: () => app.seekToLyric(l.time) }, l.text || ' ', romanFor(l.text) ? el('span', { class: 'roman-line' }, romanFor(l.text)) : null));

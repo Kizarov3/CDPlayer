@@ -11,6 +11,7 @@ const REACH = 2.5, REACH_LATER = 0.2; // seconds a line's words may be found bef
 const BEFORE = 0.3, AFTER = 0.2; // seconds either side of a line's own time it's looked for in
 const LEVEL_HOP = 320, LEVEL_DT = LEVEL_HOP / VOICE_RATE, AROUND = 3, SILENT_FOR = 10, UNDER = 18;
 
+const LEAST_SOUND = 0.12; // seconds
 const SPLEETER = { size: 4096, hop: 1024, bins: 1024, split: 512 };
 
 // The voice's level per 20 ms, and when it falls silent.
@@ -30,6 +31,14 @@ function voiceStops(voice) {
     }
     return limit;
   };
+}
+
+// A word's sounds, each given a little time to fill over: its first and last not a blink against a long held one between.
+function spacedBeats(start, end, beats) {
+  const least = Math.min(LEAST_SOUND, (end - start) / (beats.length + 1)), out = beats.slice();
+  for (let k = 0; k < out.length; k++) out[k] = Math.max(out[k], (k ? out[k - 1] : start) + least);
+  for (let k = out.length - 1; k >= 0; k--) out[k] = Math.min(out[k], (k + 1 < out.length ? out[k + 1] : end) - least);
+  return out;
 }
 
 /**
@@ -83,7 +92,7 @@ async function fitWords(song, lines, models, onProgress = () => {}) {
       const stop = Math.min(limit, stops(start + 0.08, limit));
       const end = Math.max(start + 0.08, stop);
       const begins = soundsInside(all, classes, placed[s.first].first, Math.min(total, Math.ceil(end / SECONDS_PER_FRAME)), parsed[i].ids.slice(s.first, s.last + 1));
-      words[s.word] = { time: start, end, beats: begins ? begins.map((f) => Math.min(end, f * SECONDS_PER_FRAME)) : [] };
+      words[s.word] = { time: start, end, beats: begins ? spacedBeats(start, end, begins.map((f) => f * SECONDS_PER_FRAME)) : [] };
     });
     // (punctuation of its own: over at once, at the word before it, or the first after it)
     let last = null;
@@ -94,4 +103,4 @@ async function fitWords(song, lines, models, onProgress = () => {}) {
   onProgress(1);
   return out;
 }
-module.exports = { fitWords, SONG_RATE, SPLEETER };
+module.exports = { fitWords, spacedBeats, SONG_RATE, SPLEETER };

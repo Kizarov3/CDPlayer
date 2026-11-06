@@ -158,3 +158,11 @@ test('words that can be read, or a worker that fails to say: on to the timing, n
   const lost = setup((w) => w.emit('error', new Error('gone')));
   assert.strictEqual(await lost.fit.reads(lost.song, 'la', [], 0), true);
 });
+
+test("a word's sounds each get time to fill over, as far as the word has it; none past its end", () => {
+  const { spacedBeats } = require('../src/main/karaoke/fit-words');
+  const round = (l) => l.map((x) => Math.round(x * 100) / 100);
+  assert.deepStrictEqual(round(spacedBeats(10, 14, [10.03, 13.99])), [10.12, 13.88]); // (a held vowel between)
+  assert.deepStrictEqual(round(spacedBeats(10, 10.3, [10.01, 10.02])), [10.1, 10.2]); // (a short word: evenly)
+  assert.deepStrictEqual(round(spacedBeats(10, 14, [11, 12])), [11, 12]); // (with room already: as they were)
+});

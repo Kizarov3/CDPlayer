@@ -24,6 +24,7 @@
     "music-metadata": "^11.16.1",
     "node-taglib-sharp": "^6.0.3",
     "onnxruntime-web": "^1.31.1",
+    "opencc-js": "1.4.2",
     "pinyin-pro": "3.29.5"
   },
   "devDependencies": {
@@ -49,6 +50,9 @@
     "files": [
       "src/**/*",
       "package.json",
+      "!node_modules/opencc-js/dist/esm/**",
+      "!node_modules/opencc-js/dist/esm-lib/**",
+      "!node_modules/opencc-js/dist/umd/{cn2t,full}.js",
       "!node_modules/kuromoji/test/**",
       "!node_modules/kuromoji/demo/**",
       "!node_modules/onnxruntime-web/lib/**",
@@ -156,6 +160,7 @@
       "node_modules/doublearray/**",
       "node_modules/zlibjs/**",
       "node_modules/pinyin-pro/**",
+      "node_modules/opencc-js/**",
       "node_modules/onnxruntime-web/**",
       "node_modules/onnxruntime-common/**"
     ],

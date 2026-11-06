@@ -10,7 +10,7 @@ import { Particles } from './particles.js';
 import { anim, EASE, el, pill, roundButton, modeButton, Slider, fitText, pulse, followPlaying, smooth, pathFrames, swingLid } from './widgets.js';
 import { openBooklet, closeBooklet, isBookletOpen } from './booklet.js';
 import { setLookLyrics, showLookSongs, followLookLyrics } from './look-lyrics.js';
-import { needsRoman, prepareRoman, romanOn, setRomanOn } from './romanize.js';
+import { needsRoman, prepareRoman, romanOn, setRomanOn, backingText } from './romanize.js';
 import { VuMeters } from './vu-meters.js';
 import { withoutHeader, parseLrc, formatLyricsForDisplay, currentLineIndex, heardPosition, playbackTimeFor, looksOnlineFor, takesOnline } from './lyrics.js';
 import { shortcutKey } from './keys.js';
@@ -1377,7 +1377,7 @@ async function showRoman() {
   button.hidden = !needsRoman(raw);
   button.classList.toggle('lit', romanOn());
   if (!raw) return;
-  const synced = parseLrc(raw).map((l) => l.text), texts = synced.length ? synced : formatLyricsForDisplay(raw).split('\n');
+  const parsed = parseLrc(raw), texts = parsed.length ? parsed.flatMap((l) => [l.text, backingText(l)]) : formatLyricsForDisplay(raw).split('\n');
   if (await prepareRoman(raw, texts, (asked) => cdp.romanizeLyrics(asked)) && state.lyrics === raw) redrawRoman();
 }
 function redrawRoman() {

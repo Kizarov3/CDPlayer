@@ -8,7 +8,7 @@
 import { el, anim, EASE } from './widgets.js';
 import { parseLrc, lineState, lineWords, wordProgress, songPace } from './lyrics.js';
 import { t } from './i18n.js';
-import { romanFor } from './romanize.js';
+import { romanFor, backingText } from './romanize.js';
 
 const $ = (id) => document.getElementById(id);
 let view = null; // { lines, nodes, words: [[span]], current, lyrics }
@@ -63,6 +63,7 @@ export function redrawKaraoke() { if (view && view.nodes && canKaraoke(view.app.
 const HELD = 1; // seconds: a word sung longer than this glows
 const REST = 3; // seconds: a break longer than this between lines shows the dots counting in
 const SOON = 0.8; // seconds: the next line comes up this long before it's sung
+const SIZES_SETTLE = 300; // ms: a line's change of size is over (styles.css: 260)
 
 const dots = () => el('div', { class: 'k-dots' }, el('i'), el('i'), el('i'));
 // The dots through a break: lit one by one as it passes (`frac` 0…1), the last moment all three going.
@@ -127,6 +128,7 @@ function rebuild() {
       line.text ? el('div', { class: 'k-main' }, wholeWords(words)) : '♪',
       romanFor(line.text) ? el('div', { class: 'k-roman' }, romanFor(line.text)) : null,
       bg.length ? el('div', { class: 'k-bg' }, wholeWords(bg)) : null,
+      romanFor(backingText(line)) ? el('div', { class: 'k-roman' }, romanFor(backingText(line))) : null,
       dots());
   });
   view.current = -2;
@@ -137,6 +139,13 @@ function rebuild() {
   $('karaoke').classList.toggle('calm', !anim.enabled);
   $('karaoke-title').textContent = d ? [d.title, d.artist].filter(Boolean).join(' · ') : '';
   updateKaraoke(app.lyricsPosition(), true);
+}
+
+// The current line a little above the middle, with the next ones coming up beneath it; one too tall for that, from its top.
+function centreOn(target) {
+  const box = $('karaoke-lines'), height = box.parentElement.clientHeight;
+  const offset = target.offsetHeight > height * 0.7 ? height * 0.06 - target.offsetTop : height * 0.42 - (target.offsetTop + target.offsetHeight / 2);
+  box.style.transform = `translateY(${offset}px)`;
 }
 
 const fill = (spans, progress) => progress.forEach((p, i) => {
@@ -162,10 +171,11 @@ export function updateKaraoke(position, force = false) {
     if (view.intro) view.intro.classList.toggle('current', index < 0);
     const box = $('karaoke-lines'), target = index < 0 && view.intro ? view.intro : nodes[Math.max(0, index)];
     if (target) {
-      // Keep the current line a little above the middle, with the next ones coming up beneath it.
-      const offset = box.parentElement.clientHeight * 0.42 - (target.offsetTop + target.offsetHeight / 2);
       box.style.transition = force || !anim.enabled ? 'none' : '';
-      box.style.transform = `translateY(${offset}px)`;
+      centreOn(target);
+      // (again once the lines have finished changing size: a long one shrinking above moves this one up a long way)
+      clearTimeout(view.settling);
+      view.settling = setTimeout(() => { if (view && target.isConnected && target.classList.contains('current')) { box.style.transition = ''; centreOn(target); } }, SIZES_SETTLE);
     }
   }
   if (index >= 0) {
