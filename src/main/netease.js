@@ -57,7 +57,8 @@ function timedLine(start, lineEnd, words) {
 }
 
 async function getJson(url) {
-  const res = await httpFetch(url, { headers: HEADERS, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  // (no cookies: with the one its first answer sets, the search answers in another shape, and no song is found again)
+  const res = await httpFetch(url, { headers: HEADERS, credentials: 'omit', signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!res.ok) { const err = new Error(`HTTP ${res.status}`); err.status = res.status; throw err; }
   return res.json();
 }
