@@ -89,15 +89,17 @@ function kanaToLatin(text) {
 const SAID_OTHERWISE = { こんにちは: 'konnichiwa', こんばんは: 'konbanwa' };
 const joins = (t) => t.pos === '助動詞' || t.pos_detail_1 === '接尾' || (t.pos_detail_1 === '非自立' && t.pos !== '名詞') || t.surface_form === 'ん' || (t.pos === '助詞' && t.pos_detail_1 === '接続助詞' && /^[てで]$/.test(t.surface_form));
 function japaneseRun(run, tokenizer) {
-  let out = '';
-  for (const t of tokenizer.tokenize(run.replace(/一人/g, 'ひとり').replace(/二人/g, 'ふたり'))) { // (the dictionary has them as counted: ichinin)
+  let out = '', said = '';
+  for (const t of tokenizer.tokenize(run.replace(/一人/g, 'ひとり').replace(/二人/g, 'ふたり').replace(/([あこそ]の)娘/g, '$1こ'))) { // (as they're sung: the dictionary has ichinin, ano musume)
     const word = t.surface_form;
+    if (word === '々') { out += said; continue; } // (a repeat the dictionary left on its own, as a symbol)
     if (t.pos === '記号') { out += word; continue; }
     let latin;
     if (SAID_OTHERWISE[word]) latin = SAID_OTHERWISE[word];
     else if (t.pos === '助詞' && word === 'は') latin = 'wa';
     else if (t.pos === '助詞' && word === 'へ') latin = 'e';
     else latin = kanaToLatin(t.reading && t.reading !== '*' ? t.reading : word);
+    said = latin;
     if (out.endsWith('ッ')) out = out.slice(0, -1) + doubling(latin) + latin;
     else out += (out && !/\s$/.test(out) && !joins(t) ? ' ' : '') + latin;
   }

@@ -63,3 +63,8 @@ test('Cyrillic: Ukrainian and Bulgarian by their own letters, stress marks off',
   assert.deepStrictEqual(await roman(['България']), ['Balgariya']);
   assert.deepStrictEqual(await roman(['за́мок']), ['zamok']);
 });
+
+test("Japanese as it's sung (Maximum the Hormone's lines): あの娘, katakana words, English kept, a stray 々", async () => {
+  assert.deepStrictEqual(await roman(['チューチュー ラブリー ムニムニ ムラムラ', 'あの娘ロックンロール', 'スケスケのBODY']), ['chuuchuu raburii munimuni muramura', 'ano ko rokkunrooru', 'sukesuke no BODY']);
+  assert.doesNotMatch((await roman(['ストーカー共々モッシュ']))[0], /々/);
+});
