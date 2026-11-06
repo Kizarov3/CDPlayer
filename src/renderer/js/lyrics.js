@@ -213,7 +213,8 @@ export function lineWords(line, end, pace = DEFAULT_PACE) {
 /**
  * How far through each word of `line` the singer is at `position`: [0…1] per word of lineWords(line, end, pace). A
  * word with an end fills over its own length and stays full through a pause after it; one without lasts until the
- * next starts — the last until `end` (the next line), at most 1.2 s.
+ * next starts — the last until `end` (the next line), at most 1.2 s. A word with `beats`, the times its later sounds
+ * begin, fills an equal share per sound, each over that sound's own time: slowly along a held one, quickly past the rest.
  */
 export function wordProgress(line, end, position, pace) {
   const words = lineWords(line, end, pace);
@@ -221,6 +222,13 @@ export function wordProgress(line, end, position, pace) {
     const stop = w.end !== undefined ? w.end : i + 1 < words.length ? words[i + 1].time : Math.min(end, w.time + 1.2);
     if (position <= w.time) return 0;
     if (stop <= w.time || position >= stop) return 1;
+    if (w.beats && w.beats.length) {
+      const n = w.beats.length + 1;
+      let k = 0;
+      while (k < n - 1 && position >= w.beats[k]) k++;
+      const from = k ? w.beats[k - 1] : w.time, to = k < n - 1 ? w.beats[k] : stop;
+      return (k + (to > from ? (position - from) / (to - from) : 1)) / n;
+    }
     return (position - w.time) / (stop - w.time);
   });
 }

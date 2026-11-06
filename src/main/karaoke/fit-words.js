@@ -3,7 +3,7 @@
 // it stops from that voice itself falling silent (the model's own ends are no good on a held note).
 const { maskedMono, resample, melSpectrogram } = require('./dsp');
 const { linePhones, readsAsEnglish } = require('./phones');
-const { alignPhones, alignSong } = require('./align');
+const { alignPhones, alignSong, soundsInside } = require('./align');
 
 const SONG_RATE = 44100, MODEL_RATE = 22050, VOICE_RATE = 16000;
 const SECONDS_PER_FRAME = (256 / MODEL_RATE) * 3, MINUTE = MODEL_RATE * 60;
@@ -34,7 +34,7 @@ function voiceStops(voice) {
 
 /**
  * `song`: { left, right } at 44 100 Hz; `lines`: [{ time, next, words: [text] }]; `models`: { voiceMask(mags) → masks,
- * phoneProbabilities(mel, T) → { data, frames, classes } }. → per line, [{ time, end }] per word or null (left as it
+ * phoneProbabilities(mel, T) → { data, frames, classes } }. → per line, [{ time, end, beats }] per word or null (left as it
  * was); or null for the whole song if its words don't read as English. `onProgress(0…1)` as it goes.
  */
 async function fitWords(song, lines, models, onProgress = () => {}) {
@@ -81,7 +81,9 @@ async function fitWords(song, lines, models, onProgress = () => {}) {
     spans.forEach((s, k) => {
       const start = placed[s.first].first * SECONDS_PER_FRAME, later = spans[k + 1], limit = later ? placed[later.first].first * SECONDS_PER_FRAME : Math.max(start + 0.08, until);
       const stop = Math.min(limit, stops(start + 0.08, limit));
-      words[s.word] = { time: start, end: Math.max(start + 0.08, stop), sung: (placed[s.last].last + 1) * SECONDS_PER_FRAME };
+      const end = Math.max(start + 0.08, stop);
+      const begins = soundsInside(all, classes, placed[s.first].first, Math.min(total, Math.ceil(end / SECONDS_PER_FRAME)), parsed[i].ids.slice(s.first, s.last + 1));
+      words[s.word] = { time: start, end, beats: begins ? begins.map((f) => Math.min(end, f * SECONDS_PER_FRAME)) : [] };
     });
     // (punctuation of its own: over at once, at the word before it, or the first after it)
     let last = null;

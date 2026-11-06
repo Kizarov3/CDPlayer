@@ -161,10 +161,10 @@ test("what's asked of the word timing: the sung lines, their words, at their own
 
 test('lines take the voice\'s times; one without keeps its own, moved; none starts before the one before it', () => {
   const lines = [{ time: 2, text: '' }, { time: 10, text: 'one two' }, { time: 20, text: 'kept', end: 21, words: [{ time: 20, end: 21, text: 'kept' }] }, { time: 22, text: 'early' }];
-  const out = linesFittedToWords(lines, [[{ time: 10.4, end: 11, sung: 11 }, { time: 11, end: 12.5 }], null, [{ time: 20.2, end: 23 }]], 0.5);
+  const out = linesFittedToWords(lines, [[{ time: 10.4, end: 11, beats: [10.7] }, { time: 11, end: 12.5 }], null, [{ time: 20.2, end: 23 }]], 0.5);
   assert.strictEqual(out[0].time, 2.5);
   assert.strictEqual(out[1].time, 10.4);
-  assert.deepStrictEqual(out[1].words, [{ text: 'one ', time: 10.4, end: 11 }, { text: 'two', time: 11, end: 12.5 }]);
+  assert.deepStrictEqual(out[1].words, [{ text: 'one ', time: 10.4, end: 11, beats: [10.7] }, { text: 'two', time: 11, end: 12.5 }]);
   assert.strictEqual(out[1].end, 12.5);
   assert.deepStrictEqual(out[2].words, [{ time: 20.5, end: 21.5, text: 'kept' }]);
   assert.strictEqual(out[2].end, 21.5);

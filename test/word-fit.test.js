@@ -131,3 +131,15 @@ test('all let through by the mask, a song comes back as itself; nothing let thro
   const none = await maskedMono(left, right, spec, (m) => [m[0].map(() => 0), m[1].map(() => 0)]);
   assert.ok(none.every((v) => v === 0));
 });
+
+test("a word's sounds over its frames: the held note goes to the vowel, even where the model hears nothing clear", () => {
+  const { soundsInside } = require('../src/main/karaoke/align');
+  const { linePhones } = require('../src/main/karaoke/phones');
+  const { ids, spans } = linePhones(['rain']), own = ids.slice(spans[0].first, spans[0].last + 1), classes = 72, frames = 100;
+  // Nothing in the model's favour for any sound in the middle; only the very start and end say anything.
+  const song = new Float32Array(frames * classes).fill(-4);
+  song[own[0]] = -0.1; song[(frames - 1) * classes + own[2]] = -0.1;
+  assert.deepStrictEqual(soundsInside(song, classes, 0, frames, own), [1, 99]);
+  assert.strictEqual(soundsInside(song, classes, 0, 2, own), null); // (fewer frames than sounds)
+  assert.strictEqual(soundsInside(song, classes, 0, frames, own.slice(0, 1)), null); // (one sound: nothing to share)
+});

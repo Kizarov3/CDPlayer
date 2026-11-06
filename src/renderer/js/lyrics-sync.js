@@ -245,7 +245,7 @@ export function linesFittedToWords(lines, words, move = 0) {
     if (fitted) {
       const next = n + 1 < lines.length ? lines[n + 1].time : line.time + 12;
       const parts = lineWords({ time: line.time, text: line.text }, next);
-      out = { ...line, time: Math.max(fitted[0].time, last), end: fitted[fitted.length - 1].end, words: parts.map((w, i) => ({ text: w.text, time: fitted[i].time, end: fitted[i].end })) };
+      out = { ...line, time: Math.max(fitted[0].time, last), end: fitted[fitted.length - 1].end, words: parts.map((w, i) => ({ text: w.text, time: fitted[i].time, end: fitted[i].end, ...(fitted[i].beats && fitted[i].beats.length ? { beats: fitted[i].beats } : {}) })) };
     } else {
       const shift = (w) => ({ ...w, time: w.time + move, ...(w.end !== undefined ? { end: w.end + move } : {}) });
       out = { ...line, time: Math.max(line.time + move, last), ...(line.end !== undefined ? { end: line.end + move } : {}), ...(line.words ? { words: line.words.map(shift) } : {}), ...(line.bg ? { bg: line.bg.map(shift) } : {}) };

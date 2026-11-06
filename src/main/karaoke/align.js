@@ -1,7 +1,8 @@
 'use strict';
 // A line's known phones laid along the model's frames: the likeliest path through them in order, a gap allowed between any
 // two, each given a frame at least. `song`: log-probabilities, `classes` per frame.
-const { BLANK } = require('./phones');
+const { BLANK, CAN_HOLD } = require('./phones');
+const CONSONANT_COST = 3; // (per frame, against the model's log-probabilities: a voice holds its vowels, so what's noise on a held note doesn't go to a consonant)
 
 /** Frames [from, to) of the song → [{ first, last }] (frames) per phone, or null if too few frames. */
 function alignPhones(song, classes, from, to, ids) {
@@ -85,4 +86,30 @@ function alignSong(song, classes, frames, ids, reach) {
   }
   return spans.some((x) => x.first < 0) ? null : spans;
 }
-module.exports = { alignPhones, alignSong };
+/**
+ * A word's sounds shared out over all of its frames [from, to), no gaps: the path through them that the model likes best,
+ * each given a frame at least, and the vowels the time that's held. (The paths above leave a held note in the gaps, its sounds all over in its first moment.)
+ * → the frame each sound after the first begins at, or null if too few frames.
+ */
+function soundsInside(song, classes, from, to, ids) {
+  const frames = to - from, n = ids.length;
+  if (n < 2 || frames < n) return null;
+  const back = new Uint8Array(frames * n);
+  let was = new Float64Array(n).fill(-Infinity), now = new Float64Array(n);
+  const cost = ids.map((id) => (CAN_HOLD.has(id) ? 0 : CONSONANT_COST));
+  was[0] = song[from * classes + ids[0]] - cost[0];
+  for (let t = 1; t < frames; t++) {
+    const row = (from + t) * classes;
+    for (let s = 0; s < n; s++) {
+      const stepped = s > 0 && was[s - 1] > was[s];
+      now[s] = (stepped ? was[s - 1] : was[s]) + song[row + ids[s]] - cost[s];
+      back[t * n + s] = stepped ? 1 : 0;
+    }
+    const swap = was; was = now; now = swap;
+  }
+  const begins = new Array(n - 1);
+  let s = n - 1;
+  for (let t = frames - 1; t > 0; t--) if (back[t * n + s]) { begins[s - 1] = from + t; s--; }
+  return s === 0 ? begins : null;
+}
+module.exports = { alignPhones, alignSong, soundsInside };

@@ -5,6 +5,7 @@ const fs = require('fs'), path = require('path'), zlib = require('zlib');
 const PHONES = ['a', 'aɪ', 'aʊ', 'b', 'd', 'dʒ', 'e', 'ee', 'eɪ', 'eː', 'f', 'h', 'i', 'iː', 'j', 'k', 'l', 'm', 'n', 'o', 'oʊ', 'oː', 'p', 'r', 's', 'ss', 't', 'ts', 'tʃ', 'tː', 'u', 'uː', 'v', 'w', 'x', 'y', 'z', 'æ', 'ç', 'ð', 'ŋ', 'ɐ', 'ɑː', 'ɑːɹ', 'ɑ̃', 'ɔ', 'ɔː', 'ɔ̃', 'ə', 'ɚ', 'ɛ', 'ɛ̃', 'ɜ', 'ɜː', 'ɡ', 'ɣ', 'ɪ', 'ɲ', 'ɹ', 'ɾ', 'ʁ', 'ʃ', 'ʊ', 'ʊɹ', 'ʌ', 'ʒ', 'ʝ', 'β', 'θ', ' '];
 const ID = new Map(PHONES.map((p, i) => [p, i]));
 const BLANK = 71, SPACE = ID.get(' ');
+const CAN_HOLD = new Set(['a', 'aɪ', 'aʊ', 'e', 'ee', 'eɪ', 'eː', 'i', 'iː', 'o', 'oʊ', 'oː', 'u', 'uː', 'y', 'æ', 'ɐ', 'ɑː', 'ɑːɹ', 'ɑ̃', 'ɔ', 'ɔː', 'ɔ̃', 'ə', 'ɚ', 'ɛ', 'ɛ̃', 'ɜ', 'ɜː', 'ɪ', 'ʊ', 'ʊɹ', 'ʌ'].map((p) => ID.get(p)));
 const SOUNDS = { AA: 'ɑː', AE: 'æ', AH: 'ʌ', AH0: 'ə', AO: 'ɔː', AW: 'aʊ', AY: 'aɪ', B: 'b', CH: 'tʃ', D: 'd', DH: 'ð', EH: 'ɛ', ER: 'ɜː', ER0: 'ɚ', EY: 'eɪ', F: 'f', G: 'ɡ', HH: 'h', IH: 'ɪ', IY: 'iː', IY0: 'i', JH: 'dʒ', K: 'k', L: 'l', M: 'm', N: 'n', NG: 'ŋ', OW: 'oʊ', OY: 'ɔ ɪ', P: 'p', R: 'ɹ', S: 's', SH: 'ʃ', T: 't', TH: 'θ', UH: 'ʊ', UW: 'uː', V: 'v', W: 'w', Y: 'j', Z: 'z', ZH: 'ʒ' };
 const LETTERS = [['sch', 'ʃ'], ['tch', 'tʃ'], ['igh', 'aɪ'], ['ing', 'ɪ ŋ'], ['sh', 'ʃ'], ['ch', 'tʃ'], ['th', 'θ'], ['ph', 'f'], ['ck', 'k'], ['ng', 'ŋ'], ['qu', 'k w'], ['wh', 'w'], ['wr', 'ɹ'], ['kn', 'n'], ['ee', 'iː'], ['ea', 'iː'], ['oo', 'uː'], ['ou', 'aʊ'], ['ow', 'aʊ'], ['ai', 'eɪ'], ['ay', 'eɪ'], ['oa', 'oʊ'], ['oi', 'ɔ ɪ'], ['oy', 'ɔ ɪ'], ['au', 'ɔː'], ['aw', 'ɔː'], ['ar', 'ɑːɹ'], ['er', 'ɚ'], ['ir', 'ɜː'], ['ur', 'ɜː'], ['or', 'ɔː ɹ'], ['a', 'æ'], ['b', 'b'], ['c', 'k'], ['d', 'd'], ['e', 'ɛ'], ['f', 'f'], ['g', 'ɡ'], ['h', 'h'], ['i', 'ɪ'], ['j', 'dʒ'], ['k', 'k'], ['l', 'l'], ['m', 'm'], ['n', 'n'], ['o', 'ɑː'], ['p', 'p'], ['q', 'k'], ['r', 'ɹ'], ['s', 's'], ['t', 't'], ['u', 'ʌ'], ['v', 'v'], ['w', 'w'], ['x', 'k s'], ['y', 'j'], ['z', 'z']];
 const CENSORED = [[/^f\*+k/, 'fuck'], [/^s\*+t/, 'shit'], [/^b\*+h/, 'bitch'], [/^a\*+s?/, 'ass'], [/^d\*+n/, 'damn']];
@@ -82,4 +83,4 @@ function linePhones(wordsOfLine) {
   });
   return { ids, spans };
 }
-module.exports = { phonesOf, readsAsEnglish, linePhones, BLANK, PHONES };
+module.exports = { phonesOf, readsAsEnglish, linePhones, BLANK, PHONES, CAN_HOLD };

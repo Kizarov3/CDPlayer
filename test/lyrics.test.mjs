@@ -50,6 +50,19 @@ test('a word with an end fills over its own length and holds through the pause a
   assert.deepStrictEqual(wordProgress(line, 20, 12), [1, 0.5]); // a long held note fills slowly
 });
 
+test("a word with its sounds' times fills slowly along a held one, quickly past the rest", () => {
+  const line = { time: 10, text: 'rain', words: [{ text: 'rain', time: 10, end: 14, beats: [10.2, 13.8] }] };
+  const at = (t) => Math.round(wordProgress(line, 20, t)[0] * 1000) / 1000;
+  assert.strictEqual(at(10.1), 0.167); // the r, half gone
+  assert.strictEqual(at(10.2), 0.333);
+  assert.strictEqual(at(12), 0.5); // the vowel, held, half way
+  assert.strictEqual(at(13.9), 0.833); // the n
+  assert.strictEqual(at(14), 1);
+  // (a sound the voice was already silent for: at once)
+  const cut = { time: 10, text: 'x', words: [{ text: 'x', time: 10, end: 11, beats: [11, 11] }] };
+  assert.strictEqual(Math.round(wordProgress(cut, 20, 10.5)[0] * 1000) / 1000, 0.167);
+});
+
 test('syllables, roughly', () => {
   assert.deepStrictEqual(['I', 'line', 'Whole', 'criticize', 'Rhythms', 'Группа', '夜空'].map(syllables), [1, 1, 1, 3, 1, 2, 2]);
 });
