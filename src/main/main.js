@@ -191,8 +191,12 @@ async function runSmokeTest() {
   // The output-rate helper must start and answer in the packaged app (a CI machine may have no outputs: [] is fine).
   const rateList = process.platform === 'linux' ? [] : await outputRate.list();
   const rateOk = Array.isArray(rateList);
-  const allOk = results.length > 0 && results.every((r) => r.ok) && rateOk;
-  process.stdout.write(`${JSON.stringify({ platform: process.platform, arch: process.arch, allOk, outputRate: rateList, results }, null, 2)}\n`);
+  // Karaoke's models must be in the build and really run in it: ten seconds of a tone through the whole of the word timing.
+  const tone = () => Float32Array.from({ length: 441000 }, (_, i) => 0.2 * Math.sin(i * 0.06));
+  const wordTiming = !wordFit.available() ? 'models missing' : await wordFit.run(path.join(smokeDir, 'smoke-tone'), 'smoke', { left: tone(), right: tone(), move: 0, lines: [{ time: 1, next: 9, words: ['hello', 'world'] }] })
+    .then(() => 'ok', (e) => String(e.message || e));
+  const allOk = results.length > 0 && results.every((r) => r.ok) && rateOk && wordTiming === 'ok';
+  process.stdout.write(`${JSON.stringify({ platform: process.platform, arch: process.arch, allOk, outputRate: rateList, wordTiming, results }, null, 2)}\n`);
   app.exit(allOk ? 0 : 1);
 }
 

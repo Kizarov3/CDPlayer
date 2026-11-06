@@ -4,4 +4,5 @@ dist/
 *.log
 build/bin/
 
-src/main/karaoke/models/
+src/main/karaoke/models/*
+!src/main/karaoke/models/aligner.onnx
