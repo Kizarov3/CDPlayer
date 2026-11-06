@@ -21,7 +21,7 @@ test('reads a settings.txt written by the Java version', () => {
     volume: 70, crossfade: 5, mono: true, animations: false, theme: 'OCEAN', eq: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
     waveform: false, miniMode: false, bounds: { x: 10, y: 20, width: 1200, height: 900 }, ambient: false, discord: false,
     discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false,
-    playModes: { QUEUE: { shuffle: 'OFF', repeat: 'OFF' }, CHANGER: { shuffle: 'OFF', repeat: 'OFF' } }, display: 'DECK', transition: 'CROSSFADE', streaming: false, look: 'CLASSIC', ambientStyle: 'COVER', ripFormat: 'FLAC',
+    playModes: { QUEUE: { shuffle: 'OFF', repeat: 'OFF' }, CHANGER: { shuffle: 'OFF', repeat: 'OFF' } }, display: 'DECK', transition: 'CROSSFADE', streaming: false, look: 'CLASSIC', ambientStyle: 'COVER', ripFormat: 'FLAC', romanize: false,
   });
 });
 

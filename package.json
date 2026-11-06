@@ -20,9 +20,11 @@
     "vmp-sign-dev": "python3 -m castlabs_evs.vmp sign-pkg node_modules/electron/dist"
   },
   "dependencies": {
+    "kuromoji": "0.1.2",
     "music-metadata": "^11.16.1",
     "node-taglib-sharp": "^6.0.3",
-    "onnxruntime-web": "^1.31.1"
+    "onnxruntime-web": "^1.31.1",
+    "pinyin-pro": "3.29.5"
   },
   "devDependencies": {
     "acorn": "^8.18.0",
@@ -47,6 +49,8 @@
     "files": [
       "src/**/*",
       "package.json",
+      "!node_modules/kuromoji/test/**",
+      "!node_modules/kuromoji/demo/**",
       "!node_modules/onnxruntime-web/lib/**",
       "!node_modules/onnxruntime-web/types/**",
       "!node_modules/onnxruntime-web/**/*.map",
@@ -147,6 +151,11 @@
       "src/main/win-rate/**",
       "src/main/encoders/**",
       "src/main/karaoke/**",
+      "node_modules/kuromoji/**",
+      "node_modules/async/**",
+      "node_modules/doublearray/**",
+      "node_modules/zlibjs/**",
+      "node_modules/pinyin-pro/**",
       "node_modules/onnxruntime-web/**",
       "node_modules/onnxruntime-common/**"
     ],

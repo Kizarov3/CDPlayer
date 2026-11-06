@@ -1038,6 +1038,9 @@ body.no-anim .queue-row.active .num::after { animation: none; }
 .k-line.k-v1 { text-align: left; }
 .k-line.k-v2 { text-align: right; }
 .k-bg { font-size: .56em; margin-top: 4px; opacity: .75; }
+.k-roman { font-size: .5em; margin-top: 6px; opacity: .75; }
+.lyrics-actions { display: flex; gap: 8px; }
+.roman-line { display: block; font-size: .72em; opacity: .7; margin-top: 2px; }
 .k-whole { white-space: nowrap; }
 .k-line.k-none { font-size: 22px; cursor: default; margin-top: 30vh; }
 /* The fill: each word painted in the accent up to --p (0…1) of its width, with a soft edge, the rest in unsung grey.
@@ -1720,7 +1723,8 @@ kbd {
 .help-pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
 #hint b { color: rgb(var(--accent2)); cursor: pointer; }
 body.keys-learnt #hint-keys { display: none; } /* the keys used a few times: just ? ALL KEYS */
-#karaoke-close { position: absolute; top: 18px; right: 24px; z-index: 2; }
+#karaoke-actions { position: absolute; top: 18px; right: 24px; z-index: 2; display: flex; gap: 8px; }
+#karaoke-roman.lit, .pill.roman-lit { color: rgb(var(--accent)); border-color: rgb(var(--accent)); }
 
 /* LIBRARY CHECK (panels.js): groups that open into rows — what, where, and the buttons to fix or show it. */
 .check-list { max-height: min(460px, 62vh); padding-right: 6px; }

@@ -8,6 +8,7 @@
 import { el, anim, EASE } from './widgets.js';
 import { parseLrc, lineState, lineWords, wordProgress, songPace } from './lyrics.js';
 import { t } from './i18n.js';
+import { romanFor } from './romanize.js';
 
 const $ = (id) => document.getElementById(id);
 let view = null; // { lines, nodes, words: [[span]], current, lyrics }
@@ -55,6 +56,9 @@ export function refreshKaraoke() {
   showCover();
   $('karaoke-lines').replaceChildren(el('div', { class: 'k-line current k-none' }, view.lyrics ? t('THESE LYRICS AREN’T TIMED') : t('NO LYRICS FOR THIS SONG')));
 }
+
+/** The words in Latin letters came or went: the lines laid out again. */
+export function redrawKaraoke() { if (view && view.nodes && canKaraoke(view.app.state.lyrics)) rebuild(); }
 
 const HELD = 1; // seconds: a word sung longer than this glows
 const REST = 3; // seconds: a break longer than this between lines shows the dots counting in
@@ -121,6 +125,7 @@ function rebuild() {
     const cls = ['k-line', line.text ? '' : 'gap', duet && line.agent ? `k-${line.agent}` : ''].filter(Boolean).join(' ');
     return el('div', { class: cls, onClick: () => app.seekToLyric(line.time) },
       line.text ? el('div', { class: 'k-main' }, wholeWords(words)) : '♪',
+      romanFor(line.text) ? el('div', { class: 'k-roman' }, romanFor(line.text)) : null,
       bg.length ? el('div', { class: 'k-bg' }, wholeWords(bg)) : null,
       dots());
   });

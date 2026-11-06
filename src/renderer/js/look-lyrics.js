@@ -4,6 +4,7 @@
 // of its disc are listed there instead, the one playing lit, a click playing another.
 import { parseLrc, currentLineIndex, formatLyricsForDisplay } from './lyrics.js';
 import { t } from './i18n.js';
+import { romanFor } from './romanize.js';
 
 let lines = [], now = -2, songsShown = false, shownCurrent = null;
 
@@ -23,11 +24,16 @@ export function setLookLyrics(node, raw, seekToLyric, songs) {
     node.replaceChildren(...lines.map((l) => {
       const p = document.createElement('p');
       p.textContent = l.text || '♪';
+      if (romanFor(l.text)) p.append(Object.assign(document.createElement('span'), { className: 'roman-line', textContent: romanFor(l.text) }));
       p.addEventListener('click', () => seekToLyric(l.time));
       return p;
     }));
   } else if (text) {
-    node.replaceChildren(...text.split('\n').map((l) => Object.assign(document.createElement('p'), { textContent: l || ' ' })));
+    node.replaceChildren(...text.split('\n').map((l) => {
+      const p = Object.assign(document.createElement('p'), { textContent: l || ' ' });
+      if (romanFor(l)) p.append(Object.assign(document.createElement('span'), { className: 'roman-line', textContent: romanFor(l) }));
+      return p;
+    }));
   } else {
     node.replaceChildren();
     showLookSongs(node, songs);

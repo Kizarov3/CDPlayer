@@ -195,8 +195,11 @@ async function runSmokeTest() {
   const tone = () => Float32Array.from({ length: 441000 }, (_, i) => 0.2 * Math.sin(i * 0.06));
   const wordTiming = !wordFit.available() ? 'models missing' : await wordFit.run(path.join(smokeDir, 'smoke-tone'), 'smoke', { left: tone(), right: tone(), move: 0, lines: [{ time: 1, next: 9, words: ['hello', 'world'] }] })
     .then(() => 'ok', (e) => String(e.message || e));
-  const allOk = results.length > 0 && results.every((r) => r.ok) && rateOk && wordTiming === 'ok';
-  process.stdout.write(`${JSON.stringify({ platform: process.platform, arch: process.arch, allOk, outputRate: rateList, wordTiming, results }, null, 2)}\n`);
+  // (and the words in Latin letters, Japanese's dictionary and Chinese's included)
+  const inLatin = await romanize.lines(['君の名前', '世界は美しい', '안녕하세요', 'Привет']).then((l) => (l.every(Boolean) ? 'ok' : JSON.stringify(l)), (e) => String(e.message || e));
+  const inChinese = await romanize.lines(['我爱你']).then((l) => (l[0] === 'wǒ ài nǐ' ? 'ok' : JSON.stringify(l)), (e) => String(e.message || e));
+  const allOk = results.length > 0 && results.every((r) => r.ok) && rateOk && wordTiming === 'ok' && inLatin === 'ok' && inChinese === 'ok';
+  process.stdout.write(`${JSON.stringify({ platform: process.platform, arch: process.arch, allOk, outputRate: rateList, wordTiming, inLatin, inChinese, results }, null, 2)}\n`);
   app.exit(allOk ? 0 : 1);
 }
 
@@ -399,6 +402,11 @@ handle('wordFit:run', (file, lyrics, song) => {
   if (typeof file !== 'string' || typeof lyrics !== 'string' || !song || !(song.left instanceof Float32Array) || !(song.right instanceof Float32Array) || !Array.isArray(song.lines)) return null;
   return wordFit.run(file, lyrics, song);
 });
+// The words in Latin letters (romanize.js).
+const romanize = require('./romanize').createRomanize({
+  createWorker: () => new Worker(path.join(__dirname, 'karaoke', 'romanize-worker.js').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`)),
+});
+handle('lyrics:romanize', (texts) => (Array.isArray(texts) && texts.length <= 5000 && texts.every((x) => typeof x === 'string') ? romanize.lines(texts) : null));
 // The now-playing card (share-card.js), onto the clipboard as a picture.
 handle('clipboard:image', (png) => clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]));
 // SHELFIE (shelfie.js): a part of the window as it is on screen — the shelf's rows, a window's height at a time.

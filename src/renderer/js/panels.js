@@ -18,6 +18,7 @@ import { qrSvg } from './qr.js';
 import { phoneLine, addressWords, errorWords } from './remote-settings.js';
 import { isBookletOpen, closeBooklet } from './booklet.js';
 import { formatLyricsForDisplay } from './lyrics.js';
+import { romanFor, romanOn, needsRoman } from './romanize.js';
 import { cardOrder, priceWords, stillWanted } from './want-list.js';
 
 const layer = () => document.getElementById('overlays');
@@ -765,17 +766,19 @@ function buildLyrics(app) {
   const lines = app.lyricsLines();
   let body;
   if (!lines.length) {
-    body = el('div', { class: 'scroll' }, el('div', { class: 'lyrics-plain' }, formatLyricsForDisplay(app.state.lyrics)));
+    body = el('div', { class: 'scroll' }, el('div', { class: 'lyrics-plain' }, formatLyricsForDisplay(app.state.lyrics).split('\n').map((l) => (romanFor(l) ? `${l}\n${romanFor(l)}` : l)).join('\n')));
     lyricsView = null;
   } else {
-    const nodes = lines.map((l) => el('div', { class: 'lyrics-line', onClick: () => app.seekToLyric(l.time) }, l.text || ' '));
+    const nodes = lines.map((l) => el('div', { class: 'lyrics-line', onClick: () => app.seekToLyric(l.time) }, l.text || ' ', romanFor(l.text) ? el('span', { class: 'roman-line' }, romanFor(l.text)) : null));
     body = el('div', { class: 'scroll' }, nodes);
     lyricsView = { lines, nodes, scroller: body, highlight: -1 };
   }
   body.style.height = '380px';
   body.style.marginTop = '16px';
   const karaoke = lines.length ? pill(t('KARAOKE'), () => { closePanel('lyrics'); app.openKaraoke(); }, t('The lyrics full-window, filling in word by word as they are sung (Y)')) : null;
-  return [title(t('LYRICS')), body, el('div', { class: 'close-row split' }, karaoke || el('span'), pill(t('CLOSE'), () => closePanel('lyrics')))];
+  const latin = needsRoman(app.state.lyrics) ? pill(t('LATIN'), () => app.toggleRoman(), t('The words in Latin letters too, under each line')) : null;
+  if (latin) latin.classList.toggle('roman-lit', romanOn());
+  return [title(t('LYRICS')), body, el('div', { class: 'close-row split' }, el('div', { class: 'lyrics-actions' }, karaoke, latin), pill(t('CLOSE'), () => closePanel('lyrics')))];
 }
 /** Karaoke-style: highlight the line at the current playback position and keep it centered. */
 export function updateLyricsSync(app, force = false) {

@@ -68,12 +68,12 @@ const safePath = (p) => typeof p === 'string' && !/[\r\n]/.test(p);
 
 // settings.txt — one value per line, in the Java app's order: volume, crossfade, mono, animations, theme, EQ
 // gains, waveform, mini mode, window bounds, ambient background, then Discord status, disc noise and saving found
-// art & lyrics into files, the lyrics offset in ms, how the shelf is sorted, disc wear, the audio output ("id<TAB>name") and the language (AUTO, en or a locale code), then the sound quality (HIGH, LOSSLESS or HIRES), spatial audio (1/0) and its amount (0–100), the disc's shine (1/0) and the disc on the app's icon (1/0; on unless turned off, but off on Windows unless turned on) and Sound Check (OFF, TRACK or ALBUM), then the CD changer mode (ON/OFF), then SHUFFLE and REPEAT for the queue and for the changer ("OFF ALL DISC TRACK"), then the display under the seek bar (DECK or CLASSIC), then TRANSITION (OFF, AUTOMIX or CROSSFADE) and the crossfade's seconds, kept while another is picked, then streaming (ON/OFF), then the player's LOOK (CLASSIC, VISUALIZER, LYRICS, HIFI, ALBUM or CASE), then how the ambient background is drawn (COVER or GRADIENT), then what RIP saves a CD as (FLAC, MP3 or WAV)
+// art & lyrics into files, the lyrics offset in ms, how the shelf is sorted, disc wear, the audio output ("id<TAB>name") and the language (AUTO, en or a locale code), then the sound quality (HIGH, LOSSLESS or HIRES), spatial audio (1/0) and its amount (0–100), the disc's shine (1/0) and the disc on the app's icon (1/0; on unless turned off, but off on Windows unless turned on) and Sound Check (OFF, TRACK or ALBUM), then the CD changer mode (ON/OFF), then SHUFFLE and REPEAT for the queue and for the changer ("OFF ALL DISC TRACK"), then the display under the seek bar (DECK or CLASSIC), then TRANSITION (OFF, AUTOMIX or CROSSFADE) and the crossfade's seconds, kept while another is picked, then streaming (ON/OFF), then the player's LOOK (CLASSIC, VISUALIZER, LYRICS, HIFI, ALBUM or CASE), then how the ambient background is drawn (COVER or GRADIENT), then what RIP saves a CD as (FLAC, MP3 or WAV), then the words in Latin letters too (1/0)
 // (CDPlayer 2 only; the second line still holds the crossfade's seconds while it's the one picked, else 0, as the Java app reads it). Missing trailing
 // lines keep their defaults.
 const DEFAULT_SETTINGS = {
   volume: 100, crossfade: 5, mono: false, animations: true, theme: 'RED', eq: new Array(10).fill(0),
-  waveform: true, miniMode: false, bounds: null, ambient: true, discord: false, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false, playModes: defaultPlayModes(), display: 'DECK', transition: 'OFF', streaming: false, look: 'CLASSIC', ambientStyle: 'COVER', ripFormat: 'FLAC',
+  waveform: true, miniMode: false, bounds: null, ambient: true, discord: false, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false, playModes: defaultPlayModes(), display: 'DECK', transition: 'OFF', streaming: false, look: 'CLASSIC', ambientStyle: 'COVER', ripFormat: 'FLAC', romanize: false,
 };
 const SHELF_SORTS = ['ARTIST', 'NEW', 'PLAYED', 'RECENT', 'YEAR', 'COLOR', 'PRICE', 'MINE'];
 const QUALITIES = ['HIGH', 'LOSSLESS', 'HIRES'];
@@ -143,6 +143,7 @@ function readSettings() {
   s.ambientStyle = String(l[30] || '').trim() === 'GRADIENT' ? 'GRADIENT' : 'COVER';
   const ripFormat = String(l[31] || '').trim();
   s.ripFormat = RIP_FORMATS.includes(ripFormat) ? ripFormat : 'FLAC';
+  s.romanize = String(l[32] || '').trim() === '1';
   return s;
 }
 function writeSettings(s) {
@@ -160,7 +161,7 @@ function writeSettings(s) {
     SOUND_CHECKS.includes(s.soundCheck) ? s.soundCheck : 'OFF', s.changer ? 'ON' : 'OFF', writePlayModes(s.playModes),
     DISPLAYS.includes(s.display) ? s.display : 'DECK', `${transition} ${seconds}`, s.streaming ? 'ON' : 'OFF',
     LOOKS.includes(s.look) ? s.look : 'CLASSIC', s.ambientStyle === 'GRADIENT' ? 'GRADIENT' : 'COVER',
-    RIP_FORMATS.includes(s.ripFormat) ? s.ripFormat : 'FLAC'].join('\n') + '\n';
+    RIP_FORMATS.includes(s.ripFormat) ? s.ripFormat : 'FLAC', s.romanize ? '1' : '0'].join('\n') + '\n';
   return writeText(FILES.settings, content);
 }
 

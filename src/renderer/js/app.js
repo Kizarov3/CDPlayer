@@ -10,8 +10,9 @@ import { Particles } from './particles.js';
 import { anim, EASE, el, pill, roundButton, modeButton, Slider, fitText, pulse, followPlaying, smooth, pathFrames, swingLid } from './widgets.js';
 import { openBooklet, closeBooklet, isBookletOpen } from './booklet.js';
 import { setLookLyrics, showLookSongs, followLookLyrics } from './look-lyrics.js';
+import { needsRoman, prepareRoman, romanOn, setRomanOn } from './romanize.js';
 import { VuMeters } from './vu-meters.js';
-import { withoutHeader, parseLrc, currentLineIndex, heardPosition, playbackTimeFor, looksOnlineFor, takesOnline } from './lyrics.js';
+import { withoutHeader, parseLrc, formatLyricsForDisplay, currentLineIndex, heardPosition, playbackTimeFor, looksOnlineFor, takesOnline } from './lyrics.js';
 import { shortcutKey } from './keys.js';
 import { jogSeconds } from './jog.js';
 import * as changer from './changer.js';
@@ -41,7 +42,7 @@ import { phoneTagTitle, phoneJoined } from './remote-settings.js';
 import { drawShelfie, cutRows, firstCrop } from './shelfie.js';
 import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged, playSimilarTo, setWanted, shelfTakeAlong, takeShelfie } from './shelf.js';
 import { voiceEnvelope, voiceBreaks, lyricsMove, holdLongWords, holdLastWords, wordFitRequest, linesFittedToWords, SYNC_RATE } from './lyrics-sync.js';
-import { retimeKaraoke, openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke, karaokeCover } from './karaoke.js';
+import { retimeKaraoke, redrawKaraoke, openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke, karaokeCover } from './karaoke.js';
 import { discChange, discOfDetails } from './box-set.js';
 import { SpotifySession, SpotifyTrackElement, isSpotifyUri, spotifyUpcoming, loadSpotifySdk } from './spotify-deck.js';
 
@@ -1367,6 +1368,27 @@ function lyricsChanged() {
   refreshKaraoke();
   showLookWords();
   fitLyricsToVoice();
+  showRoman();
+}
+// The words in Latin letters: the button where they'd make a difference, and they're fetched if on, then shown wherever the words are.
+async function showRoman() {
+  const raw = state.lyrics, button = $('karaoke-roman');
+  button.hidden = !needsRoman(raw);
+  button.classList.toggle('lit', romanOn());
+  if (!raw) return;
+  const synced = parseLrc(raw).map((l) => l.text), texts = synced.length ? synced : formatLyricsForDisplay(raw).split('\n');
+  if (await prepareRoman(raw, texts, (asked) => cdp.romanizeLyrics(asked)) && state.lyrics === raw) redrawRoman();
+}
+function redrawRoman() {
+  panels.refreshLyricsIfOpen(app);
+  redrawKaraoke();
+  showLookWords();
+}
+function toggleRoman() {
+  setRomanOn(!romanOn());
+  saveSettingsSoon();
+  redrawRoman();
+  showRoman();
 }
 function showLookWords() {
   setLookLyrics($('look-lyrics'), state.lyrics, seekToLyric, lookSongs());
@@ -3013,7 +3035,7 @@ const appendAndPlay = (p) => addToQueue([p], { sorted: true, play: true });
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, transition: state.transition, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, ambientStyle: state.ambientStyle, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, changer: state.changerMode, streaming: state.streaming, playModes: { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } }, display: state.display, look: state.look, ripFormat: state.ripFormat };
+  return { volume: state.volume, crossfade: state.crossfade, transition: state.transition, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, ambientStyle: state.ambientStyle, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, changer: state.changerMode, streaming: state.streaming, playModes: { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } }, display: state.display, look: state.look, ripFormat: state.ripFormat, romanize: romanOn() };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -3181,6 +3203,7 @@ function buildStaticUi() {
   $('sleep-indicator').addEventListener('click', () => { armSleepTimer(0); armSleepAtEnd(false); panels.refreshSettingsIfOpen(app); });
   $('vis-mode').addEventListener('mousedown', () => { if (state.visualizerMode) toggleVisualizerMode(); });
   $('karaoke-close').addEventListener('click', () => closeKaraoke());
+  $('karaoke-roman').addEventListener('click', toggleRoman);
   document.querySelector('#hint b').addEventListener('click', () => panels.showShortcuts()); // ? ALL KEYS, clicked
   showKeyHint();
   disc.onEjectPeak = () => nextTrack();
@@ -3604,6 +3627,7 @@ export const app = {
   saveEq: () => cdp.saveEqPresets(state.customPresets),
   lyricsLines: () => (state.lyrics ? parseLrc(state.lyrics) : []),
   openKaraoke: () => toggleKaraoke(),
+  toggleRoman,
   currentLineIndex,
   anyOverlayOpen, rememberFocus: () => document.activeElement && document.activeElement.blur(),
   loadHistoryFromDisk: async () => { const s = await cdp.loadState(); state.history = s.history; },
@@ -3749,6 +3773,7 @@ async function start() {
   state.ambient = s.ambient;
   state.ambientStyle = s.ambientStyle === 'GRADIENT' ? 'GRADIENT' : 'COVER';
   state.ripFormat = s.ripFormat || 'FLAC';
+  setRomanOn(s.romanize);
   state.discord = s.discord !== false;
   setDiscNoise(!!s.discNoise);
   state.discWear = s.discWear !== false;
