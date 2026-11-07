@@ -1102,7 +1102,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   state.coverFrom = details.cover ? (fromCd ? 'MusicBrainz' : t('In the file')) : null; // where the cover came from, for the booklet
   updateMediaSession();
   if (canLookUp) lookUpCover(details, path, token);
-  state.lyrics = details.lyrics || null; state.lyricsSource = null;
+  state.lyrics = details.lyrics || null; state.lyricsSource = null; lyricsOfPath = path;
   // Online too when the file's lyrics only time their lines: word-timed ones make karaoke fill word by word.
   if (looksOnlineFor(state.lyrics) && details.title && !details.unnamed) lookUpLyrics(details, token);
   lyricsChanged();
@@ -1311,9 +1311,11 @@ const seekToLyric = (time) => seekTo(playbackTimeFor(time, heardLatency(), state
 const fitted = { ms: 0, key: null };
 let matchingWords = null; // the song whose words are being timed
 const fittedMoves = new Map();
+let lyricsOfPath = null; // the song state.lyrics are for
 const LONGEST_TO_FIT = 20 * 60; // seconds
 async function fitLyricsToVoice() {
-  const path = state.loadedPath, lyrics = state.lyrics, key = path && lyrics ? `${path}\n${lyrics}` : null;
+  // (a song still loading has the last song's lyrics for a moment: they aren't fitted to its file)
+  const path = state.loadedPath, lyrics = state.lyrics, key = path && lyrics && lyricsOfPath === path ? `${path}\n${lyrics}` : null;
   if (key === fitted.key) return;
   if (matchingWords && matchingWords !== key) { matchingWords = null; karaokeNote(''); cdp.wordFit.cancel().catch(() => {}); } // (another song now: that one's not worth finishing)
   fitted.key = key; fitted.ms = 0;
@@ -1321,22 +1323,24 @@ async function fitLyricsToVoice() {
   const deck = engine.deck;
   if (!lines) { fitted.key = null; return; }
   if (!deck || deck.start || deck.end !== null || !/^(\/|[A-Za-z]:[\\/])/.test(path) || !engine.duration || !(engine.duration < LONGEST_TO_FIT)) return;
-  const apply = (fit) => { fitted.ms = fit.ms; retimeKaraoke(lyrics, fit.lines); };
+  const apply = (fit) => { fitted.ms = fit.ms; retimeKaraoke(path, lyrics, fit.lines); };
   const keep = (fit) => { fittedMoves.set(key, fit); if (fittedMoves.size > 200) fittedMoves.delete(fittedMoves.keys().next().value); };
+  // (`settled`: nothing more to come for it. Only lined up so far, its words' timing cut short by another song, it's asked again.)
   const known = fittedMoves.get(key);
-  if (known) { apply(known); return; }
+  if (known && known.settled) { apply(known); return; }
+  if (known) apply(known);
   // Timed by the voice before, in an earlier session: kept. (Hand-timed words are left as they are: better than this.)
   const asked = state.lyricsSource === 'Unison' ? null : await cdp.wordFit.get(path, lyrics).catch(() => null);
   if (fitted.key !== key) return;
   if (asked && asked !== 'none' && asked.words) {
     let fit = null;
-    try { fit = { ms: 0, lines: linesFittedToWords(lines, asked.words, asked.move) }; } catch { /* (kept in another shape: as if not kept) */ }
+    try { fit = { ms: 0, lines: linesFittedToWords(lines, asked.words, asked.move), settled: true }; } catch { /* (kept in another shape: as if not kept) */ }
     if (fit) { keep(fit); apply(fit); return; }
   }
   // Read twice rather than held between: a long song decoded takes hundreds of MB.
   const decode = async (rate) => new OfflineAudioContext(2, 1, rate).decodeAudioData(await (await fetch(cdp.mediaUrl(path))).arrayBuffer());
-  let fit = { ms: 0, lines: null }, readable = false, move = 0;
-  try {
+  let fit = known || { ms: 0, lines: null }, readable = !!known, move = known ? known.move : 0;
+  if (!known) try {
     const decoded = await decode(SYNC_RATE);
     if (fitted.key !== key) return;
     if (decoded.duration >= LONGEST_TO_FIT) throw new Error('longer than its tags said');
@@ -1344,17 +1348,22 @@ async function fitLyricsToVoice() {
     const envelope = await voiceEnvelope(left, right, () => new Promise((go) => { setTimeout(go); }));
     move = lyricsMove(envelope, lines);
     const held = holdLongWords(voiceBreaks(envelope), lines, move) || lines;
-    fit = { ms: Math.round(move * 1000), lines: holdLastWords(envelope.centre, held, move) || (held === lines ? null : held) };
+    fit = { ms: Math.round(move * 1000), lines: holdLastWords(envelope.centre, held, move) || (held === lines ? null : held), move };
     readable = true;
   } catch { /* (it can't be read this way: as they are) */ }
+  const wordsToCome = asked === 'none' && readable;
+  fit.settled = !wordsToCome;
   keep(fit);
   if (fitted.key !== key) return;
-  apply(fit);
-  if (fit.ms) setStatus(t('LYRICS LINED UP WITH THE SINGER'));
+  if (!known) {
+    apply(fit);
+    if (fit.ms) setStatus(t('LYRICS LINED UP WITH THE SINGER'));
+  }
   // Then, not seen before and the models there: each word timed by the voice itself, in the background.
-  if (asked !== 'none' || !readable) return;
+  if (!wordsToCome) return;
   try {
     if (!await cdp.wordFit.reads(path, lyrics, wordFitRequest(lines), move)) {
+      fit.settled = true;
       if (fitted.key === key && isKaraokeOpen()) sayEnglishOnlyOnce();
       return;
     }
@@ -1367,9 +1376,11 @@ async function fitLyricsToVoice() {
     setStatus(saying); karaokeNote(saying);
     const done = await cdp.wordFit.run(path, lyrics, { left, right, lines: wordFitRequest(lines), move });
     if (matchingWords === key) { matchingWords = null; karaokeNote(''); }
-    if (!done || !done.words || fitted.key !== key) { if (fitted.key === key) setStatus(stateStatus()); return; }
-    const best = { ms: 0, lines: linesFittedToWords(lines, done.words, done.move) };
+    if (done) fit.settled = true; // (kept by the main process: words, or that it couldn't hear them. No answer: another song took its place)
+    if (!done || !done.words) { if (fitted.key === key) setStatus(stateStatus()); return; }
+    const best = { ms: 0, lines: linesFittedToWords(lines, done.words, done.move), settled: true };
     keep(best);
+    if (fitted.key !== key) return;
     apply(best);
     const said = t('WORDS NOW FOLLOW THE SINGER');
     setStatus(said); karaokeNote(said, 4000);
@@ -3484,7 +3495,7 @@ function terminalQueue() {
   const up = state.nextUp;
   return {
     info: textOf('queue-info'), next: textOf('queue-next'), nextWord: t('NEXT'), removable: !changerOn,
-    actions: ['search-button', 'save-playlist-button', 'load-playlist-button', 'disc-skip-button', 'eject-disc-button', 'clear-queue-button'].map((id) => buttonKey(id)),
+    actions: ['search-button', 'save-playlist-button', 'load-playlist-button', ...(state.changerMode ? ['disc-skip-button', 'eject-disc-button'] : []), 'clear-queue-button'].map((id) => buttonKey(id)), // (those two hidden by the page's own rules without the changer)
     slots: changerOn ? shownChanger.slots.map((d, i) => (d ? { title: d.title, done: d.done, playing: i === shownChanger.playingSlot } : null)) : null,
     total: changerOn ? tracks.length : state.queue.length,
     active: changerOn ? tracks.findIndex((tr) => tr.current) : state.index,
@@ -3517,12 +3528,13 @@ function terminalModel() {
       { label: t('REPEAT: {m}', { m: name[state.repeat] || state.repeat }), act: 'repeat', on: state.repeat !== 'OFF' },
     ],
     tools: [buttonKey('karaoke-button'), buttonKey('lyrics-button'), buttonKey('tags-button'), buttonKey('tray-button'), buttonKey('load-button')],
-    queue: terminalQueue(), hint: document.body.classList.contains('keys-learnt') ? $('hint').querySelector('b').textContent : textOf('hint'),
+    queue: terminalQueue(), hint: document.body.classList.contains('keys-learnt') ? $('hint').querySelector('b').textContent : textOf('hint'), allKeys: $('hint').querySelector('b').textContent,
   };
 }
 function terminalAct(hit, fraction) {
   switch (hit.act) {
     case 'click': $(hit.arg).click(); break;
+    case 'keys': panels.showShortcuts(); break;
     case 'toggle': toggle(); break;
     case 'prev': previousTrack(); break;
     case 'next': userNext(); break;
@@ -3541,7 +3553,8 @@ function terminalAct(hit, fraction) {
 }
 const terminalLook = new TerminalLook($('look-terminal'), {
   model: terminalModel, act: terminalAct,
-  discFace: (side) => (disc.discPresent === false ? null : disc.renderFace(side, 1).canvas),
+  discFace: (side) => (disc.discPresent === false ? null : (disc.data && disc.flipT >= 0.5 ? disc.renderDataFace(side, 1) : disc.renderFace(side, 1)).canvas),
+  discTurn: () => disc.flipT,
 });
 function showQueueDrawer(open) {
   document.body.classList.toggle('queue-open', open);

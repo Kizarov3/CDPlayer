@@ -145,3 +145,19 @@ test('the album said once: not on a line of its own when the source line has it 
   assert.ok(text(m).includes('Jar Of Flies (1994)'));
   assert.ok(text({ ...m, source: 'FLAC' }).includes('Jar Of Flies · 1994'));
 });
+
+test('? ALL KEYS at the foot can be clicked, when it fits', () => {
+  const m = { words: { now: 'NOW', volume: 'VOL', disc: 'CD' }, title: 'Song', transport: [], tools: [], queue: null, hint: 'SPACE PLAY · ? ALL KEYS', allKeys: '? ALL KEYS' };
+  const grid = screen(m, 120, 40, 2), x = 1 + 'SPACE PLAY · '.length;
+  assert.strictEqual(grid.hitAt(x, 39).act, 'keys');
+  assert.strictEqual(grid.hitAt(x + 9, 39).act, 'keys');
+  assert.strictEqual(grid.hitAt(x - 1, 39), null);
+  assert.ok(!screen({ ...m, hint: `${'x'.repeat(200)} ? ALL KEYS` }, 120, 40, 2).hits.some((h) => h.act === 'keys'));
+});
+
+test('the queue says how far it can be scrolled, so the wheel stops at its end', () => {
+  const q = { info: 'Q', actions: [], slots: null, total: 100, active: 0, top: 500, rowAt: (i) => ({ index: i, no: i + 1, title: `t${i}`, time: '1:00' }) };
+  const grid = screen({ words: { now: 'NOW', volume: 'VOL', disc: 'CD' }, title: 'Song', transport: [], tools: [], queue: q }, 120, 40, 2);
+  assert.strictEqual(grid.meta.queueMost, 100 - grid.meta.queueRows);
+  assert.strictEqual(grid.meta.queueTop, grid.meta.queueMost);
+});

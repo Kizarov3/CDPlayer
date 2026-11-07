@@ -14,11 +14,12 @@ const LINES = { // which way each frame's line goes from the middle of its cell
   '─': 'lr', '│': 'ud', '┌': 'rd', '┐': 'ld', '└': 'ru', '┘': 'lu', '├': 'udr', '┤': 'udl', '┬': 'lrd', '┴': 'lru', '┼': 'lrud',
 };
 const SCROLL_KEPT_MS = 6000; // scrolled away: back to the song playing after this long
+const WHEEL_PX_PER_ROW = 40;
 
 export class TerminalLook {
-  /** `model()`: tui.js's screen's `m`, as things are now; `act(hit, fraction)`: something on it clicked; `discFace(side)` → the disc's face to draw from. */
-  constructor(canvas, { model, act, discFace }) {
-    Object.assign(this, { canvas, model, act, discFace });
+  /** `model()`: tui.js's screen's `m`, as things are now; `act(hit, fraction)`: something on it clicked; `discFace(side)` → the disc's face to draw from; `discTurn()`: how far it's turned over, 0–1. */
+  constructor(canvas, { model, act, discFace, discTurn }) {
+    Object.assign(this, { canvas, model, act, discFace, discTurn });
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.lastDraw = 0; this.painted = null; this.key = ''; this.angle = 0; this.hover = null;
     this.scrollTop = null; this.scrolledAt = 0; this.grid = null; this.dragging = null;
@@ -67,7 +68,8 @@ export class TerminalLook {
     g.clearRect(0, 0, w, h);
     // A round disc in cells taller than they're wide: turned first, then squeezed to them.
     const side = face.width;
-    g.setTransform(w / side, 0, 0, h / side, w / 2, h / 2);
+    const narrowed = Math.max(0.02, Math.abs(Math.cos(Math.PI * this.discTurn()))); // (turning over: narrowing to its edge and widening again)
+    g.setTransform((narrowed * w) / side, 0, 0, h / side, w / 2, h / 2);
     g.rotate(this.angle);
     g.imageSmoothingQuality = 'high';
     g.drawImage(face, -side / 2, -side / 2);
@@ -177,8 +179,13 @@ export class TerminalLook {
   }
   wheel(e) {
     if (!this.grid || !this.grid.meta.queueRows) return;
+    // Rows by how far it's turned, what's left over carried on (a trackpad sends many small turns), and never past the list's end.
+    this.wheelLeft = (this.wheelLeft || 0) + e.deltaY;
+    const rows = Math.trunc(this.wheelLeft / WHEEL_PX_PER_ROW);
+    if (!rows) return;
+    this.wheelLeft -= rows * WHEEL_PX_PER_ROW;
     const from = this.scrollTop !== null ? this.scrollTop : this.grid.meta.queueTop || 0;
-    this.scrollTop = Math.max(0, from + Math.sign(e.deltaY) * Math.max(1, Math.round(Math.abs(e.deltaY) / 40)));
+    this.scrollTop = Math.max(0, Math.min(this.grid.meta.queueMost || 0, from + rows));
     this.scrolledAt = performance.now();
   }
 }

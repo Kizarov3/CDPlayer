@@ -456,7 +456,7 @@ function fullBleed(g, song, colors) {
   return { x: H + 50, w: W - H - 100, top: 60, height: H - 120, font: SYSTEM, label: null, titleStyle: '800' };
 }
 
-const LOOK_STYLES = { VISUALIZER: dockBar, LYRICS: spotlight, HIFI: faceplate, ALBUM: fullBleed, CASE: fullBleed };
+const LOOK_STYLES = { VISUALIZER: dockBar, LYRICS: spotlight, HIFI: faceplate, ALBUM: fullBleed, CASE: fullBleed, TERMINAL: terminal };
 
 const STYLES = { RED: jewelCase, BLUE: discOut, SUNSET: sunset, FOREST: polaroid, GALAXY: planet, OCEAN: reflection, MATRIX: terminal, AUTUMN: ticket, SNOW: frost, AUTO: streamApp };
 const MONO = '"SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace';

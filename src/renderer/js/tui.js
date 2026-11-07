@@ -170,7 +170,11 @@ export function screen(m, cols, rows, cellRatio = 2) {
   }
   nowPlaying(grid, m, p.discWidth, cols - p.discWidth, p.top);
   queuePane(grid, m, p.top, cols, p.queue);
-  if (m.hint) grid.put(1, rows - 1, clip(m.hint, cols - 2), 'muted');
+  if (m.hint) {
+    const shown = clip(m.hint, cols - 2);
+    grid.put(1, rows - 1, shown, 'muted');
+    if (m.allKeys && shown.endsWith(m.allKeys)) grid.hit(1 + textWidth(shown) - textWidth(m.allKeys), rows - 1, textWidth(m.allKeys), 'keys');
+  }
   if (p.discWidth && m.tray > 0) tray(grid, m, p);
   return grid;
 }
@@ -275,7 +279,7 @@ function queuePane(grid, m, y0, cols, h) {
   const total = q.total || 0, most = Math.max(0, total - fit);
   // Where the list starts: where it was scrolled to, or round the song playing.
   const first = Math.max(0, Math.min(most, q.top !== null && q.top !== undefined ? q.top : (q.active || 0) - Math.floor(fit / 3)));
-  grid.meta.queueTop = first;
+  grid.meta.queueTop = first; grid.meta.queueMost = most;
   for (let i = 0; i < fit && first + i < total; i++) {
     const row = q.rowAt(first + i);
     if (!row) continue;
