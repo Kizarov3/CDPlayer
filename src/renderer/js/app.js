@@ -43,7 +43,7 @@ import { note as noteForReport, buildReport } from './report.js';
 import { phoneTagTitle, phoneJoined } from './remote-settings.js';
 import { drawShelfie, cutRows, firstCrop } from './shelfie.js';
 import { openShelf, shelfShowMe, closeShelf, isShelfOpen, escapeShelf, setupShelf, showInPlayer, showChangerSlots, choosePressing, shelfAlbumIds, discogsCurrencyChanged, playSimilarTo, setWanted, shelfTakeAlong, takeShelfie } from './shelf.js';
-import { voiceEnvelope, voiceBreaks, lyricsMove, holdLongWords, holdLastWords, wordFitRequest, linesFittedToWords, SYNC_RATE } from './lyrics-sync.js';
+import { voiceEnvelope, voiceBreaks, lyricsMove, holdLongWords, holdLastWords, wordFitRequest, linesFittedToWords, handTimedShift, SYNC_RATE } from './lyrics-sync.js';
 import { retimeKaraoke, redrawKaraoke, openKaraoke, closeKaraoke, refreshKaraoke, updateKaraoke, isKaraokeOpen, canKaraoke, karaokeCover, karaokeNote } from './karaoke.js';
 import { discChange, discOfDetails } from './box-set.js';
 import { SpotifySession, SpotifyTrackElement, isSpotifyUri, spotifyUpcoming, loadSpotifySdk } from './spotify-deck.js';
@@ -1313,13 +1313,30 @@ let matchingWords = null; // the song whose words are being timed
 const fittedMoves = new Map();
 let lyricsOfPath = null; // the song state.lyrics are for
 const LONGEST_TO_FIT = 20 * 60; // seconds
-async function fitLyricsToVoice() {
+// Karaoke's lines from the words the voice was heard singing: hand-timed ones (Unison's) moved as a whole by how far
+// off they are, others taking the heard words' times.
+const handTimed = () => state.lyricsSource === 'Unison';
+const fitFromWords = (lines, got) => (handTimed()
+  ? { ms: Math.round(handTimedShift(lines, got.words) * 1000), lines: null, settled: true }
+  : { ms: 0, lines: linesFittedToWords(lines, got.words, got.move), settled: true });
+// The lines for a video as karaoke has them: moved to where the voice is in this file and their words timed by it,
+// when that's been worked out (or kept from an earlier session); as the lyrics say otherwise. → { timed, ms }.
+async function linesForVideo() {
+  const path = state.loadedPath, lyrics = state.lyrics, plain = lyrics ? parseLrc(lyrics) : [];
+  const key = path && lyrics && lyricsOfPath === path ? `${path}\n${lyrics}` : null;
+  // (not worked out yet: done now, once for the song — kept after — while the card waits)
+  if (key && !fittedMoves.get(key)) await fitLyricsToVoice(true).catch(() => {});
+  const fit = key && fittedMoves.get(key);
+  if (fit) return { timed: fit.lines && fit.lines.length === plain.length ? fit.lines : plain, ms: fit.ms || 0 };
+  return { timed: plain, ms: 0 };
+}
+async function fitLyricsToVoice(forVideo = false) {
   // (a song still loading has the last song's lyrics for a moment: they aren't fitted to its file)
   const path = state.loadedPath, lyrics = state.lyrics, key = path && lyrics && lyricsOfPath === path ? `${path}\n${lyrics}` : null;
   if (key === fitted.key) return;
   if (matchingWords && matchingWords !== key) { matchingWords = null; karaokeNote(''); cdp.wordFit.cancel().catch(() => {}); } // (another song now: that one's not worth finishing)
   fitted.key = key; fitted.ms = 0;
-  const lines = key && canKaraoke(lyrics) && isKaraokeOpen() ? parseLrc(lyrics) : null;
+  const lines = key && canKaraoke(lyrics) && (isKaraokeOpen() || forVideo) ? parseLrc(lyrics) : null;
   const deck = engine.deck;
   if (!lines) { fitted.key = null; return; }
   if (!deck || deck.start || deck.end !== null || !/^(\/|[A-Za-z]:[\\/])/.test(path) || !engine.duration || !(engine.duration < LONGEST_TO_FIT)) return;
@@ -1329,12 +1346,13 @@ async function fitLyricsToVoice() {
   const known = fittedMoves.get(key);
   if (known && known.settled) { apply(known); return; }
   if (known) apply(known);
-  // Timed by the voice before, in an earlier session: kept. (Hand-timed words are left as they are: better than this.)
-  const asked = state.lyricsSource === 'Unison' ? null : await cdp.wordFit.get(path, lyrics).catch(() => null);
+  // Timed by the voice before, in an earlier session: kept. (Hand-timed words keep their own timing, only moved as a
+  // whole to where the voice is in this file: timed to another version of the song, they can be a second off all through.)
+  const asked = await cdp.wordFit.get(path, lyrics).catch(() => null);
   if (fitted.key !== key) return;
   if (asked && asked !== 'none' && asked.words) {
     let fit = null;
-    try { fit = { ms: 0, lines: linesFittedToWords(lines, asked.words, asked.move), settled: true }; } catch { /* (kept in another shape: as if not kept) */ }
+    try { fit = fitFromWords(lines, asked); } catch { /* (kept in another shape: as if not kept) */ }
     if (fit) { keep(fit); apply(fit); return; }
   }
   // Read twice rather than held between: a long song decoded takes hundreds of MB.
@@ -1378,7 +1396,7 @@ async function fitLyricsToVoice() {
     if (matchingWords === key) { matchingWords = null; karaokeNote(''); }
     if (done) fit.settled = true; // (kept by the main process: words, or that it couldn't hear them. No answer: another song took its place)
     if (!done || !done.words) { if (fitted.key === key) setStatus(stateStatus()); return; }
-    const best = { ms: 0, lines: linesFittedToWords(lines, done.words, done.move), settled: true };
+    const best = fitFromWords(lines, done);
     keep(best);
     if (fitted.key !== key) return;
     apply(best);
@@ -1502,11 +1520,11 @@ function shareCard() {
     // none) — the song started for it if it was paused, and paused again after.
     video: async (format, picked, onTick) => {
       const wasPlaying = engine.playing, withSound = !spotifyActive();
-      const timed = state.lyrics ? parseLrc(state.lyrics) : [];
-      const span = engine.deck ? videoSpan(timed, picked, heardPosition(engine.duration, 0, state.lyricsOffset)) : null;
+      const { timed, ms } = await linesForVideo(), offset = state.lyricsOffset + ms;
+      const span = engine.deck ? videoSpan(timed, picked, heardPosition(engine.duration, 0, offset)) : null;
       const begin = async () => {
         if (span) {
-          seekTo(playbackTimeFor(span.start, 0, state.lyricsOffset));
+          seekTo(playbackTimeFor(span.start, 0, offset));
           const el = engine.deck && engine.deck.el;
           if (el && el.seeking) await new Promise((resolve) => el.addEventListener('seeked', resolve, { once: true }));
         }
@@ -1518,8 +1536,9 @@ function shareCard() {
             ...song, face: disc.renderFace(512, 1).canvas, colors: { ...colors }, timed,
             // (each PLAYER LOOK its own film: VISUALIZER's moves with the spectrum, HI-FI's meters with each side's level)
             look: state.look, track: state.index + 1, spectrum: (n) => engine.spectrum(n), levels: () => engine.stereo(),
+            duration: engine.duration, waveform: state.waveform ? progress.waveform : null, // (TERMINAL's bar)
             // Where the song is as each frame is drawn: what's recorded is taken before the output, so no delay for it.
-            position: () => heardPosition(engine.position, 0, state.lyricsOffset),
+            position: () => heardPosition(engine.position, 0, offset),
           } });
         if (!made) { setStatus(t("VIDEO CAN'T BE MADE HERE")); return false; }
         const saved = await cdp.saveVideo(made.bytes, [song.artist, song.title].filter(Boolean).join(' - '), made.ext);

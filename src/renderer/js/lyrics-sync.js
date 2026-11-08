@@ -233,6 +233,35 @@ export function wordFitRequest(lines) {
   return out;
 }
 /**
+ * Hand-timed words (their lines' own `words`) checked against what came back for wordFitRequest's: how far the voice in
+ * this file is from them over the whole song — the median of each word's difference, when most words agree on it (a
+ * version of the song that starts a little sooner or later than the one they were timed to). → seconds (voice − words),
+ * or 0: they're right already, or the voice doesn't agree with itself enough to move them by.
+ */
+export function handTimedShift(lines, words) {
+  const diffs = [];
+  lines.filter((l) => l.text).forEach((line, i) => {
+    const got = words[i];
+    if (!got || !line.words || !line.words.length) return;
+    // where each of the line's words starts in its own timing (a word may be in several timed pieces, as "gun" "s,")
+    const starts = [];
+    let fresh = true;
+    for (const part of line.words) {
+      if (!part.text.trim()) { fresh = true; continue; }
+      if (fresh) starts.push(part.time);
+      fresh = /\s$/.test(part.text);
+    }
+    if (starts.length !== got.length) return;
+    got.forEach((w, k) => { if (w && w.end > w.time) diffs.push(w.time - starts[k]); });
+  });
+  if (diffs.length < 20) return 0;
+  diffs.sort((a, b) => a - b);
+  const median = diffs[Math.floor(diffs.length / 2)];
+  const agree = diffs.filter((d) => Math.abs(d - median) <= 0.3).length / diffs.length;
+  return agree >= 0.6 && Math.abs(median) >= 0.1 ? Math.round(median * 1000) / 1000 : 0;
+}
+
+/**
  * `lines` with what came back for wordFitRequest's: each line timed by the voice takes its words' times (and starts
  * with its first word, not before the line before it); one that didn't get them keeps its own, moved by `move`, as all
  * these are in the file's time. → the lines (none then needs a whole-song move).

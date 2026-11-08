@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { voiceEnvelope, voiceBreaks, lyricsMove, holdLongWords, holdLastWords, wordFitRequest, linesFittedToWords, SYNC_RATE } from '../src/renderer/js/lyrics-sync.js';
+import { voiceEnvelope, voiceBreaks, lyricsMove, holdLongWords, holdLastWords, wordFitRequest, linesFittedToWords, handTimedShift, SYNC_RATE } from '../src/renderer/js/lyrics-sync.js';
 
 const DT = 0.02;
 // Twenty-four lines of uneven length and gap, as a song has.
@@ -169,4 +169,19 @@ test('lines take the voice\'s times; one without keeps its own, moved; none star
   assert.deepStrictEqual(out[2].words, [{ time: 20.5, end: 21.5, text: 'kept' }]);
   assert.strictEqual(out[2].end, 21.5);
   assert.strictEqual(out[3].time, 20.5); // (later than the line before it, whatever it was found at)
+});
+
+test('hand-timed words a second late against the voice: moved as a whole; on time, or the voice all over the place: left', () => {
+  // ten lines of three words, a word in two pieces ("gun" "s, "), a blank piece between words
+  const lines = Array.from({ length: 10 }, (_, n) => {
+    const t0 = 10 + n * 4;
+    return { time: t0, text: 'load up guns', words: [{ time: t0, text: 'load ' }, { time: t0 + 0.5, text: 'up ' }, { time: t0 + 0.9, text: ' ' }, { time: t0 + 1, text: 'gun' }, { time: t0 + 1.3, text: 's' }] };
+  });
+  const heard = (shift, jitter = () => 0) => lines.map((l) => [0, 0.5, 1].map((d, k) => ({ time: l.time + d + shift + jitter(k), end: l.time + d + shift + 0.4 })));
+  assert.strictEqual(handTimedShift(lines, heard(-0.9)), -0.9);
+  assert.strictEqual(handTimedShift(lines, heard(0.03)), 0);
+  let s = 1;
+  const wild = () => { s = (s * 16807) % 2147483647; return (s / 2147483647 - 0.5) * 6; };
+  assert.strictEqual(handTimedShift(lines, heard(-0.9, wild)), 0);
+  assert.strictEqual(handTimedShift(lines.slice(0, 3), heard(-0.9).slice(0, 3)), 0); // too few words to go by
 });

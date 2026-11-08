@@ -8,22 +8,26 @@
 //   HI-FI — the deck's black glass display is the stage: the lyrics lit in its dots, the meters on the real levels.
 //   VISUALIZER — the cover breathing on the bass inside a ring of the music's own spectrum; the line pulsing with it.
 //   LYRICS — the words, big, landing one by one as they're sung, the line swept away for the next; the cover a blur.
+//   TERMINAL — the console's screen in character cells: the command typed, the frames drawn, the disc in characters
+//     coming up out of noise and turning; the words lit a character at a time behind the cursor.
 import { rgb, lerpColor, FONT, drawThemeImage } from './theme.js';
 import { drawCells, clock } from './deck-display.js';
 import { lineWords, songPace } from './lyrics.js';
+import { Grid, glyphs, textWidth, clip, stackedLevel, levelChar, seekLevels, asciiCells } from './tui.js';
 import { t } from './i18n.js';
-import { flattenMp4 } from './mp4-flatten.js';
+import { flattenMp4, mp4Reach } from './mp4-flatten.js';
 
-export const VIDEO_SECONDS = 8, MIN_VIDEO_SECONDS = 2, MAX_VIDEO_SECONDS = 60;
+export const VIDEO_SECONDS = 8, MIN_VIDEO_SECONDS = 2, MAX_VIDEO_SECONDS = 180;
 const FPS = 30;
 
 /** Where CLASSIC's things stand in a '9:16' (Stories) or '1:1' video: { w, h, case, disc: { x, y, r }, names, lyrics }. */
 export function videoLayout(format) {
   if (format === '9:16') {
-    return { w: 1080, h: 1920, case: { x: 100, y: 450, w: 560, h: 560 }, disc: { x: 650, y: 530, r: 360 },
+    return { w: 1080, h: 1920, case: { x: 100, y: 450, w: 560, h: 560 }, disc: { x: 600, y: 470, r: 237 },
       names: { x: 100, y: 1110, w: 880, h: 130 }, lyrics: { x: 100, y: 1270, w: 880, h: 420 } };
   }
-  return { w: 1080, h: 1080, case: { x: 70, y: 470, w: 400, h: 400 }, disc: { x: 340, y: 410, r: 245 },
+  // (the disc as big as a real one against its case: 120 mm to 142)
+  return { w: 1080, h: 1080, case: { x: 60, y: 450, w: 440, h: 440 }, disc: { x: 400, y: 400, r: 186 },
     names: { x: 620, y: 200, w: 400, h: 150 }, lyrics: { x: 620, y: 380, w: 400, h: 560 } };
 }
 
@@ -67,7 +71,7 @@ export function lyricLines(timed) {
 /**
  * The stretch of the song a video covers, in lyric time: from the first of the picked lines (indexes among the lines
  * with words, as the card lists them) to where the last one ends — when the next timed line starts, or the song does
- * (`songEnd`, s). 2 s at least, a minute at most. → { start, end } | null (no line picked).
+ * (`songEnd`, s). 2 s at least, three minutes at most. → { start, end } | null (no line picked).
  */
 export function videoSpan(timed, picked, songEnd) {
   const said = timed.map((_, i) => i).filter((i) => String(timed[i].text || '').trim());
@@ -332,7 +336,7 @@ function classic(L, s, lines, start) {
   const from = { x: L.case.x + L.case.w / 2, y: L.case.y + L.case.h / 2 }; // the disc starts inside its case
   const focus = { x: (L.case.x + d.x + d.r) / 2, y: (d.y - d.r + L.case.y + L.case.h) / 2 };
   const n = L.names, box = L.lyrics, notes = lines.length ? lines : nameAsLine(s, start), noLyrics = !lines.length;
-  const small = (L.case.w * 0.46) / d.r;
+  const small = Math.min(0.85, (L.case.w * 0.46) / d.r);
   const size = noLyrics ? (tall ? 80 : 54) : tall ? 56 : 40, face = (px) => `${px}px ${SERIF}`;
   const layoutOf = (line) => cachedLayout(line, `classic${L.h}`, () => fit(scratch(), line.words, face, size, size * 0.8, box.w - 30, 4, 1.32));
   const text = C.text, mute = C.muted;
@@ -979,11 +983,204 @@ function kinetic(L, s, lines, start) {
   };
 }
 
+// ---- TERMINAL: the player's console screen, in character cells ---------------------------------------------------
+
+// As the look draws its cells (look-terminal.js): the frames' lines and the blocks as shapes, so they meet cell to cell.
+const T_FONT = '"SF Mono", Menlo, Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace';
+const T_LINES = { '─': 'lr', '│': 'ud', '┌': 'rd', '┐': 'ld', '└': 'ru', '┘': 'lu' };
+const T_LEVELS = '▁▂▃▄▅▆▇█', T_SHADES = { '░': 0.26, '▒': 0.5, '▓': 0.75 }, T_NOISE = '░▒▓#%@*+=:';
+const mmss = (s) => { const v = Math.max(0, Math.floor(s || 0)); return `${String(Math.floor(v / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`; };
+
+// The line's characters, each lit or not as far as it's been sung: [{ ch, w, lit }], the words a space apart.
+function litGlyphs(line, pos) {
+  const out = [];
+  line.words.forEach((word, k) => {
+    if (k) out.push({ ch: ' ', w: 1, lit: pos >= word.time });
+    for (const part of word.parts) {
+      const gs = glyphs(part.text), on = Math.round(sung(part, pos) * gs.length);
+      gs.forEach((g, i) => out.push({ ...g, lit: i < on }));
+    }
+  });
+  return out;
+}
+// Glyphs in rows of at most `w` cells, broken at spaces where it can.
+function wrapGlyphs(gs, w) {
+  const rows = [[]];
+  let used = 0, word = [];
+  const flush = () => {
+    const ww = word.reduce((n, g) => n + g.w, 0);
+    if (used && used + ww > w) { rows.push([]); used = 0; }
+    for (const g of word) { if (used + g.w > w) { rows.push([]); used = 0; } rows[rows.length - 1].push(g); used += g.w; }
+    word = [];
+  };
+  for (const g of gs) {
+    if (g.ch === ' ') { flush(); if (used && used < w) { rows[rows.length - 1].push(g); used++; } } else word.push(g);
+  }
+  flush();
+  return rows.map((r) => { while (r.length && r[r.length - 1].ch === ' ') r.pop(); return r; });
+}
+
+function terminalFilm(L, s, lines, start) {
+  const C = s.colors, W = L.w, H = L.h, tall = H > W, px = tall ? 27 : 24;
+  const g0 = scratch(); g0.font = `${px}px ${T_FONT}`; g0.letterSpacing = '0px';
+  const cw = g0.measureText('M').width, ch = Math.round(px * 1.42), ratio = ch / cw;
+  const cols = Math.floor((W - 2 * (tall ? 44 : 36)) / cw), rows = Math.floor((H - 2 * (tall ? 60 : 30)) / ch);
+  const ox = Math.round((W - cols * cw) / 2), oy = Math.round((H - rows * ch) / 2);
+  const shown = lines.length ? lines : nameAsLine(s, start);
+  const dim = rgb(C.muted, 0.45), color = (c) => (Array.isArray(c) ? rgb(c) : c === 'dim' ? dim : rgb(C[c] || C.text));
+  // Where things go: the prompt on the top row, then the disc's pane (with the song beside it, or under it in Stories), then the words.
+  const top = 1, nowH = tall ? 30 : 16;
+  const discRows = tall ? 15 : 13, discCols = Math.min(cols - 6, Math.round(discRows * ratio) | 1);
+  const disc = tall ? { x: Math.floor((cols - discCols) / 2), y: top + 2 } : { x: 3, y: top + 2 };
+  const info = tall ? { x: 3, y: disc.y + discRows + 2, w: cols - 6 } : { x: disc.x + discCols + 4, y: top + 2, w: cols - (disc.x + discCols + 4) - 3 };
+  const lyr = { y: top + nowH + 1, h: rows - (top + nowH + 1) };
+  const art = canvas(discCols, discRows), ag = art.getContext('2d', { willReadFrequently: true });
+  const titleRows = (() => { const r = wrapGlyphs(glyphs(String(s.title || '')), info.w); return r.length > 2 ? [r[0], [...r[1].slice(0, -1), { ch: '…', w: 1 }]] : r; })();
+  const who = [s.artist, s.subtitle].filter(Boolean);
+  const noise = (k) => T_NOISE[Math.abs(Math.floor(Math.sin(k * 12.9898) * 43758.5453)) % T_NOISE.length];
+
+  return (g, at) => {
+    const pos = s.position(), grid = new Grid(cols, rows);
+    // (when each part comes up, the screen starting as a console does: the command typed, the frames drawn, the rest after)
+    const typed = (x, y, text, color, from, cps = 70, opts) => {
+      const n = Math.floor((at - from) * cps);
+      if (n <= 0) return;
+      const gs = glyphs(text), shownText = gs.slice(0, n).map((q) => q.ch).join('');
+      const end = grid.put(x, y, shownText, color, opts);
+      if (n < gs.length && end < cols) grid.put(end, y, '█', 'text');
+    };
+    const frame = (x, y, w, h, title, right, from) => {
+      const p = clamp01((at - from) / 0.35);
+      if (p <= 0) return;
+      if (p >= 1) { grid.box(x, y, w, h, title, right); return; }
+      const ring = [];
+      for (let i = 0; i < w; i++) ring.push([x + i, y]);
+      for (let i = 1; i < h; i++) ring.push([x + w - 1, y + i]);
+      for (let i = w - 2; i >= 0; i--) ring.push([x + i, y + h - 1]);
+      for (let i = h - 2; i > 0; i--) ring.push([x, y + i]);
+      const tmp = new Grid(cols, rows); tmp.box(x, y, w, h);
+      for (const [cx, cy] of ring.slice(0, Math.ceil(ring.length * p))) grid.cells[cy][cx] = tmp.cells[cy][cx];
+    };
+    const prompt = `$ cdplayer --now-playing`;
+    typed(0, 0, prompt, 'muted', 0.05, 40);
+    if (at > 0.05 + prompt.length / 40 + 0.1 && at < 1.2) grid.put(textWidth(prompt) + 1, 0, '█', 'text');
+    const boot = 0.75;
+    frame(0, top, cols, nowH, '', '', boot);
+    if (at > boot + 0.35) {
+      grid.put(2, top, ` ${t('NOW PLAYING')} `, 'accent', { bold: true });
+      const right = ` ▶ ${String(s.track || 1).padStart(2, '0')} `;
+      grid.put(cols - 2 - textWidth(right), top, right, 'muted');
+    }
+    frame(0, lyr.y, cols, lyr.h, '', '', boot + 0.15);
+    if (at > boot + 0.5) {
+      grid.put(2, lyr.y, ` ${t('LYRICS')} `, 'accent', { bold: true });
+      grid.put(cols - 13, lyr.y + lyr.h - 1, ' CDPlayer ', 'muted');
+    }
+
+    // The disc, in characters as the look has it, turning; it comes up a row at a time out of noise.
+    const side = s.face.width, spun = Math.max(0, at - boot), angle = spun < 1.5 ? (2.7 * spun * spun) / 3 : 2.7 * (spun - 0.75);
+    ag.setTransform(1, 0, 0, 1, 0, 0); ag.clearRect(0, 0, discCols, discRows);
+    ag.setTransform(discCols / side, 0, 0, discRows / side, discCols / 2, discRows / 2); ag.rotate(angle);
+    ag.imageSmoothingQuality = 'high'; ag.drawImage(s.face, -side / 2, -side / 2);
+    const cells = asciiCells(ag.getImageData(0, 0, discCols, discRows).data, discCols, discRows), reveal = (at - boot - 0.3) / 0.035;
+    cells.forEach((row, y) => row.forEach((c, x) => {
+      if (!c || y > reveal) return;
+      const fresh = reveal - y < 3;
+      grid.cells[disc.y + y][disc.x + x] = { ch: fresh ? noise(x * 31 + y * 7 + Math.floor(at * 20)) : c.ch, w: 1, color: fresh ? 'accent' : c.rgb };
+    }));
+
+    // The song: its name, who and what, typed in; the levels moving under it; where it's got along the bar.
+    let y = info.y;
+    const from = boot + 0.45;
+    titleRows.forEach((r, i) => typed(info.x, y++, r.map((q) => q.ch).join(''), 'accent', from + i * 0.2, 60, { bold: true }));
+    who.forEach((w, i) => typed(info.x, y++, clip(w, info.w), i ? 'muted' : 'text', from + 0.4 + i * 0.15, 80));
+    y++;
+    const levels = tall ? 4 : 5, bars = s.spectrum ? s.spectrum(info.w) : [], rise = clamp01((at - boot - 0.8) / 0.6);
+    for (let r = 0; r < levels; r++) for (let i = 0; i < info.w; i++) {
+      const c = stackedLevel((bars[i] || 0) * rise, r, levels);
+      if (c !== ' ') grid.put(info.x + i, y + r, c, r < levels / 2 ? 'accent' : 'muted');
+    }
+    y += levels + 1;
+    if (at > boot + 0.9) {
+      const el = mmss(pos), rem = s.duration > 0 ? `-${mmss(s.duration - pos)}` : '';
+      grid.put(info.x, y, el, 'text');
+      if (rem) grid.put(info.x + info.w - textWidth(rem), y, rem, 'muted');
+      const bx = info.x + el.length + 1, bw = info.w - el.length - 1 - (rem ? rem.length + 1 : 0);
+      if (bw > 3) {
+        const shape = seekLevels(s.waveform, bw), hit = s.duration > 0 ? Math.max(0, Math.min(bw - 1, Math.floor((pos / s.duration) * bw))) : -1;
+        shape.forEach((v, i) => grid.put(bx + i, y, i === hit ? '█' : levelChar(v), i === hit ? 'text' : i < hit ? 'accent' : 'muted'));
+      }
+    }
+
+    // The words: the line being sung lit a character at a time, the cursor where the voice is; those sung scrolled up, dim.
+    if (at > boot + 0.6) {
+      const x0 = 3, w = cols - 6, anchor = lyr.y + 2 + Math.floor((lyr.h - 4) / 3), bottom = lyr.y + lyr.h - 2;
+      const i = lineIndex(shown, pos), blink = Math.floor(at * 2) % 2 === 0;
+      const put = (k, yy) => {
+        const line = shown[k], gs = litGlyphs(line, pos), rowsOf = wrapGlyphs(gs, w), now = k === i;
+        return { rows: rowsOf, draw: (ry) => rowsOf.forEach((r, n) => {
+          const row = ry + n;
+          if (row < lyr.y + 1 || row > bottom) return;
+          let x = x0;
+          for (const q of r) { grid.put(x, row, q.ch, now ? (q.lit ? 'text' : 'muted') : k === i + 1 ? 'muted' : 'dim', { bold: now && q.lit }); x += q.w; }
+          // the cursor after the last lit character, blinking once the line's sung
+          if (now) {
+            const lastLit = r.reduce((m, q, idx) => (q.lit ? idx : m), -1);
+            const done = gs.every((q) => q.lit || q.ch === ' ');
+            if (lastLit >= 0 && (lastLit < r.length - 1 || n === rowsOf.length - 1 || !done)) {
+              const cx = x0 + r.slice(0, lastLit + 1).reduce((m, q) => m + q.w, 0);
+              const onThisRow = n === rowsOf.findLastIndex((rr) => rr.some((q) => q.lit));
+              // (a block over the character it's on, that character showing through it, as a console's cursor)
+              const under = grid.cells[row][cx];
+              if (onThisRow && (!done || blink) && cx < x0 + w) grid.cells[row][cx] = under && under.ch !== ' ' ? { ...under, inv: true } : { ch: '█', w: 1, color: 'accent' };
+            }
+          }
+        }) };
+      };
+      if (i < 0) { if (blink) grid.put(x0, anchor, '█', 'accent'); }
+      else {
+        const cur = put(i, anchor);
+        cur.draw(anchor);
+        for (let k = i - 1, yy = anchor; k >= 0 && yy > lyr.y + 1; k--) { const p = put(k); yy -= p.rows.length; p.draw(yy); }
+        for (let k = i + 1, yy = anchor + cur.rows.length; k < shown.length && yy <= bottom; k++) { const p = put(k); p.draw(yy); yy += p.rows.length; }
+      }
+    }
+
+    // On the canvas, cell by cell.
+    g.fillStyle = rgb(C.bg); g.fillRect(0, 0, W, H);
+    g.textBaseline = 'alphabetic';
+    const fonts = [`${px}px ${T_FONT}`, `bold ${px}px ${T_FONT}`];
+    let font = '';
+    for (let yy = 0; yy < rows; yy++) for (let xx = 0; xx < cols; xx++) {
+      const c = grid.cells[yy][xx];
+      if (!c || c.w === 0 || c.ch === ' ') continue;
+      const left = Math.round(ox + xx * cw), right = Math.round(ox + (xx + (c.w === 2 ? 2 : 1)) * cw), cy = oy + yy * ch, w = right - left;
+      if (c.inv) { g.fillStyle = rgb(C.accent); g.fillRect(left, cy, w, ch); }
+      g.fillStyle = c.inv ? rgb(C.bg) : color(c.color);
+      const lineDirs = T_LINES[c.ch];
+      if (lineDirs) {
+        const th = 2, mx = left + Math.floor((w - th) / 2), my = cy + Math.floor((ch - th) / 2);
+        if (lineDirs.includes('l')) g.fillRect(left, my, mx - left + th, th);
+        if (lineDirs.includes('r')) g.fillRect(mx, my, left + w - mx, th);
+        if (lineDirs.includes('u')) g.fillRect(mx, cy, th, my - cy + th);
+        if (lineDirs.includes('d')) g.fillRect(mx, my, th, cy + ch - my);
+        continue;
+      }
+      const level = T_LEVELS.indexOf(c.ch);
+      if (level >= 0) { const high = Math.max(2, Math.round((ch * (level + 1)) / 8)); g.fillRect(left, cy + ch - high, w, high); continue; }
+      if (T_SHADES[c.ch]) { g.globalAlpha = T_SHADES[c.ch]; g.fillRect(left, cy, w, ch); g.globalAlpha = 1; continue; }
+      const f = fonts[c.bold ? 1 : 0];
+      if (f !== font) { g.font = f; font = f; }
+      g.fillText(c.ch, left, cy + Math.round(ch * 0.76), w);
+    }
+  };
+}
+
 // A context to measure type on, when laying lines out ahead of drawing them.
 let measuring = null;
 const scratch = () => measuring || (measuring = canvas(8, 8).getContext('2d'));
 
-const FILMS = { CLASSIC: classic, ALBUM: album, CASE: caseFilm, HIFI: hifi, VISUALIZER: visualizer, LYRICS: kinetic };
+const FILMS = { CLASSIC: classic, ALBUM: album, CASE: caseFilm, HIFI: hifi, VISUALIZER: visualizer, LYRICS: kinetic, TERMINAL: terminalFilm };
 /** A look's film for `song`, ready to draw: → draw(g, at) (at: seconds into the video). What doesn't move is drawn here. */
 function film(format, song) {
   const L = videoLayout(format), lines = lyricLines(song.timed || []);
@@ -1009,7 +1206,15 @@ export async function recordVideo({ format, song, audio, seconds = VIDEO_SECONDS
   const recorder = new MediaRecorder(stream, { mimeType: type.mime, videoBitsPerSecond: 10e6, audioBitsPerSecond: 192e3 });
   const chunks = [];
   let failed = false;
-  recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  // How far the encoder has got with the picture: it can lag behind what's drawn, and what it hasn't got to when the
+  // recorder stops is lost — the picture would stop seconds before the sound, on a frozen frame.
+  const reach = type.ext === 'mp4' ? mp4Reach() : null;
+  let reached = 0;
+  recorder.ondataavailable = (e) => {
+    if (!e.data.size) return;
+    chunks.push(e.data);
+    if (reach) e.data.arrayBuffer().then((b) => { reached = reach(new Uint8Array(b)).vide || reached; });
+  };
   recorder.onerror = () => { failed = true; };
   const done = new Promise((resolve) => { recorder.onstop = resolve; });
   await begin();
@@ -1019,7 +1224,7 @@ export async function recordVideo({ format, song, audio, seconds = VIDEO_SECONDS
   const t0 = performance.now();
   recorder.start(500);
   // Drawn on a timer, not on animation frames: those slow right down when the window isn't in front.
-  let quietSince = null, stoppedEarly = false;
+  let quietSince = null, until = seconds;
   await new Promise((resolve) => {
     let left = Math.ceil(seconds);
     onTick(left);
@@ -1029,8 +1234,12 @@ export async function recordVideo({ format, song, audio, seconds = VIDEO_SECONDS
       const now = Math.ceil(seconds - t);
       if (now !== left) { left = now; onTick(Math.max(0, now)); }
       // The music stopped (paused, or the song couldn't go on): the video ends there, not on a silent frozen picture.
-      if (playing()) quietSince = null; else if (quietSince === null) quietSince = t;
-      if (t >= seconds || (quietSince !== null && t - quietSince > 0.4)) { stoppedEarly = t < seconds; clearInterval(timer); resolve(); }
+      if (t < until) {
+        if (playing()) quietSince = null; else if (quietSince === null) quietSince = t;
+        if (quietSince !== null && t - quietSince > 0.4) until = quietSince;
+      }
+      // Drawn on past the end till the encoder has the picture up to it (10 s at most); the tail is cut off after.
+      if (t >= until && (!reach || reached >= until || t >= until + 10)) { clearInterval(timer); resolve(); }
     }, 1000 / FPS);
   });
   recorder.stop();
@@ -1040,7 +1249,7 @@ export async function recordVideo({ format, song, audio, seconds = VIDEO_SECONDS
   const blob = new Blob(chunks, { type: type.mime });
   const bytes = new Uint8Array(await blob.arrayBuffer());
   // The recorder's MP4 comes in fragments, which some players cut off after the first: made a plain one.
-  return { bytes: type.ext === 'mp4' ? flattenMp4(bytes) : bytes, ext: type.ext, stoppedEarly };
+  return { bytes: type.ext === 'mp4' ? flattenMp4(bytes, until) : bytes, ext: type.ext, stoppedEarly: until < seconds };
 }
 
 /** A look's film, to draw frames of it by hand (to look at them, or time them): → draw(g, at). */

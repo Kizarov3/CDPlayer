@@ -21,12 +21,60 @@ function boxes(v, start, end) {
 const kids = (v, box) => boxes(v, box.head, box.start + box.size);
 const find = (v, box, type) => kids(v, box).find((b) => b.type === type);
 
-/** Turn a fragmented MP4 into a plain one. → the new bytes, or the same ones when it isn't fragmented (or can't be read). */
-export function flattenMp4(bytes) {
-  try { return flatten(bytes) || bytes; } catch { return bytes; }
+/**
+ * Turn a fragmented MP4 into a plain one, its tracks cut to the shorter one (a picture that stops while the sound goes
+ * on is a frozen frame) and to `cut` s when given. → the new bytes, or the same ones when it isn't fragmented (or can't be read).
+ */
+export function flattenMp4(bytes, cut = Infinity) {
+  try { return flatten(bytes, cut) || bytes; } catch { return bytes; }
 }
 
-function flatten(bytes) {
+/**
+ * How far the recorder has got with each kind of track, from its pieces as they come (ftyp + moov first, then a
+ * moof + mdat each): → reach(pieceBytes) → { vide, soun } (seconds, as far as the pieces so far go).
+ */
+export function mp4Reach() {
+  const tracks = new Map(), out = {};
+  return (bytes) => {
+    try {
+      const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      for (const top of boxes(v, 0, bytes.length)) {
+        if (top.type === 'moov') {
+          for (const trak of kids(v, top).filter((b) => b.type === 'trak')) {
+            const tkhd = find(v, trak, 'tkhd'), mdia = find(v, trak, 'mdia'), mdhd = find(v, mdia, 'mdhd'), hdlr = find(v, mdia, 'hdlr');
+            tracks.set(v.getUint32(tkhd.head + (v.getUint8(tkhd.head) ? 20 : 12)), {
+              scale: v.getUint32(mdhd.head + (v.getUint8(mdhd.head) ? 20 : 12)), duration: 0,
+              kind: String.fromCharCode(...bytes.subarray(hdlr.head + 8, hdlr.head + 12)) });
+          }
+          const mvex = find(v, top, 'mvex');
+          for (const trex of mvex ? kids(v, mvex).filter((b) => b.type === 'trex') : []) {
+            const t = tracks.get(v.getUint32(trex.head + 4));
+            if (t) t.duration = v.getUint32(trex.head + 12);
+          }
+        }
+        if (top.type !== 'moof') continue;
+        for (const traf of kids(v, top).filter((b) => b.type === 'traf')) {
+          const tfhd = find(v, traf, 'tfhd'), tf = v.getUint32(tfhd.head) & 0xffffff, t = tracks.get(v.getUint32(tfhd.head + 4));
+          if (!t) continue;
+          let q = tfhd.head + 8 + (tf & 0x1 ? 8 : 0) + (tf & 0x2 ? 4 : 0), duration = t.duration;
+          if (tf & 0x8) duration = v.getUint32(q);
+          const tfdt = find(v, traf, 'tfdt');
+          let at = !tfdt ? 0 : v.getUint8(tfdt.head) ? Number(v.getBigUint64(tfdt.head + 4)) : v.getUint32(tfdt.head + 4);
+          for (const trun of kids(v, traf).filter((b) => b.type === 'trun')) {
+            const rf = v.getUint32(trun.head) & 0xffffff, count = v.getUint32(trun.head + 4);
+            const step = [0x100, 0x200, 0x400, 0x800].filter((f) => rf & f).length * 4;
+            let r = trun.head + 8 + (rf & 0x1 ? 4 : 0) + (rf & 0x4 ? 4 : 0);
+            for (let i = 0; i < count; i++, r += step) at += rf & 0x100 ? v.getUint32(r) : duration;
+          }
+          out[t.kind] = Math.max(out[t.kind] || 0, at / t.scale);
+        }
+      }
+    } catch { /* a piece it can't read: as far as before */ }
+    return out;
+  };
+}
+
+function flatten(bytes, cut) {
   const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const top = boxes(v, 0, bytes.length);
   const ftyp = top.find((b) => b.type === 'ftyp'), moov = top.find((b) => b.type === 'moov');
@@ -50,7 +98,7 @@ function flatten(bytes) {
   }
 
   // The fragments' runs, in the order they're in the file: each one a chunk of samples lying together.
-  const runs = [];
+  let runs = [];
   for (const moof of top.filter((b) => b.type === 'moof')) {
     for (const traf of kids(v, moof).filter((b) => b.type === 'traf')) {
       const tfhd = find(v, traf, 'tfhd');
@@ -98,6 +146,27 @@ function flatten(bytes) {
     }
   }
   if (!runs.length) return null;
+
+  // Every track cut where the shortest ends (or at `cut`): the samples after it gone, the last one shortened to end there.
+  const lengths = [...tracks.values()].filter((t) => t.samples.length).map((t) => t.samples.reduce((n, s) => n + s.duration, 0) / t.scale);
+  const until = Math.min(cut, ...lengths);
+  for (const t of tracks.values()) {
+    const limit = Math.round(until * t.scale);
+    let time = 0, kept = 0;
+    while (kept < t.samples.length && time < limit) time += t.samples[kept++].duration;
+    if (kept === t.samples.length && time <= limit) continue;
+    t.samples.length = kept;
+    if (kept) t.samples[kept - 1].duration -= time - limit;
+    t.end = limit;
+    let first = 0;
+    for (const c of t.chunks) {
+      const n = Math.max(0, Math.min(c.count, kept - first));
+      if (n < c.count) c.size = t.samples.slice(first, first + n).reduce((m, s) => m + s.size, 0);
+      first += c.count; c.count = n;
+    }
+    t.chunks = t.chunks.filter((c) => c.count);
+  }
+  runs = runs.filter((c) => c.count);
 
   // The new moov: the same, but each track's sample table made from its samples, the durations filled in, no mvex.
   // Made twice: once to know its size (and so where the media starts), then with the chunks' real offsets.

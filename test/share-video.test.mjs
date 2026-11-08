@@ -64,7 +64,7 @@ test('how long a video runs: as long as the picked lines are sung', () => {
   assert.deepStrictEqual(videoSpan(timed, [2, 0], 30), { start: 1, end: 30 }); // the last line runs to the song's end
   assert.deepStrictEqual(videoSpan(timed, [2], 0), { start: 7, end: 7 + VIDEO_SECONDS }); // its end unknown
   assert.deepStrictEqual(videoSpan([{ time: 1, text: 'a' }, { time: 1.5, text: 'b' }], [0], 9), { start: 1, end: 3 }); // 2 s at least
-  assert.deepStrictEqual(videoSpan(timed, [0, 2], 500), { start: 1, end: 61 }); // a minute at most
+  assert.deepStrictEqual(videoSpan(timed, [0, 2], 500), { start: 1, end: 181 }); // three minutes at most
   assert.strictEqual(videoSpan(timed, [], 200), null);
   assert.strictEqual(videoSpan([], [0], 200), null);
 });
