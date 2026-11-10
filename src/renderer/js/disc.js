@@ -209,6 +209,7 @@ const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2
 export class Disc {
   constructor(canvas) {
     this.canvas = canvas;
+    if (globalThis.__shots) globalThis.__shots.discs.push(this); // (only in the --theme-shots run: theme-shots.js pins a resting disc's angle)
     this.mode = 'normal';
     this.angle = 0;
     this.spinning = false;

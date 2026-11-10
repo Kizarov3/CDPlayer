@@ -164,6 +164,7 @@ export class Slider {
     this.canvas.addEventListener('pointercancel', (e) => this.dragging && this.pointer(e, 'up'));
     new ResizeObserver(() => this.resize()).observe(this.canvas);
     allSliders.add(this);
+    if (globalThis.__shots) globalThis.__shots.sliders.push(this); // (only in the --theme-shots run: theme-shots.js pins the seek bar's knob)
   }
   mount(parent) { parent.append(this.canvas); this.resize(); return this; }
   // (its laid-out size, not as it's drawn on screen: a panel growing out of its button is scaled down at first)

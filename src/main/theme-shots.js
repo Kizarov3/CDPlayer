@@ -104,9 +104,12 @@ async function makeAlbum(nativeImage, from) {
 // The page's clock and frames made ours, from before any of its scripts run (this mode only): performance.now() is a
 // virtual time that moves 1/60 s per frame, and requestAnimationFrame callbacks run only when `__frames(n)` is called —
 // so the disc's angle, the waveform and every easing depend on how many frames were stepped, not on how long anything
-// took. CSS animations and transitions are stilled too.
+// took. CSS animations and transitions are stilled too. The song itself plays in real time, though: where the disc
+// came to rest and where the seek bar's last tick left its knob differed from run to run. So every Disc and Slider
+// made on the page puts itself in `__shots` (disc.js, widgets.js), for `still()` to pin before each shot.
 const PIN = `(() => {
   let now = 1000, id = 0, queue = [];
+  window.__shots = { discs: [], sliders: [] };
   performance.now = () => now;
   window.requestAnimationFrame = (cb) => { queue.push([++id, cb]); return id; };
   window.cancelAnimationFrame = (i) => { queue = queue.filter((q) => q[0] !== i); };
@@ -130,7 +133,13 @@ async function run({ win, miniWindow, outDir, themes, audio, nativeImage, store 
   const written = [];
   let dir = outDir, screens = {};
   const save = (name, image) => { const file = path.join(dir, `${name}.png`); fs.writeFileSync(file, image.toPNG()); written.push(file); };
+  // A resting disc turned to 0, and the seek bar's knob where the song is (played out: at its end), as its own
+  // ticks would have left it had one come after the song ended.
+  const still = () => js(`(() => { const s = window.__shots; if (!s) return;
+    for (const d of s.discs) if (!d.speed && !d.spinning) d.angle = 0;
+    for (const b of s.sliders) if (b.waveformCapable) b.setValue(b.max); })()`);
   const shot = async (name) => {
+    await still();
     await pause(400);
     await wait(150); // (the frame drawn reaches the screen)
     const image = await win.webContents.capturePage();
