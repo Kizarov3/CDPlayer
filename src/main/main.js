@@ -205,7 +205,16 @@ async function runThemeShots() {
     const audio = shotArg('audio') ? path.resolve(shotArg('audio')) : made.album;
     store.writeMusicFolders([audio]);
     fs.mkdirSync(shotsDir, { recursive: true });
-    const r = await shots.run({ win, miniWindow: () => miniWin, outDir: shotsDir, themes, audio, nativeImage, store });
+    // The phone remote, on the loopback for the run: the pairing address of a server the player's page feeds as usual.
+    const phoneRemote = async () => {
+      remoteConf = { ...remoteConf, on: true, token: remoteNet.newToken() };
+      const server = newRemoteServer('127.0.0.1', 0);
+      const { port } = await server.start();
+      remote = server; remoteAt = { address: '127.0.0.1', port };
+      toPage('remote-listening', true);
+      return `http://127.0.0.1:${port}/pair?k=${remoteConf.token}`;
+    };
+    const r = await shots.run({ win, miniWindow: () => miniWin, outDir: shotsDir, themes, audio, nativeImage, store, phoneRemote });
     console.log(`theme-shots: ${r.written.length} pictures in ${shotsDir}`);
     if (made) fs.rmSync(made.root, { recursive: true, force: true });
   } catch (e) { console.error('theme-shots failed:', e); code = 1; }
