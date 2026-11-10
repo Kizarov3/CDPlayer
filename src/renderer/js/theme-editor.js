@@ -7,7 +7,7 @@ import { THEMES, SCENES, contrast, hex, fromHex, startFrom, deriveAutoTheme, typ
 const COLOR_ROWS = [[t('BACKGROUND'), 'bg'], [t('CARDS'), 'card'], [t('ACCENT'), 'accent'], [t('ACCENT 2'), 'accent2'], [t('TEXT'), 'text'], [t('MUTED'), 'muted']];
 const SCENE_NAMES = { BARS: t('BARS'), SNOW: t('SNOW|scene'), GALAXY: t('GALAXY|scene'), OCEAN: t('OCEAN|scene'), MATRIX: t('MATRIX|scene'), AUTUMN: t('AUTUMN|scene'), FOREST: t('FIREFLIES') };
 // The built-in themes' names in the interface's language (a theme of one's own keeps the name it was given).
-const THEME_NAMES = { RED: t('RED|theme'), BLUE: t('BLUE|theme'), SUNSET: t('SUNSET|theme'), FOREST: t('FOREST|theme'), GALAXY: t('GALAXY|theme'), OCEAN: t('OCEAN|theme'), MATRIX: t('MATRIX|theme'), AUTUMN: t('AUTUMN|theme'), SNOW: t('SNOW|theme'), AUTO: t('AUTO') };
+const THEME_NAMES = { RED: t('RED|theme'), BLUE: t('BLUE|theme'), SUNSET: t('SUNSET|theme'), FOREST: t('FOREST|theme'), GALAXY: t('GALAXY|theme'), OCEAN: t('OCEAN|theme'), MATRIX: t('MATRIX|theme'), AUTUMN: t('AUTUMN|theme'), SNOW: t('SNOW|theme'), WHITE: t('WHITE|theme'), AUTO: t('AUTO') };
 export const themeLabel = (theme) => (theme.user ? theme.name : THEME_NAMES[theme.name] || theme.name);
 const MAX_SIDE = 1920, MAX_BYTES = 1024 * 1024, QUALITIES = [0.85, 0.75, 0.65, 0.55];
 

@@ -12,6 +12,7 @@ export const THEMES = [
   palette('MATRIX', [4, 8, 5], [9, 15, 10], [64, 230, 120], [140, 255, 170], [214, 250, 224], [96, 140, 108]),
   palette('AUTUMN', [20, 12, 8], [34, 21, 14], [224, 122, 40], [200, 60, 46], [250, 236, 220], [168, 132, 108]),
   palette('SNOW', [14, 16, 20], [23, 26, 30], [214, 44, 54], [46, 168, 96], [248, 248, 250], [152, 154, 160]),
+  palette('WHITE', [251, 251, 252], [255, 255, 255], [224, 68, 46], [112, 116, 123], [42, 44, 48], [112, 116, 123]),
   // AUTO's colors are placeholders, always replaced by deriveAutoTheme() before being shown.
   palette('AUTO', [10, 10, 12], [18, 18, 21], [150, 150, 160], [190, 190, 200], [232, 232, 236], [140, 140, 148]),
 ];
@@ -23,6 +24,11 @@ export const colors = { bg: [...THEMES[0].bg], card: [...THEMES[0].card], accent
 export const rgb = (c, a = 1) => (a >= 1 ? `rgb(${c[0]},${c[1]},${c[2]})` : `rgba(${c[0]},${c[1]},${c[2]},${a})`);
 export const lerpColor = (a, b, f) => [0, 1, 2].map((i) => Math.round(a[i] + (b[i] - a[i]) * f));
 export const darker = (c) => c.map((v) => Math.floor(v * 0.7)); // java.awt.Color.darker()
+
+/** A background is light when its relative luminance is over half: the light material (html.light) and the canvases' drawing follow it. */
+export const isLight = (bg) => luminance(bg) > 0.5;
+/** Whether the theme on screen (or the one being faded to) is light: set when a transition starts, before any frame. */
+export const shown = { light: false };
 
 const listeners = new Set();
 export function onColorsChanged(fn) { listeners.add(fn); }
@@ -40,6 +46,7 @@ let transition = null;
 const COLOR_MS = 450;
 const easeInOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 export function setColors(target, animate) {
+  shown.light = isLight(target.bg);
   if (transition) cancelAnimationFrame(transition.raf);
   transition = null;
   if (!animate) {
