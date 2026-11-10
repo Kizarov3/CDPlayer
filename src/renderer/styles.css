@@ -78,6 +78,16 @@ html.light {
   --shadow: 0 0 0 1px rgba(0, 0, 0, .05), 0 2px 6px rgba(0, 0, 0, .08), 0 18px 40px rgba(0, 0, 0, .09);
   --scrim: rgba(42, 44, 48, .25);
   --rule: rgba(0, 0, 0, .08);
+  --rule-soft: rgba(0, 0, 0, .07);
+  --edge: rgba(0, 0, 0, .08);
+  --card-edge: rgba(0, 0, 0, .06);
+  --hover-fill: rgba(0, 0, 0, .045);
+  --fill-faint: rgba(0, 0, 0, .035);
+  --fill-on: rgba(0, 0, 0, .06);
+  --field: rgba(0, 0, 0, .03);
+  --field-edge: rgba(0, 0, 0, .14);
+  --scrim-deep: rgba(42, 44, 48, .32);
+  --shelf-wall: linear-gradient(to bottom, var(--backdrop-top), var(--backdrop-bottom));
 }
 
 * { box-sizing: border-box; }
@@ -923,12 +933,15 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
 /* Without a button to come out of, a panel grows in from a little smaller, and shrinks a little as it goes. */
 @keyframes cardIn { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
 @keyframes cardOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(.95); } }
+/* Light: a white card standing off the dimmed player on a soft shadow. */
+html.light .card { box-shadow: var(--shadow); }
 .card h1 { margin: 0; font-size: 16px; color: rgb(var(--accent)); font-weight: bold; }
 .card .subtitle { margin-top: 6px; font-size: 11px; color: rgb(var(--muted)); }
 .card .close-row { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 16px; }
 /* The Now Playing card: its preview beside the lyrics' lines to pick one from. */
 .card-pick { display: flex; gap: 22px; margin-top: 18px; align-items: flex-start; }
 .card-preview { flex: 0 0 auto; width: 520px; aspect-ratio: 1200 / 630; border-radius: 4px; background: rgba(0, 0, 0, .3); box-shadow: 0 8px 24px rgba(0, 0, 0, .45); }
+html.light .card-preview { background: rgba(0, 0, 0, .05); box-shadow: 0 6px 18px rgba(0, 0, 0, .14); }
 .card-lines { flex: 1 1 auto; min-width: 0; height: 273px; }
 .card-line { min-height: 28px; margin-bottom: 2px; padding: 0 8px; border-radius: 3px; }
 .card-line:hover { background: var(--hover-fill); }
@@ -1039,6 +1052,7 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
 .year-album { width: 82px; display: flex; flex-direction: column; gap: 4px; font-size: 9px; color: rgb(var(--muted)); }
 .year-album img, .year-cdr { width: 82px; height: 82px; object-fit: cover; box-shadow: 0 2px 6px rgba(0, 0, 0, .5); }
 .year-cdr { display: grid; place-items: center; padding: 6px; box-sizing: border-box; background: rgb(214, 216, 220); color: rgb(26, 26, 78); font-size: 10px; text-align: center; overflow: hidden; }
+html.light .year-album img, html.light .year-cdr, html.light .tag-thumb { box-shadow: 0 2px 6px rgba(0, 0, 0, .16); }
 .year-list { font-size: 11px; line-height: 1.6; color: rgb(var(--text)); }
 .year-list b { font-weight: bold; }
 
@@ -1089,6 +1103,8 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
 }
 .tag-pick.on { color: rgb(var(--text)); background: rgba(255, 255, 255, .085); box-shadow: inset 0 0 0 1px rgba(var(--accent), .55); }
 .tag-pick:disabled { opacity: .3; cursor: default; }
+html.light .tag-pick { background: rgb(255, 255, 255); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .16); }
+html.light .tag-pick.on { background: rgb(255, 255, 255); box-shadow: inset 0 0 0 1px rgba(var(--accent), .55); }
 
 /* ---- Theme picker menu ---- */
 .theme-menu-layer { position: absolute; inset: 0; pointer-events: auto; }
@@ -1097,6 +1113,7 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
   display: flex; flex-direction: column; padding: 4px; max-height: calc(100vh - 16px); overflow-y: auto;
 }
 .theme-menu { transform-origin: top left; animation: menuIn 180ms var(--ease-out); } /* opens out of what was clicked */
+html.light .theme-menu { box-shadow: 0 2px 6px rgba(0, 0, 0, .08), 0 14px 34px rgba(0, 0, 0, .12); }
 @keyframes menuIn { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
 .theme-item { display: flex; align-items: center; gap: 10px; padding: 8px 16px 8px 12px; border-radius: 6px; font-size: 11px; color: rgb(var(--text)); cursor: pointer; }
 .theme-item:hover { background: var(--hover-fill); }
@@ -1114,6 +1131,9 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
 .theme-problem { margin: 6px 0 2px; }
 .theme-name { width: 170px; background: rgba(255, 255, 255, .06); border: 1px solid var(--edge); color: rgb(var(--text)); font: inherit; font-size: 12px; padding: 5px 8px; }
 .swatch { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .235); }
+html.light .swatch { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .14); }
+html.light .color-well { border-color: rgba(0, 0, 0, .15); }
+html.light .theme-name { background: var(--field); border-color: var(--field-edge); }
 
 /* What's New and the like: however long, it scrolls and the button under it stays in the window. */
 .tips-list { max-height: calc(100vh - 220px); overflow-y: auto; padding-right: 8px; }
@@ -1136,6 +1156,8 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
   background: radial-gradient(ellipse at 50% 40%, rgba(var(--accent), .16), rgba(0, 0, 0, 0) 60%), rgb(var(--bg));
   display: flex; flex-direction: column; padding: 34px 50px 40px;
 }
+/* Light: the lines not being sung a little darker, so grey on the light page stays readable. */
+html.light #karaoke { --k-rest: .36; --k-unsung: .5; }
 #karaoke-note { position: relative; z-index: 1; text-align: center; font-size: 10px; line-height: 14px; margin-top: 4px; padding: 0 200px; color: rgb(var(--muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* (the room either side is the buttons': a long title stops short of them) */
 #karaoke-title { padding: 0 200px; text-align: center; font-size: 11px; color: rgb(var(--accent2)); letter-spacing: .08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1146,14 +1168,14 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
 #karaoke-lines { position: absolute; left: 0; right: 0; top: 0; }
 .k-line {
   max-width: 900px; margin: 0 auto; padding: 10px 0; text-align: center;
-  font-size: 26px; line-height: 1.25; color: rgba(var(--text), .28); cursor: pointer;
+  font-size: 26px; line-height: 1.25; color: rgba(var(--text), var(--k-rest, .28)); cursor: pointer;
   transition: font-size 260ms ease, color 260ms ease, filter 400ms ease, opacity 400ms ease;
   filter: blur(calc(var(--d, 0) * .55px)); opacity: calc(1 - var(--d, 0) * .12);
 }
 .k-line:hover { color: rgba(var(--text), .55); filter: none; }
 .k-line.gap { font-size: 20px; }
 .k-line.sung { color: rgba(var(--text), .42); }
-.k-line.current { font-size: 44px; color: rgba(var(--text), .38); filter: none; opacity: 1; }
+.k-line.current { font-size: 44px; color: rgba(var(--text), var(--k-unsung, .38)); filter: none; opacity: 1; }
 /* Duets: the first singer on the left, the second on the right, both together in the middle. */
 .k-line.k-v1 { text-align: left; }
 .k-line.k-v2 { text-align: right; }
@@ -1169,7 +1191,7 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
 .k-line.current .k-word {
   --p: 0;
   display: inline-block; white-space: pre;
-  background: linear-gradient(to right, rgb(var(--accent)) calc(var(--p) * 110% - 10%), rgba(var(--text), .38) calc(var(--p) * 110%));
+  background: linear-gradient(to right, rgb(var(--accent)) calc(var(--p) * 110% - 10%), rgba(var(--text), var(--k-unsung, .38)) calc(var(--p) * 110%));
   -webkit-background-clip: text; background-clip: text; color: transparent;
   transition: transform 260ms cubic-bezier(.3, 1.4, .5, 1), text-shadow 300ms ease;
 }
@@ -1246,6 +1268,12 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
   background: repeating-linear-gradient(to bottom,
     transparent 0 196px,
     rgb(92, 64, 44) 196px 199px, rgb(70, 47, 32) 199px 212px, rgba(0, 0, 0, .55) 212px 216px, transparent 216px 224px);
+}
+/* Light: the same wooden boards, on a light wall, their shadow under them soft; the cases' shadows too. */
+html.light .shelf-rows {
+  background: repeating-linear-gradient(to bottom,
+    transparent 0 196px,
+    rgb(150, 112, 80) 196px 199px, rgb(122, 88, 62) 199px 212px, rgba(0, 0, 0, .14) 212px 216px, transparent 216px 224px);
 }
 .spine {
   position: relative; isolation: isolate; /* its dust stays under whatever opens over the shelf */
@@ -1466,6 +1494,20 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
   outline: 1.5px dashed rgba(255, 255, 255, .6); outline-offset: -2px;
 }
 .spine.ghost:hover { opacity: .7; }
+html.light .spine, html.light #shelf.shooting .spine:not(.in-player):hover { box-shadow: 0 2px 5px rgba(0, 0, 0, .22); }
+html.light .spine.box { box-shadow: 0 2px 6px rgba(0, 0, 0, .24), inset 0 0 0 1px rgba(0, 0, 0, .2); }
+html.light .spine:hover { box-shadow: 0 10px 16px rgba(0, 0, 0, .2); }
+html.light .spine.in-player { box-shadow: 0 0 0 2px rgb(var(--accent)), 0 0 18px rgba(var(--accent), .4), 0 12px 16px rgba(0, 0, 0, .2); }
+html.light .spine.show-me, html.light .missing-box.show-me { box-shadow: 0 0 0 2px rgb(var(--accent)), 0 0 18px rgba(var(--accent), .45); }
+html.light .shelf-divider { box-shadow: 0 2px 5px rgba(0, 0, 0, .2); }
+html.light .spine-ghost { box-shadow: 0 18px 30px rgba(0, 0, 0, .25); }
+html.light #shelf-index button { color: rgba(var(--text), .5); }
+html.light .missing-box { border-color: rgba(120, 100, 70, .5); background: rgba(120, 100, 70, .06); color: rgb(120, 100, 70); }
+html.light .missing-box:hover, html.light .missing-box.open { background: rgba(120, 100, 70, .14); }
+html.light #shelf.shooting .missing-box:not(.open):not(.waiting):hover { background: rgba(120, 100, 70, .06); }
+html.light .missing-box.complete { border-color: rgba(176, 130, 30, .6); color: rgb(160, 116, 20); }
+html.light .spine.ghost { box-shadow: none; background: rgba(0, 0, 0, .03); outline-color: rgba(0, 0, 0, .35); color: rgb(var(--ink, 60, 60, 60)); }
+html.light .spine.ghost.wanted { outline-color: rgba(176, 130, 30, .85); }
 /* While a SHELFIE is taken off the screen: nothing over the shelf, nothing moving on it, no spine lifted by the mouse
    (the one in the player still stands proud). */
 body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: hidden; }
@@ -1493,6 +1535,10 @@ body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: 
   display: flex; gap: 28px; padding: 24px; width: min(980px, calc(100vw - 80px)); max-height: calc(100vh - 80px); /* (room beside a jewel case's width for the songs; as tall as its text needs) */
   background: rgb(var(--card)); border: 1px solid rgba(255, 255, 255, .16); box-shadow: 0 30px 80px rgba(0, 0, 0, .6);
 }
+/* Light: the shelf dimmed lightly, the case's card white on a soft shadow. */
+html.light .case-layer { background: var(--scrim); }
+html.light .case-card { border-color: var(--card-edge); box-shadow: 0 0 0 1px rgba(0, 0, 0, .04), 0 6px 16px rgba(0, 0, 0, .1), 0 30px 70px rgba(0, 0, 0, .16); }
+html.light .case-cover { box-shadow: 0 8px 24px rgba(0, 0, 0, .18); }
 .case-front { flex: 0 0 auto; height: min(410px, calc(100vh - 128px)); align-self: flex-start; aspect-ratio: 142 / 125; position: relative; } /* (a jewel case's: wider than tall) */
 .case-cover { width: 100%; height: 100%; object-fit: cover; display: block; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
 .case-front .case-cover { cursor: pointer; position: relative; z-index: 1; } /* over the receipt tucked behind it */
@@ -1514,6 +1560,12 @@ body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: 
   box-shadow: 0 14px 34px rgba(0, 0, 0, .6), inset 0 0 0 1px rgba(255, 255, 255, .4), 1px 1px 0 rgba(255, 255, 255, .3), 3px 3px 0 rgba(170, 180, 190, .25), 5px 5px 0 rgba(0, 0, 0, .3);
 }
 .case-lid-face > .case-cover { box-shadow: 0 0 0 1px rgba(0, 0, 0, .4); }
+/* Light: the lid clear grey plastic, as the JEWEL CASE look's tray, its shadow soft. */
+html.light .case-lid-face {
+  background: linear-gradient(160deg, rgba(255, 255, 255, .55), rgba(255, 255, 255, .2) 40%, rgba(255, 255, 255, .4)), rgb(208, 211, 216);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, .18), inset 0 0 0 1px rgba(255, 255, 255, .6), 1px 1px 0 rgba(255, 255, 255, .9), 3px 3px 0 rgba(170, 180, 190, .45), 5px 5px 0 rgba(0, 0, 0, .1);
+}
+html.light .case-lid-face > .case-cover { box-shadow: 0 0 0 1px rgba(0, 0, 0, .12); }
 .case-front.inside .case-lid-face { visibility: hidden; } /* (its back is the lid's inside) */
 .case-lid-inside {
   position: absolute; inset: 0; z-index: 5; cursor: pointer; opacity: 0; visibility: hidden;
@@ -1521,6 +1573,7 @@ body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: 
     linear-gradient(160deg, rgb(232, 228, 218), rgb(184, 180, 170));
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .35), inset 0 0 0 7px rgba(0, 0, 0, .1), 0 8px 24px rgba(0, 0, 0, .5);
 }
+html.light .case-lid-inside { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .35), inset 0 0 0 7px rgba(0, 0, 0, .06), 0 8px 22px rgba(0, 0, 0, .16); }
 .case-tray {
   position: absolute; inset: 0; cursor: pointer; display: grid; place-items: center; padding-left: 8%;
   background:
@@ -1529,6 +1582,14 @@ body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: 
     radial-gradient(circle at 54% 50%, transparent 0 11%, rgba(255, 255, 255, .12) 11.4% 12%, rgb(32, 34, 39) 12.4%),
     repeating-conic-gradient(from 0deg at 54% 50%, rgba(255, 255, 255, .22) 0 6deg, rgb(26, 27, 31) 6deg 30deg);
   box-shadow: 0 8px 24px rgba(0, 0, 0, .5), inset 0 0 0 1px rgba(255, 255, 255, .14), inset 0 0 0 6px rgba(255, 255, 255, .03);
+}
+html.light .case-tray {
+  background:
+    linear-gradient(to right, rgba(255, 255, 255, .5) 0 10px, rgba(0, 0, 0, .12) 10px 12px, transparent 12px),
+    linear-gradient(160deg, rgba(255, 255, 255, .3), transparent 50%, rgba(0, 0, 0, .06)),
+    radial-gradient(circle at 54% 50%, transparent 0 11%, rgba(255, 255, 255, .6) 11.4% 12%, rgb(212, 215, 220) 12.4%),
+    repeating-conic-gradient(from 0deg at 54% 50%, rgba(255, 255, 255, .8) 0 6deg, rgb(200, 203, 208) 6deg 30deg);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .16), inset 0 0 0 1px rgba(255, 255, 255, .6), inset 0 0 0 6px rgba(255, 255, 255, .2);
 }
 .case-front.open .case-tray { visibility: visible; }
 .case-front:not(.open) .case-tray { visibility: hidden; transition: visibility 0s 700ms; } /* (not clicked through the lid's gaps) */
@@ -1614,6 +1675,8 @@ body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: 
 .case-card.ghost { background: rgba(var(--card), .82); border: 1.5px dashed rgba(255, 255, 255, .35); }
 .case-card.ghost .case-cover { opacity: .75; }
 .ghost-cover { border: 1.5px dashed rgba(255, 255, 255, .35); background: rgba(255, 255, 255, .03); }
+html.light .case-card.ghost, html.light .ghost-cover { border-color: rgba(0, 0, 0, .25); }
+html.light .ghost-cover { background: rgba(0, 0, 0, .03); }
 .sticker-price {
   position: absolute; right: 16px; bottom: 16px; z-index: 2; pointer-events: none; padding: 5px 9px 4px;
   background: rgb(252, 250, 244); color: rgb(30, 30, 34); font-size: 13px; font-weight: bold; letter-spacing: .02em;
@@ -1668,6 +1731,7 @@ body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: 
 .case-similar-album { flex: 0 1 auto; min-width: 0; max-width: 170px; display: flex; gap: 6px; align-items: center; padding: 3px 8px 3px 3px;
   border: 1px solid rgba(var(--muted), .35); border-radius: 4px; background: none; color: rgb(var(--text)); font: 10px/1.25 var(--font, inherit); text-align: left; cursor: pointer; }
 .case-similar-album:hover, .case-similar-album:focus-visible { border-color: rgb(var(--accent)); background: rgba(255, 255, 255, .05); }
+html.light .case-similar-album:hover, html.light .case-similar-album:focus-visible { background: var(--hover-fill); }
 .case-similar-album .thumb { flex: none; width: 26px; height: 26px; border-radius: 2px; background: rgba(var(--muted), .25) center / cover no-repeat; }
 .case-similar-album .words { min-width: 0; display: flex; flex-direction: column; }
 .case-similar-album .words span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1691,6 +1755,10 @@ body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: 
 .booklet-bar { position: absolute; left: 50%; transform: translateX(-50%); display: flex; justify-content: center; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 22px; background: rgba(12, 12, 14, .92); box-shadow: 0 4px 18px rgba(0, 0, 0, .5); transition: opacity 200ms; }
 .booklet-layer.entering .booklet-bar, .booklet-layer.leaving .booklet-bar { opacity: 0; }
 .booklet-where { min-width: 64px; text-align: center; font-size: 11px; letter-spacing: .1em; color: rgba(255, 255, 255, .75); }
+/* Light: the bar under it a white one, and the pages (paper, or printed in the album's colours) on a softer shadow that
+   still lifts them off the light page. */
+html.light .booklet-bar { background: rgba(255, 255, 255, .94); box-shadow: 0 0 0 1px rgba(0, 0, 0, .05), 0 4px 16px rgba(0, 0, 0, .12); }
+html.light .booklet-where { color: rgba(var(--text), .75); }
 .booklet-layer.leaving .booklet { transition: transform 420ms cubic-bezier(.5, 0, .75, 0) !important; }
 /* Shut, in the lid of its case: its back seen through the lid's inside — plain paper, as the lid shows it. */
 /* In the lid, seen from behind: the booklet's back — plain card, the lid's inside (whichever page it'd show). */
@@ -1702,6 +1770,7 @@ body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: 
 .booklet.paper .page:not(.cover):not(.cdr) { background-image: linear-gradient(to right, rgba(0, 0, 0, .14), rgba(0, 0, 0, 0) 6%), repeating-linear-gradient(0deg, rgba(0, 0, 0, .018) 0 1px, transparent 1px 3px); }
 .booklet.paper .face.back .page:not(.cover):not(.cdr) { background-image: linear-gradient(to left, rgba(0, 0, 0, .14), rgba(0, 0, 0, 0) 6%), repeating-linear-gradient(0deg, rgba(0, 0, 0, .018) 0 1px, transparent 1px 3px); }
 .booklet.paper .track:hover { background: rgba(0, 0, 0, .05); }
+html.light .booklet .page, html.light .booklet.paper .page { box-shadow: 0 0 0 1px rgba(0, 0, 0, .06), 0 3px 8px rgba(0, 0, 0, .1), 0 18px 44px rgba(0, 0, 0, .18); }
 .booklet .leaf {
   position: absolute; left: var(--page); top: 0; width: var(--page); height: var(--page);
   transform-origin: left center; transform-style: preserve-3d;
@@ -1842,6 +1911,7 @@ kbd {
   display: inline-block; min-width: 18px; padding: 1px 6px; margin: 0 2px; border-radius: 4px; text-align: center;
   font: bold 11px var(--font, inherit); color: rgb(var(--text)); background: rgba(var(--text), .1); box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .4);
 }
+html.light kbd { background: rgba(var(--text), .07); box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .14), 0 0 0 1px rgba(0, 0, 0, .06); }
 .help-pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
 #hint b { color: rgb(var(--accent2)); cursor: pointer; }
 body.keys-learnt #hint-keys { display: none; } /* the keys used a few times: just ? ALL KEYS */
@@ -1874,15 +1944,19 @@ body.keys-learnt #hint-keys { display: none; } /* the keys used a few times: jus
 #disc-side { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 #disc-side > #queue-list { margin-top: 2px; min-height: 0; }
 .changer-tray { position: absolute; left: 0; top: 0; width: 128px; height: 128px; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.05) 0 22%, rgba(0,0,0,.4) 23% 100%); box-shadow: inset 0 2px 8px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.06); }
+html.light .changer-tray { background: radial-gradient(circle, rgba(255, 255, 255, .7) 0 22%, rgba(0, 0, 0, .05) 23% 100%); box-shadow: inset 0 2px 6px rgba(0, 0, 0, .12), 0 0 0 1px rgba(0, 0, 0, .06); }
 .changer-ring { position: absolute; inset: 0; transform: rotate(90deg); }
 .changer-disc { position: absolute; left: 50%; top: 50%; width: 42px; height: 42px; margin: -21px; border: 0; padding: 0; border-radius: 50%; cursor: pointer;
   transform: rotate(var(--a)) translateY(-40px) rotate(calc(-1 * var(--a))); background: #c9ccd2; box-shadow: 0 1px 3px rgba(0,0,0,.5); overflow: hidden; }
 .changer-disc .changer-art { position: absolute; inset: 0; border-radius: 50%; background-size: cover; background-position: center; font: 600 7px/1.1 var(--marker-font, inherit); color: #223; display: flex; align-items: center; justify-content: center; text-align: center; padding: 7px; }
 .changer-disc::after { content: ''; position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px; border-radius: 50%; background: #111; box-shadow: 0 0 0 3px rgba(255,255,255,.35); }
 .changer-disc.empty { background: rgba(0,0,0,.35); box-shadow: inset 0 1px 4px rgba(0,0,0,.8); cursor: default; }
+html.light .changer-disc { box-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
+html.light .changer-disc.empty { background: rgba(0, 0, 0, .06); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .15); }
 .changer-disc.empty::after { display: none; }
 .changer-disc.done { filter: grayscale(.6) brightness(.6); }
 .changer-disc.playing { box-shadow: 0 0 0 2px rgb(var(--accent)), 0 1px 3px rgba(0,0,0,.5); }
+html.light .changer-disc.playing { box-shadow: 0 0 0 2px rgb(var(--accent)), 0 1px 3px rgba(0, 0, 0, .25); }
 .changer-disc.next .changer-no::before { content: '▸'; }
 .changer-no { position: absolute; left: 0; right: 0; bottom: 1px; text-align: center; font: 700 8px/1 inherit; color: rgba(255,255,255,.85); text-shadow: 0 1px 2px #000; z-index: 1; }
 .changer-ring .changer-no { transform: rotate(calc(-1 * var(--ring, 0deg))); }
@@ -1893,6 +1967,7 @@ body.keys-learnt #hint-keys { display: none; } /* the keys used a few times: jus
 .changer-pick-disc { background: none; border: 0; color: inherit; cursor: pointer; text-align: center; font: inherit; }
 .changer-pick-disc:disabled { opacity: .35; cursor: default; }
 .changer-pick-art { width: 84px; height: 84px; margin: 0 auto 6px; border-radius: 50%; background: #c9ccd2 center/cover; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+html.light .changer-pick-art { box-shadow: 0 1px 4px rgba(0, 0, 0, .2); }
 .changer-pick-disc .name { font-size: 11px; font-weight: 700; } .changer-pick-disc .by { font-size: 10px; opacity: .7; }
 .spine-slot { position: absolute; top: -9px; left: 50%; transform: translateX(-50%); min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: rgb(var(--accent)); color: #fff; font: 700 9px/14px inherit; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,.5); z-index: 2; }
 /* The queue card in queue mode: the plain list; the changer's carousel, disc heading, DISC SKIP and EJECT only in changer mode. */
@@ -1907,6 +1982,7 @@ body:not(.changer-mode) #disc-skip-button, body:not(.changer-mode) #eject-disc-b
 .tour-bubble { position: fixed; width: 340px; max-width: calc(100vw - 24px); box-sizing: border-box; padding: 16px 18px 14px;
   background: rgb(var(--card)); color: rgb(var(--text)); border: 1px solid var(--card-edge); border-radius: 12px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, .6); transition: left .35s cubic-bezier(.3,.7,.3,1), top .35s cubic-bezier(.3,.7,.3,1); }
+html.light .tour-bubble { box-shadow: var(--shadow); }
 body.no-anim .tour-spot, body.no-anim .tour-bubble { transition: none; }
 .tour-bubble::before { content: ''; position: absolute; width: 12px; height: 12px; background: inherit; border: inherit; border-width: 1px 0 0 1px; }
 .tour-bubble[data-side="below"]::before { top: -7px; left: calc(var(--arrow) - 6px); transform: rotate(45deg); }

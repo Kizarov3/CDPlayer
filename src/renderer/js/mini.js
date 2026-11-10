@@ -1,6 +1,6 @@
 // The mini player window: a remote control for the main window (which keeps doing the actual playback). It
 // mirrors the state the main window sends, and sends back what the user presses. The disc keeps spinning.
-import { colors } from './theme.js';
+import { colors, isLight } from './theme.js';
 import { Disc } from './disc.js';
 import { Visualizer } from './visualizer.js';
 import { glyphSvg } from './glyphs.js';
@@ -103,6 +103,8 @@ cdp.onMiniState(async (s) => {
       colors[k] = s.colors[k];
       document.documentElement.style.setProperty(`--${k}`, s.colors[k].join(', '));
     }
+    // A light theme: the light material (html.light in mini.css), as the full player's.
+    if (s.colors.bg) document.documentElement.classList.toggle('light', isLight(s.colors.bg));
   }
   if ('animations' in s) document.body.classList.toggle('no-anim', !s.animations);
   if (s.appear) { shown = true; appear(); }

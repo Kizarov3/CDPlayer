@@ -12,6 +12,10 @@
   --card-edge: rgba(255, 255, 255, .157); /* the panel's hairline edge */
   --art-lift: 0 2px 8px rgba(0, 0, 0, .45), inset 0 0 0 1px rgba(255, 255, 255, .1); /* the cover standing off it */
 }
+html.light {
+  --card-edge: rgba(0, 0, 0, .08);
+  --art-lift: 0 1px 4px rgba(0, 0, 0, .16), inset 0 0 0 1px rgba(0, 0, 0, .06);
+}
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
 body {
