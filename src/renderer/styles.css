@@ -43,6 +43,16 @@
   --shadow: 0 0 0 1px rgba(0, 0, 0, .55), 0 3px 8px rgba(0, 0, 0, .3), 0 24px 50px rgba(0, 0, 0, .42); /* a panel standing off the page */
   --scrim: rgba(0, 0, 0, .55); /* the dimming behind a panel */
   --rule: rgba(255, 255, 255, .086); /* a hairline across the page */
+  --rule-soft: rgba(255, 255, 255, .07); /* a fainter one, between a list's rows or sections */
+  --edge: rgba(255, 255, 255, .118); /* a menu's edge and its dividers */
+  --card-edge: rgba(255, 255, 255, .157); /* a panel's hairline edge */
+  --hover-fill: rgba(255, 255, 255, .06); /* a row under the mouse */
+  --fill-faint: rgba(255, 255, 255, .04); /* a box barely set off the panel */
+  --fill-on: rgba(255, 255, 255, .08); /* the row picked */
+  --field: rgba(0, 0, 0, .3); /* a text field sunk into the panel, and its edge */
+  --field-edge: rgba(255, 255, 255, .16);
+  --scrim-deep: rgba(0, 0, 0, .62); /* the deeper dimming round the booklet and the guide */
+  --shelf-wall: linear-gradient(to bottom, rgb(24, 22, 22), rgb(12, 11, 11)); /* behind the shelf's boards */
 }
 /* A light theme (WHITE): glossy white plastic — soft shadows where the dark has edges, round white keys, and the deck's
    display a backlit grey-green LCD whose digits are dark and don't glow. */
@@ -892,7 +902,7 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
 #overlays { position: fixed; inset: 0; z-index: 20; pointer-events: none; }
 .overlay {
   position: absolute; inset: 0; pointer-events: auto;
-  background: rgba(0, 0, 0, .55);
+  background: var(--scrim);
   display: grid; place-items: center;
   animation: overlayIn 200ms var(--ease-out); /* the dimming fades in and out with the panel (no blur behind: it halved the frame rate) */
 }
@@ -901,7 +911,7 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
 @keyframes overlayOut { to { background: rgba(0, 0, 0, 0); } }
 .card {
   background: rgb(var(--card));
-  border: 1px solid rgba(255, 255, 255, .157);
+  border: 1px solid var(--card-edge);
   padding: 26px 30px 22px;
   max-height: calc(100vh - 40px);
   display: flex; flex-direction: column;
@@ -921,7 +931,7 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
 .card-preview { flex: 0 0 auto; width: 520px; aspect-ratio: 1200 / 630; border-radius: 4px; background: rgba(0, 0, 0, .3); box-shadow: 0 8px 24px rgba(0, 0, 0, .45); }
 .card-lines { flex: 1 1 auto; min-width: 0; height: 273px; }
 .card-line { min-height: 28px; margin-bottom: 2px; padding: 0 8px; border-radius: 3px; }
-.card-line:hover { background: rgba(255, 255, 255, .06); }
+.card-line:hover { background: var(--hover-fill); }
 .card-line.on { color: rgb(var(--accent)); background: rgba(var(--accent), .12); }
 .card-line.none { color: rgb(var(--muted)); font-size: 10px; }
 .card-line.none.on { color: rgb(var(--accent)); }
@@ -953,7 +963,7 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
 .settings-jump { padding: 2px 0; border: 0; background: none; font: inherit; font-size: 9px; letter-spacing: .08em; color: rgb(var(--muted)); cursor: pointer; }
 .settings-jump:hover { color: rgb(var(--accent2)); }
 .settings-section { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; font-size: 9px; color: rgb(var(--accent2)); }
-.settings-section::after { content: ""; flex: 1 1 auto; height: 1px; background: rgba(255, 255, 255, .086); }
+.settings-section::after { content: ""; flex: 1 1 auto; height: 1px; background: var(--rule); }
 .settings-body .setting-row { min-height: 36px; }
 .settings-body .setting-row.slider-row .row-label { flex: 0 0 124px; margin-right: 0; }
 .settings-body .setting-row.slider-row .slider { flex: 1 1 auto; width: auto; }
@@ -968,11 +978,11 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
   font: inherit; font-size: 10px; letter-spacing: .06em; color: rgb(var(--muted)); cursor: pointer;
   transition: background var(--hover) ease, color var(--hover) ease, box-shadow var(--hover) ease;
 }
-.settings-tab:hover { color: rgb(var(--text)); background: rgba(255, 255, 255, .04); }
-.settings-tab.on { color: rgb(var(--text)); background: rgba(255, 255, 255, .08); box-shadow: inset 3px 0 0 rgb(var(--accent)); }
+.settings-tab:hover { color: rgb(var(--text)); background: var(--fill-faint); }
+.settings-tab.on { color: rgb(var(--text)); background: var(--fill-on); box-shadow: inset 3px 0 0 rgb(var(--accent)); }
 .settings-page { flex: 1 1 auto; min-width: 0; padding-right: 10px; }
 .settings-page-title { padding-bottom: 6px; font-size: 18px; font-weight: bold; color: rgb(var(--text)); }
-.setting { padding: 14px 0; border-bottom: 1px solid rgba(255, 255, 255, .07); }
+.setting { padding: 14px 0; border-bottom: 1px solid var(--rule-soft); }
 .setting:last-child { border-bottom: none; }
 .setting > .setting-row:first-child > :first-child { font-size: 11px; color: rgb(var(--text)); } /* the setting's name, the sub-rows' quieter */
 .setting .setting-hint { margin-top: 6px; max-width: 440px; line-height: 1.45; }
@@ -1016,7 +1026,7 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
 .year-wait { padding: 30px 0; }
 .year-body { max-height: 440px; margin-top: 14px; padding-right: 6px; }
 .year-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-.year-stat { display: flex; flex-direction: column; gap: 4px; padding: 10px; border-radius: 6px; background: rgba(255, 255, 255, .04); }
+.year-stat { display: flex; flex-direction: column; gap: 4px; padding: 10px; border-radius: 6px; background: var(--fill-faint); }
 .year-stat b { font-size: 26px; color: rgb(var(--text)); }
 .year-stat span { font-size: 9px; letter-spacing: .06em; color: rgb(var(--muted)); }
 .year-section { margin-top: 16px; }
@@ -1045,7 +1055,7 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
 .preset-item { display: inline-flex; align-items: center; }
 .text-input {
   font: 12px var(--font); color: rgb(var(--text));
-  background: rgba(0, 0, 0, .3); border: 1px solid rgba(255, 255, 255, .16); border-radius: 3px;
+  background: var(--field); border: 1px solid var(--field-edge); border-radius: 3px;
   padding: 4px 6px; outline: none;
 }
 .text-input:focus { border-color: rgba(var(--accent), .8); }
@@ -1083,17 +1093,17 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
 /* ---- Theme picker menu ---- */
 .theme-menu-layer { position: absolute; inset: 0; pointer-events: auto; }
 .theme-menu {
-  position: absolute; background: rgb(var(--card)); border: 1px solid rgba(255, 255, 255, .118); border-radius: 10px;
+  position: absolute; background: rgb(var(--card)); border: 1px solid var(--edge); border-radius: 10px;
   display: flex; flex-direction: column; padding: 4px; max-height: calc(100vh - 16px); overflow-y: auto;
 }
 .theme-menu { transform-origin: top left; animation: menuIn 180ms var(--ease-out); } /* opens out of what was clicked */
 @keyframes menuIn { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
 .theme-item { display: flex; align-items: center; gap: 10px; padding: 8px 16px 8px 12px; border-radius: 6px; font-size: 11px; color: rgb(var(--text)); cursor: pointer; }
-.theme-item:hover { background: rgba(255, 255, 255, .06); }
+.theme-item:hover { background: var(--hover-fill); }
 .theme-item.current { color: rgb(var(--accent)); }
 .theme-item.current .grow::after { content: "  ✓"; }
 .menu-key { color: rgb(var(--muted)); font-size: 10px; letter-spacing: .06em; padding-left: 14px; }
-.menu-divider { height: 1px; margin: 4px 0; background: rgba(255, 255, 255, .118); }
+.menu-divider { height: 1px; margin: 4px 0; background: var(--edge); }
 .menu-more { opacity: 0; padding: 0 2px 0 10px; color: rgb(var(--muted)); }
 .theme-item:hover .menu-more { opacity: 1; }
 .menu-more:hover { color: rgb(var(--accent)); }
@@ -1102,7 +1112,7 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
 .color-well::-webkit-color-swatch { border: none; border-radius: 2px; }
 .theme-warning { color: rgb(var(--accent)); font-size: 10px; font-weight: bold; }
 .theme-problem { margin: 6px 0 2px; }
-.theme-name { width: 170px; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .118); color: rgb(var(--text)); font: inherit; font-size: 12px; padding: 5px 8px; }
+.theme-name { width: 170px; background: rgba(255, 255, 255, .06); border: 1px solid var(--edge); color: rgb(var(--text)); font: inherit; font-size: 12px; padding: 5px 8px; }
 .swatch { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .235); }
 
 /* What's New and the like: however long, it scrolls and the button under it stays in the window. */
@@ -1203,7 +1213,7 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
 /* ---- The CD shelf (shelf.js): jewel cases spine-out on shelves, and the case pulled out to its front ---- */
 #shelf {
   position: fixed; inset: 0; z-index: 12;
-  background: linear-gradient(to bottom, rgb(24, 22, 22), rgb(12, 11, 11));
+  background: var(--shelf-wall);
   display: flex; flex-direction: column; padding: 28px 44px 0;
 }
 /* (A narrow window, or longer words in another language: the buttons go on a second line, to the right — none off the edge.) */
@@ -1219,7 +1229,7 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
   font: bold 9px/1.2 var(--font, inherit); letter-spacing: .02em; color: rgba(214, 200, 172, .6);
 }
 #shelf-index button.long { font-size: 6.5px; letter-spacing: 0; } /* ORANGE, UNDER: whole, smaller */
-#shelf-index button:hover { color: rgb(var(--accent)); background: rgba(255, 255, 255, .06); }
+#shelf-index button:hover { color: rgb(var(--accent)); background: var(--hover-fill); }
 /* The title with its count under it (albums, the shelf's worth), so the buttons beside have the room. */
 #shelf-heading { flex: 0 0 auto; max-width: 300px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 #shelf-title { font-size: 16px; color: rgb(var(--accent)); white-space: nowrap; }
@@ -1630,7 +1640,7 @@ body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: 
   background: #d8b24a; box-shadow: 0 0 4px rgba(216, 178, 74, .8); }
 .case-tracks { flex: 1 1 auto; min-height: 92px; max-height: 300px; margin: 14px 0; } /* (a few songs always seen, however long the text above) */
 .case-track { display: flex; gap: 10px; align-items: baseline; padding: 5px 6px; border-radius: 3px; font-size: 11px; font-weight: normal; color: rgb(var(--text)); cursor: pointer; }
-.case-track:hover { background: rgba(255, 255, 255, .06); }
+.case-track:hover { background: var(--hover-fill); }
 .case-track .no { flex: 0 0 20px; color: rgb(var(--muted)); font-size: 10px; }
 .case-track .name { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .case-track .by { color: rgb(var(--muted)); }
@@ -1638,7 +1648,7 @@ body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: 
 .case-track.missing { cursor: default; color: rgb(var(--muted)); opacity: .55; }
 .case-track.missing:hover { background: none; }
 .case-track .time { color: rgb(var(--muted)); font-size: 10px; }
-.case-disc { padding: 10px 6px 3px; font-size: 9px; letter-spacing: .14em; color: rgb(var(--muted)); border-bottom: 1px solid rgba(255, 255, 255, .07); margin-bottom: 2px; }
+.case-disc { padding: 10px 6px 3px; font-size: 9px; letter-spacing: .14em; color: rgb(var(--muted)); border-bottom: 1px solid var(--rule-soft); margin-bottom: 2px; }
 .case-disc:first-child { padding-top: 0; }
 /* SKIP: a small button that shows on the track under the mouse, and stays lit on one marked; that one struck through. */
 .case-skip {
@@ -1674,7 +1684,7 @@ body.shelfie-shooting #overlays, body.shelfie-shooting .dust-mote { visibility: 
 /* ---- The CD booklet (booklet.js): a two-page spread of real text over the dimmed player ---- */
 .booklet-layer {
   position: absolute; inset: 0; pointer-events: auto; perspective: 2200px;
-  background: rgba(0, 0, 0, .62); transition: background 300ms ease;
+  background: var(--scrim-deep); transition: background 300ms ease;
 }
 .booklet-layer.entering, .booklet-layer.leaving { background: rgba(0, 0, 0, 0); }
 .booklet { position: absolute; transform-style: preserve-3d; cursor: pointer; }
@@ -1890,12 +1900,12 @@ body:not(.changer-mode) #changer, body:not(.changer-mode) #disc-heading,
 body:not(.changer-mode) #disc-skip-button, body:not(.changer-mode) #eject-disc-button { display: none; }
 /* The guide (tour-view.js): the window dimmed round one lit-up part, and a bubble pointing at it. */
 .tour-layer { position: fixed; inset: 0; z-index: 9000; pointer-events: auto; } /* (#overlays lets clicks through; the guide takes them: its buttons, and nothing behind while it's up) */
-.tour-layer.dim { background: rgba(0, 0, 0, .62); }
+.tour-layer.dim { background: var(--scrim-deep); }
 .tour-spot { position: fixed; border-radius: 12px; pointer-events: none;
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, .62), 0 0 0 2px rgb(var(--accent)), 0 0 24px rgba(var(--accent), .45);
+  box-shadow: 0 0 0 9999px var(--scrim-deep), 0 0 0 2px rgb(var(--accent)), 0 0 24px rgba(var(--accent), .45);
   transition: left .35s cubic-bezier(.3,.7,.3,1), top .35s cubic-bezier(.3,.7,.3,1), width .35s cubic-bezier(.3,.7,.3,1), height .35s cubic-bezier(.3,.7,.3,1); }
 .tour-bubble { position: fixed; width: 340px; max-width: calc(100vw - 24px); box-sizing: border-box; padding: 16px 18px 14px;
-  background: rgb(var(--card)); color: rgb(var(--text)); border: 1px solid rgba(255, 255, 255, .157); border-radius: 12px;
+  background: rgb(var(--card)); color: rgb(var(--text)); border: 1px solid var(--card-edge); border-radius: 12px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, .6); transition: left .35s cubic-bezier(.3,.7,.3,1), top .35s cubic-bezier(.3,.7,.3,1); }
 body.no-anim .tour-spot, body.no-anim .tour-bubble { transition: none; }
 .tour-bubble::before { content: ''; position: absolute; width: 12px; height: 12px; background: inherit; border: inherit; border-width: 1px 0 0 1px; }
