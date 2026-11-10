@@ -207,8 +207,8 @@ async function runThemeShots() {
     fs.mkdirSync(shotsDir, { recursive: true });
     // The phone remote, on the loopback for the run: the pairing address of a server the player's page feeds as usual.
     const phoneRemote = async () => {
-      remoteConf = { ...remoteConf, on: true, token: remoteNet.newToken() };
-      const server = newRemoteServer('127.0.0.1', 0);
+      remoteConf = { ...remoteConf, on: true, token: 'theme-shots-token' }; // (fixed: where it's shown, it's the same every run)
+      const server = newRemoteServer('127.0.0.1', 47831);
       const { port } = await server.start();
       remote = server; remoteAt = { address: '127.0.0.1', port };
       toPage('remote-listening', true);

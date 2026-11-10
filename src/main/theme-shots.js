@@ -186,7 +186,31 @@ async function run({ win, miniWindow, outDir, themes, audio, nativeImage, store,
     await waitFor(`!document.getElementById('lyrics-button').hidden`, 3000);
   }
 
-  let remoteUrl = null;
+  // The phone remote: its page in a hidden phone-sized window, paired as a phone would be, kept open through every theme
+  // from before the first one's pictures — so the desktop is the same in all (a server on, a phone connected).
+  let phone = null, pjs = null, pshot = null;
+  if (phoneRemote) {
+    const { BrowserWindow } = require('electron');
+    phone = new BrowserWindow({ show: false, width: 390, height: 780, useContentSize: true, focusable: false, webPreferences: { backgroundThrottling: false } });
+    pjs = (code) => phone.webContents.executeJavaScript(code);
+    const ppause = async (ms) => { for (let i = 0; i < Math.ceil(ms / 50); i++) { await pjs('window.__frames(3)'); await wait(30); } };
+    try {
+      await pinTime(phone);
+      await phone.loadURL(await phoneRemote());
+      await pause(1500);
+    } catch (e) { console.log(`theme-shots: the phone remote did not open: ${e.message}`); phone.destroy(); phone = null; }
+    pshot = async (name, tab) => {
+      let ok = false;
+      for (let i = 0; i < 160 && !ok; i++) { ok = await pjs(`!document.body.classList.contains('waiting') && !!document.querySelector('#title').textContent`); if (!ok) await ppause(50); }
+      ok = ok && await pjs(`(() => { const b = document.querySelector('#tabs [data-tab="${tab}"]'); if (!b) return false; b.click(); return true; })()`);
+      await ppause(tab === 'shelf' ? 2500 : 1000);
+      await pjs(`(() => { const s = window.__shots; if (!s) return; for (const d of s.discs) if (!d.speed && !d.spinning) d.angle = 0; })()`);
+      await ppause(400); await wait(150);
+      save(name, await phone.webContents.capturePage());
+      note(name, ok);
+    };
+  }
+
   const results = [];
   for (const theme of themes) {
     dir = path.join(outDir, theme);
@@ -252,31 +276,13 @@ async function run({ win, miniWindow, outDir, themes, audio, nativeImage, store,
         await pause(1800);
       }
     }, `document.querySelector('.booklet-layer') && document.querySelector('.booklet-layer').textContent.includes('First line')`, { after: 1000 });
-    // The phone remote: its page in a hidden phone-sized window, paired as a phone would be, pictured on its tabs.
-    if (phoneRemote) {
-      const { BrowserWindow } = require('electron');
-      const phone = new BrowserWindow({ show: false, width: 390, height: 780, useContentSize: true, focusable: false, webPreferences: { backgroundThrottling: false } });
+    if (phone) {
       try {
-        remoteUrl = remoteUrl || await phoneRemote();
-        await pinTime(phone);
-        await phone.loadURL(remoteUrl);
-        const pjs = (code) => phone.webContents.executeJavaScript(code);
-        const ppause = async (ms) => { for (let i = 0; i < Math.ceil(ms / 50); i++) { await pjs('window.__frames(3)'); await wait(30); } };
-        const ready = async () => { for (let i = 0; i < 160; i++) { if (await pjs(`!document.body.classList.contains('waiting') && !!document.querySelector('#title').textContent`)) return true; await ppause(50); } return false; };
-        const pshot = async (name, tab) => {
-          let ok = await ready();
-          if (tab) ok = ok && await pjs(`(() => { const b = document.querySelector('#tabs [data-tab="${tab}"]'); if (!b) return false; b.click(); return true; })()`);
-          await ppause(tab === 'shelf' ? 2500 : 800);
-          await pjs(`(() => { const s = window.__shots; if (!s) return; for (const d of s.discs) if (!d.speed && !d.spinning) d.angle = 0; })()`);
-          await ppause(400); await wait(150);
-          save(name, await phone.webContents.capturePage());
-          note(name, ok);
-        };
-        await pshot('remote-playing', null);
+        await pshot('remote-playing', 'playing');
         await pshot('remote-shelf', 'shelf');
         await pshot('remote-queue', 'third');
+        await pjs(`document.querySelector('#tabs [data-tab="playing"]').click()`);
       } catch (e) { console.log(`theme-shots: the phone remote failed: ${e.message}`); note('remote-playing', false); }
-      if (!phone.isDestroyed()) phone.destroy();
     }
     // Mini mode: the mini window is its own window, pictured by itself.
     key('m');
@@ -291,6 +297,7 @@ async function run({ win, miniWindow, outDir, themes, audio, nativeImage, store,
     fs.writeFileSync(path.join(dir, 'screens.json'), JSON.stringify(screens, null, 1) + '\n');
     results.push({ theme, failed: failures.slice() });
   }
+  if (phone && !phone.isDestroyed()) phone.destroy();
   return { written, results };
 }
 
