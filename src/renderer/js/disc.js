@@ -2,7 +2,7 @@
 // (no case) share one canvas; the disc face is pre-rendered once per cover/size/colors and just rotated per frame.
 // Clicking the little cover in the case's corner opens the album art full-size over the case, in place of the
 // disc; clicking the art puts it back in the corner. Grab the disc and turn it to move through the song (jog.js).
-import { colors, rgb, FONT } from './theme.js';
+import { colors, rgb, FONT, shown } from './theme.js';
 import { angleDelta, coast, releaseVelocity } from './jog.js';
 import { random } from './disc-wear.js';
 import { discLayout, radiusAt, trackAt, R0 } from './disc-data.js';
@@ -819,7 +819,7 @@ export class Disc {
     const l = this.light;
     const look = [pw, ph, side, x, y, this.angle, this.speed, this.shineOn && l.angle, this.shineOn && l.strength, tray, art, eject, wobble, this.mode,
       this.faceKey, this.coverVersion, this.lookingUp, this.label && this.label.title, this.label && this.label.artist, JSON.stringify(this.print), this.discArtVersion,
-      this.discPresent, this.inCase, this.coverInCase, colors.accent, colors.accent2, colors.bg, dpr, this.flipT, this.data && this.data.key, this.theme,
+      this.discPresent, this.inCase, this.coverInCase, colors.accent, colors.accent2, colors.bg, dpr, this.flipT, this.data && this.data.key, this.theme, shown.light,
       this.flipT > 0 && this.data && this.position ? Math.round(radiusAt(this.data.layout, this.position()) * 2000) : 0].join('|');
     if (look === this.lastLook) return bounds;
     this.lastLook = look;
@@ -827,7 +827,11 @@ export class Disc {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, r.width, r.height);
     let drawArt = null;
-    if (!mini) {
+    // A light theme (white plastic round it): the case, the tray and the shadows light and soft, never black; the disc
+    // itself as it is.
+    const light = shown.light;
+    if (!mini && light) this.drawLightCase(g, cx, cy, side);
+    else if (!mini) {
       const cs = side + 60, caseX = cx - cs / 2, caseY = cy - cs / 2;
       // The jewel case: a pane lit from above, a fine light edge and a dark one inside it — a thing the disc sits in,
       // not a coloured outline (that read as "selected").
@@ -843,6 +847,9 @@ export class Disc {
       g.moveTo(caseX + 10, caseY + 10.5); g.lineTo(caseX + cs - 10, caseY + 10.5);
       g.moveTo(caseX + 10, caseY + cs - 10.5); g.lineTo(caseX + cs - 10, caseY + cs - 10.5);
       g.stroke();
+    }
+    if (!mini) {
+      const cs = side + 60, caseX = cx - cs / 2, caseY = cy - cs / 2;
       if (this.cover) {
         // The little cover in the corner, grown towards filling the case as the art opens. Drawn after the disc,
         // so it covers it on the way.
@@ -850,7 +857,7 @@ export class Disc {
         const size = thumb + (full - thumb) * art;
         drawArt = (cover) => {
           const x = caseX + 14, y = caseY + 14;
-          g.fillStyle = 'rgba(0,0,0,0.47)';
+          g.fillStyle = light ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.47)';
           g.beginPath(); g.roundRect(x, y, size, size, 3 + 3 * art); g.fill();
           const inner = size - 6;
           if (inner > 0) {
@@ -870,7 +877,8 @@ export class Disc {
     // The tray: a dark plate with a recess for the disc, running out of the case on its rails (tray-motion.js) and
     // carrying the disc with it, the opening it came out of left dark behind it.
     const trayDy = side * TRAY_TRAVEL * slide, trayScale = 1 + TRAY_GROW * Math.max(0, slide);
-    if (tray > 0) {
+    if (tray > 0 && light) this.drawLightTray(g, cx, cy, side, trayDy, trayScale, reveal, slide);
+    else if (tray > 0) {
       const plate = side * 1.1;
       g.save();
       g.globalAlpha = reveal;
@@ -907,8 +915,16 @@ export class Disc {
     const flip = easeInOutCubic(this.flipT), dataSide = !!this.data && flip >= 0.5;
     g.translate(cx, cy); g.scale(Math.max(0.02, Math.abs(Math.cos(Math.PI * flip))), 1); g.translate(-cx, -cy);
     const pad = Math.max(4, side / 90);
-    g.fillStyle = 'rgba(0,0,0,0.35)';
-    g.beginPath(); g.arc(cx, cy, side / 2 + pad, 0, Math.PI * 2); g.fill();
+    if (light) { // a soft grey shadow round it
+      g.save();
+      g.shadowColor = 'rgba(0,0,0,0.2)'; g.shadowBlur = pad * 3; g.shadowOffsetY = pad * 0.6;
+      g.fillStyle = 'rgba(0,0,0,0.08)';
+      g.beginPath(); g.arc(cx, cy, side / 2 + pad * 0.3, 0, Math.PI * 2); g.fill();
+      g.restore();
+    } else {
+      g.fillStyle = 'rgba(0,0,0,0.35)';
+      g.beginPath(); g.arc(cx, cy, side / 2 + pad, 0, Math.PI * 2); g.fill();
+    }
     if (this.theme === 'BLUE' && !mini && this.speed > 0.01) this.drawRing(g, cx, cy, side, dpr);
     const face = dataSide ? this.renderDataFace(side, dpr) : this.renderFace(side, dpr);
     g.save();
@@ -920,7 +936,7 @@ export class Disc {
     if (this.shineOn && this.wear && side >= WEAR_MIN_SIDE && !dataSide) this.drawGlint(g, cx, cy, side, dpr);
     if (dataSide) this.drawLaser(g, cx, cy, side);
     if (this.speed < 0.99) { // a stopped disc sits a little darker, brightening as it gets up to speed
-      g.fillStyle = `rgba(10,11,16,${(0.35 * (1 - this.speed)).toFixed(3)})`;
+      g.fillStyle = `rgba(10,11,16,${((light ? 0.1 : 0.35) * (1 - this.speed)).toFixed(3)})`; // (on a light page, only a touch: a grey film over it otherwise)
       g.beginPath(); g.arc(cx, cy, side / 2, 0, Math.PI * 2); g.fill();
     }
     g.restore();
@@ -933,13 +949,61 @@ export class Disc {
       const cs = side + 60, r = 11, bx = cx + cs / 2 - 22, by = cy + cs / 2 - 22;
       this.flipRect = { x: bx, y: by, r };
       g.save();
-      g.fillStyle = 'rgba(0,0,0,0.45)'; g.strokeStyle = 'rgba(255,255,255,0.22)'; g.lineWidth = 1.2;
+      if (light) { g.fillStyle = 'rgba(255,255,255,0.92)'; g.strokeStyle = 'rgba(0,0,0,0.14)'; } else { g.fillStyle = 'rgba(0,0,0,0.45)'; g.strokeStyle = 'rgba(255,255,255,0.22)'; }
+      g.lineWidth = 1.2;
       g.beginPath(); g.arc(bx, by, r, 0, Math.PI * 2); g.fill(); g.stroke();
       g.fillStyle = rgb(colors.accent2); g.font = `bold 13px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillText('⟲', bx, by + 1);
       g.restore();
     }
     return bounds;
+  }
+
+  // A light theme's jewel case: clear plastic on the white, lit from above, on a soft shadow.
+  drawLightCase(g, cx, cy, side) {
+    const cs = side + 60, caseX = cx - cs / 2, caseY = cy - cs / 2;
+    const pane = g.createLinearGradient(0, caseY, 0, caseY + cs);
+    pane.addColorStop(0, 'rgba(255,255,255,0.72)'); pane.addColorStop(1, 'rgba(255,255,255,0.46)');
+    g.save();
+    g.shadowColor = 'rgba(0,0,0,0.09)'; g.shadowBlur = 16; g.shadowOffsetY = 4;
+    g.fillStyle = pane;
+    g.beginPath(); g.roundRect(caseX, caseY, cs, cs, 6); g.fill();
+    g.restore();
+    g.strokeStyle = 'rgba(0,0,0,0.09)'; g.lineWidth = 1; g.stroke();
+    g.strokeStyle = 'rgba(255,255,255,0.9)';
+    g.beginPath(); g.roundRect(caseX + 1.5, caseY + 1.5, cs - 3, cs - 3, 5); g.stroke();
+    g.strokeStyle = 'rgba(0,0,0,0.05)';
+    g.beginPath();
+    g.moveTo(caseX + 10, caseY + 10.5); g.lineTo(caseX + cs - 10, caseY + 10.5);
+    g.moveTo(caseX + 10, caseY + cs - 10.5); g.lineTo(caseX + cs - 10, caseY + cs - 10.5);
+    g.stroke();
+  }
+  // A light theme's tray: light grey plastic running out of a grey opening, on a soft shadow.
+  drawLightTray(g, cx, cy, side, trayDy, trayScale, reveal, slide) {
+    const plate = side * 1.1;
+    g.save();
+    g.globalAlpha = reveal;
+    g.fillStyle = 'rgb(214,217,221)';
+    g.beginPath(); g.roundRect(cx - plate / 2, cy - plate / 2, plate, plate, side * 0.03); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,0.1)'; g.lineWidth = 1; g.stroke();
+    g.fillStyle = 'rgba(0,0,0,0.08)';
+    for (const rail of [-0.44, 0.44]) g.fillRect(cx + plate * rail - 1, cy - plate / 2 + 3, 2, plate + trayDy - 3);
+    g.restore();
+    g.save();
+    g.globalAlpha = reveal;
+    g.translate(cx, cy + trayDy); g.scale(trayScale, trayScale);
+    const out = Math.max(0, slide);
+    g.shadowColor = 'rgba(0,0,0,0.18)'; g.shadowBlur = 24 * out; g.shadowOffsetY = 10 * out;
+    const grad = g.createLinearGradient(0, -plate / 2, 0, plate / 2);
+    grad.addColorStop(0, 'rgb(248,248,250)'); grad.addColorStop(1, 'rgb(229,231,234)');
+    g.fillStyle = grad;
+    g.beginPath(); g.roundRect(-plate / 2, -plate / 2, plate, plate, side * 0.03); g.fill();
+    g.shadowColor = 'transparent';
+    g.strokeStyle = 'rgba(0,0,0,0.08)'; g.lineWidth = 1; g.stroke();
+    g.fillStyle = 'rgb(222,225,229)';
+    g.beginPath(); g.arc(0, 0, side / 2 + side * 0.025, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = rgb(colors.accent, 0.35); g.stroke();
+    g.restore();
   }
 
   get animating() { return this.spinning || this.speed > 0 || this.trayT > 0 || this.ejectStart >= 0 || this.swapStart >= 0 || this.jogging || this.flipT !== (this.flipped ? 1 : 0); }

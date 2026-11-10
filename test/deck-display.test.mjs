@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { SEGMENTS, timeCells, trackCells } from '../src/renderer/js/deck-display.js';
+import { SEGMENTS, timeCells, trackCells, LCD_INK } from '../src/renderer/js/deck-display.js';
+import { readFileSync } from 'node:fs';
 
 test('the display\'s time keeps its width: no leading zero, a sign cell for the time left', () => {
   assert.strictEqual(timeCells(0), '  0:00');
@@ -20,4 +21,10 @@ test('every character the display shows has its segments', () => {
   for (const ch of '0123456789- ') assert.ok(typeof SEGMENTS[ch] === 'string', ch);
   assert.strictEqual(SEGMENTS[8].length, 7);
   assert.strictEqual(SEGMENTS[1], 'bc');
+});
+
+test('a light theme\'s LCD digits are the ink styles.css gives the LCD\'s words (--lcd-ink under html.light)', () => {
+  const css = readFileSync(new URL('../src/renderer/styles.css', import.meta.url), 'utf8');
+  const light = css.slice(css.indexOf('html.light {'));
+  assert.strictEqual(/--lcd-ink:\s*([\d,\s]+);/.exec(light)[1].trim(), LCD_INK.join(', '));
 });

@@ -3,7 +3,7 @@
 // OCEAN waves, MATRIX rain, AUTUMN tree): full-screen and richly lit in Visualizer Mode (48 bands), and as a flat,
 // minimal sketch of the same idea next to "NOW PLAYING" (16 bands). The Mini Mode window only gets five loudness
 // levels over IPC, so it keeps a simple five-bar indicator (`spectrum: false`).
-import { colors, rgb, darker } from './theme.js';
+import { colors, rgb, darker, shown } from './theme.js';
 
 const COUNT = 5; // the five-level indicator's bars
 const LIGHT_COLORS = [[232, 64, 64], [255, 205, 80], [96, 190, 255], [120, 220, 120], [255, 150, 220]];
@@ -68,10 +68,11 @@ export class Visualizer {
     for (let i = i0; i < i1; i++) s += this.band(i);
     return s / (i1 - i0);
   }
-  // A soft light: a bright core fading out into a glow. Radius in px.
+  // A soft light: a bright core fading out into a glow. Radius in px. (On a light theme's page a white core would be
+  // lost: its core is the colour itself.)
   light(g, x, y, r, color, alpha) {
     const grad = g.createRadialGradient(x, y, 0, x, y, r);
-    grad.addColorStop(0, `rgba(255,255,255,${Math.min(1, alpha)})`);
+    grad.addColorStop(0, shown.light ? rgb(color, Math.min(1, alpha)) : `rgba(255,255,255,${Math.min(1, alpha)})`);
     grad.addColorStop(0.18, rgb(color, Math.min(1, alpha)));
     grad.addColorStop(0.5, rgb(color, alpha * 0.35));
     grad.addColorStop(1, rgb(color, 0));
@@ -243,7 +244,7 @@ export class Visualizer {
         const y = (head - j) * size;
         if (y < -size || y > h + size) continue;
         const fade = 1 - j / len, alpha = (0.18 + lvl * 0.82) * fade;
-        g.fillStyle = j === 0 ? `rgba(225,255,230,${Math.min(1, 0.4 + lvl)})` : rgb(colors.accent, alpha);
+        g.fillStyle = j === 0 ? (shown.light ? rgb(colors.text, Math.min(1, 0.4 + lvl)) : `rgba(225,255,230,${Math.min(1, 0.4 + lvl)})`) : rgb(colors.accent, alpha); // (the head pale on a dark page, ink on a light one)
         g.fillText(d.chars[(head - j + 400) % d.chars.length], x, y);
       }
     });

@@ -1,6 +1,6 @@
 // Custom-painted controls matching the Java app's look: canvas sliders (accent-gradient track, round thumb with a
 // halo, optional waveform), pill buttons with an animated ON state, and round transport / mode buttons.
-import { colors, rgb, onColorsChanged } from './theme.js';
+import { colors, rgb, onColorsChanged, shown } from './theme.js';
 import { t } from './i18n.js';
 import { glyphSvg } from './glyphs.js';
 
@@ -221,17 +221,18 @@ export class Slider {
     const { x: tx, w: tw } = this.track;
     const f = this.max > this.min ? (this.value - this.min) / (this.max - this.min) : 0;
     const thumbX = tx + f * tw, cy = h / 2;
+    const light = shown.light; // (a light theme: the bar and its rest in faint dark, the knob white plastic on a soft shadow)
     if (this.waveformCapable && this.waveformEnabled && this.waveform && this.waveform.length) {
       const n = this.waveform.length, maxBar = Math.max(4, Math.min(h, this.trackHeight) - 2);
       for (let i = 0; i < n; i++) {
         const x = Math.floor(tx + (i * tw) / n);
         const bw = Math.max(1, Math.floor(tx + ((i + 1) * tw) / n) - x - 1);
         const bh = Math.max(2, Math.round(this.waveform[i] * maxBar));
-        ctx.fillStyle = x <= thumbX ? rgb(colors.accent) : 'rgba(255,255,255,0.137)';
+        ctx.fillStyle = x <= thumbX ? rgb(colors.accent) : light ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.137)';
         roundRect(ctx, x, cy - bh / 2, bw, bh, 1);
       }
     } else {
-      ctx.fillStyle = 'rgba(255,255,255,0.07)';
+      ctx.fillStyle = light ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.07)';
       roundRect(ctx, tx, cy - 1.5, tw, 3, 1.5);
       const fill = thumbX - tx;
       if (fill > 0) {
@@ -248,6 +249,16 @@ export class Slider {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillStyle = rgb(colors.accent);
       ctx.fillText('?', mx, cy + 0.5);
+    }
+    if (light) {
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.22)'; ctx.shadowBlur = 4; ctx.shadowOffsetY = 1;
+      ctx.fillStyle = 'rgb(255,255,255)';
+      ctx.beginPath(); ctx.arc(thumbX, cy, THUMB / 2, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle = 'rgba(0,0,0,0.1)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(thumbX, cy, THUMB / 2 - 0.5, 0, Math.PI * 2); ctx.stroke();
+      return;
     }
     ctx.fillStyle = 'rgba(255,255,255,0.137)';
     ctx.beginPath(); ctx.arc(thumbX, cy, THUMB / 2 + 3, 0, Math.PI * 2); ctx.fill();

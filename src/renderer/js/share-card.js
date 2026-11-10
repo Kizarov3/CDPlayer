@@ -1,7 +1,7 @@
 // The "now playing" card (P, or right-click the disc): a picture of what's on, to paste into a chat or save — the album
 // in its jewel case, the song, its artist and album, and a quote from its lyrics (up to ten lines picked, or none), in
 // the theme's colours on a wash of the cover. Each theme draws it its own way, and so does each PLAYER LOOK but CLASSIC.
-import { rgb, FONT, drawThemeImage } from './theme.js';
+import { rgb, FONT, drawThemeImage, isLight } from './theme.js';
 import { currentLineIndex, parseLrc } from './lyrics.js';
 import { t } from './i18n.js';
 
@@ -98,6 +98,7 @@ export function layoutQuote(entries, measure, maxWidth, maxHeight) {
  */
 export async function drawCard(song, colors, theme = 'RED', look = 'CLASSIC') {
   const canvas = new OffscreenCanvas(W, H), g = canvas.getContext('2d');
+  light = isLight(colors.bg);
   const style = LOOK_STYLES[look] || STYLES[theme] || jewelCase;
   const words = style(g, song, colors, seeded(`${song.title}|${song.artist}`));
   drawWords(g, song, colors, words);
@@ -115,7 +116,10 @@ function seeded(text) {
   for (const c of String(text)) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
   return () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967296; };
 }
-// The theme's background, washed with a blur of the cover (like the Ambient Background), darker to the right.
+// A light theme's card (its background light, as WHITE's): white paper, soft grey shadows, its words in dark ink.
+let light = false;
+// The theme's background, washed with a blur of the cover (like the Ambient Background), darker to the right (a light
+// theme's: lighter, back into its own background, for its dark words).
 function wash(g, song, colors, { alpha = 0.45, shade = [0.15, 0.55] } = {}) {
   g.fillStyle = rgb(colors.bg); g.fillRect(0, 0, W, H);
   if (song.backdrop) drawThemeImage(g, W, H, song.backdrop.image, song.backdrop);
@@ -125,7 +129,8 @@ function wash(g, song, colors, { alpha = 0.45, shade = [0.15, 0.55] } = {}) {
     g.restore();
   }
   const s = g.createLinearGradient(0, 0, W, 0);
-  s.addColorStop(0, `rgba(0,0,0,${shade[0]})`); s.addColorStop(1, `rgba(0,0,0,${shade[1]})`);
+  const tone = light ? colors.bg.join(',') : '0,0,0';
+  s.addColorStop(0, `rgba(${tone},${shade[0]})`); s.addColorStop(1, `rgba(${tone},${shade[1]})`);
   g.fillStyle = s; g.fillRect(0, 0, W, H);
 }
 // The cover, square, cropped to its middle; none: a silver CD-R written on in marker.
@@ -143,7 +148,7 @@ function art(g, song, x, y, size) {
   wrap(g, song.title, size * 0.8, 2).forEach((l, i, all) => g.fillText(l, 0, (i - (all.length - 1) / 2) * size * 0.107));
   g.restore();
 }
-const shadowed = (g, blur, dy, alpha, draw) => { g.save(); g.shadowColor = `rgba(0,0,0,${alpha})`; g.shadowBlur = blur; g.shadowOffsetY = dy; draw(); g.restore(); };
+const shadowed = (g, blur, dy, alpha, draw) => { g.save(); g.shadowColor = `rgba(0,0,0,${light ? +(alpha * 0.35).toFixed(3) : alpha})`; g.shadowBlur = blur; g.shadowOffsetY = dy; draw(); g.restore(); };
 
 // ---- each theme's card: draws the background and the artwork; → where the words go and how they look ----
 
@@ -288,7 +293,7 @@ function reflection(g, song, colors) {
 
 // MATRIX: a terminal — the cover in green pixels, the words typed out, the glyphs falling behind.
 function terminal(g, song, colors, rnd) {
-  g.fillStyle = '#020503'; g.fillRect(0, 0, W, H);
+  g.fillStyle = light ? rgb(colors.bg) : '#020503'; g.fillRect(0, 0, W, H); // (a light theme's: the TERMINAL look's paper)
   g.font = `18px ${MONO}`; g.textBaseline = 'top';
   for (let x = 10; x < W; x += 22) {
     const len = 4 + Math.floor(rnd() * 16), y0 = Math.floor(rnd() * 30) * 22 - 200;
@@ -308,7 +313,7 @@ function terminal(g, song, colors, rnd) {
     s.putImageData(d, 0, 0);
   } else { s.fillStyle = rgb(colors.accent, 0.3); s.fillRect(0, 0, px, px); }
   g.imageSmoothingEnabled = false; g.drawImage(small, cx, cy, cs, cs); g.imageSmoothingEnabled = true;
-  g.fillStyle = 'rgba(0,0,0,0.35)';
+  g.fillStyle = light ? rgb(colors.bg, 0.5) : 'rgba(0,0,0,0.35)';
   for (let y = cy; y < cy + cs; y += cs / px) g.fillRect(cx, y, cs, 1.5); // (the gaps between the pixels' rows)
   g.strokeStyle = rgb(colors.accent, 0.6); g.lineWidth = 2; g.strokeRect(cx - 8, cy - 8, cs + 16, cs + 16);
   g.textBaseline = 'alphabetic';
@@ -380,9 +385,9 @@ function dockBar(g, song, colors) {
   shadowed(g, 36, 12, 0.55, () => { g.fillStyle = '#16161a'; g.beginPath(); g.roundRect(cx, cy, cs, cs, 12); g.fill(); });
   g.save(); g.beginPath(); g.roundRect(cx, cy, cs, cs, 12); g.clip(); art(g, song, cx, cy, cs); g.restore();
   shadowed(g, 30, 10, 0.45, () => { g.fillStyle = rgb(colors.card || colors.bg, 0.86); g.beginPath(); g.roundRect(bx, by, bw, bh, 22); g.fill(); });
-  g.strokeStyle = 'rgba(255,255,255,0.12)'; g.lineWidth = 1.5; g.beginPath(); g.roundRect(bx + 0.75, by + 0.75, bw - 1.5, bh - 1.5, 22); g.stroke();
+  g.strokeStyle = light ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.12)'; g.lineWidth = 1.5; g.beginPath(); g.roundRect(bx + 0.75, by + 0.75, bw - 1.5, bh - 1.5, 22); g.stroke();
   const px = bx + 40, pw = bw - 80, py = by + 26, done = 0.38;
-  g.fillStyle = 'rgba(255,255,255,0.16)'; g.beginPath(); g.roundRect(px, py, pw, 5, 2.5); g.fill();
+  g.fillStyle = light ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.16)'; g.beginPath(); g.roundRect(px, py, pw, 5, 2.5); g.fill();
   g.fillStyle = rgb(colors.accent); g.beginPath(); g.roundRect(px, py, pw * done, 5, 2.5); g.fill();
   g.beginPath(); g.arc(px + pw * done, py + 2.5, 8, 0, Math.PI * 2); g.fill();
   const mid = W / 2, ky = by + 68, ink = rgb(colors.text, 0.85);
@@ -398,7 +403,7 @@ function dockBar(g, song, colors) {
 // STAGE: the cover under a spotlight on an empty stage, the words below it, as the look puts them.
 function spotlight(g, song, colors) {
   g.fillStyle = rgb(colors.bg); g.fillRect(0, 0, W, H);
-  g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(0, 0, W, H);
+  if (!light) { g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(0, 0, W, H); } // (a light theme's stage: lit, its words in dark ink)
   const cs = 236, cx = (W - cs) / 2, cy = 40, floor = cy + cs + 30;
   for (const [x, c] of [[W * 0.12, colors.accent2], [W * 0.88, colors.accent2]]) { // the coloured lights from the sides
     const beam = g.createLinearGradient(x, 0, W / 2, floor);
@@ -418,6 +423,7 @@ function spotlight(g, song, colors) {
 
 // PANEL: the front of a hi-fi deck — brushed metal, screws in its corners, the words lit up in its display.
 function faceplate(g, song, colors, rnd) {
+  if (light) return lightFaceplate(g, song, colors, rnd);
   const metal = g.createLinearGradient(0, 0, 0, H);
   metal.addColorStop(0, '#3a3c40'); metal.addColorStop(0.5, '#2a2b2f'); metal.addColorStop(1, '#1d1e21');
   g.fillStyle = metal; g.fillRect(0, 0, W, H);
@@ -441,6 +447,33 @@ function faceplate(g, song, colors, rnd) {
   const vfd = rgb(colors.accent);
   return { x: vx + 32, w: vw - 64, top: vy + 24, height: vh - 48, font: MONO, glow: vfd, titleColor: vfd, artistColor: rgb(colors.accent, 0.85),
     ink: { text: colors.accent, accent: colors.accent, accent2: colors.accent, muted: colors.accent.map((c) => Math.round(c * 0.75)) }, fit: true, mark: 'rgba(255,255,255,0.35)' };
+}
+
+// A light theme's deck, as its HI-FI look: white plastic, faintly streaked, the words in dark ink on its grey-green LCD.
+const LCD_INK = [31, 42, 28];
+function lightFaceplate(g, song, colors, rnd) {
+  const plate = g.createLinearGradient(0, 0, 0, H);
+  plate.addColorStop(0, '#ffffff'); plate.addColorStop(1, '#eef0f2');
+  g.fillStyle = plate; g.fillRect(0, 0, W, H);
+  for (let y = 0; y < H; y += 2) { g.fillStyle = `rgba(0,0,0,${rnd() * 0.012})`; g.fillRect(0, y, W, 1); }
+  for (const [x, y] of [[26, 26], [W - 26, 26], [26, H - 26], [W - 26, H - 26]]) {
+    const head = g.createRadialGradient(x - 3, y - 3, 1, x, y, 10);
+    head.addColorStop(0, '#ffffff'); head.addColorStop(1, '#c9ccd1');
+    g.fillStyle = head; g.beginPath(); g.arc(x, y, 9, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,0.25)'; g.lineWidth = 2; g.beginPath(); g.moveTo(x - 6, y - 2); g.lineTo(x + 6, y + 2); g.stroke();
+  }
+  const cs = 400, cx = 80, cy = (H - cs) / 2;
+  shadowed(g, 20, 6, 0.6, () => { g.fillStyle = '#ffffff'; g.fillRect(cx - 6, cy - 6, cs + 12, cs + 12); }); // (a white frame round it)
+  art(g, song, cx, cy, cs);
+  const vx = cx + cs + 50, vy = cy, vw = W - vx - 70, vh = cs;
+  const lcd = g.createLinearGradient(0, vy, 0, vy + vh);
+  lcd.addColorStop(0, 'rgb(194,206,187)'); lcd.addColorStop(1, 'rgb(181,195,174)');
+  g.fillStyle = lcd; g.beginPath(); g.roundRect(vx, vy, vw, vh, 10); g.fill();
+  g.strokeStyle = 'rgba(0,0,0,0.12)'; g.lineWidth = 2; g.stroke();
+  g.strokeStyle = 'rgba(255,255,255,0.9)'; g.lineWidth = 1; g.beginPath(); g.roundRect(vx - 2, vy - 2, vw + 4, vh + 4, 12); g.stroke();
+  const ink = rgb(LCD_INK);
+  return { x: vx + 32, w: vw - 64, top: vy + 24, height: vh - 48, font: MONO, titleColor: ink, artistColor: rgb(LCD_INK, 0.85),
+    ink: { text: LCD_INK, accent: LCD_INK, accent2: LCD_INK, muted: [70, 84, 66] }, fit: true };
 }
 
 // COVER: as a streaming app's full-screen player — the cover edge to edge down the left, fading into its own colours.
@@ -526,6 +559,7 @@ function drawWords(g, song, colors, w) {
  */
 export async function drawYearCard(year, colors) {
   const canvas = new OffscreenCanvas(W, H), g = canvas.getContext('2d');
+  light = isLight(colors.bg);
   wash(g, { cover: (year.albums[0] || {}).cover || null }, colors, { alpha: 0.35, shade: [0.35, 0.55] });
   g.textBaseline = 'alphabetic'; g.textAlign = 'left';
   g.font = `bold 20px ${FONT}`; g.fillStyle = rgb(colors.accent); g.fillText(year.heading, 60, 70);

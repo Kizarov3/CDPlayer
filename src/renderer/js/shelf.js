@@ -27,6 +27,7 @@ import { SLOTS, slotOfAlbum } from './changer.js';
 import { isWanted, wantKey, stillWanted, foundNote } from './want-list.js';
 import { ROW, ROW_ABOVE, ROW_BELOW, shelfieCrops, shelfieLine, completeCount } from './shelfie.js';
 import { t, locale } from './i18n.js';
+import { shown as theme } from './theme.js';
 import { caseKind, discRuns, withDiscHeads } from './box-set.js';
 
 const $ = (id) => document.getElementById(id);
@@ -1226,7 +1227,9 @@ function showCase(card, spine, from, color) {
     { transform: `translate(${from.left - to.left}px, ${from.top - to.top - 30}px) scale(${sx}, ${sy}) rotateY(75deg)`, opacity: 0.2, transformOrigin: 'left top' },
     { transform: 'none', opacity: 1, transformOrigin: 'left top' },
   ], { duration: 460, easing: EASE.out });
-  layer.animate([{ background: 'rgba(0,0,0,0)' }, { background: 'rgba(0,0,0,.6)' }], { duration: 360, easing: EASE.out });
+  // (into the dim it keeps after: a light theme's is a soft grey, not the dark one's black)
+  if (theme.light) { const dim = getComputedStyle(layer).backgroundColor; layer.animate([{ background: dim.startsWith('rgba') ? dim.replace(/[\d.]+\)$/, '0)') : 'transparent' }, { background: dim }], { duration: 360, easing: EASE.out }); }
+  else layer.animate([{ background: 'rgba(0,0,0,0)' }, { background: 'rgba(0,0,0,.6)' }], { duration: 360, easing: EASE.out });
 }
 
 // The disc's own picture (main: online.findDiscArt, kept once found), as a data URL — or null.

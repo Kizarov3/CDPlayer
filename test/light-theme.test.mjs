@@ -38,3 +38,14 @@ test('shown.light follows setColors at once, before any frame, animated or not',
   setColors(byName('WHITE'), false);
   assert.strictEqual(shown.light, true);
 });
+
+test('first-paint.js paints exactly THEMES’ WHITE (its copy of the palette has not drifted)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { runInNewContext } = await import('node:vm');
+  const set = {}, classes = [];
+  const root = { classList: { add: (c) => classes.push(c) }, style: { setProperty: (k, v) => { set[k] = v; } } };
+  runInNewContext(readFileSync(new URL('../src/renderer/js/first-paint.js', import.meta.url), 'utf8'), { window: { cdp: { startsLight: true } }, document: { documentElement: root } });
+  assert.deepStrictEqual(classes, ['light']);
+  const w = byName('WHITE');
+  assert.deepStrictEqual(set, Object.fromEntries(['bg', 'card', 'accent', 'accent2', 'text', 'muted'].map((k) => [`--${k}`, w[k].join(', ')])));
+});

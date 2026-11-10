@@ -1,6 +1,6 @@
 // CDPlayer — main controller: playback, queue, themes, view modes (CD View, Visualizer Mode, Mini Mode,
 // fullscreen), keyboard shortcuts, persistence, and the per-frame render loop.
-import { THEMES, colors, setColors, deriveAutoTheme, visualizerModeFor, particleModeFor, rgb, onColorsChanged, setUserThemes, toFile, isLight } from './theme.js';
+import { THEMES, colors, setColors, deriveAutoTheme, visualizerModeFor, particleModeFor, rgb, onColorsChanged, setUserThemes, toFile, isLight, shown } from './theme.js';
 import { AudioEngine } from './audio.js';
 import { moveItem } from './queue-move.js';
 import { snapshot as remoteSnapshot, fullSlots, commandError, isStale, musicKey } from './remote-state.js';
@@ -3327,7 +3327,7 @@ function drawDivider() {
   const g = c.getContext('2d');
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   const w = r.width, mid = r.height / 2;
-  g.strokeStyle = 'rgba(255,255,255,0.157)'; g.lineWidth = 1.5;
+  g.strokeStyle = shown.light ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.157)'; g.lineWidth = 1.5; // (a light theme: a dark hairline, as its --rule)
   g.beginPath(); g.moveTo(0, mid); g.lineTo(w, mid); g.stroke();
   for (let x = 12; x < w; x += 26) {
     g.fillStyle = rgb(colors.accent);

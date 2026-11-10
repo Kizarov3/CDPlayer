@@ -1,7 +1,7 @@
 // Whole-window theme particles: SNOW (falling snow), OCEAN (rising bubbles), AUTUMN (tumbling leaves), GALAXY
 // (twinkling stars + shooting stars), MATRIX (code rain), FOREST (a few fireflies). Drawn over the background, under
 // the player, and kept off the disc and any open panel. Motion is tuned to the original 35ms tick.
-import { colors, rgb } from './theme.js';
+import { colors, rgb, shown } from './theme.js';
 
 const COUNT = 140;
 const MATRIX_COL = 16, MATRIX_TRAIL = 10;
@@ -121,13 +121,15 @@ export class Particles {
   }
   paint(g, w, h) {
     const dot = (x, y, r) => { g.moveTo(x + r, y); g.arc(x, y, r, 0, Math.PI * 2); };
+    // (a light theme's page: the white flakes, stars and foam in its grey instead, or they'd be white on white)
+    const pale = shown.light ? colors.muted.join(',') : null;
     switch (this.mode) {
       case 'SNOW':
-        g.fillStyle = 'rgba(255,255,255,0.86)';
+        g.fillStyle = pale ? `rgba(${pale},0.6)` : 'rgba(255,255,255,0.86)';
         g.beginPath(); for (let i = 0; i < COUNT; i++) dot(this.x[i], this.y[i], this.size[i]); g.fill();
         break;
       case 'OCEAN':
-        g.fillStyle = 'rgba(210,245,250,0.51)';
+        g.fillStyle = pale ? `rgba(${pale},0.4)` : 'rgba(210,245,250,0.51)';
         g.beginPath(); for (let i = 0; i < COUNT; i++) dot(this.x[i], this.y[i], this.size[i]); g.fill();
         break;
       case 'AUTUMN':
@@ -139,22 +141,22 @@ export class Particles {
       case 'GALAXY':
         for (let i = 0; i < COUNT; i++) {
           const tw = 0.5 + 0.5 * Math.sin(this.clock * (0.6 + this.speed[i]) + this.phase[i]);
-          g.fillStyle = `rgba(255,255,255,${Math.min(255, 80 + tw * 175) / 255})`;
+          g.fillStyle = `rgba(${pale || '255,255,255'},${Math.min(255, 80 + tw * 175) / 255})`;
           g.beginPath(); dot(this.x[i], this.y[i], this.size[i] * (0.7 + tw * 0.5)); g.fill();
         }
         g.lineWidth = 1.4; g.lineCap = 'round';
         for (const s of this.shooting) {
           const n = Math.hypot(s.vx, s.vy);
-          g.strokeStyle = `rgba(255,255,255,${Math.max(0, Math.min(1, s.life * 0.9))})`;
+          g.strokeStyle = `rgba(${pale || '255,255,255'},${Math.max(0, Math.min(1, s.life * 0.9))})`;
           g.beginPath(); g.moveTo(s.x, s.y); g.lineTo(s.x - (s.vx / n) * 26, s.y - (s.vy / n) * 26); g.stroke();
         }
         break;
       case 'MATRIX': {
         // Each column's first digit pale, the ones trailing it in the theme's colour, fading.
-        const sheet = this.sprite('matrix', colors.accent.join(), (s, cell) => {
+        const sheet = this.sprite('matrix', `${colors.accent.join()}|${pale}`, (s, cell) => {
           s.font = 'bold 14px monospace'; s.textBaseline = 'alphabetic';
           for (let d = 0; d < 10; d++) {
-            s.fillStyle = 'rgb(224,255,224)'; s.fillText(String(d), d * cell.w, 14);
+            s.fillStyle = pale ? rgb(colors.text) : 'rgb(224,255,224)'; s.fillText(String(d), d * cell.w, 14);
             s.fillStyle = rgb(colors.accent); s.fillText(String(d), d * cell.w, 14 + cell.h);
           }
         }, { w: MATRIX_COL, h: 18 }, 10, 2);

@@ -1,8 +1,8 @@
 // PLAYER LOOK → TERMINAL: the player as a console's screen, one grid of character cells on a canvas (tui.js lays it
 // out). On a canvas rather than in text so nothing can push a frame out of line: every character is put in its own
 // cell whatever font it came from, and the frames' lines and the blocks are drawn, so they meet with no gaps.
-import { colors } from './theme.js';
-import { asciiCells, screen } from './tui.js';
+import { colors, shown } from './theme.js';
+import { asciiCells, onPaper, screen } from './tui.js';
 
 const FONT_PX = 13;
 const LINE = 1.42;
@@ -73,16 +73,16 @@ export class TerminalLook {
     g.rotate(this.angle);
     g.imageSmoothingQuality = 'high';
     g.drawImage(face, -side / 2, -side / 2);
-    return asciiCells(g.getImageData(0, 0, w, h).data, w, h);
+    return asciiCells(g.getImageData(0, 0, w, h).data, w, h, { paper: shown.light });
   }
   cellX(x) { return Math.round(x * this.cw); }
   colorOf(name) {
-    if (Array.isArray(name)) return `rgb(${name.join(',')})`;
+    if (Array.isArray(name)) return `rgb(${(shown.light ? onPaper(name, colors.bg) : name).join(',')})`; // (the disc's: darkened on a light theme's paper)
     if (name === 'dim') return `rgba(${colors.muted.join(',')},.45)`;
     return `rgb(${(colors[name] || colors.text).join(',')})`;
   }
   paint(grid) {
-    const g = this.ctx, key = `${colors.bg}|${colors.text}|${colors.accent}|${colors.muted}`;
+    const g = this.ctx, key = `${colors.bg}|${colors.text}|${colors.accent}|${colors.muted}|${shown.light}`;
     const fresh = !this.painted || this.painted.length !== grid.rows || this.key !== key;
     this.key = key;
     if (fresh) {

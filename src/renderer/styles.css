@@ -52,6 +52,7 @@
   --field: rgba(0, 0, 0, .3); /* a text field sunk into the panel, and its edge */
   --field-edge: rgba(255, 255, 255, .16);
   --scrim-deep: rgba(0, 0, 0, .62); /* the deeper dimming round the booklet and the guide */
+  --scrim-none: rgba(0, 0, 0, 0); /* where a dimming fades in from and out to: the scrims' own colour, unseen */
   --shelf-wall: linear-gradient(to bottom, rgb(24, 22, 22), rgb(12, 11, 11)); /* behind the shelf's boards */
 }
 /* A light theme (WHITE): glossy white plastic — soft shadows where the dark has edges, round white keys, and the deck's
@@ -87,6 +88,7 @@ html.light {
   --field: rgba(0, 0, 0, .03);
   --field-edge: rgba(0, 0, 0, .14);
   --scrim-deep: rgba(42, 44, 48, .32);
+  --scrim-none: rgba(42, 44, 48, 0);
   --shelf-wall: linear-gradient(to bottom, var(--backdrop-top), var(--backdrop-bottom));
 }
 
@@ -917,8 +919,8 @@ html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-e
   animation: overlayIn 200ms var(--ease-out); /* the dimming fades in and out with the panel (no blur behind: it halved the frame rate) */
 }
 .overlay.closing { animation: overlayOut 180ms var(--ease-in) forwards; pointer-events: none; }
-@keyframes overlayIn { from { background: rgba(0, 0, 0, 0); } }
-@keyframes overlayOut { to { background: rgba(0, 0, 0, 0); } }
+@keyframes overlayIn { from { background: var(--scrim-none); } }
+@keyframes overlayOut { to { background: var(--scrim-none); } }
 .card {
   background: rgb(var(--card));
   border: 1px solid var(--card-edge);
@@ -1750,7 +1752,7 @@ html.light .case-similar-album:hover, html.light .case-similar-album:focus-visib
   position: absolute; inset: 0; pointer-events: auto; perspective: 2200px;
   background: var(--scrim-deep); transition: background 300ms ease;
 }
-.booklet-layer.entering, .booklet-layer.leaving { background: rgba(0, 0, 0, 0); }
+.booklet-layer.entering, .booklet-layer.leaving { background: var(--scrim-none); }
 .booklet { position: absolute; transform-style: preserve-3d; cursor: pointer; }
 .booklet-bar { position: absolute; left: 50%; transform: translateX(-50%); display: flex; justify-content: center; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 22px; background: rgba(12, 12, 14, .92); box-shadow: 0 4px 18px rgba(0, 0, 0, .5); transition: opacity 200ms; }
 .booklet-layer.entering .booklet-bar, .booklet-layer.leaving .booklet-bar { opacity: 0; }

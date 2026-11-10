@@ -10,10 +10,10 @@
 //   LYRICS — the words, big, landing one by one as they're sung, the line swept away for the next; the cover a blur.
 //   TERMINAL — the console's screen in character cells: the command typed, the frames drawn, the disc in characters
 //     coming up out of noise and turning; the words lit a character at a time behind the cursor.
-import { rgb, lerpColor, FONT, drawThemeImage } from './theme.js';
+import { rgb, lerpColor, FONT, drawThemeImage, isLight } from './theme.js';
 import { drawCells, clock } from './deck-display.js';
 import { lineWords, songPace } from './lyrics.js';
-import { Grid, glyphs, textWidth, clip, stackedLevel, levelChar, seekLevels, asciiCells } from './tui.js';
+import { Grid, glyphs, textWidth, clip, stackedLevel, levelChar, seekLevels, asciiCells, onPaper } from './tui.js';
 import { t } from './i18n.js';
 import { flattenMp4, mp4Reach } from './mp4-flatten.js';
 
@@ -154,9 +154,9 @@ function coverColors(s) {
   } catch { return null; }
 }
 // The cover square in its soft shadow, drawn once: → { canvas, pad } (the cover starts `pad` in).
-function shadowed(size, radius, draw) {
+function shadowed(size, radius, draw, light = false) {
   const pad = Math.round(size * 0.14), c = canvas(size + pad * 2, size + pad * 2), g = c.getContext('2d');
-  g.save(); g.shadowColor = 'rgba(0,0,0,0.5)'; g.shadowBlur = size * 0.09; g.shadowOffsetY = size * 0.04;
+  g.save(); g.shadowColor = light ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.5)'; // (on a light theme's page, a soft one) g.shadowBlur = size * 0.09; g.shadowOffsetY = size * 0.04;
   g.beginPath(); g.roundRect(pad, pad, size, size, radius); g.fillStyle = '#111'; g.fill(); g.restore();
   g.save(); g.beginPath(); g.roundRect(pad, pad, size, size, radius); g.clip(); draw(g, pad); g.restore();
   return { canvas: c, pad };
@@ -289,7 +289,10 @@ function themeBackdrop(L, s) {
   if (s.backdrop) drawThemeImage(g, L.w, L.h, s.backdrop.image, s.backdrop);
   else if (s.cover) { g.save(); g.filter = 'blur(90px) saturate(1.3)'; g.globalAlpha = 0.45; g.drawImage(squareCover(s, 600), -200, -200, L.w + 400, L.w + 400); g.restore(); }
   const shade = g.createLinearGradient(0, 0, 0, L.h);
-  shade.addColorStop(0, 'rgba(0,0,0,0.05)'); shade.addColorStop(0.55, 'rgba(0,0,0,0.3)'); shade.addColorStop(1, 'rgba(0,0,0,0.6)');
+  if (isLight(C.bg)) { // a light theme: lightening down into its own background instead, where the words go in its dark ink
+    const b = C.bg.join(',');
+    shade.addColorStop(0, `rgba(${b},0.05)`); shade.addColorStop(0.55, `rgba(${b},0.45)`); shade.addColorStop(1, `rgba(${b},0.8)`);
+  } else { shade.addColorStop(0, 'rgba(0,0,0,0.05)'); shade.addColorStop(0.55, 'rgba(0,0,0,0.3)'); shade.addColorStop(1, 'rgba(0,0,0,0.6)'); }
   g.fillStyle = shade; g.fillRect(0, 0, L.w, L.h);
   return c;
 }
@@ -304,7 +307,7 @@ function jewelCase(s, size) {
     gloss.addColorStop(0, 'rgba(255,255,255,0.2)'); gloss.addColorStop(0.42, 'rgba(255,255,255,0.03)'); gloss.addColorStop(0.43, 'rgba(255,255,255,0)');
     g.fillStyle = gloss; g.fillRect(pad, pad, size, size);
     g.strokeStyle = 'rgba(255,255,255,0.22)'; g.lineWidth = 2; g.strokeRect(pad + 1, pad + 1, size - 2, size - 2);
-  });
+  }, !!s.colors && isLight(s.colors.bg));
 }
 // The light on a disc, which stays put as it turns: a CD's rainbow where it catches the light, a soft highlight across.
 function discLight(r) {
@@ -323,16 +326,16 @@ function discLight(r) {
   g.fillStyle = shine; g.fillRect(0, 0, r * 2, r * 2);
   return c;
 }
-function discShadow(r) {
+function discShadow(r, light = false) {
   const pad = r * 0.3, c = canvas(r * 2 + pad * 2, r * 2 + pad * 2), g = c.getContext('2d');
-  g.shadowColor = 'rgba(0,0,0,0.55)'; g.shadowBlur = r * 0.12; g.shadowOffsetY = r * 0.05;
+  g.shadowColor = light ? 'rgba(0,0,0,0.22)' : 'rgba(0,0,0,0.55)'; // (light: a soft grey one) g.shadowBlur = r * 0.12; g.shadowOffsetY = r * 0.05;
   g.beginPath(); g.arc(r + pad, r + pad, r - 1, 0, Math.PI * 2); g.fillStyle = '#0b0b0d'; g.fill();
   return { canvas: c, pad };
 }
 
 function classic(L, s, lines, start) {
   const C = s.colors, tall = L.h > L.w, back = themeBackdrop(L, s);
-  const kase = jewelCase(s, L.case.w), d = L.disc, light = discLight(d.r), shade = discShadow(d.r);
+  const kase = jewelCase(s, L.case.w), d = L.disc, light = discLight(d.r), shade = discShadow(d.r, isLight(C.bg));
   const from = { x: L.case.x + L.case.w / 2, y: L.case.y + L.case.h / 2 }; // the disc starts inside its case
   const focus = { x: (L.case.x + d.x + d.r) / 2, y: (d.y - d.r + L.case.y + L.case.h) / 2 };
   const n = L.names, box = L.lyrics, notes = lines.length ? lines : nameAsLine(s, start), noLyrics = !lines.length;
@@ -1027,7 +1030,8 @@ function terminalFilm(L, s, lines, start) {
   const cols = Math.floor((W - 2 * (tall ? 44 : 36)) / cw), rows = Math.floor((H - 2 * (tall ? 60 : 30)) / ch);
   const ox = Math.round((W - cols * cw) / 2), oy = Math.round((H - rows * ch) / 2);
   const shown = lines.length ? lines : nameAsLine(s, start);
-  const dim = rgb(C.muted, 0.45), color = (c) => (Array.isArray(c) ? rgb(c) : c === 'dim' ? dim : rgb(C[c] || C.text));
+  const paper = isLight(C.bg); // (a light theme's paper: the disc's characters darkened to stand out on it, as the look has them)
+  const dim = rgb(C.muted, 0.45), color = (c) => (Array.isArray(c) ? rgb(paper ? onPaper(c, C.bg) : c) : c === 'dim' ? dim : rgb(C[c] || C.text));
   // Where things go: the prompt on the top row, then the disc's pane (with the song beside it, or under it in Stories), then the words.
   const top = 1, nowH = tall ? 30 : 16;
   const discRows = tall ? 15 : 13, discCols = Math.min(cols - 6, Math.round(discRows * ratio) | 1);
@@ -1082,7 +1086,7 @@ function terminalFilm(L, s, lines, start) {
     ag.setTransform(1, 0, 0, 1, 0, 0); ag.clearRect(0, 0, discCols, discRows);
     ag.setTransform(discCols / side, 0, 0, discRows / side, discCols / 2, discRows / 2); ag.rotate(angle);
     ag.imageSmoothingQuality = 'high'; ag.drawImage(s.face, -side / 2, -side / 2);
-    const cells = asciiCells(ag.getImageData(0, 0, discCols, discRows).data, discCols, discRows), reveal = (at - boot - 0.3) / 0.035;
+    const cells = asciiCells(ag.getImageData(0, 0, discCols, discRows).data, discCols, discRows, { paper }), reveal = (at - boot - 0.3) / 0.035;
     cells.forEach((row, y) => row.forEach((c, x) => {
       if (!c || y > reveal) return;
       const fresh = reveal - y < 3;

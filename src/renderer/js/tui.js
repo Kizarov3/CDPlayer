@@ -63,7 +63,18 @@ const RAMP = ' .:-=+*#%@';
  * A picture of `w` × `h` pixels (RGBA) as `h` rows of `w` cells: each a character as dense as the pixel is bright, in
  * its colour, kept bright enough to read; nothing where the picture's clear (round the disc, its hole).
  */
-export function asciiCells(rgba, w, h) {
+// A colour of the disc's characters on a light theme's white "paper": darkened (its hue kept) until it stands out
+// from `bg` at least `ratio` to 1 — the cover's pale parts would be all but white on white. A dark enough one: as it is.
+const linear = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+const gamma = (v) => Math.round(255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055));
+const lum = (c) => 0.2126 * linear(c[0]) + 0.7152 * linear(c[1]) + 0.0722 * linear(c[2]);
+export function onPaper(c, bg, ratio = 3) {
+  const most = (lum(bg) + 0.05) / ratio - 0.05, l = lum(c);
+  if (l <= most) return c;
+  return c.map((v) => gamma(linear(v) * (most / l)));
+}
+
+export function asciiCells(rgba, w, h, { paper = false } = {}) {
   const rows = [];
   for (let y = 0; y < h; y++) {
     const row = [];
@@ -71,6 +82,7 @@ export function asciiCells(rgba, w, h) {
       const i = (y * w + x) * 4, a = rgba[i + 3];
       if (a < 96) { row.push(null); continue; }
       const r = rgba[i], g = rgba[i + 1], b = rgba[i + 2], lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      if (paper && Math.min(r, g, b) >= 232) { row.push(null); continue; } // (on a light theme's paper, what's white is the paper: the hole, a white cover's white)
       const lift = Math.max(1, 110 / Math.max(r, g, b, 1));
       row.push({
         ch: RAMP[Math.max(1, Math.min(RAMP.length - 1, Math.round(lum * (RAMP.length - 1))))],

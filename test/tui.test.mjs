@@ -161,3 +161,25 @@ test('the queue says how far it can be scrolled, so the wheel stops at its end',
   assert.strictEqual(grid.meta.queueMost, 100 - grid.meta.queueRows);
   assert.strictEqual(grid.meta.queueTop, grid.meta.queueMost);
 });
+
+test('onPaper: a pale colour of the disc is darkened (its hue kept) to stand out on a light paper; a dark one is kept', async () => {
+  const { onPaper } = await import('../src/renderer/js/tui.js');
+  const { contrast } = await import('../src/renderer/js/theme.js');
+  const paper = [251, 251, 252];
+  for (const c of [[255, 255, 255], [240, 230, 120], [180, 220, 255], [200, 200, 200]]) {
+    const d = onPaper(c, paper);
+    assert.ok(contrast(d, paper) >= 2.95, `${c} → ${d}: ${contrast(d, paper)}`);
+    assert.ok(d.every((v, i) => v <= c[i]), 'only darkened');
+  }
+  const yellow = onPaper([240, 230, 120], paper);
+  assert.ok(yellow[0] > yellow[2] && yellow[1] > yellow[2], 'still a yellow');
+  assert.deepStrictEqual(onPaper([60, 40, 120], paper), [60, 40, 120]);
+});
+
+test('asciiCells on paper: white is the paper (no character), anything else as on a dark screen', () => {
+  const px = new Uint8ClampedArray([250, 250, 250, 255, 120, 60, 200, 255]);
+  const dark = asciiCells(px, 2, 1), paper = asciiCells(px, 2, 1, { paper: true });
+  assert.ok(dark[0][0], 'a dark screen shows white');
+  assert.strictEqual(paper[0][0], null);
+  assert.deepStrictEqual(paper[0][1], dark[0][1]);
+});

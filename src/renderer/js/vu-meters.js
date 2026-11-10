@@ -2,7 +2,8 @@
 // with the scale between them, lit in the display's colour and faintly there when off. Each follows the music up quick
 // and falls back slow (a VU meter's ~300 ms), and the highest segment it reached stays lit a moment (peak hold).
 // Meters that haven't moved by a segment aren't drawn again.
-import { colors } from './theme.js';
+import { colors, shown } from './theme.js';
+import { LCD_INK } from './deck-display.js';
 
 const RISE = 0.012, FALL = 0.005; // how far a meter follows, per ms, rising and falling
 const LOW = -20, HIGH = 3; // dB, as a VU meter's scale
@@ -31,14 +32,16 @@ export class VuMeters {
     if (!w || !h) return;
     const left = 18, right = 22, n = Math.max(10, Math.floor((w - left - right + GAP) / (SEG + GAP)));
     const lit = this.levels.map((db) => Math.round(fraction(db) * n)), peak = this.peaks.map((db) => Math.round(fraction(db) * n));
-    const key = `${w}x${h}|${lit}|${peak}|${colors.accent}`;
+    const lcd = shown.light; // a light theme's LCD: in its dark ink, unlit, the segments past 0 in the theme's colour
+    const key = `${w}x${h}|${lit}|${peak}|${colors.accent}|${lcd}`;
     if (key === this.drawn) return;
     this.drawn = key;
     if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
     const g = c.getContext('2d');
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, h);
-    const [r, gr, b] = colors.accent, on = `rgb(${r}, ${gr}, ${b})`, glow = `rgba(${r}, ${gr}, ${b}, .22)`, off = `rgba(${r}, ${gr}, ${b}, .13)`;
+    const [r, gr, b] = lcd ? LCD_INK : colors.accent, on = `rgb(${r}, ${gr}, ${b})`, glow = `rgba(${r}, ${gr}, ${b}, .22)`, off = `rgba(${r}, ${gr}, ${b}, ${lcd ? '.1' : '.13'})`;
+    const hot = lcd ? `rgb(${colors.accent.join(', ')})` : on;
     const bar = 7, rows = [1, h - bar - 1], zero = Math.round(fraction(0) * n);
     const family = getComputedStyle(document.body).fontFamily;
     g.font = `bold 9px ${family}`; g.textBaseline = 'middle';
@@ -49,8 +52,8 @@ export class VuMeters {
         const x = left + s * (SEG + GAP), isLit = s < lit[i] || (s === peak[i] - 1 && peak[i] > 0);
         // past 0 the segments are taller, as the red end of a meter's scale
         const tall = s >= zero ? 1 : 0;
-        if (isLit) { g.fillStyle = glow; g.fillRect(x - 1.5, y - 1.5 - tall, SEG + 3, bar + 3 + tall * 2); }
-        g.fillStyle = isLit ? on : off;
+        if (isLit && !lcd) { g.fillStyle = glow; g.fillRect(x - 1.5, y - 1.5 - tall, SEG + 3, bar + 3 + tall * 2); }
+        g.fillStyle = isLit ? (tall ? hot : on) : off;
         g.fillRect(x, y - tall, SEG, bar + tall * 2);
       }
     }

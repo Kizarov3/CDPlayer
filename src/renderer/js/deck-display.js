@@ -2,7 +2,10 @@
 // in seven-segment digits that glow in the theme's colour, the segments not lit faintly there behind them (88:88), and
 // PLAY / PAUSE / SHUFFLE / REPEAT lit or dark beside them. Clicked, the time counts down what's left (a deck's TIME
 // button). Settings → DISPLAY → CLASSIC shows the plain times instead (`elapsed`, `length`), kept up to date here too. The digits are drawn here (no font to load); a canvas is only drawn again when what it shows has changed.
-import { colors } from './theme.js';
+import { colors, shown } from './theme.js';
+
+// A light theme's display is a backlit LCD (the --lcd of styles.css): its digits dark ink, unlit, no glow.
+export const LCD_INK = [31, 42, 28];
 
 // The segments lit for each character: a top, b top right, c bottom right, d bottom, e bottom left, f top left, g middle.
 export const SEGMENTS = { 0: 'abcdef', 1: 'bc', 2: 'abdeg', 3: 'abcdg', 4: 'bcfg', 5: 'acdfg', 6: 'acdefg', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg', '-': 'g', ' ': '' };
@@ -125,7 +128,8 @@ export class DeckDisplay {
   // The theme's colour moved (a theme change fades): drawn again in it.
   tick() { this.draw(); }
   draw() {
-    const color = `${colors.accent.join(',')}@${window.devicePixelRatio || 1}`; // (moved to a sharper screen: drawn again)
+    // (moved to a sharper screen, or to a light theme's LCD: drawn again)
+    const color = shown.light ? `${LCD_INK.join(',')}@${window.devicePixelRatio || 1}@lcd` : `${colors.accent.join(',')}@${window.devicePixelRatio || 1}`;
     if (this.shown.color !== color) { this.shown = { track: null, time: null, color }; }
     const lit = (text) => (this.lampTest ? text.replace(/[^:]/g, '8') : text), track = lit(this.changing ? '--' : this.track), time = lit(this.time);
     if (this.shown.track !== track) {
@@ -136,7 +140,7 @@ export class DeckDisplay {
     if (this.shown.time !== time) { this.paint(this.timeCanvas, time, color); this.shown.time = time; }
   }
   paint(canvas, text, key) {
-    const color = key.split('@')[0];
+    const [color, , lcd] = key.split('@');
     // (the digits' height is the canvas's data-h; it's drawn bigger by the glow all round, which overhangs its place)
     const h = Number(canvas.dataset.h) || 30, dpr = window.devicePixelRatio || 1, glow = Math.round(h * 0.28);
     const w = Math.ceil(cellsWidth(text, h) + glow * 2);
@@ -148,6 +152,11 @@ export class DeckDisplay {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, h + glow * 2);
     g.translate(glow, glow);
+    if (lcd) { // the LCD: the segments not lit faintly there, the lit ones in its ink — no glow
+      drawCells(g, text.replace(/[^:]/g, '8'), h, `rgba(${color},0.08)`, `rgba(${color},0.08)`);
+      drawCells(g, text, h, `rgba(${color},0.92)`, 'rgba(0,0,0,0)');
+      return;
+    }
     // The dark segments first, then the lit ones twice: once blurred for the glow, once sharp.
     g.shadowBlur = 0;
     drawCells(g, text.replace(/[^:]/g, '8'), h, `rgba(${color},0.07)`, `rgba(${color},0.07)`);
