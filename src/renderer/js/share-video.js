@@ -11,7 +11,7 @@
 //   TERMINAL — the console's screen in character cells: the command typed, the frames drawn, the disc in characters
 //     coming up out of noise and turning; the words lit a character at a time behind the cursor.
 import { rgb, lerpColor, FONT, drawThemeImage, isLight } from './theme.js';
-import { drawCells, clock } from './deck-display.js';
+import { drawCells, clock, LCD_INK } from './deck-display.js';
 import { lineWords, songPace } from './lyrics.js';
 import { Grid, glyphs, textWidth, clip, stackedLevel, levelChar, seekLevels, asciiCells, onPaper } from './tui.js';
 import { t } from './i18n.js';
@@ -104,6 +104,16 @@ const lum = (c) => (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
 // A colour bright enough to glow on black (a light theme's dark accent lifted towards white).
 const lit = (c, min = 0.5) => { let x = c; for (let i = 0; i < 10 && lum(x) < min; i++) x = lerpColor(x, WHITE, 0.15); return x; };
 const canvas = (w, h) => new OffscreenCanvas(Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
+// A film's stage on a light theme: lightened where a dark theme's is darkened, toward its own background, and its
+// words in the theme's dark ink instead of white. (on a dark theme, exactly the colours it has always had)
+function stageOf(s) {
+  const C = s.colors, light = !!C && isLight(C.bg);
+  return {
+    light, deep: light ? WHITE : [0, 0, 0],
+    ink: (a) => (light ? rgb(C.text, a) : `rgba(255,255,255,${a})`),
+    dim: (a) => (light ? `rgba(${C.bg.join(',')},${a})` : `rgba(0,0,0,${a})`),
+  };
+}
 
 function wrap(g, text, width, max) {
   const words = String(text || '').split(/\s+/).filter(Boolean), lines = [];
@@ -156,7 +166,7 @@ function coverColors(s) {
 // The cover square in its soft shadow, drawn once: → { canvas, pad } (the cover starts `pad` in).
 function shadowed(size, radius, draw, light = false) {
   const pad = Math.round(size * 0.14), c = canvas(size + pad * 2, size + pad * 2), g = c.getContext('2d');
-  g.save(); g.shadowColor = light ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.5)'; // (on a light theme's page, a soft one) g.shadowBlur = size * 0.09; g.shadowOffsetY = size * 0.04;
+  g.save(); g.shadowColor = light ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.5)'; g.shadowBlur = size * 0.09; g.shadowOffsetY = size * 0.04; // (on a light theme's page, a soft one)
   g.beginPath(); g.roundRect(pad, pad, size, size, radius); g.fillStyle = '#111'; g.fill(); g.restore();
   g.save(); g.beginPath(); g.roundRect(pad, pad, size, size, radius); g.clip(); draw(g, pad); g.restore();
   return { canvas: c, pad };
@@ -328,7 +338,7 @@ function discLight(r) {
 }
 function discShadow(r, light = false) {
   const pad = r * 0.3, c = canvas(r * 2 + pad * 2, r * 2 + pad * 2), g = c.getContext('2d');
-  g.shadowColor = light ? 'rgba(0,0,0,0.22)' : 'rgba(0,0,0,0.55)'; // (light: a soft grey one) g.shadowBlur = r * 0.12; g.shadowOffsetY = r * 0.05;
+  g.shadowColor = light ? 'rgba(0,0,0,0.22)' : 'rgba(0,0,0,0.55)'; g.shadowBlur = r * 0.12; g.shadowOffsetY = r * 0.05; // (light: a soft grey one)
   g.beginPath(); g.arc(r + pad, r + pad, r - 1, 0, Math.PI * 2); g.fillStyle = '#0b0b0d'; g.fill();
   return { canvas: c, pad };
 }
@@ -397,22 +407,23 @@ function classic(L, s, lines, start) {
 
 function album(L, s, lines, start) {
   const tall = L.h > L.w, W = L.w, H = L.h, pal = coverColors(s) || { mean: s.colors.bg, vivid: s.colors.accent };
-  const field = coverField(s, pal.mean), D = Math.hypot(W, H) * 1.3, F = field.width;
+  const field = coverField(s, pal.mean), D = Math.hypot(W, H) * 1.3, F = field.width, St = stageOf(s), { ink } = St;
   // a second sheet of the colours, its edges soft, to turn over the first
   const sheet = canvas(F, F), sh = sheet.getContext('2d');
   sh.drawImage(field, 0, 0); sh.globalCompositeOperation = 'destination-in';
   const round = sh.createRadialGradient(F / 2, F / 2, 0, F / 2, F / 2, F / 2);
   round.addColorStop(0.35, '#000'); round.addColorStop(1, 'rgba(0,0,0,0)'); sh.fillStyle = round; sh.fillRect(0, 0, F, F);
-  const base = rgb(lerpColor(pal.mean, [0, 0, 0], 0.5)), dark = lerpColor(pal.mean, [0, 0, 0], 0.75);
+  const base = rgb(lerpColor(pal.mean, St.deep, 0.5)), dark = lerpColor(pal.mean, St.deep, St.light ? 0.85 : 0.75);
   // The cover edge to edge — across the top of the tall video, melting into the colours under it; the whole square one.
   const art = squareCover(s, Math.round(W * 1.25)), layer = canvas(W, W), lg = layer.getContext('2d');
   const melt = canvas(W, W), mg = melt.getContext('2d'), mgr = mg.createLinearGradient(0, 0, 0, W);
   mgr.addColorStop(0, '#000'); mgr.addColorStop(0.6, '#000'); mgr.addColorStop(0.98, 'rgba(0,0,0,0)');
   mg.fillStyle = mgr; mg.fillRect(0, 0, W, W);
   // the shade the words sit on: under them, as dark as it takes for white to read on a pale cover too
-  const shade = canvas(W, H), sg = shade.getContext('2d'), deep = 0.55 + 0.35 * lum(pal.mean);
+  // (on a light theme, as pale as it takes for its dark ink to read on a dark one)
+  const shade = canvas(W, H), sg = shade.getContext('2d'), deep = 0.55 + 0.35 * (St.light ? 1 - lum(pal.mean) : lum(pal.mean));
   const sgr = sg.createLinearGradient(0, 0, 0, H);
-  if (tall) { sgr.addColorStop(0, 'rgba(0,0,0,0)'); sgr.addColorStop(0.5, 'rgba(0,0,0,0.1)'); sgr.addColorStop(1, rgb(dark, Math.min(0.85, deep))); }
+  if (tall) { sgr.addColorStop(0, St.dim(0)); sgr.addColorStop(0.5, St.dim(0.1)); sgr.addColorStop(1, rgb(dark, Math.min(0.85, deep))); }
   else {
     sgr.addColorStop(0, rgb(dark, 0.6)); sgr.addColorStop(0.2, rgb(dark, 0)); sgr.addColorStop(0.33, rgb(dark, 0));
     sgr.addColorStop(0.58, rgb(dark, 0.8)); sgr.addColorStop(0.75, rgb(dark, 0.93)); sgr.addColorStop(1, rgb(dark, 0.96));
@@ -444,20 +455,20 @@ function album(L, s, lines, start) {
     g.textBaseline = 'alphabetic'; g.textAlign = 'left';
     // (no lyrics: the name bigger, where the lines would be)
     const tp = lines.length ? (tall ? 56 : 40) : tall ? 80 : 60;
-    g.font = `700 ${tp}px ${SANS}`; g.fillStyle = 'rgba(255,255,255,0.97)';
+    g.font = `700 ${tp}px ${SANS}`; g.fillStyle = ink(0.97);
     let y = lines.length ? (tall ? 1150 : 96) : tall ? 1420 : 880;
     for (const row of wrap(g, s.title, colW - (tall ? 0 : 180), lines.length ? 1 : 2)) { g.fillText(row, x0, y); y += tp * 1.15; }
-    g.font = `400 ${Math.round(tp * 0.78)}px ${SANS}`; g.fillStyle = 'rgba(255,255,255,0.66)';
+    g.font = `400 ${Math.round(tp * 0.78)}px ${SANS}`; g.fillStyle = ink(0.66);
     if (s.artist) g.fillText(wrap(g, s.artist, colW - (tall ? 0 : 180), 1)[0], x0, y + tp * 0.05);
     g.restore();
     if (lines.length) {
       stack(g, lines, pos, box, { start, anchor: 0, gap: big * 0.42, layoutOf, ahead: tall ? 2 : 1,
         draw: (line, x, ly, st) => drawLine(g, layoutOf(line), x, ly, box.w, 'left', (part, px, py) => {
-          if (!st.current || st.gone) { g.fillStyle = `rgba(255,255,255,${0.26 + 0.6 * st.alpha})`; g.fillText(part.text, px, py); return; }
-          wipe(g, part.text, px, py, part.w, sung(part, pos), 'rgba(255,255,255,1)', `rgba(255,255,255,${0.26 + 0.24 * st.alpha})`);
+          if (!st.current || st.gone) { g.fillStyle = ink(0.26 + 0.6 * st.alpha); g.fillText(part.text, px, py); return; }
+          wipe(g, part.text, px, py, part.w, sung(part, pos), ink(1), ink(0.26 + 0.24 * st.alpha));
         }, st.edges) });
     }
-    mark(g, L, 'rgba(255,255,255,0.55)', W - 48, tall ? H - 48 : 92);
+    mark(g, L, ink(0.55), W - 48, tall ? H - 48 : 92);
   };
 }
 
@@ -474,73 +485,75 @@ export function caseLayout(format) {
 const CASE_SCALE = 1.5;
 
 // The lid from the front: the cover under the plastic, the hinge's band down its left. (Column 0 is the hinge, on both sides.)
-function lidFront(s, w, h) {
+// (light: clear plastic over light grey, the band pale)
+function lidFront(s, w, h, light = false) {
   const c = canvas(w, h), g = c.getContext('2d'), band = w * 0.12, side = w * (120 / 142), top = (h - side) / 2;
   g.beginPath(); g.roundRect(0, 0, w, h, w * 0.008); g.clip();
-  g.fillStyle = '#17181b'; g.fillRect(0, 0, w, h);
+  g.fillStyle = light ? '#e9ebee' : '#17181b'; g.fillRect(0, 0, w, h);
   g.drawImage(squareCover(s, Math.round(side)), band, top, side, side);
   // the band: dark plastic, its ridges catching the light
   const hinge = g.createLinearGradient(0, 0, band, 0);
-  hinge.addColorStop(0, '#0d0e10'); hinge.addColorStop(0.3, '#34363b'); hinge.addColorStop(0.62, '#1b1c20'); hinge.addColorStop(1, '#0c0d0f');
+  const band4 = light ? ['#d3d7dc', '#ffffff', '#e1e4e8', '#cdd1d6'] : ['#0d0e10', '#34363b', '#1b1c20', '#0c0d0f'];
+  hinge.addColorStop(0, band4[0]); hinge.addColorStop(0.3, band4[1]); hinge.addColorStop(0.62, band4[2]); hinge.addColorStop(1, band4[3]);
   g.fillStyle = hinge; g.fillRect(0, 0, band, h);
-  g.fillStyle = 'rgba(255,255,255,0.1)';
+  g.fillStyle = light ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.1)';
   for (let x = band * 0.2; x < band * 0.9; x += band * 0.17) g.fillRect(x, 0, Math.max(1, w * 0.002), h);
-  g.fillStyle = 'rgba(0,0,0,0.42)'; g.fillRect(band, 0, w * 0.007, h);
+  g.fillStyle = light ? 'rgba(0,0,0,0.12)' : 'rgba(0,0,0,0.42)'; g.fillRect(band, 0, w * 0.007, h);
   const gloss = g.createLinearGradient(0, 0, w * 0.8, h);
   gloss.addColorStop(0, 'rgba(255,255,255,0.2)'); gloss.addColorStop(0.42, 'rgba(255,255,255,0.03)'); gloss.addColorStop(0.43, 'rgba(255,255,255,0)');
   g.fillStyle = gloss; g.fillRect(0, 0, w, h);
-  g.strokeStyle = 'rgba(255,255,255,0.28)'; g.lineWidth = Math.max(2, w * 0.003); g.strokeRect(1, 1, w - 2, h - 2);
+  g.strokeStyle = light ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.28)'; g.lineWidth = Math.max(2, w * 0.003); g.strokeRect(1, 1, w - 2, h - 2);
   return c;
 }
 // The lid from the inside, the booklet out of it: clear smoked plastic and the tabs that hold it.
-function lidInside(s, mean, w, h) {
+function lidInside(s, mean, w, h, light = false) {
   const c = canvas(w, h), g = c.getContext('2d');
   g.beginPath(); g.roundRect(0, 0, w, h, w * 0.008); g.clip();
-  g.fillStyle = rgb(lerpColor(mean, [12, 12, 14], 0.82)); g.fillRect(0, 0, w, h);
-  const light = g.createLinearGradient(w, 0, 0, h);
-  light.addColorStop(0, 'rgba(255,255,255,0.15)'); light.addColorStop(0.5, 'rgba(255,255,255,0.02)'); light.addColorStop(1, 'rgba(0,0,0,0.25)');
-  g.fillStyle = light; g.fillRect(0, 0, w, h);
-  g.fillStyle = 'rgba(255,255,255,0.1)'; g.strokeStyle = 'rgba(255,255,255,0.26)'; g.lineWidth = Math.max(2, w * 0.003);
+  g.fillStyle = rgb(lerpColor(mean, light ? [236, 238, 241] : [12, 12, 14], 0.82)); g.fillRect(0, 0, w, h);
+  const lit = g.createLinearGradient(w, 0, 0, h);
+  lit.addColorStop(0, 'rgba(255,255,255,0.15)'); lit.addColorStop(0.5, 'rgba(255,255,255,0.02)'); lit.addColorStop(1, light ? 'rgba(0,0,0,0.06)' : 'rgba(0,0,0,0.25)');
+  g.fillStyle = lit; g.fillRect(0, 0, w, h);
+  g.fillStyle = light ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.1)'; g.strokeStyle = light ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.26)'; g.lineWidth = Math.max(2, w * 0.003);
   const tab = (x, y, from) => { g.beginPath(); g.arc(x, y, w * 0.055, from, from + Math.PI); g.closePath(); g.fill(); g.stroke(); };
   for (const y of [h * 0.28, h * 0.72]) { tab(w * 0.96, y, Math.PI / 2); tab(w * 0.12, y, -Math.PI / 2); }
   g.strokeRect(1, 1, w - 2, h - 2);
   return c;
 }
-// The tray under the disc: dark plastic, the round well the disc sits in.
-function trayPlastic(w, h, cx, cy, r) {
+// The tray under the disc: dark plastic, the round well the disc sits in. (light: light grey plastic)
+function trayPlastic(w, h, cx, cy, r, light = false) {
   const c = canvas(w, h), g = c.getContext('2d');
   g.beginPath(); g.roundRect(0, 0, w, h, w * 0.008); g.clip();
   const base = g.createLinearGradient(0, 0, w, h);
-  base.addColorStop(0, '#2b2c30'); base.addColorStop(1, '#141518');
+  base.addColorStop(0, light ? '#f6f7f9' : '#2b2c30'); base.addColorStop(1, light ? '#e1e4e8' : '#141518');
   g.fillStyle = base; g.fillRect(0, 0, w, h);
-  g.fillStyle = 'rgba(255,255,255,0.08)';
+  g.fillStyle = light ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.08)';
   for (let x = w * 0.024; x < w * 0.1; x += w * 0.02) g.fillRect(x, 0, Math.max(1, w * 0.002), h);
   const well = g.createRadialGradient(cx, cy, r * 0.5, cx, cy, r * 1.03);
-  well.addColorStop(0, '#0b0b0d'); well.addColorStop(0.93, '#0d0d10'); well.addColorStop(1, '#000');
+  well.addColorStop(0, light ? '#dee1e5' : '#0b0b0d'); well.addColorStop(0.93, light ? '#d8dbe0' : '#0d0d10'); well.addColorStop(1, light ? '#c4c8ce' : '#000');
   g.fillStyle = well; g.beginPath(); g.arc(cx, cy, r * 1.03, 0, Math.PI * 2); g.fill();
-  g.strokeStyle = 'rgba(255,255,255,0.09)'; g.lineWidth = Math.max(2, w * 0.002); g.stroke();
-  g.strokeStyle = 'rgba(255,255,255,0.22)'; g.strokeRect(1, 1, w - 2, h - 2);
+  g.strokeStyle = light ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.09)'; g.lineWidth = Math.max(2, w * 0.002); g.stroke();
+  g.strokeStyle = light ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.22)'; g.strokeRect(1, 1, w - 2, h - 2);
   return c;
 }
 // The hub that holds the disc, its teeth round a dark middle.
-function caseHub(r) {
+function caseHub(r, light = false) {
   const size = Math.ceil(r * 2), c = canvas(size, size), g = c.getContext('2d'), m = size / 2;
   const body = g.createRadialGradient(m - r * 0.3, m - r * 0.3, r * 0.1, m, m, r);
-  body.addColorStop(0, '#4a4c52'); body.addColorStop(1, '#1b1c20');
+  body.addColorStop(0, light ? '#ffffff' : '#4a4c52'); body.addColorStop(1, light ? '#c6cad0' : '#1b1c20');
   g.fillStyle = body; g.beginPath(); g.arc(m, m, r * 0.98, 0, Math.PI * 2); g.fill();
-  g.strokeStyle = 'rgba(0,0,0,0.75)'; g.lineWidth = Math.max(2, r * 0.05);
+  g.strokeStyle = light ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.75)'; g.lineWidth = Math.max(2, r * 0.05);
   for (let k = 0; k < 12; k++) {
     const a = (k / 12) * Math.PI * 2;
     g.beginPath(); g.moveTo(m + Math.cos(a) * r * 0.42, m + Math.sin(a) * r * 0.42); g.lineTo(m + Math.cos(a) * r * 0.97, m + Math.sin(a) * r * 0.97); g.stroke();
   }
-  g.fillStyle = '#08080a'; g.beginPath(); g.arc(m, m, r * 0.38, 0, Math.PI * 2); g.fill();
+  g.fillStyle = light ? '#dcdfe3' : '#08080a'; g.beginPath(); g.arc(m, m, r * 0.38, 0, Math.PI * 2); g.fill();
   return c;
 }
 /**
  * A lid swung `angle` round its hinge at x = hx (0 shut over its case, π flat out to the left): cut into columns, each
  * as tall and as far along as it stands nearer the camera. Past its edge, the inside shows.
  */
-function swingLid(g, front, back, hx, y, w, h, angle) {
+function swingLid(g, front, back, hx, y, w, h, angle, dark = 0.5) {
   const cos = Math.cos(angle), sin = Math.sin(angle), img = cos >= 0 ? front : back, focal = w * 2.8, N = 72;
   const at = (u) => { const k = focal / (focal - sin * u * w); return { x: hx + cos * u * w * k, h: h * k }; };
   for (let i = 0; i < N; i++) {
@@ -550,44 +563,45 @@ function swingLid(g, front, back, hx, y, w, h, angle) {
   }
   // Turned from the light, it darkens: one shape over it all (column by column, the overlaps would show as stripes).
   const end = at(1), mid = y + h / 2;
-  g.fillStyle = `rgba(0,0,0,${0.5 * sin})`;
+  g.fillStyle = `rgba(0,0,0,${dark * sin})`;
   g.beginPath(); g.moveTo(hx, y); g.lineTo(end.x, mid - end.h / 2); g.lineTo(end.x, mid + end.h / 2); g.lineTo(hx, y + h); g.closePath(); g.fill();
 }
 // The page the words are on: a sheet of smoked acrylic, the cover's colour deep in it, its edge catching the light. → { canvas, pad }.
-function acrylicSheet(w, h, mean) {
+// (light: frosted white acrylic on a soft shadow)
+function acrylicSheet(w, h, mean, light = false) {
   const pad = 44, radius = 10, c = canvas(w + pad * 2, h + pad * 2), g = c.getContext('2d');
-  g.save(); g.shadowColor = 'rgba(0,0,0,0.55)'; g.shadowBlur = 36; g.shadowOffsetY = 12;
-  g.beginPath(); g.roundRect(pad, pad, w, h, radius); g.fillStyle = rgb(lerpColor(mean, [8, 8, 10], 0.86)); g.fill(); g.restore();
+  g.save(); g.shadowColor = light ? 'rgba(0,0,0,0.14)' : 'rgba(0,0,0,0.55)'; g.shadowBlur = 36; g.shadowOffsetY = 12;
+  g.beginPath(); g.roundRect(pad, pad, w, h, radius); g.fillStyle = rgb(lerpColor(mean, light ? [250, 250, 251] : [8, 8, 10], light ? 0.9 : 0.86)); g.fill(); g.restore();
   g.save(); g.beginPath(); g.roundRect(pad, pad, w, h, radius); g.clip();
   const sheen = g.createLinearGradient(pad, pad, pad + w * 0.6, pad + h);
   sheen.addColorStop(0, 'rgba(255,255,255,0.1)'); sheen.addColorStop(0.3, 'rgba(255,255,255,0.02)'); sheen.addColorStop(1, 'rgba(255,255,255,0)');
   g.fillStyle = sheen; g.fillRect(pad, pad, w, h); g.restore();
-  g.beginPath(); g.roundRect(pad + 1, pad + 1, w - 2, h - 2, radius); g.strokeStyle = 'rgba(255,255,255,0.16)'; g.lineWidth = 2; g.stroke();
+  g.beginPath(); g.roundRect(pad + 1, pad + 1, w - 2, h - 2, radius); g.strokeStyle = light ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.16)'; g.lineWidth = 2; g.stroke();
   return { canvas: c, pad };
 }
 
 function caseFilm(L, s, lines, start) {
   const tall = L.h > L.w, W = L.w, H = L.h, F = caseLayout(tall ? '9:16' : '1:1'), C = F.case, P = F.sheet;
-  const pal = coverColors(s) || { mean: s.colors.bg, vivid: s.colors.accent };
-  // What it all lies on: smoked acrylic, the cover's colours deep under it.
+  const pal = coverColors(s) || { mean: s.colors.bg, vivid: s.colors.accent }, St = stageOf(s), { ink } = St, lt = St.light;
+  // What it all lies on: smoked acrylic, the cover's colours deep under it. (light: frosted, the colours faint in it)
   const back = canvas(W, H), bg = back.getContext('2d');
-  bg.fillStyle = rgb(lerpColor(pal.mean, [0, 0, 0], 0.72)); bg.fillRect(0, 0, W, H);
+  bg.fillStyle = rgb(lerpColor(pal.mean, St.deep, lt ? 0.8 : 0.72)); bg.fillRect(0, 0, W, H);
   const field = coverField(s, pal.mean), D = Math.hypot(W, H) * 1.2;
-  bg.globalAlpha = 0.34; bg.drawImage(field, (W - D) / 2, (H - D) / 2, D, D); bg.globalAlpha = 1;
+  bg.globalAlpha = lt ? 0.2 : 0.34; bg.drawImage(field, (W - D) / 2, (H - D) / 2, D, D); bg.globalAlpha = 1;
   const under = bg.createRadialGradient(W / 2, H * 0.3, W * 0.15, W / 2, H * 0.45, Math.max(W, H) * 0.8);
-  under.addColorStop(0, 'rgba(0,0,0,0)'); under.addColorStop(1, 'rgba(0,0,0,0.6)');
+  under.addColorStop(0, St.dim(0)); under.addColorStop(1, St.dim(0.6));
   bg.fillStyle = under; bg.fillRect(0, 0, W, H);
   // The case's parts, made once.
   const q = CASE_SCALE, cw = Math.round(C.w * q), ch = Math.round(C.h * q);
-  const front = lidFront(s, cw, ch), inside = lidInside(s, pal.mean, cw, ch);
+  const front = lidFront(s, cw, ch, lt), inside = lidInside(s, pal.mean, cw, ch, lt);
   const dx = C.w * (77 / 142), dy = C.h / 2, r = C.w * (60 / 142) * 0.985;
-  const tray = trayPlastic(cw, ch, dx * q, dy * q, r * q), hub = caseHub(r * 0.17 * q);
-  const light = discLight(Math.round(r * q)), shade = discShadow(Math.round(r * q));
+  const tray = trayPlastic(cw, ch, dx * q, dy * q, r * q, lt), hub = caseHub(r * 0.17 * q, lt);
+  const light = discLight(Math.round(r * q)), shade = discShadow(Math.round(r * q), lt);
   const flat = canvas(C.w + 120, C.h + 120), fg = flat.getContext('2d');
-  fg.shadowColor = 'rgba(0,0,0,0.65)'; fg.shadowBlur = 42; fg.shadowOffsetY = 18;
-  fg.fillStyle = '#000'; fg.fillRect(60, 60, C.w, C.h);
+  fg.shadowColor = lt ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.65)'; fg.shadowBlur = 42; fg.shadowOffsetY = 18;
+  fg.fillStyle = lt ? '#e1e4e8' : '#000'; fg.fillRect(60, 60, C.w, C.h);
   // The page: the track's number and the song's name, who it's by, a rule in the cover's colour; the credit at its foot.
-  const page = acrylicSheet(P.w, P.h, pal.mean), inset = tall ? 64 : 44, colour = lit(pal.vivid, 0.5);
+  const page = acrylicSheet(P.w, P.h, pal.mean, lt), inset = tall ? 64 : 44, colour = lt ? onPaper(pal.vivid, [250, 250, 251]) : lit(pal.vivid, 0.5);
   const textW = P.w - inset * 2, cap = tall ? 34 : 24, headH = tall ? 124 : 78;
   const notes = lines.length ? lines : nameAsLine(s, start), noLyrics = !lines.length;
   const size = noLyrics ? (tall ? 84 : 54) : tall ? 64 : 38, face = (px) => `700 ${px}px ${SANS}`;
@@ -633,7 +647,7 @@ function caseFilm(L, s, lines, start) {
     } else if (angle >= Math.PI - 0.002) {
       // (flat: the hinge's edge meets the tray, the lid's inside mirrored away from it)
       g.save(); g.translate(C.x, 0); g.scale(-1, 1); g.drawImage(inside, 0, C.y, C.w, C.h); g.restore();
-    } else swingLid(g, front, inside, C.x, C.y, C.w, C.h, angle);
+    } else swingLid(g, front, inside, C.x, C.y, C.w, C.h, angle, lt ? 0.16 : 0.5);
     g.restore();
     // The page slides in from below, once there's room.
     const slid = (H - P.y + page.pad) * (1 - ease((at - 0.55) / 0.85));
@@ -646,10 +660,10 @@ function caseFilm(L, s, lines, start) {
     const no = String(s.track || 1).padStart(2, '0');
     g.fillStyle = rgb(colour); g.fillText(no, hx, hy);
     const nw = g.measureText(`${no}  `).width;
-    g.fillStyle = 'rgba(255,255,255,0.97)';
+    g.fillStyle = ink(0.97);
     const title = noLyrics ? '' : wrap(g, String(s.title || '').toUpperCase(), textW - nw, 1)[0];
     if (title) g.fillText(title, hx + nw, hy);
-    g.font = `500 ${Math.round(cap * 0.7)}px ${SANS}`; g.letterSpacing = `${cap * 0.12}px`; g.fillStyle = 'rgba(255,255,255,0.62)';
+    g.font = `500 ${Math.round(cap * 0.7)}px ${SANS}`; g.letterSpacing = `${cap * 0.12}px`; g.fillStyle = ink(0.62);
     const who = [s.artist, s.subtitle].filter(Boolean).join(' · ').toUpperCase();
     if (who) g.fillText(wrap(g, who, textW - nw, 1)[0], hx + nw, title ? hy + cap * 1.32 : hy + cap * 0.15);
     g.letterSpacing = '0px';
@@ -657,11 +671,11 @@ function caseFilm(L, s, lines, start) {
     // The verses: the line being sung lit word by word, the others dim.
     stack(g, notes, pos, box, { start, anchor, gap: size * 0.5, layoutOf, ahead: tall ? 3 : 1,
       draw: (line, x, y, st) => drawLine(g, layoutOf(line), x, y, box.w, 'left', (part, px, py) => {
-        if (noLyrics) { g.fillStyle = `rgba(255,255,255,${clamp01((pos - part.time) / 0.3)})`; g.fillText(part.text, px, py); return; }
-        if (!st.current || st.gone) { g.fillStyle = `rgba(255,255,255,${0.26 + 0.6 * st.alpha})`; g.fillText(part.text, px, py); return; }
-        wipe(g, part.text, px, py, part.w, sung(part, pos), 'rgba(255,255,255,1)', `rgba(255,255,255,${0.26 + 0.24 * st.alpha})`);
+        if (noLyrics) { g.fillStyle = ink(clamp01((pos - part.time) / 0.3)); g.fillText(part.text, px, py); return; }
+        if (!st.current || st.gone) { g.fillStyle = ink(0.26 + 0.6 * st.alpha); g.fillText(part.text, px, py); return; }
+        wipe(g, part.text, px, py, part.w, sung(part, pos), ink(1), ink(0.26 + 0.24 * st.alpha));
       }, st.edges) });
-    mark(g, L, 'rgba(255,255,255,0.5)', P.x + P.w - inset, P.y + P.h - (tall ? 28 : 16));
+    mark(g, L, ink(0.5), P.x + P.w - inset, P.y + P.h - (tall ? 28 : 16));
     g.restore();
   };
 }
@@ -692,7 +706,8 @@ function glowing(c, pitch, color) {
 }
 
 function hifi(L, s, lines, start) {
-  const tall = L.h > L.w, W = L.w, H = L.h, C = s.colors, glow = lit(C.accent, 0.55), color = rgb(glow);
+  // (on a light theme the deck's light one: a white front, an LCD in place of the glass, its segments in ink, unlit)
+  const tall = L.h > L.w, W = L.w, H = L.h, C = s.colors, lt = stageOf(s).light, glow = lt ? LCD_INK : lit(C.accent, 0.55), color = rgb(glow);
   // The display window, and in it: the track and time up top, the song's name running across, the lyrics, the meters.
   const win = tall ? { x: 50, y: 300, w: W - 100, h: 1300 } : { x: 46, y: 96, w: W - 92, h: 880 };
   const pad = tall ? 54 : 40, inner = { x: win.x + pad, y: win.y + pad, w: win.w - pad * 2, h: win.h - pad * 2 };
@@ -706,14 +721,14 @@ function hifi(L, s, lines, start) {
   // What doesn't move: the brushed front, the black glass, the unlit dots, the labels.
   const back = canvas(W, H), bg = back.getContext('2d');
   const metal = bg.createLinearGradient(0, 0, 0, H);
-  metal.addColorStop(0, '#2a2a2d'); metal.addColorStop(0.5, '#1c1c1f'); metal.addColorStop(1, '#121214');
+  metal.addColorStop(0, lt ? '#ffffff' : '#2a2a2d'); metal.addColorStop(0.5, lt ? '#f4f5f7' : '#1c1c1f'); metal.addColorStop(1, lt ? '#e9ebee' : '#121214');
   bg.fillStyle = metal; bg.fillRect(0, 0, W, H);
-  for (let y = 0; y < H; y += 2) { bg.fillStyle = `rgba(255,255,255,${0.012 + 0.014 * (((y * 7919) % 13) / 13)})`; bg.fillRect(0, y, W, 1); }
-  bg.save(); bg.shadowColor = 'rgba(255,255,255,0.08)'; bg.shadowOffsetY = 2; bg.shadowBlur = 0;
-  bg.beginPath(); bg.roundRect(win.x - 6, win.y - 6, win.w + 12, win.h + 12, 26); bg.fillStyle = '#08080a'; bg.fill(); bg.restore();
+  for (let y = 0; y < H; y += 2) { bg.fillStyle = lt ? `rgba(0,0,0,${0.006 + 0.007 * (((y * 7919) % 13) / 13)})` : `rgba(255,255,255,${0.012 + 0.014 * (((y * 7919) % 13) / 13)})`; bg.fillRect(0, y, W, 1); }
+  bg.save(); bg.shadowColor = lt ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.08)'; bg.shadowOffsetY = 2; bg.shadowBlur = 0;
+  bg.beginPath(); bg.roundRect(win.x - 6, win.y - 6, win.w + 12, win.h + 12, 26); bg.fillStyle = lt ? '#c9cdd2' : '#08080a'; bg.fill(); bg.restore();
   bg.beginPath(); bg.roundRect(win.x, win.y, win.w, win.h, 20);
   const glass = bg.createLinearGradient(0, win.y, 0, win.y + win.h);
-  glass.addColorStop(0, '#0d0e10'); glass.addColorStop(1, '#030304');
+  glass.addColorStop(0, lt ? 'rgb(194,206,187)' : '#0d0e10'); glass.addColorStop(1, lt ? 'rgb(181,195,174)' : '#030304');
   bg.fillStyle = glass; bg.fill();
   bg.fillStyle = rgb(glow, 0.055);
   for (let r = 0; r < Math.floor(area.h / P); r++) for (let c = 0; c < cols; c++) bg.fillRect(ox + c * P + P * 0.14, area.y + r * P + P * 0.14, P * 0.72, P * 0.72);
@@ -724,13 +739,13 @@ function hifi(L, s, lines, start) {
   // Under the display, the deck's name printed on the metal, and (on the tall one) its disc tray, shut.
   const below = win.y + win.h;
   bg.font = `600 ${tall ? 28 : 22}px ${SANS}`; bg.letterSpacing = '3px';
-  bg.fillStyle = 'rgba(0,0,0,0.6)'; bg.fillText('CDPlayer', win.x + 6, below + (tall ? 92 : 62) + 2);
-  bg.fillStyle = 'rgba(255,255,255,0.38)'; bg.fillText('CDPlayer', win.x + 6, below + (tall ? 92 : 62)); bg.letterSpacing = '0px';
+  bg.fillStyle = lt ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.6)'; bg.fillText('CDPlayer', win.x + 6, below + (tall ? 92 : 62) + 2);
+  bg.fillStyle = lt ? 'rgba(0,0,0,0.36)' : 'rgba(255,255,255,0.38)'; bg.fillText('CDPlayer', win.x + 6, below + (tall ? 92 : 62)); bg.letterSpacing = '0px';
   if (tall) {
     const tray = { x: win.x + win.w * 0.36, y: below + 64, w: win.w * 0.64 - 6, h: 40 };
-    bg.beginPath(); bg.roundRect(tray.x, tray.y, tray.w, tray.h, 6); bg.fillStyle = 'rgba(0,0,0,0.35)'; bg.fill();
-    bg.fillStyle = 'rgba(255,255,255,0.07)'; bg.fillRect(tray.x + 6, tray.y + tray.h - 1, tray.w - 12, 1);
-    bg.fillStyle = 'rgba(0,0,0,0.6)'; bg.fillRect(tray.x + 10, tray.y + tray.h / 2, tray.w - 20, 2);
+    bg.beginPath(); bg.roundRect(tray.x, tray.y, tray.w, tray.h, 6); bg.fillStyle = lt ? 'rgba(0,0,0,0.07)' : 'rgba(0,0,0,0.35)'; bg.fill();
+    bg.fillStyle = lt ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.07)'; bg.fillRect(tray.x + 6, tray.y + tray.h - 1, tray.w - 12, 1);
+    bg.fillStyle = lt ? 'rgba(0,0,0,0.22)' : 'rgba(0,0,0,0.6)'; bg.fillRect(tray.x + 10, tray.y + tray.h / 2, tray.w - 20, 2);
   }
   // The glass's reflection, over everything lit.
   const sheen = canvas(win.w, win.h), sg = sheen.getContext('2d');
@@ -743,7 +758,7 @@ function hifi(L, s, lines, start) {
   const tick = canvas((name.used + 30) * tickerP, TICK * tickerP), tg = tick.getContext('2d');
   tg.fillStyle = color;
   for (let y = 0; y < TICK; y++) for (let x = 0; x < name.used; x++) if (name.on[y * name.cols + x]) tg.fillRect(x * tickerP + tickerP * 0.12, y * tickerP + tickerP * 0.12, tickerP * 0.76, tickerP * 0.76);
-  const ticker = glowing(tick, tickerP, color), runs = name.used * tickerP > inner.w;
+  const ticker = lt ? tick : glowing(tick, tickerP, color), runs = name.used * tickerP > inner.w;
   // Each line's dots, laid out on the display's grid and lit, drawn as it's first needed: the words' places kept to light them.
   const shown = lines.length ? lines : nameAsLine(s, start);
   // (a long line in smaller characters, as a display squeezes more on: fewer dots to a character, the same dots)
@@ -772,7 +787,7 @@ function hifi(L, s, lines, start) {
         }
       }
     }
-    return (line.plate = { canvas: glowing(c, P, color), words: words.filter((it) => it.row < used), rows: used, step });
+    return (line.plate = { canvas: lt ? c : glowing(c, P, color), words: words.filter((it) => it.row < used), rows: used, step });
   };
   for (const line of shown) if (line.time >= start - 10 && line.time <= start + MAX_VIDEO_SECONDS + 5) plate(line); // ready before the recording starts
   // The meters, as the deck's: quick up, slow down, the peak held a moment.
@@ -794,10 +809,10 @@ function hifi(L, s, lines, start) {
     // The display comes on: everything lit flashes past full, then settles (as the deck's own does at power on).
     const on = at < 0.35 ? 0.15 + 0.85 * ease(at / 0.2) * (1 + 0.4 * Math.sin(Math.min(1, at / 0.35) * Math.PI)) : 1;
     g.globalAlpha = Math.min(1, on);
-    g.save(); g.translate(inner.x, top); g.shadowColor = rgb(glow, 0.8); g.shadowBlur = 16;
+    g.save(); g.translate(inner.x, top); if (!lt) { g.shadowColor = rgb(glow, 0.8); g.shadowBlur = 16; }
     drawCells(g, String(s.track || 1).padStart(2, '0'), digit, color, rgb(glow, 0.07)); g.restore();
     const time = clock(pos), tw = [...time].reduce((sum, ch) => sum + (ch === ':' ? digit * 0.32 : digit * 0.72), 0) - digit * 0.16;
-    g.save(); g.translate(inner.x + inner.w - tw - digit * 0.07, top); g.shadowColor = rgb(glow, 0.8); g.shadowBlur = 16;
+    g.save(); g.translate(inner.x + inner.w - tw - digit * 0.07, top); if (!lt) { g.shadowColor = rgb(glow, 0.8); g.shadowBlur = 16; }
     drawCells(g, time, digit, color, rgb(glow, 0.07)); g.restore();
     // ▶ by PLAY
     g.fillStyle = color; g.beginPath(); const px0 = inner.x + inner.w - (tall ? 150 : 118), py0 = top - (tall ? 32 : 26);
@@ -817,7 +832,7 @@ function hifi(L, s, lines, start) {
         const d = pos - it.w.time, sx = it.col * P, sy = it.row * pl.step * P, sw = it.d.used * P, sh = pl.step * P;
         g.globalAlpha = (d < 0 ? 0.13 : 1) * fade * Math.min(1, on);
         g.drawImage(pl.canvas, sx, sy, sw, sh, ox + sx, y0 + sy, sw, sh);
-        if (d >= 0 && d < 0.14) { g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.6 * (1 - d / 0.14) * fade; g.drawImage(pl.canvas, sx, sy, sw, sh, ox + sx, y0 + sy, sw, sh); g.globalCompositeOperation = 'source-over'; }
+        if (d >= 0 && d < 0.14 && !lt) { g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.6 * (1 - d / 0.14) * fade; g.drawImage(pl.canvas, sx, sy, sw, sh, ox + sx, y0 + sy, sw, sh); g.globalCompositeOperation = 'source-over'; }
       }
       g.restore();
     }
@@ -831,7 +846,7 @@ function hifi(L, s, lines, start) {
       for (let q = 0; q < SEGS; q++) {
         const hot = q >= zero, isLit = q < litN || (q === pk - 1 && pk > 0), hh = hot ? bar : bar * 0.72;
         g.globalAlpha = isLit ? Math.min(1, on) : 0.08;
-        g.fillStyle = hot && isLit ? rgb(lit(C.accent2 || [255, 90, 70], 0.45)) : color;
+        g.fillStyle = hot && isLit ? (lt ? rgb(C.accent) : rgb(lit(C.accent2 || [255, 90, 70], 0.45))) : color;
         g.fillRect(mx + q * seg + seg * 0.12, y + (bar - hh) / 2, seg * 0.62, hh);
       }
     }
@@ -846,20 +861,21 @@ function hifi(L, s, lines, start) {
 // ---- VISUALIZER: the cover inside a ring of the music ------------------------------------------------------------------
 
 function visualizer(L, s, lines, start) {
-  const tall = L.h > L.w, W = L.w, H = L.h, C = s.colors;
-  const a1 = lit(C.accent, 0.5), a2 = lit(C.accent2 || C.accent, 0.5);
+  const tall = L.h > L.w, W = L.w, H = L.h, C = s.colors, St = stageOf(s), { ink } = St, lt = St.light;
+  // (on a light theme: a pale room, the ring's quiet marks in its ink and its colours dark enough to read on it)
+  const a1 = lt ? onPaper(C.accent, C.bg) : lit(C.accent, 0.5), a2 = lt ? onPaper(C.accent2 || C.accent, C.bg) : lit(C.accent2 || C.accent, 0.5), rest = lt ? C.text : WHITE;
   const cx = W / 2, cy = tall ? 830 : 450, R = tall ? 260 : 175, AMP = tall ? 170 : 115;
   const back = canvas(W, H), bg = back.getContext('2d');
-  bg.fillStyle = rgb(lerpColor(C.bg, [0, 0, 0], 0.7)); bg.fillRect(0, 0, W, H);
+  bg.fillStyle = rgb(lerpColor(C.bg, St.deep, 0.7)); bg.fillRect(0, 0, W, H);
   bg.save(); bg.globalAlpha = 0.35; bg.filter = 'blur(70px) saturate(1.4)'; bg.drawImage(squareCover(s, 400), cx - H * 0.45, cy - H * 0.45, H * 0.9, H * 0.9); bg.restore();
   const vig = bg.createRadialGradient(cx, cy, R, cx, cy, Math.hypot(W, H) * 0.6);
-  vig.addColorStop(0, 'rgba(0,0,0,0)'); vig.addColorStop(1, 'rgba(0,0,0,0.7)'); bg.fillStyle = vig; bg.fillRect(0, 0, W, H);
+  vig.addColorStop(0, St.dim(0)); vig.addColorStop(1, St.dim(0.7)); bg.fillStyle = vig; bg.fillRect(0, 0, W, H);
   // The cover as a round, in its shadow; and the glow behind it that the bass swells.
   const disc = canvas(R * 2 + 120, R * 2 + 120), dg = disc.getContext('2d');
-  dg.save(); dg.shadowColor = 'rgba(0,0,0,0.6)'; dg.shadowBlur = 50; dg.shadowOffsetY = 14;
+  dg.save(); dg.shadowColor = lt ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.6)'; dg.shadowBlur = 50; dg.shadowOffsetY = 14;
   dg.beginPath(); dg.arc(R + 60, R + 60, R, 0, Math.PI * 2); dg.fillStyle = '#111'; dg.fill(); dg.restore();
   dg.save(); dg.beginPath(); dg.arc(R + 60, R + 60, R, 0, Math.PI * 2); dg.clip(); dg.drawImage(squareCover(s, R * 2), 60, 60); dg.restore();
-  dg.strokeStyle = 'rgba(255,255,255,0.14)'; dg.lineWidth = 2; dg.beginPath(); dg.arc(R + 60, R + 60, R - 1, 0, Math.PI * 2); dg.stroke();
+  dg.strokeStyle = lt ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.14)'; dg.lineWidth = 2; dg.beginPath(); dg.arc(R + 60, R + 60, R - 1, 0, Math.PI * 2); dg.stroke();
   const halo = canvas(512, 512), hg = halo.getContext('2d'), hr = hg.createRadialGradient(256, 256, 0, 256, 256, 256);
   hr.addColorStop(0, rgb(a1, 0.55)); hr.addColorStop(0.45, rgb(lerpColor(a1, a2, 0.5), 0.18)); hr.addColorStop(1, rgb(a2, 0));
   hg.fillStyle = hr; hg.fillRect(0, 0, 512, 512);
@@ -893,7 +909,7 @@ function visualizer(L, s, lines, start) {
     for (let k = 0; k < M; k++) {
       const band = k < N ? k : M - 1 - k, v = Math.pow((level[Math.max(0, band - 1)] + level[band] * 2 + level[Math.min(N - 1, band + 1)]) / 4, 1.25);
       const a = -Math.PI / 2 + ((k + 0.5) / M) * Math.PI * 2, c = Math.cos(a), sn = Math.sin(a), len = (tall ? 10 : 8) + AMP * v;
-      g.strokeStyle = rgb(lerpColor(WHITE, lerpColor(a1, a2, band / N), clamp01(v * 1.4)), 0.3 + 0.7 * clamp01(v * 1.6));
+      g.strokeStyle = rgb(lerpColor(rest, lerpColor(a1, a2, band / N), clamp01(v * 1.4)), 0.3 + 0.7 * clamp01(v * 1.6));
       g.beginPath(); g.moveTo(cx + c * base, cy + sn * base); g.lineTo(cx + c * (base + len), cy + sn * (base + len)); g.stroke();
     }
     g.lineCap = 'butt';
@@ -902,40 +918,41 @@ function visualizer(L, s, lines, start) {
     // The name over it all, quiet; the line under the ring, lit as it's sung and pulsing with the beat.
     g.textAlign = 'center'; g.textBaseline = 'alphabetic';
     const ny = tall ? 310 : 72;
-    g.font = `700 ${tall ? 46 : 32}px ${SANS}`; g.fillStyle = 'rgba(255,255,255,0.95)';
+    g.font = `700 ${tall ? 46 : 32}px ${SANS}`; g.fillStyle = ink(0.95);
     if (lines.length) g.fillText(wrap(g, s.title, W - 160, 1)[0] || '', cx, ny);
-    g.font = `400 ${tall ? 36 : 26}px ${SANS}`; g.fillStyle = 'rgba(255,255,255,0.6)';
+    g.font = `400 ${tall ? 36 : 26}px ${SANS}`; g.fillStyle = ink(0.6);
     g.fillText(wrap(g, lines.length ? s.artist : '', W - 160, 1)[0] || '', cx, ny + (tall ? 54 : 38));
     const pulse = 1 + 0.025 * kick;
     stack(g, shown, pos, box, { start, anchor: 0, gap: big * 0.45, layoutOf, ahead: 1,
       draw: (line, x, y, st) => {
         g.save(); g.translate(cx, y + 30); g.scale(st.current ? pulse : 1, st.current ? pulse : 1); g.translate(-cx, -y - 30);
         drawLine(g, layoutOf(line), x, y, box.w, 'center', (part, px, py) => {
-          if (!st.current || st.gone) { g.fillStyle = `rgba(255,255,255,${0.28 + 0.6 * st.alpha})`; g.fillText(part.text, px, py); return; }
-          wipe(g, part.text, px, py, part.w, sung(part, pos), 'rgba(255,255,255,0.98)', 'rgba(255,255,255,0.32)');
+          if (!st.current || st.gone) { g.fillStyle = ink(0.28 + 0.6 * st.alpha); g.fillText(part.text, px, py); return; }
+          wipe(g, part.text, px, py, part.w, sung(part, pos), ink(0.98), ink(0.32));
         }, st.edges);
         g.restore();
       } });
-    if (!lines.length && s.artist) { g.font = `400 ${tall ? 36 : 28}px ${SANS}`; g.globalAlpha = clamp01((at - 1) / 0.6) * 0.65; g.fillStyle = '#fff'; g.textAlign = 'center'; g.fillText(wrap(g, s.artist, box.w, 1)[0], cx, box.y + box.h - 40); g.globalAlpha = 1; }
-    mark(g, L, 'rgba(255,255,255,0.45)');
+    if (!lines.length && s.artist) { g.font = `400 ${tall ? 36 : 28}px ${SANS}`; g.globalAlpha = clamp01((at - 1) / 0.6) * 0.65; g.fillStyle = lt ? rgb(C.text) : '#fff'; g.textAlign = 'center'; g.fillText(wrap(g, s.artist, box.w, 1)[0], cx, box.y + box.h - 40); g.globalAlpha = 1; }
+    mark(g, L, ink(0.45));
   };
 }
 
 // ---- LYRICS: the words, big, as they're sung -------------------------------------------------------------------------
 
 function kinetic(L, s, lines, start) {
-  const tall = L.h > L.w, W = L.w, H = L.h, C = s.colors;
+  const tall = L.h > L.w, W = L.w, H = L.h, C = s.colors, St = stageOf(s), { ink } = St, lt = St.light;
   const field = canvas(W / 4, H / 4), fg = field.getContext('2d'), side = Math.max(W, H) / 4;
-  if (s.cover) { fg.filter = 'blur(12px) saturate(1.5) brightness(0.5)'; fg.drawImage(squareCover(s, 300), (W / 4 - side) / 2 - 20, (H / 4 - side) / 2 - 20, side + 40, side + 40); }
+  // (on a light theme the field brightened and washed pale under its dark ink, rather than darkened under white)
+  if (s.cover) { fg.filter = lt ? 'blur(12px) saturate(1.3) brightness(1.3)' : 'blur(12px) saturate(1.5) brightness(0.5)'; fg.drawImage(squareCover(s, 300), (W / 4 - side) / 2 - 20, (H / 4 - side) / 2 - 20, side + 40, side + 40); }
   else { // (no cover: the theme's own colours instead, its accent glowing up from below)
     const fgr = fg.createRadialGradient(W / 8, H / 4, 0, W / 8, H / 4, H / 4);
-    fgr.addColorStop(0, rgb(lerpColor(C.accent, [0, 0, 0], 0.45))); fgr.addColorStop(1, rgb(lerpColor(C.bg, [0, 0, 0], 0.6)));
+    fgr.addColorStop(0, rgb(lerpColor(C.accent, St.deep, 0.45))); fgr.addColorStop(1, rgb(lerpColor(C.bg, St.deep, 0.6)));
     fg.fillStyle = fgr; fg.fillRect(0, 0, W / 4, H / 4);
   }
   const shade = canvas(W, H), sg = shade.getContext('2d'), sgr = sg.createLinearGradient(0, 0, 0, H);
-  sgr.addColorStop(0, 'rgba(0,0,0,0.3)'); sgr.addColorStop(0.6, 'rgba(0,0,0,0.35)'); sgr.addColorStop(1, 'rgba(0,0,0,0.75)');
+  sgr.addColorStop(0, St.dim(lt ? 0.55 : 0.3)); sgr.addColorStop(0.6, St.dim(lt ? 0.6 : 0.35)); sgr.addColorStop(1, St.dim(lt ? 0.82 : 0.75));
   sg.fillStyle = sgr; sg.fillRect(0, 0, W, H);
-  const accent = lit(C.accent, 0.55), box = tall ? { x: 80, y: 0, w: W - 160 } : { x: 70, y: 0, w: W - 140 };
+  const accent = lt ? onPaper(C.accent, C.bg) : lit(C.accent, 0.55), box = tall ? { x: 80, y: 0, w: W - 160 } : { x: 70, y: 0, w: W - 140 };
   const shown = lines.length ? lines : nameAsLine(s, start);
   const big = tall ? 150 : 108, face = (px) => `800 ${px}px ${SANS}`, middle = tall ? H * 0.45 : H * 0.44;
   const layoutOf = (line) => cachedLayout(line, `kin${L.h}`, () => fit(scratch(), line.words, face, big, big * 0.55, box.w, tall ? 5 : 4, 1.04));
@@ -954,7 +971,7 @@ function kinetic(L, s, lines, start) {
       const fresh = k === now && pos < it.word.stop + 0.25;
       g.globalAlpha = clamp01(d / 0.16) * (1 - out) * (fresh ? 1 : 0.86);
       g.save(); g.translate(box.x + it.x, y); g.scale(sc, sc);
-      g.fillStyle = '#fff'; g.fillText(it.word.text, 0, 0); g.restore();
+      g.fillStyle = lt ? rgb(C.text) : '#fff'; g.fillText(it.word.text, 0, 0); g.restore();
     }
     g.restore();
     g.globalAlpha = 1;
@@ -978,11 +995,11 @@ function kinetic(L, s, lines, start) {
     const fy = tall ? H - 300 : H - 140;
     g.fillStyle = rgb(accent); g.fillRect(box.x, fy - (tall ? 58 : 44), 56, 5);
     g.textAlign = 'left'; g.textBaseline = 'alphabetic';
-    g.font = `700 ${tall ? 38 : 30}px ${SANS}`; g.fillStyle = 'rgba(255,255,255,0.95)';
+    g.font = `700 ${tall ? 38 : 30}px ${SANS}`; g.fillStyle = ink(0.95);
     if (lines.length) g.fillText(wrap(g, s.title, box.w - 200, 1)[0] || '', box.x, fy);
-    g.font = `400 ${tall ? 32 : 26}px ${SANS}`; g.fillStyle = 'rgba(255,255,255,0.62)';
+    g.font = `400 ${tall ? 32 : 26}px ${SANS}`; g.fillStyle = ink(0.62);
     if (s.artist) g.fillText(wrap(g, s.artist, box.w - 200, 1)[0], box.x, fy + (lines.length ? (tall ? 46 : 38) : 0));
-    mark(g, L, 'rgba(255,255,255,0.5)', W - box.x, lines.length ? fy + (tall ? 46 : 38) : fy);
+    mark(g, L, ink(0.5), W - box.x, lines.length ? fy + (tall ? 46 : 38) : fy);
   };
 }
 

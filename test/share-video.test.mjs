@@ -74,3 +74,53 @@ test('MP4 when it can be recorded, WebM when not', () => {
   assert.deepStrictEqual(pickVideoType((t) => t.startsWith('video/webm')), { mime: 'video/webm;codecs=vp9,opus', ext: 'webm' });
   assert.strictEqual(pickVideoType(() => false), null);
 });
+
+// A canvas that draws nothing and remembers how it was asked to: where a shadow is given a colour, whether it was
+// also given its blur or offset (a statement lost after a comment on the same line once left the films' shadows hard).
+function recordingCanvases() {
+  const contexts = [];
+  class FakeCanvas {
+    constructor(w, h) { this.width = w; this.height = h; }
+    getContext() {
+      if (this.ctx) return this.ctx;
+      const state = { shadowColor: 'rgba(0,0,0,0)', shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 0 }, saved = [], hard = [];
+      const shadowed = () => !/^(transparent|rgba\(\d+,\s*\d+,\s*\d+,\s*0\))$/.test(String(state.shadowColor));
+      const draws = (name) => () => { if (shadowed() && !state.shadowBlur && !state.shadowOffsetX && !state.shadowOffsetY) hard.push(`${name} ${state.shadowColor}`); };
+      const own = {
+        canvas: this, hard,
+        save: () => saved.push({ ...state }), restore: () => Object.assign(state, saved.pop() || {}),
+        measureText: (t) => ({ width: String(t).length * 10, actualBoundingBoxAscent: 8, actualBoundingBoxDescent: 2 }),
+        getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(Math.max(1, w * h) * 4) }),
+        createLinearGradient: () => ({ addColorStop() {} }), createRadialGradient: () => ({ addColorStop() {} }), createConicGradient: () => ({ addColorStop() {} }),
+        fill: draws('fill'), fillRect: draws('fillRect'), stroke: draws('stroke'), drawImage: draws('drawImage'), fillText: draws('fillText'),
+      };
+      contexts.push(own);
+      this.ctx = new Proxy(own, {
+        get: (o, k) => (k in state ? state[k] : k in o ? o[k] : () => {}),
+        set: (o, k, v) => { if (k in state) state[k] = v; else o[k] = v; return true; },
+      });
+      return this.ctx;
+    }
+  }
+  return { FakeCanvas, contexts };
+}
+
+test("every film's shadows, on a dark theme and a light one, are soft: none given a colour without its blur or offset", async () => {
+  const { videoFrame } = await import('../src/renderer/js/share-video.js');
+  const { THEMES } = await import('../src/renderer/js/theme.js');
+  const { FakeCanvas, contexts } = recordingCanvases(), before = globalThis.OffscreenCanvas;
+  globalThis.OffscreenCanvas = FakeCanvas;
+  try {
+    for (const name of ['RED', 'WHITE']) {
+      const th = THEMES.find((x) => x.name === name), colors = { bg: th.bg, card: th.card, accent: th.accent, accent2: th.accent2, text: th.text, muted: th.muted };
+      for (const look of ['CLASSIC', 'ALBUM', 'CASE', 'HIFI', 'VISUALIZER', 'LYRICS', 'TERMINAL']) for (const format of ['1:1', '9:16']) {
+        contexts.length = 0;
+        const song = { cover: null, face: new FakeCanvas(474, 474), title: 'Song', artist: 'Artist', subtitle: 'Album', colors, look, track: 1,
+          timed: [{ time: 10, text: 'First line of it' }, { time: 12, text: 'Second line' }], position: () => 11, spectrum: (n) => new Array(n).fill(0.4), levels: () => [0.4, 0.4] };
+        videoFrame(format, song, 2.5);
+        const hard = contexts.flatMap((c) => c.hard);
+        assert.deepStrictEqual(hard, [], `${name} ${look} ${format}`);
+      }
+    }
+  } finally { globalThis.OffscreenCanvas = before; }
+});
