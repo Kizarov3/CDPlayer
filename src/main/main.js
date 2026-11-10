@@ -131,12 +131,15 @@ function persistSettings() {
 
 function createWindow() {
   const saved = boundsOnScreen(settings.bounds) ? settings.bounds : null;
+  // A light theme saved: the window's own background and the page's first frame light too (js/first-paint.js), so it
+  // doesn't flash dark before the renderer has the theme.
+  const light = settings.theme === 'WHITE';
   win = new BrowserWindow({
     ...(saved || MAIN_DEFAULT),
     minWidth: MAIN_MIN.width,
     minHeight: MAIN_MIN.height,
     title: 'CDPlayer',
-    backgroundColor: '#111113',
+    backgroundColor: light ? '#fbfbfc' : '#111113',
     show: false,
     autoHideMenuBar: true,
     icon: process.platform === 'linux' ? path.join(__dirname, '..', 'renderer', 'icon.png') : undefined,
@@ -149,6 +152,7 @@ function createWindow() {
       backgroundThrottling: false,
       autoplayPolicy: 'no-user-gesture-required',
       spellcheck: false,
+      ...(light ? { additionalArguments: ['--cdp-light'] } : {}),
     },
   });
   if (saved) normalBounds = saved;

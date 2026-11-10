@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('cdp', {
   loadState: invoke('state:load'),
   saveSettings: invoke('state:saveSettings'),
   setNativeLight: invoke('ui:setNativeLight'),
+  startsLight: process.argv.includes('--cdp-light'), // (the saved theme is light: js/first-paint.js)
   saveQueue: invoke('state:saveQueue'),
   saveQueueSync: (q) => ipcRenderer.sendSync('state:saveQueueSync', q),
   i18nDict: () => ipcRenderer.sendSync('i18n:dict'),
