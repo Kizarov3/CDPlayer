@@ -20,6 +20,29 @@
   --ease-in: cubic-bezier(.4, 0, 1, 1);
   --ease-in-out: cubic-bezier(.65, 0, .35, 1);
   --spring: var(--ease-out); /* (panels.js puts a spring here) */
+  /* The material round the colours: dark here, the light one under html.light (a light theme's on: app.js showTheme).
+     Each dark value is exactly the one it took the place of, so the dark themes look as they did. */
+  --backdrop-top: rgb(28, 28, 31);
+  --backdrop-bottom: rgb(9, 9, 10);
+  --art-veil: linear-gradient(to bottom, rgba(15, 15, 17, .80), rgba(9, 9, 10, .88)); /* (over the cover's glow) */
+  --surface: rgba(255, 255, 255, .047); /* a pill button's face, its edge, hovered and on */
+  --surface-edge: inset 0 0 0 1px rgba(255, 255, 255, .10);
+  --surface-hover: rgba(255, 255, 255, .078);
+  --surface-on: rgba(255, 255, 255, .12);
+  --key-face: rgba(255, 255, 255, .047); /* a round key's face, its edge, hovered, its mark */
+  --key-edge: inset 0 0 0 1px rgba(255, 255, 255, .118);
+  --key-hover: rgba(255, 255, 255, .086);
+  --key-ink: rgb(var(--text));
+  --glass: rgba(0, 0, 0, .4); /* a display sunk into the panel (the status): its glass, its edge, the shade it's sunk in */
+  --glass-edge: 1px solid rgba(255, 255, 255, .08);
+  --glass-sunk: inset 0 1px 3px rgba(0, 0, 0, .5);
+  --lcd: repeating-linear-gradient(0deg, rgba(255, 255, 255, .022) 0 1px, transparent 1px 3px), linear-gradient(rgba(0, 0, 0, .66), rgba(0, 0, 0, .52)); /* the deck's display */
+  --lcd-edge: inset 0 2px 7px rgba(0, 0, 0, .75), inset 0 0 0 1px rgba(0, 0, 0, .6), 0 1px 0 rgba(255, 255, 255, .07);
+  --lcd-ink: var(--accent); /* (r, g, b) what's on it */
+  --lcd-glow: 0 0 6px rgba(var(--accent), .8);
+  --shadow: 0 0 0 1px rgba(0, 0, 0, .55), 0 3px 8px rgba(0, 0, 0, .3), 0 24px 50px rgba(0, 0, 0, .42); /* a panel standing off the page */
+  --scrim: rgba(0, 0, 0, .55); /* the dimming behind a panel */
+  --rule: rgba(255, 255, 255, .086); /* a hairline across the page */
 }
 
 * { box-sizing: border-box; }
@@ -43,7 +66,7 @@ button { font-family: inherit; outline: none; }
 /* ---- Background: blurred cover-art wash, or the plain dark gradient, plus fine horizontal "brushed" lines ---- */
 #backdrop {
   position: fixed; inset: 0; z-index: 0;
-  background: linear-gradient(to bottom, rgb(28, 28, 31), rgb(9, 9, 10));
+  background: linear-gradient(to bottom, var(--backdrop-top), var(--backdrop-bottom));
 }
 #backdrop-art { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 400ms; }
 #backdrop.has-art #backdrop-art { opacity: 1; }
@@ -52,7 +75,7 @@ button { font-family: inherit; outline: none; }
 #backdrop.has-theme-image #backdrop-theme { opacity: 1; }
 #backdrop::before {
   content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
-  background: linear-gradient(to bottom, rgba(15, 15, 17, .80), rgba(9, 9, 10, .88));
+  background: var(--art-veil);
   opacity: 0; transition: opacity 400ms;
 }
 #backdrop.has-art::before { opacity: 1; }
@@ -113,7 +136,7 @@ body.no-anim #backdrop-flow i { animation: none; transform: translate(var(--x), 
 #status-pill {
   justify-self: center;
   padding: 7px 16px; border-radius: 999px; /* a pill like the buttons beside it, but sunk in: it's a display, not a button */
-  background: rgba(0, 0, 0, .4); border: 1px solid rgba(255, 255, 255, .08); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .5);
+  background: var(--glass); border: var(--glass-edge); box-shadow: var(--glass-sunk);
   white-space: nowrap; max-width: calc(100% - 20px); overflow: hidden; text-overflow: ellipsis; margin: 0 10px;
 }
 #status { color: rgb(var(--accent)); font-size: 11px; filter: brightness(1.3); } /* (lit a little brighter: small, in RED's or SNOW's deep red it was hard to read) */
@@ -175,35 +198,35 @@ body.cd-view #cd-info { display: block !important; }
 #deck-display {
   position: relative; margin-top: 12px; height: 60px; padding: 0 18px; border-radius: 8px;
   display: flex; align-items: center; gap: 18px;
-  background: repeating-linear-gradient(0deg, rgba(255, 255, 255, .022) 0 1px, transparent 1px 3px), linear-gradient(rgba(0, 0, 0, .66), rgba(0, 0, 0, .52));
-  box-shadow: inset 0 2px 7px rgba(0, 0, 0, .75), inset 0 0 0 1px rgba(0, 0, 0, .6), 0 1px 0 rgba(255, 255, 255, .07);
+  background: var(--lcd);
+  box-shadow: var(--lcd-edge);
 }
 /* RED: an LED display behind its smoked red filter, as on the decks the theme is from — the glass wine-black and
    smooth (no VFD mesh), a faint sheen across it. */
-body[data-theme="RED"] #deck-display {
+html:not(.light) body[data-theme="RED"] #deck-display {
   background:
     linear-gradient(112deg, transparent 28%, rgba(255, 225, 225, .05) 40%, transparent 52%),
     linear-gradient(rgba(46, 4, 8, .8), rgba(26, 2, 5, .72));
 }
-.vfd-label { font-size: 10px; line-height: 12px; letter-spacing: .12em; color: rgba(var(--accent), .72); white-space: nowrap; }
+.vfd-label { font-size: 10px; line-height: 12px; letter-spacing: .12em; color: rgba(var(--lcd-ink), .72); white-space: nowrap; }
 .vfd-track { display: flex; flex-direction: column; gap: 5px; }
 .vfd-digits { display: flex; align-items: flex-end; gap: 7px; height: 26px; }
 #vfd-track, #vfd-time { display: block; flex: none; }
 /* The disc of a set that's playing, beside TRACK (box-set.js): DISC 2 lit; as one disc ends and the next begins,
    CHANGE DISC blinks while the digits wait, as a changer's would. */
-.vfd-disc { margin-left: 8px; color: rgb(var(--accent)); text-shadow: 0 0 6px rgba(var(--accent), .8); }
+.vfd-disc { margin-left: 8px; color: rgb(var(--lcd-ink)); text-shadow: var(--lcd-glow); }
 .vfd-disc.changing { animation: vfdChange 360ms steps(2, jump-none) infinite; }
 @keyframes vfdChange { from { opacity: 1; } to { opacity: .2; } }
-#vfd-of { font-size: 11px; color: rgba(var(--accent), .7); font-variant-numeric: tabular-nums; }
+#vfd-of { font-size: 11px; color: rgba(var(--lcd-ink), .7); font-variant-numeric: tabular-nums; }
 /* (on the digits' line: below as much as the labels above them take) */
 .vfd-flags { flex: 1; min-width: 0; align-self: stretch; padding-top: 17px; display: flex; gap: 12px; justify-content: center; align-items: center; font-size: 10px; letter-spacing: .1em; overflow: hidden; }
-.vfd-flag { color: rgba(var(--accent), .22); transition: color 160ms ease, text-shadow 160ms ease; }
-.vfd-flag.lit { color: rgb(var(--accent)); text-shadow: 0 0 6px rgba(var(--accent), .8); }
+.vfd-flag { color: rgba(var(--lcd-ink), .22); transition: color 160ms ease, text-shadow 160ms ease; }
+.vfd-flag.lit { color: rgb(var(--lcd-ink)); text-shadow: var(--lcd-glow); }
 .vfd-flag[data-flag="one"] { margin-left: -8px; }
 /* NET, on the labels' line between TRACK and TOTAL, where the flags below have no room left: a tuner's ST light */
 .vfd-flag[data-flag="net"] { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); font-size: 10px; line-height: 12px; letter-spacing: .12em; }
 .vfd-time { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; cursor: pointer; }
-.vfd-time:hover .vfd-label { color: rgb(var(--accent)); } /* it's a button: TIME */
+.vfd-time:hover .vfd-label { color: rgb(var(--lcd-ink)); } /* it's a button: TIME */
 #vfd-total { font-variant-numeric: tabular-nums; }
 /* Settings → DISPLAY → CLASSIC: just the times under the seek bar, as before the deck's display. */
 #times { display: none; justify-content: space-between; font-size: 11px; font-weight: normal; color: rgb(var(--muted)); height: 16px; margin-top: 4px; font-variant-numeric: tabular-nums; }
@@ -223,7 +246,7 @@ body.classic-display #deck-display { display: none; }
 
 #queue-card {
   margin-top: 20px;
-  border-top: 1px solid rgba(255, 255, 255, .086);
+  border-top: 1px solid var(--rule);
   flex: 1 1 auto; min-height: 0;
   display: flex; flex-direction: column;
 }
@@ -429,7 +452,7 @@ body.look-hifi #faceplate {
     rgb(var(--card));
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, .2), inset 0 -1px 0 rgba(0, 0, 0, .45), inset 1px 0 0 rgba(255, 255, 255, .05), inset -1px 0 0 rgba(255, 255, 255, .05),
-    0 0 0 1px rgba(0, 0, 0, .55), 0 3px 8px rgba(0, 0, 0, .3), 0 24px 50px rgba(0, 0, 0, .42);
+    var(--shadow);
 }
 /* The window: black glass, faintly ruled like a VFD's mesh, a sheen across its top, its edge cut into the metal */
 body.look-hifi #faceplate::before {
@@ -716,8 +739,8 @@ body.no-anim .queue-row.active .num::after { animation: none; }
   border: none; border-radius: 999px; padding: 8px 16px;
   font-size: 11px; font-weight: bold; letter-spacing: 0;
   color: rgb(var(--muted));
-  background: rgba(255, 255, 255, .047);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .10);
+  background: var(--surface);
+  box-shadow: var(--surface-edge);
   cursor: pointer; white-space: nowrap;
   transition: background var(--hover) ease, color var(--hover) ease, transform var(--hover) var(--ease-out);
 }
@@ -729,19 +752,19 @@ body.no-anim .queue-row.active .num::after { animation: none; }
   opacity: 0; transition: opacity 200ms ease;
 }
 .pill.small { padding: 7px 13px; font-size: 10px; }
-.pill:hover { background: rgba(255, 255, 255, .078); }
+.pill:hover { background: var(--surface-hover); }
 .pill:active:not(:disabled) { transform: scale(.97); } /* pressed: it gives a little */
-.pill.on { color: rgb(var(--text)); background: rgba(255, 255, 255, .12); padding-left: 29px; }
+.pill.on { color: rgb(var(--text)); background: var(--surface-on); padding-left: 29px; }
 .pill.small.on { padding-left: 25px; }
 .pill.small::before { left: 10px; }
 .pill.on::before { opacity: 1; }
 .pill:disabled { color: rgba(var(--muted), .39); cursor: default; }
-.pill:disabled:hover { background: rgba(255, 255, 255, .047); }
+.pill:disabled:hover { background: var(--surface); }
 .pill.on:disabled::before { opacity: 0; }
 /* A panel's main button (SAVE, NEXT, PLAY): a key in the theme's colour, lit along its top like PLAY */
 .pill.go { color: rgb(var(--on-accent)); background: rgb(var(--accent)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), inset 0 -2px 5px rgba(0, 0, 0, .15); }
 .pill.go:hover { background: rgb(var(--accent)); filter: brightness(1.1); }
-.pill.go:disabled { color: rgba(var(--muted), .6); background: rgba(255, 255, 255, .047); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .10); filter: none; } /* can't be pressed yet: plain, not lit */
+.pill.go:disabled { color: rgba(var(--muted), .6); background: var(--surface); box-shadow: var(--surface-edge); filter: none; } /* can't be pressed yet: plain, not lit */
 .unavailable { opacity: .4; }
 .setting-row.idle { opacity: .45; filter: grayscale(1); } /* kept for when it's on: plainly not in use now */
 .unavailable > * { pointer-events: none; }
@@ -753,13 +776,13 @@ body.no-anim .queue-row.active .num::after { animation: none; }
 .round {
   position: relative; flex: 0 0 auto;
   border: none; border-radius: 50%; padding: 0;
-  color: rgb(var(--text));
-  background: rgba(255, 255, 255, .047);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .118);
+  color: var(--key-ink);
+  background: var(--key-face);
+  box-shadow: var(--key-edge);
   cursor: pointer; display: grid; place-items: center;
   transition: background var(--hover) ease;
 }
-.round:hover { background: rgba(255, 255, 255, .086); }
+.round:hover { background: var(--key-hover); }
 .round svg { display: block; overflow: visible; }
 .round.primary { /* one colour (two blended went muddy: red into green on SNOW), lit along its top edge like a real key */
   color: rgb(var(--bg));

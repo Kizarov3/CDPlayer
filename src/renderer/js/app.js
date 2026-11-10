@@ -1,6 +1,6 @@
 // CDPlayer — main controller: playback, queue, themes, view modes (CD View, Visualizer Mode, Mini Mode,
 // fullscreen), keyboard shortcuts, persistence, and the per-frame render loop.
-import { THEMES, colors, setColors, deriveAutoTheme, visualizerModeFor, particleModeFor, rgb, onColorsChanged, setUserThemes, toFile } from './theme.js';
+import { THEMES, colors, setColors, deriveAutoTheme, visualizerModeFor, particleModeFor, rgb, onColorsChanged, setUserThemes, toFile, isLight } from './theme.js';
 import { AudioEngine } from './audio.js';
 import { moveItem } from './queue-move.js';
 import { snapshot as remoteSnapshot, fullSlots, commandError, isStale, musicKey } from './remote-state.js';
@@ -2538,6 +2538,11 @@ function showTheme(theme, animate) {
   shownTheme = theme;
   // (a built-in theme's own touches: RED's display glass in styles.css; BLUE's and SUNSET's light on the disc)
   document.body.dataset.theme = theme.user ? '' : theme.name;
+  // A light theme (WHITE, or a light one made in the editor) gets the light material (html.light in styles.css) and the
+  // light native title bar, menus and scrollbars; it switches at once, as the colours start their change.
+  const light = isLight(theme.bg);
+  document.documentElement.classList.toggle('light', light);
+  window.cdp.setNativeLight(light);
   disc.setTheme(theme.user ? null : theme.name);
   applyThemeModes(theme);
   applyBackdrop(theme);
