@@ -13,6 +13,15 @@ if (smokeDir) {
   process.env.CDPLAYER_HOME = fs.mkdtempSync(path.join(require('os').tmpdir(), 'cdplayer-smoke-'));
   process.on('exit', () => { try { fs.rmSync(process.env.CDPLAYER_HOME, { recursive: true, force: true }); } catch { /* left for the system to clear */ } });
 }
+// `--theme-shots=<outdir> [--themes=RED,WHITE] [--audio=<folder>]`: screenshots of every look and screen in each theme
+// (theme-shots.js), in a throwaway data folder too, with a hidden window that never takes focus.
+const shotsArg = process.argv.find((a) => a.startsWith('--theme-shots='));
+const shotsDir = shotsArg ? path.resolve(shotsArg.slice('--theme-shots='.length)) : null;
+const shotArg = (name) => { const a = process.argv.find((x) => x.startsWith(`--${name}=`)); return a ? a.slice(name.length + 3) : null; };
+if (shotsDir) {
+  process.env.CDPLAYER_HOME = fs.mkdtempSync(path.join(require('os').tmpdir(), 'cdplayer-shots-'));
+  process.on('exit', () => { try { fs.rmSync(process.env.CDPLAYER_HOME, { recursive: true, force: true }); } catch { /* left for the system to clear */ } });
+}
 // An isolated data folder (tests) also gets its own Electron profile, so it's a separate single instance and never
 // hands off to — or shares browser storage with — a CDPlayer the user already has open.
 if (process.env.CDPLAYER_HOME) app.setPath('userData', path.join(process.env.CDPLAYER_HOME, 'electron-profile'));
@@ -72,7 +81,7 @@ const pendingOpenFiles = [];
 function audioArgs(argv) {
   return argv.slice(1).filter((a) => !a.startsWith('-') && (library.isSupportedAudio(a) || cue.isCueFile(a)) && store.isFile(a));
 }
-const gotLock = !!smokeDir || app.requestSingleInstanceLock();
+const gotLock = !!smokeDir || !!shotsDir || app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
@@ -92,6 +101,7 @@ app.on('open-file', (event, filePath) => {
 });
 
 let win = null;
+if (shotsDir) store.writeSettings({ ...store.DEFAULT_SETTINGS, eq: store.DEFAULT_SETTINGS.eq.slice(), animations: false, volume: 0, language: 'en', theme: (shotArg('themes') || 'RED').split(',')[0].trim() });
 let settings = store.readSettings();
 let normalBounds = null;
 let miniMode = false;
@@ -148,7 +158,7 @@ function createWindow() {
     persistSettings();
   });
   win.on('closed', () => { win = null; if (miniWin && !miniWin.isDestroyed()) { quitting = true; miniWin.close(); } });
-  win.once('ready-to-show', () => { if (!smokeDir) win.show(); });
+  win.once('ready-to-show', () => { if (!smokeDir && !shotsDir) win.show(); });
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   // The page's process gone (a crash, or the system ending it): load the player again rather than leave an empty
@@ -166,10 +176,28 @@ function createWindow() {
   });
   win.webContents.on('did-finish-load', () => {
     if (smokeDir) { runSmokeTest(); return; }
+    if (shotsDir) { runThemeShots(); return; }
     if (pendingOpenFiles.length) { win.webContents.send('open-files', pendingOpenFiles.splice(0)); }
     phonePageBack();
   });
   win.loadURL('cdp://app/index.html');
+}
+
+async function runThemeShots() {
+  const shots = require('./theme-shots');
+  let code = 0;
+  try {
+    const themes = (shotArg('themes') || 'RED').split(',').map((x) => x.trim()).filter(Boolean);
+    const made = shotArg('audio') ? null : shots.makeAlbum(nativeImage, path.join(__dirname, '..', '..', 'test', 'fixtures', 'smoke.mp3'));
+    const audio = shotArg('audio') ? path.resolve(shotArg('audio')) : made.album;
+    store.writeMusicFolders([audio]);
+    fs.mkdirSync(shotsDir, { recursive: true });
+    const r = await shots.run({ win, miniWindow: () => miniWin, outDir: shotsDir, themes, audio, nativeImage, store });
+    console.log(`theme-shots: ${r.written.length} pictures in ${shotsDir}`);
+    if (made) fs.rmSync(made.root, { recursive: true, force: true });
+  } catch (e) { console.error('theme-shots failed:', e); code = 1; }
+  quitting = true;
+  app.exit(code);
 }
 
 async function runSmokeTest() {
@@ -1117,7 +1145,7 @@ handle('win:setMiniMode', async (enabled) => {
     if (!miniWin) await createMiniWindow();
     miniWin.setPosition(...Object.values(readMiniPosition()));
     miniWin.webContents.send('mini-state', { appear: true }); // (its coming-up animation, under way as it's shown)
-    miniWin.show();
+    if (shotsDir) miniWin.showInactive(); else miniWin.show(); // (the screenshots' run never takes the focus)
     win.hide();
   } else {
     win.show();
