@@ -19,7 +19,9 @@ const shotsArg = process.argv.find((a) => a.startsWith('--theme-shots='));
 const shotsDir = shotsArg ? path.resolve(shotsArg.slice('--theme-shots='.length)) : null;
 const shotThemes = (() => { const a = process.argv.find((x) => x.startsWith('--themes=')); return (a ? a.slice(9) : 'RED').split(',').map((x) => x.trim()).filter(Boolean); })();
 const shotArg = (name) => { const a = process.argv.find((x) => x.startsWith(`--${name}=`)); return a ? a.slice(name.length + 3) : null; };
-if (shotsDir) {
+// `--theme-compare=<before>,<after>`: two --theme-shots folders, screen by screen; exits 1 if any differs (theme-shots.js).
+const compareArg = process.argv.find((a) => a.startsWith('--theme-compare='));
+if (shotsDir || compareArg) {
   process.env.CDPLAYER_HOME = fs.mkdtempSync(path.join(require('os').tmpdir(), 'cdplayer-shots-'));
   process.on('exit', () => { try { fs.rmSync(process.env.CDPLAYER_HOME, { recursive: true, force: true }); } catch { /* left for the system to clear */ } });
 }
@@ -86,7 +88,7 @@ const pendingOpenFiles = [];
 function audioArgs(argv) {
   return argv.slice(1).filter((a) => !a.startsWith('-') && (library.isSupportedAudio(a) || cue.isCueFile(a)) && store.isFile(a));
 }
-const gotLock = !!smokeDir || !!shotsDir || app.requestSingleInstanceLock();
+const gotLock = !!smokeDir || !!shotsDir || !!compareArg || app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
@@ -203,6 +205,19 @@ async function runThemeShots() {
     console.log(`theme-shots: ${r.written.length} pictures in ${shotsDir}`);
     if (made) fs.rmSync(made.root, { recursive: true, force: true });
   } catch (e) { console.error('theme-shots failed:', e); code = 1; }
+  quitting = true;
+  app.exit(code);
+}
+
+function runThemeCompare() {
+  let code = 0;
+  try {
+    const [before, after] = compareArg.slice('--theme-compare='.length).split(',').map((d) => path.resolve(d));
+    const r = require('./theme-shots').compare(before, after, nativeImage);
+    for (const line of r.lines) console.log(line);
+    console.log(r.bad.length ? `theme-compare: ${r.bad.length} of ${r.lines.length} differ: ${r.bad.join(', ')}` : `theme-compare: all ${r.lines.length} the same`);
+    code = r.bad.length || !r.lines.length ? 1 : 0;
+  } catch (e) { console.error('theme-compare failed:', e); code = 1; }
   quitting = true;
   app.exit(code);
 }
@@ -1666,6 +1681,7 @@ function cleanUpTaskbarIds() {
 // ---- Lifecycle --------------------------------------------------------------------------------------------------
 
 app.whenReady().then(() => {
+  if (compareArg) { runThemeCompare(); return; }
   // First launch only: the system's light/dark picks WHITE or RED (read before the window exists).
   const first = smokeDir || shotsDir ? null : initialTheme({ hasSettings: hadSettings, systemDark: nativeTheme.shouldUseDarkColors });
   if (first) { settings = { ...settings, theme: first }; persistSettings(); }

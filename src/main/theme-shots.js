@@ -1,6 +1,6 @@
 'use strict';
 // `--theme-shots=<outdir> [--themes=RED,WHITE] [--audio=<folder>]`: screenshots of every look and screen in each theme,
-// to put a theme's before and after side by side. The pure checks (darkCheck, diffShare) are here too; the capture run
+// and `--theme-compare=<before>,<after>` to diff two such runs, screen by screen — to put a theme's before and after side by side. The pure checks (darkCheck, diffShare) are here too; the capture run
 // drives the real buttons of a hidden window, in a throwaway data folder (set up in main.js, like --smoke-test).
 const fs = require('fs');
 const os = require('os');
@@ -40,6 +40,36 @@ function diffShare(a, b) {
     if (Math.abs(a[o] - b[o]) > 8 || Math.abs(a[o + 1] - b[o + 1]) > 8 || Math.abs(a[o + 2] - b[o + 2]) > 8 || Math.abs(a[o + 3] - b[o + 3]) > 8) differ++;
   }
   return differ / pixels;
+}
+
+// `--theme-compare=<before>,<after>`: each picture in <before> against the one of the same name in <after> — two
+// --theme-shots folders (their theme folders matched by name) or two theme folders. One line a screen, its diffShare;
+// `bad` lists the ones above `limit` (a missing or differently sized picture counts as all different).
+function compare(beforeDir, afterDir, nativeImage, limit = 0.001) {
+  const pngs = (d) => fs.readdirSync(d).filter((f) => f.endsWith('.png')).sort();
+  const isDir = (d) => { try { return fs.statSync(d).isDirectory(); } catch { return false; } };
+  const pairs = [];
+  if (pngs(beforeDir).length) pairs.push(['', beforeDir, afterDir]);
+  for (const sub of fs.readdirSync(beforeDir).sort()) {
+    const b = path.join(beforeDir, sub);
+    if (isDir(b) && pngs(b).length) pairs.push([sub + '/', b, path.join(afterDir, sub)]);
+  }
+  const lines = [], bad = [];
+  for (const [prefix, b, a] of pairs) {
+    for (const f of pngs(b)) {
+      const name = prefix + f.slice(0, -4);
+      let share = 1;
+      const other = path.join(a, f);
+      if (fs.existsSync(other)) {
+        const x = nativeImage.createFromPath(path.join(b, f)), y = nativeImage.createFromPath(other);
+        const sx = x.getSize(), sy = y.getSize();
+        if (sx.width === sy.width && sx.height === sy.height) share = diffShare(x.toBitmap(), y.toBitmap());
+      }
+      if (share > limit) bad.push(name);
+      lines.push(`${share > limit ? 'DIFF' : 'same'} ${share.toFixed(6)} ${name}${fs.existsSync(other) ? '' : ' (missing in after)'}`);
+    }
+  }
+  return { lines, bad };
 }
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -228,4 +258,4 @@ async function run({ win, miniWindow, outDir, themes, audio, nativeImage, store 
   return { written, results };
 }
 
-module.exports = { darkCheck, diffShare, makeAlbum, pinTime, run, LOOKS };
+module.exports = { compare, darkCheck, diffShare, makeAlbum, pinTime, run, LOOKS };
