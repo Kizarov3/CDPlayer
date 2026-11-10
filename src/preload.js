@@ -8,6 +8,7 @@ const on = (channel) => (callback) => ipcRenderer.on(channel, (_e, ...args) => c
 contextBridge.exposeInMainWorld('cdp', {
   loadState: invoke('state:load'),
   saveSettings: invoke('state:saveSettings'),
+  setNativeLight: invoke('ui:setNativeLight'),
   saveQueue: invoke('state:saveQueue'),
   saveQueueSync: (q) => ipcRenderer.sendSync('state:saveQueueSync', q),
   i18nDict: () => ipcRenderer.sendSync('i18n:dict'),

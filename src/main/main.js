@@ -59,6 +59,7 @@ const audioCd = require('./audio-cd');
 const rip = require('./rip');
 const { execFile } = require('child_process');
 const { createOutputRate } = require('./output-rate');
+const { initialTheme } = require('./first-theme');
 
 const APP_VERSION = app.getVersion();
 const APP_ID = 'com.kizarov3.cdplayer'; // = build.appId in package.json
@@ -66,8 +67,11 @@ const MAIN_MIN = { width: 760, height: 785 };
 const MAIN_DEFAULT = { width: 1120, height: 820 };
 const MINI = { width: 340, height: 164 };
 
-// The player is always dark, so the window's title bar should be too (Windows otherwise follows a light system theme).
-nativeTheme.themeSource = 'dark';
+// The window's title bar and native menus follow the chosen theme, not the system. Until the theme is known an existing
+// install is dark (as before); a new one stays on 'system' so the first-launch read of the system appearance is honest.
+// (Set from the theme in whenReady, then by the renderer through ui:setNativeLight.)
+const hadSettings = store.isFile(store.file(store.FILES.settings));
+nativeTheme.themeSource = hadSettings ? 'dark' : 'system';
 // Windows names whoever is playing in its media controls by the app's ID (AppUserModelID), which it looks up in the
 // Start menu — so set a stable one here, and keep a Start menu shortcut carrying it (see registerWindowsShortcut).
 if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
@@ -296,6 +300,7 @@ handle('state:load', () => ({
   version: APP_VERSION,
   platform: process.platform,
 }));
+handle('ui:setNativeLight', (light) => { nativeTheme.themeSource = light ? 'light' : 'dark'; });
 handle('state:saveSettings', (s) => { settings = { ...settings, ...s }; persistSettings(); });
 handle('state:saveQueue', (q) => store.writeQueue(q));
 handle('state:saveHistory', (paths) => store.writeHistory(paths));
@@ -1661,6 +1666,10 @@ function cleanUpTaskbarIds() {
 // ---- Lifecycle --------------------------------------------------------------------------------------------------
 
 app.whenReady().then(() => {
+  // First launch only: the system's light/dark picks WHITE or RED (read before the window exists).
+  const first = smokeDir || shotsDir ? null : initialTheme({ hasSettings: hadSettings, systemDark: nativeTheme.shouldUseDarkColors });
+  if (first) { settings = { ...settings, theme: first }; persistSettings(); }
+  nativeTheme.themeSource = settings.theme === 'WHITE' ? 'light' : 'dark';
   i18n.loadLocale(settings.language, app.getPreferredSystemLanguages());
   protocol.handle('cdp', media.handle);
   registerWindowsShortcut();
