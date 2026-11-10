@@ -46,7 +46,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // A test album outside the repo: copies of a fixture song with a painted cover.jpg beside them, so cover art, the disc's
 // art and the cover glow show up.
-function makeAlbum(nativeImage, from) {
+async function makeAlbum(nativeImage, from) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cdplayer-shots-album-'));
   const album = path.join(dir, 'Shots Artist', 'Shots Album');
   fs.mkdirSync(album, { recursive: true });
@@ -63,24 +63,52 @@ function makeAlbum(nativeImage, from) {
     }
   }
   fs.writeFileSync(path.join(album, 'cover.jpg'), nativeImage.createFromBitmap(bmp, { width: size, height: size }).toJPEG(92));
+  // Lyrics in the first song's tags (synced, as an LRC), so LYRICS and KARAOKE open without the network.
+  const lrc = ['[00:00.00]First line of the test song', '[00:01.00]Second line goes on a little longer', '[00:02.00]Third line of the words', '[00:03.00]And the last one to finish'].join('\n');
+  const written = await require('./tag-writer').writeTags(path.join(album, '01 Song 1.mp3'), { lyrics: lrc });
+  if (!written.ok) console.log(`theme-shots: no lyrics written into the test song (${written.error})`);
   return { root: dir, album };
+}
+
+
+// The page's clock and frames made ours, from before any of its scripts run (this mode only): performance.now() is a
+// virtual time that moves 1/60 s per frame, and requestAnimationFrame callbacks run only when `__frames(n)` is called —
+// so the disc's angle, the waveform and every easing depend on how many frames were stepped, not on how long anything
+// took. CSS animations and transitions are stilled too.
+const PIN = `(() => {
+  let now = 1000, id = 0, queue = [];
+  performance.now = () => now;
+  window.requestAnimationFrame = (cb) => { queue.push([++id, cb]); return id; };
+  window.cancelAnimationFrame = (i) => { queue = queue.filter((q) => q[0] !== i); };
+  window.__frames = (n) => { for (let k = 0; k < n; k++) { now += 1000 / 60; const run = queue; queue = []; for (const [, cb] of run) { try { cb(now); } catch (e) { console.error(e); } } } };
+  document.addEventListener('DOMContentLoaded', () => { const st = document.createElement('style'); st.textContent = '*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; }'; document.head.append(st); });
+})();`;
+async function pinTime(win) {
+  const dbg = win.webContents.debugger;
+  await win.loadURL('about:blank'); // (a page for the debugger to talk to)
+  dbg.attach('1.3');
+  await dbg.sendCommand('Page.enable');
+  await dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', { source: PIN });
 }
 
 async function run({ win, miniWindow, outDir, themes, audio, nativeImage, store }) {
   const js = (code) => win.webContents.executeJavaScript(code);
   const key = (keyCode) => { win.webContents.sendInputEvent({ type: 'keyDown', keyCode }); win.webContents.sendInputEvent({ type: 'keyUp', keyCode }); };
-  const settle = async () => { await js('new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))'); await wait(300); };
+  // Time passes by stepping frames (3 per 30 ms of real waiting, so what needs real time — files, images — gets some).
+  const pause = async (ms) => { for (let i = 0; i < Math.ceil(ms / 50); i++) { await js('window.__frames(3)'); await wait(30); } };
+  const waitFor = async (cond, ms = 8000) => { for (let i = 0; i < Math.ceil(ms / 50); i++) { if (await js(`!!(${cond})`)) return true; await pause(50); } return false; };
   const written = [];
-  let dir = outDir;
+  let dir = outDir, screens = {};
+  const save = (name, image) => { const file = path.join(dir, `${name}.png`); fs.writeFileSync(file, image.toPNG()); written.push(file); };
   const shot = async (name) => {
-    await settle();
+    await pause(400);
+    await wait(150); // (the frame drawn reaches the screen)
     const image = await win.webContents.capturePage();
-    const file = path.join(dir, `${name}.png`);
-    fs.writeFileSync(file, image.toPNG());
-    written.push(file);
+    save(name, image);
     return image;
   };
-  // Click the first element matching `selector` (whose text is `text`, when given); false if there's none.
+  const failures = [];
+  const note = (name, ok) => { screens[name] = ok ? 'ok' : 'failed'; if (!ok) { failures.push(name); console.log(`theme-shots: ${name}: the screen did not open, its picture is of something else`); } };
   const click = (selector, text) => js(`(() => {
     const want = ${JSON.stringify(text || null)};
     const e = [...document.querySelectorAll(${JSON.stringify(selector)})].find((n) => !want || n.textContent.trim().toUpperCase() === want);
@@ -97,41 +125,49 @@ async function run({ win, miniWindow, outDir, themes, audio, nativeImage, store 
   const rowButton = (label) => `() => { const r = [...document.querySelectorAll('.setting-row')].find((r) => r.firstElementChild && r.firstElementChild.textContent.trim().toUpperCase() === ${JSON.stringify(label)}); return r ? r.querySelector('button') : null; }`;
   const pillText = (text) => `() => [...document.querySelectorAll('.settings-page button')].find((n) => n.textContent.trim().toUpperCase() === ${JSON.stringify(text)})`;
   const clickRowButton = (label) => inSettings(rowButton(label));
-  const closeAll = async () => { for (let i = 0; i < 4; i++) { key('Escape'); await wait(150); } await wait(300); };
-  const openSettings = async () => { await click('#settings-button'); await wait(500); };
+  const cardHas = (sel) => `[...document.querySelectorAll('.overlay:not(.closing) .card')].some((c) => c.querySelector(${JSON.stringify(sel)}))`;
+  const nothingOpen = `!document.querySelector('.overlay, .theme-menu-layer, .booklet-layer') && document.getElementById('shelf').hidden && document.getElementById('karaoke').hidden`;
+  const closeAll = async () => { for (let i = 0; i < 5; i++) { key('Escape'); await pause(200); } await waitFor(nothingOpen, 2000); await pause(300); };
+  const openSettings = async () => { await click('#settings-button'); await waitFor(cardHas('.settings-tab'), 3000); await pause(200); };
   const pickMenu = async (rowLabel, item) => {
     await openSettings();
-    await clickRowButton(rowLabel); await wait(300);
+    await clickRowButton(rowLabel); await waitFor(`document.querySelector('.theme-menu .theme-item')`, 3000);
     const ok = await click('.theme-menu .theme-item', item.toUpperCase());
     await closeAll();
     return ok;
   };
 
+  await pause(1500); // (the page finishes starting)
   // Load the first song of the test album, so there's art, a disc and a glow.
   const first = audio && fs.readdirSync(audio).filter((f) => /\.(mp3|flac|m4a|ogg|wav)$/i.test(f)).sort()[0];
   if (first) {
     win.webContents.send('open-files', [path.join(audio, first)]);
-    await wait(2500);
+    if (!(await waitFor(`document.getElementById('track-title').textContent !== 'Pick a track to get started.'`, 15000))) console.log('theme-shots: the test song did not load');
+    await pause(4000); // (the disc comes to rest)
+    await waitFor(`!document.getElementById('lyrics-button').hidden`, 3000);
   }
-  await settle();
 
   const results = [];
   for (const theme of themes) {
     dir = path.join(outDir, theme);
+    screens = {}; failures.length = 0;
     // The theme: through the theme menu, as a person would. An unknown name has no item: skipped.
     await openSettings();
-    await clickRowButton('THEME'); await wait(300);
+    await clickRowButton('THEME'); await waitFor(`document.querySelector('.theme-menu .theme-item')`, 3000);
     const known = await click('.theme-menu .theme-item', theme.toUpperCase());
     await closeAll();
     if (!known) { console.log(`theme-shots: no theme named ${theme}, skipped`); continue; }
     fs.mkdirSync(dir, { recursive: true });
-    await wait(500);
+    await pause(800);
     if (!(await pickMenu('PLAYER LOOK', 'CLASSIC'))) console.log('theme-shots: could not pick CLASSIC');
     for (const look of LOOKS) {
-      if (!(await pickMenu('PLAYER LOOK', LOOK_LABELS[look] || look))) { console.log(`theme-shots: no look ${look}`); continue; }
-      await wait(600);
-      const image = await shot(`look-${look.toLowerCase()}`);
-      if (look === 'CLASSIC') {
+      const name = `look-${look.toLowerCase()}`;
+      const picked = await pickMenu('PLAYER LOOK', LOOK_LABELS[look] || look);
+      const there = picked && await waitFor(`document.body.classList.contains('look-${look.toLowerCase()}')`, 4000);
+      await pause(800);
+      const image = await shot(name);
+      note(name, there);
+      if (look === 'CLASSIC' && there) {
         const { width, height } = image.getSize();
         const rgba = image.toBitmap();
         const grayPx = new Uint8Array(width * height);
@@ -140,52 +176,56 @@ async function run({ win, miniWindow, outDir, themes, audio, nativeImage, store 
       }
     }
     await pickMenu('PLAYER LOOK', 'CLASSIC');
-    await wait(600);
+    await pause(800);
 
-    const screen = async (name, open, { after = 700 } = {}) => {
-      try { await open(); await wait(after); await shot(name); } catch (e) { console.log(`theme-shots: ${name} failed: ${e.message}`); }
+    // A screen: opened, waited for (`expect`, an expression true once it's there), pictured, put away.
+    const screen = async (name, open, expect, { after = 500 } = {}) => {
+      let ok = false;
+      try { await open(); ok = await waitFor(expect, 8000); await pause(after); await shot(name); } catch (e) { console.log(`theme-shots: ${name} failed: ${e.message}`); }
+      note(name, ok);
       await closeAll();
     };
     // SHELF, and a case pulled out of it
-    await click('#shelf-button'); await wait(2500);
-    await shot('shelf');
-    await click('#shelf-pull'); await wait(2500);
-    await shot('shelf-case');
-    await closeAll(); await click('#shelf-close'); await wait(600); await closeAll();
-    await screen('history', () => click('#history-button'));
-    await screen('settings', () => openSettings());
-    await screen('cd-view', () => click('#cd-view-button'));
-    await screen('eq', async () => { await openSettings(); await inSettings(pillText('EQ')); });
-    if (await js("!!document.querySelector('#lyrics-button') && !document.querySelector('#lyrics-button').hidden")) await screen('lyrics', () => click('#lyrics-button'), { after: 1500 });
-    else console.log('theme-shots: lyrics skipped (none found for the test song; needs the network)');
-    await screen('karaoke', () => click('#karaoke-button'), { after: 1500 });
-    await screen('tags', () => click('#tags-button'), { after: 1200 });
-    await screen('theme-menu', async () => { await openSettings(); await clickRowButton('THEME'); });
-    await screen('all-keys', () => js(`document.querySelector('#hint b').click()`));
-    await screen('whats-new', async () => { await openSettings(); await inSettings(pillText("WHAT'S NEW")); }, { after: 900 });
-    // (the art in the disc's corner: a click for the full-size art, another for the booklet — real mouse clicks, as the disc is a canvas)
+    await click('#shelf-button');
+    const shelfOk = await waitFor(`!document.getElementById('shelf').hidden && document.querySelector('#shelf-body .spine')`, 8000);
+    await pause(1500); await shot('shelf'); note('shelf', shelfOk);
+    await click('#shelf-pull');
+    const caseOk = await waitFor(`document.querySelector('#shelf .case-track')`, 8000);
+    await pause(1500); await shot('shelf-case'); note('shelf-case', caseOk);
+    await closeAll(); await click('#shelf-close'); await waitFor(nothingOpen, 3000); await pause(600); await closeAll();
+    await screen('history', () => click('#history-button'), `[...document.querySelectorAll('.overlay:not(.closing) .card')].some((c) => /HISTORY/i.test(c.textContent) && /NOTHING PLAYED|\\d/i.test(c.textContent))`);
+    await screen('settings', () => openSettings(), cardHas('.settings-tab'));
+    await screen('cd-view', () => click('#cd-view-button'), `document.body.classList.contains('cd-view')`, { after: 1500 });
+    await screen('eq', async () => { await openSettings(); await inSettings(pillText('EQ')); }, cardHas('.db'));
+    await screen('lyrics', () => click('#lyrics-button'), `[...document.querySelectorAll('.overlay:not(.closing) .card')].some((c) => c.textContent.includes('First line'))`, { after: 1000 });
+    await screen('karaoke', () => click('#karaoke-button'), `!document.getElementById('karaoke').hidden`, { after: 1500 });
+    await screen('tags', () => click('#tags-button'), `[...document.querySelectorAll('.overlay:not(.closing) .card')].some((c) => c.querySelector('input'))`, { after: 1000 });
+    await screen('theme-menu', async () => { await openSettings(); await clickRowButton('THEME'); }, `document.querySelector('.theme-menu .theme-item')`);
+    await screen('all-keys', () => js(`document.querySelector('#hint b').click()`), cardHas('.shortcut-list'));
+    await screen('whats-new', async () => { await openSettings(); await inSettings(pillText("WHAT'S NEW")); }, cardHas('.changelog-list'));
+    // (the art in the disc's corner: a click for the full-size art, another for the booklet — as the disc is a canvas)
     await screen('booklet', async () => {
       const r = await js(`(() => { const b = document.getElementById('disc').getBoundingClientRect(); return { left: b.left, top: b.top, w: b.width, h: b.height }; })()`);
       const cs = Math.min(r.w, r.h), at = [{ x: r.left + (r.w - cs) / 2 + 42, y: r.top + (r.h - cs) / 2 + 42 }, { x: r.left + r.w / 2, y: r.top + r.h / 2 }]; // (the corner art, then the full-size one)
       for (const p of at) {
         await js(`document.getElementById('disc').dispatchEvent(new MouseEvent('click', { clientX: ${p.x}, clientY: ${p.y}, bubbles: true }))`);
-        await wait(1800);
+        await pause(1800);
       }
-    }, { after: 1500 });
-    // Mini mode: the main window's capture still shows the player; the mini window is its own.
-    key('m'); await wait(2000);
-    const mini = miniWindow && miniWindow();
+    }, `document.querySelector('.booklet-layer') && document.querySelector('.booklet-layer').textContent.includes('First line')`, { after: 1000 });
+    // Mini mode: the mini window is its own window, pictured by itself.
+    key('m');
+    let mini = null;
+    for (let i = 0; i < 60 && !(mini && !mini.isDestroyed() && mini.isVisible() && !mini.webContents.isLoading()); i++) { await pause(100); mini = miniWindow && miniWindow(); }
     if (mini && !mini.isDestroyed()) {
-      await wait(500);
-      const image = await mini.webContents.capturePage();
-      const file = path.join(dir, 'mini.png');
-      fs.writeFileSync(file, image.toPNG());
-      written.push(file);
-    } else console.log('theme-shots: mini mode did not open');
-    key('m'); await wait(1500);
-    results.push(theme);
+      await pause(1500); await wait(300);
+      save('mini', await mini.webContents.capturePage());
+      note('mini', true);
+    } else note('mini', false);
+    key('m'); await pause(1500);
+    fs.writeFileSync(path.join(dir, 'screens.json'), JSON.stringify(screens, null, 1) + '\n');
+    results.push({ theme, failed: failures.slice() });
   }
   return { written, results };
 }
 
-module.exports = { darkCheck, diffShare, makeAlbum, run, LOOKS };
+module.exports = { darkCheck, diffShare, makeAlbum, pinTime, run, LOOKS };

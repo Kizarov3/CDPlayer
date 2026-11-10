@@ -17,6 +17,7 @@ if (smokeDir) {
 // (theme-shots.js), in a throwaway data folder too, with a hidden window that never takes focus.
 const shotsArg = process.argv.find((a) => a.startsWith('--theme-shots='));
 const shotsDir = shotsArg ? path.resolve(shotsArg.slice('--theme-shots='.length)) : null;
+const shotThemes = (() => { const a = process.argv.find((x) => x.startsWith('--themes=')); return (a ? a.slice(9) : 'RED').split(',').map((x) => x.trim()).filter(Boolean); })();
 const shotArg = (name) => { const a = process.argv.find((x) => x.startsWith(`--${name}=`)); return a ? a.slice(name.length + 3) : null; };
 if (shotsDir) {
   process.env.CDPLAYER_HOME = fs.mkdtempSync(path.join(require('os').tmpdir(), 'cdplayer-shots-'));
@@ -101,7 +102,7 @@ app.on('open-file', (event, filePath) => {
 });
 
 let win = null;
-if (shotsDir) store.writeSettings({ ...store.DEFAULT_SETTINGS, eq: store.DEFAULT_SETTINGS.eq.slice(), animations: false, volume: 0, language: 'en', theme: (shotArg('themes') || 'RED').split(',')[0].trim() });
+if (shotsDir) store.writeSettings({ ...store.DEFAULT_SETTINGS, eq: store.DEFAULT_SETTINGS.eq.slice(), animations: false, volume: 0, language: 'en', theme: shotThemes[0] || 'RED' });
 let settings = store.readSettings();
 let normalBounds = null;
 let miniMode = false;
@@ -176,19 +177,21 @@ function createWindow() {
   });
   win.webContents.on('did-finish-load', () => {
     if (smokeDir) { runSmokeTest(); return; }
-    if (shotsDir) { runThemeShots(); return; }
+    if (shotsDir) { if (win.webContents.getURL().startsWith('cdp://')) runThemeShots(); return; } // (not the blank page the pinning loads first)
     if (pendingOpenFiles.length) { win.webContents.send('open-files', pendingOpenFiles.splice(0)); }
     phonePageBack();
   });
-  win.loadURL('cdp://app/index.html');
+  // (the screenshots' run pins the page's clock first — theme-shots.js)
+  if (shotsDir) require('./theme-shots').pinTime(win).then(() => win.loadURL('cdp://app/index.html'));
+  else win.loadURL('cdp://app/index.html');
 }
 
 async function runThemeShots() {
   const shots = require('./theme-shots');
   let code = 0;
   try {
-    const themes = (shotArg('themes') || 'RED').split(',').map((x) => x.trim()).filter(Boolean);
-    const made = shotArg('audio') ? null : shots.makeAlbum(nativeImage, path.join(__dirname, '..', '..', 'test', 'fixtures', 'smoke.mp3'));
+    const themes = shotThemes;
+    const made = shotArg('audio') ? null : await shots.makeAlbum(nativeImage, path.join(__dirname, '..', '..', 'test', 'fixtures', 'smoke.mp3'));
     const audio = shotArg('audio') ? path.resolve(shotArg('audio')) : made.album;
     store.writeMusicFolders([audio]);
     fs.mkdirSync(shotsDir, { recursive: true });
@@ -567,7 +570,7 @@ async function discArtFor(q, name) {
   if (art) fs.writeFileSync(file, Buffer.from(art.split(',')[1], 'base64')); else fs.writeFileSync(none, '');
   return art;
 }
-handle('online:lyrics', (details) => online.findLyrics(details));
+handle('online:lyrics', (details) => (shotsDir ? null : online.findLyrics(details))); // (the screenshots' run is offline: the test song's own lyrics)
 handle('spotify:classify', (text) => spotify.classifySpotifyLink(text));
 handle('spotify:resolve', async (text) => {
   try { return await spotify.resolveSpotifyLink(text); } catch (e) { return { error: (e.message || 'LOOKUP FAILED').toUpperCase() }; }
