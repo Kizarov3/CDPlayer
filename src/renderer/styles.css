@@ -44,6 +44,31 @@
   --scrim: rgba(0, 0, 0, .55); /* the dimming behind a panel */
   --rule: rgba(255, 255, 255, .086); /* a hairline across the page */
 }
+/* A light theme (WHITE): glossy white plastic — soft shadows where the dark has edges, round white keys, and the deck's
+   display a backlit grey-green LCD whose digits are dark and don't glow. */
+html.light {
+  --backdrop-top: rgb(var(--bg));
+  --backdrop-bottom: color-mix(in srgb, rgb(var(--bg)), rgb(var(--text)) 6%);
+  --art-veil: linear-gradient(to bottom, rgba(var(--bg), .80), rgba(var(--bg), .88));
+  --surface: rgb(255, 255, 255);
+  --surface-edge: inset 0 0 0 1px rgba(0, 0, 0, .07), 0 1px 3px rgba(0, 0, 0, .08);
+  --surface-hover: rgb(246, 247, 248);
+  --surface-on: rgb(255, 255, 255);
+  --key-face: rgb(255, 255, 255);
+  --key-edge: 0 2px 6px rgba(0, 0, 0, .10), 0 0 0 1px rgba(0, 0, 0, .05);
+  --key-hover: rgb(246, 247, 248);
+  --key-ink: rgba(var(--text), .85);
+  --glass: rgba(0, 0, 0, .04);
+  --glass-edge: 1px solid rgba(0, 0, 0, .05);
+  --glass-sunk: inset 0 1px 2px rgba(0, 0, 0, .08);
+  --lcd: linear-gradient(rgb(194, 206, 187), rgb(181, 195, 174));
+  --lcd-edge: inset 0 1px 3px rgba(0, 0, 0, .3), inset 0 0 0 1px rgba(0, 0, 0, .08), 0 1px 0 rgba(255, 255, 255, .9);
+  --lcd-ink: 31, 42, 28;
+  --lcd-glow: none;
+  --shadow: 0 0 0 1px rgba(0, 0, 0, .05), 0 2px 6px rgba(0, 0, 0, .08), 0 18px 40px rgba(0, 0, 0, .09);
+  --scrim: rgba(42, 44, 48, .25);
+  --rule: rgba(0, 0, 0, .08);
+}
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; }
@@ -57,6 +82,7 @@ body {
   -webkit-user-select: none;
   cursor: default;
 }
+html.light body { background: rgb(var(--bg)); }
 body.cursor-hidden, body.cursor-hidden * { cursor: none !important; }
 body.no-anim *, body.no-anim *::before, body.no-anim *::after { transition: none !important; animation: none !important; }
 [hidden] { display: none !important; }
@@ -102,6 +128,10 @@ body[data-theme="SUNSET"] #backdrop::after {
 #backdrop.has-flow #backdrop-art { opacity: 0; }
 #backdrop.has-flow::before { background: linear-gradient(to bottom, rgba(10, 10, 12, var(--flow-veil, .14)), rgba(8, 8, 9, var(--flow-veil-low, .4))); } /* (darker over a bright cover: paintFlow) */
 #backdrop.has-flow { --top-shade: .5; --top-shade-height: 18%; }
+/* Light: no shade along the top, and the veil over the cover (or a theme's own picture) a light one. */
+html.light #backdrop, html.light #backdrop.has-art, html.light #backdrop.has-flow { --top-shade: 0; }
+html.light #backdrop.has-theme-image::before { opacity: 1; }
+html.light #backdrop.has-flow::before { background: linear-gradient(to bottom, rgba(var(--bg), .62), rgba(var(--bg), .78)); }
 #backdrop-flow i {
   position: absolute; left: 50%; top: 50%; width: 100px; height: 100px; margin: -50px 0 0 -50px;
   background-size: cover;
@@ -140,6 +170,7 @@ body.no-anim #backdrop-flow i { animation: none; transform: translate(var(--x), 
   white-space: nowrap; max-width: calc(100% - 20px); overflow: hidden; text-overflow: ellipsis; margin: 0 10px;
 }
 #status { color: rgb(var(--accent)); font-size: 11px; filter: brightness(1.3); } /* (lit a little brighter: small, in RED's or SNOW's deep red it was hard to read) */
+html.light #status { filter: none; }
 #header-east { justify-self: end; display: flex; gap: 8px; align-items: center; }
 #sleep-indicator { flex: none; white-space: nowrap; padding: 0 4px; color: rgb(var(--muted)); font-size: 10px; font-variant-numeric: tabular-nums; cursor: pointer; } /* one line, beside the buttons */
 #sleep-indicator:empty { display: none; }
@@ -334,6 +365,10 @@ body.look-visualizer:not(.cd-view)::after {
   background: linear-gradient(rgba(24, 24, 27, .82), rgba(12, 12, 14, .94)); backdrop-filter: blur(24px);
   box-shadow: 0 -1px 0 rgba(255, 255, 255, .08), 0 -20px 40px rgba(0, 0, 0, .25);
 }
+html.light body.look-visualizer:not(.cd-view)::after {
+  background: linear-gradient(rgba(255, 255, 255, .82), rgba(246, 247, 248, .94));
+  box-shadow: 0 -1px 0 rgba(0, 0, 0, .06), 0 -12px 30px rgba(0, 0, 0, .06);
+}
 body.look-visualizer #main { padding-bottom: 118px; }
 body.look-visualizer #hint { display: none; }
 body.look-visualizer #progress-row { position: fixed; left: 40px; right: 40px; bottom: 82px; margin: 0; }
@@ -361,6 +396,7 @@ body.look-visualizer.vis-immersive #controls { transform: translate(-50%, 18px);
 body.look-visualizer.vis-immersive:not(.cd-view)::after { opacity: 0; transform: translateY(40px); }
 body.look-visualizer.vis-immersive #track-title, body.look-visualizer.vis-immersive #track-artist { transform: translateY(calc(100vh - 340px)); text-shadow: 0 2px 28px rgba(0, 0, 0, .65); } /* (the name slides down under the scene's reflection) */
 body.look-visualizer.vis-immersive.vis-title-gone #track-title, body.look-visualizer.vis-immersive.vis-title-gone #track-artist { opacity: 0; transition-duration: 1400ms; }
+html.light body.look-visualizer.vis-immersive #track-title, html.light body.look-visualizer.vis-immersive #track-artist { text-shadow: 0 2px 28px rgba(255, 255, 255, .8); }
 @media (max-width: 960px) { /* (the keys, centred, would reach the volume) */
   body.look-visualizer.vis-immersive #controls { transform: translateY(18px); }
   body.look-visualizer #controls { left: 24px; transform: none; }
@@ -433,6 +469,7 @@ body.look-lyrics #queue-card, body.look-visualizer #queue-card {
   transition: transform var(--anim-out) var(--ease-in), visibility 0s linear var(--anim-out);
 }
 body.look-lyrics.queue-open #queue-card, body.look-visualizer.queue-open #queue-card { transform: none; visibility: visible; transition: transform var(--anim-in) var(--ease-out); }
+html.light body.look-lyrics #queue-card, html.light body.look-visualizer #queue-card { box-shadow: -12px 0 40px rgba(0, 0, 0, .1), inset 1px 0 0 rgba(0, 0, 0, .05); }
 
 /* HI-FI: the front of a hi-fi CD player — one faceplate of dark brushed metal (in the theme's card colour) with a
    display window sunk into it holding the song's name, the deck's digits and two level meters (vu-meters.js), and
@@ -463,18 +500,26 @@ body.look-hifi #faceplate::before {
     linear-gradient(rgb(5, 5, 6), rgb(11, 11, 13));
   box-shadow: inset 0 2px 9px rgba(0, 0, 0, .9), inset 0 0 0 1px rgba(0, 0, 0, .8), 0 -1px 0 rgba(0, 0, 0, .45), 0 1px 0 rgba(255, 255, 255, .12);
 }
+/* Light: a white plastic plate, its window the LCD and all in it in the LCD's ink */
+html.light body.look-hifi #faceplate {
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, .018) 0 1px, transparent 1px 7px), linear-gradient(rgba(255, 255, 255, .6), rgba(0, 0, 0, .03)), rgb(var(--card));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), inset 0 -1px 0 rgba(0, 0, 0, .06), var(--shadow);
+}
+html.light body.look-hifi #faceplate::before { background: linear-gradient(172deg, rgba(255, 255, 255, .22), rgba(255, 255, 255, 0) 32%), var(--lcd); box-shadow: var(--lcd-edge); }
+html.light body.look-hifi #track-title { text-shadow: none; }
+html.light body.look-hifi #transport .round.primary svg { filter: none; }
 body.look-hifi #player { margin-top: 10px; }
 body.look-hifi #now-row { grid-area: top; min-height: 28px; margin-bottom: 7px; }
 body.look-hifi #now-playing-label { color: rgba(var(--text), .5); font-size: 9.5px; letter-spacing: .2em; }
 body.look-hifi #visualizer { display: none; }
-body.look-hifi #track-title { grid-area: title; margin: 10px 20px 0; color: rgb(var(--accent)); text-shadow: 0 0 14px rgba(var(--accent), .45); }
-body.look-hifi #track-artist { grid-area: artist; margin: 2px 20px 0; color: rgba(var(--accent), .78); }
+body.look-hifi #track-title { grid-area: title; margin: 10px 20px 0; color: rgb(var(--lcd-ink)); text-shadow: 0 0 14px rgba(var(--lcd-ink), .45); }
+body.look-hifi #track-artist { grid-area: artist; margin: 2px 20px 0; color: rgba(var(--lcd-ink), .78); }
 body.look-hifi #source-row { grid-area: source; margin: 6px 20px 0; }
-body.look-hifi #track-source { color: rgba(var(--accent), .5); }
-body.look-hifi #hidden-badge, body.look-hifi #quality-badge, body.look-hifi #soundcheck-badge { color: rgba(var(--accent), .9); background: none; box-shadow: inset 0 0 0 1px rgba(var(--accent), .4); }
+body.look-hifi #track-source { color: rgba(var(--lcd-ink), .5); }
+body.look-hifi #hidden-badge, body.look-hifi #quality-badge, body.look-hifi #soundcheck-badge { color: rgba(var(--lcd-ink), .9); background: none; box-shadow: inset 0 0 0 1px rgba(var(--lcd-ink), .4); }
 body.look-hifi #faceplate > #deck-display {
   grid-area: deck; margin: 10px 20px 0; padding: 10px 0 0; height: auto; border-radius: 0;
-  background: none; box-shadow: none; border-top: 1px solid rgba(var(--accent), .12);
+  background: none; box-shadow: none; border-top: 1px solid rgba(var(--lcd-ink), .12);
 }
 body.look-hifi #faceplate > #deck-display .vfd-flag[data-flag="net"] { top: 10px; }
 body.look-hifi #vu-meters { display: block; grid-area: meters; width: calc(100% - 40px); height: 32px; margin: 10px 20px 12px; }
@@ -495,6 +540,8 @@ body.look-hifi #faceplate .pill:active:not(:disabled), body.look-hifi #transport
   transform: translateY(1px); filter: brightness(.92);
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, .45), 0 0 0 1px rgba(0, 0, 0, .6);
 }
+html.light body.look-hifi #faceplate .pill, html.light body.look-hifi #transport .round { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), inset 0 -1px 0 rgba(0, 0, 0, .08), 0 0 0 1px rgba(0, 0, 0, .08), 0 2px 5px rgba(0, 0, 0, .12); }
+html.light body.look-hifi #faceplate .pill:active:not(:disabled), html.light body.look-hifi #transport .round:active { box-shadow: inset 0 1px 3px rgba(0, 0, 0, .15), 0 0 0 1px rgba(0, 0, 0, .08); }
 body.look-hifi #faceplate .pill.on { color: rgb(var(--text)); }
 body.look-hifi #transport { gap: 8px; }
 body.look-hifi #transport > span { display: none; } /* (the keys' own gap instead) */
@@ -550,6 +597,8 @@ body.look-album #cover-art::before {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .22), inset 0 0 0 4px rgba(255, 255, 255, .05);
 }
 body.look-album #cover-art.none { background: linear-gradient(150deg, rgb(58, 59, 64), rgb(30, 31, 35)); } /* (solid: the disc is behind it) */
+html.light body.look-album #cover-art { box-shadow: 0 24px 50px rgba(0, 0, 0, .18), 6px 0 18px rgba(0, 0, 0, .1), 0 0 0 1px rgba(0, 0, 0, .06); }
+html.light body.look-album #cover-art.none, html.light body.look-case #cover-art:not([style*="url("]) { background: linear-gradient(150deg, rgb(238, 239, 242), rgb(214, 216, 221)); }
 body.look-album #cover-art.none::after { content: "♪"; position: absolute; inset: 0; display: grid; place-items: center; font-size: calc(var(--s) * .34); color: rgba(var(--text), .18); font-weight: normal; }
 body.look-album #album-disc {
   left: calc(50% - var(--s) * .555); top: calc(50% - var(--s) * .4); width: calc(var(--s) * .8); height: calc(var(--s) * .8);
@@ -557,6 +606,7 @@ body.look-album #album-disc {
   background: conic-gradient(from 30deg, #b4b8bf, #e6e8ec, #a9aeb6, #d6dae0, #b1b6be, #eceef1, #b4b8bf); /* (the silver; its hole is behind the cover) */
   transition: transform 1100ms var(--ease-out);
 }
+html.light body.look-album #album-disc { box-shadow: 0 12px 28px rgba(0, 0, 0, .18); }
 body.look-album #album-disc.out { transform: translateX(50%); }
 /* Its label, printed with the middle of the cover from the silver ring to the edge, turning. */
 #album-disc::before {
@@ -602,15 +652,18 @@ body.look-case #case-box::after {
   content: ""; position: absolute; left: 4%; right: -2%; bottom: -9%; height: 14%; pointer-events: none;
   background: radial-gradient(ellipse at 50% 30%, rgba(0, 0, 0, .5), transparent 70%); transform: translateZ(-3px);
 }
+html.light body.look-case #case-box::after { background: radial-gradient(ellipse at 50% 30%, rgba(0, 0, 0, .16), transparent 70%); }
 body.look-case:not(.cd-view) #queue-card {
   border-radius: 8px; background: linear-gradient(rgba(255, 255, 255, .045), rgba(255, 255, 255, .02));
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .07), inset 0 1px 0 rgba(255, 255, 255, .1), 0 18px 40px rgba(0, 0, 0, .25);
 }
+html.light body.look-case:not(.cd-view) #queue-card { background: rgba(255, 255, 255, .72); box-shadow: 0 0 0 1px rgba(0, 0, 0, .05), 0 12px 30px rgba(0, 0, 0, .07); }
 body.look-case .queue-row.active::before { border-radius: 4px; }
 body.look-case .round.primary {
   background: radial-gradient(circle at 50% 30%, rgb(var(--text)), rgba(var(--text), .82) 75%);
   box-shadow: inset 0 1px 1px rgba(255, 255, 255, .7), inset 0 -2px 4px rgba(0, 0, 0, .18), 0 8px 24px rgba(0, 0, 0, .35);
 }
+html.light body.look-case .round.primary { box-shadow: inset 0 1px 1px rgba(255, 255, 255, .25), inset 0 -2px 4px rgba(0, 0, 0, .18), 0 6px 16px rgba(0, 0, 0, .18); }
 /* A real one's proportions: 142 × 125 mm, the hinge down its left, the booklet (120 mm square) under the lid's tabs. */
 body.look-case #cover-art { background-size: 84.5% 96%; background-position: 64% 50%; }
 /* The lid: the cover under clear plastic, a few pixels thick (its edge catching the light), hinged down its left;
@@ -620,6 +673,7 @@ body.look-case #cover-art {
   box-shadow: 0 30px 70px rgba(0, 0, 0, .55), 1px 1px 0 rgba(255, 255, 255, .35), 3px 3px 0 rgba(170, 180, 190, .22), 5px 5px 0 rgba(0, 0, 0, .25);
   transition: scale 240ms var(--ease-out), filter 240ms ease; cursor: pointer; /* (another album's case: there at once, not faded into) */
 }
+html.light body.look-case #cover-art { box-shadow: 0 24px 50px rgba(0, 0, 0, .2), 1px 1px 0 rgba(255, 255, 255, .9), 3px 3px 0 rgba(170, 180, 190, .45), 5px 5px 0 rgba(0, 0, 0, .1); }
 body.look-case #cover-art { transform: translateZ(2px); } /* (over the tray: the two are in one 3D space; swung open by app.js setLid) */
 body.look-case #cover-art::before {
   background:
@@ -657,6 +711,7 @@ body.look-case #case-tray {
   display: block; position: absolute; inset: 0; border-radius: 3px; overflow: hidden; background: rgb(24, 25, 29);
   box-shadow: 0 30px 70px rgba(0, 0, 0, .55), inset 0 0 0 1px rgba(255, 255, 255, .25);
 }
+html.light body.look-case #case-tray { background: rgb(208, 211, 216); box-shadow: 0 24px 50px rgba(0, 0, 0, .2), inset 0 0 0 1px rgba(255, 255, 255, .5); } /* (a clear grey tray) */
 body.look-case .tray-plastic {
   position: absolute; inset: 0; pointer-events: none;
   background:
@@ -686,6 +741,9 @@ body.look-album #backdrop::before { background: linear-gradient(rgba(15, 15, 17,
 body.look-album #backdrop::after { background: none; }
 body.look-album #header .pill, body.look-album #status-pill { background: rgba(255, 255, 255, .08); box-shadow: none; border: none; color: rgb(var(--text)); }
 body.look-album #status-pill { background: rgba(0, 0, 0, .38); }
+html.light body.look-album #backdrop::before { background: linear-gradient(rgba(var(--bg), .62), rgba(var(--bg), .78)); }
+html.light body.look-album #header .pill { background: rgba(255, 255, 255, .62); box-shadow: 0 1px 3px rgba(0, 0, 0, .06); }
+html.light body.look-album #status-pill { background: var(--glass); box-shadow: var(--glass-sunk); }
 /* Under the cover: the song, centred, and the keys. */
 body.look-album #now-row, body.look-album #source-row { justify-content: center; }
 body.look-album #now-row { min-height: 0; height: 28px; }
@@ -699,6 +757,7 @@ body.look-album #volume-row .row-label { display: none; }
 body.look-album #volume-row .grow { flex: 0 0 24px; }
 body.look-album .round:not(.primary):not(.on) { background: none; box-shadow: none; }
 body.look-album .round.primary { background: rgb(var(--text)); color: rgb(var(--bg)); box-shadow: 0 8px 24px rgba(0, 0, 0, .35); }
+html.light body.look-album .round.primary { box-shadow: 0 6px 16px rgba(0, 0, 0, .18); }
 @media (max-width: 960px) { /* (a narrower left column: the keys closer together, LOAD A TRACK left to the shelf and ⌘O) */
   body.look-album:not(.cd-view) #body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 28px; }
   body.look-album #transport > span { flex-basis: 4px !important; width: 4px !important; } /* (the spacers' widths are set inline) */
@@ -709,8 +768,10 @@ body.look-album .round.primary { background: rgb(var(--text)); color: rgb(var(--
 body.look-album:not(.cd-view) #queue-card {
   grid-column: 2; grid-row: 1 / -1; margin: 6px 0 4px; padding: 6px 22px 12px; border-top: none; border-radius: 16px; background: rgba(0, 0, 0, .2);
 }
+html.light body.look-album:not(.cd-view) #queue-card { background: rgba(255, 255, 255, .6); box-shadow: 0 0 0 1px rgba(0, 0, 0, .04), 0 10px 30px rgba(0, 0, 0, .05); }
 #album-head { display: none; }
 body.look-album #album-head:not([hidden]) { display: block; padding: 16px 0 14px; border-bottom: 1px solid rgba(255, 255, 255, .07); }
+html.light body.look-album #album-head:not([hidden]) { border-bottom-color: var(--rule); }
 #album-name { font-size: 28px; line-height: 34px; font-weight: bold; letter-spacing: -.015em; color: rgb(var(--text)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #album-artist { font-size: 18px; line-height: 24px; color: rgb(var(--album-tint, var(--accent2))); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #album-artist:empty { display: none; }
@@ -718,6 +779,10 @@ body.look-album #album-head:not([hidden]) { display: block; padding: 16px 0 14px
 body.look-album #queue-head { margin-top: 10px; }
 /* Its songs, roomier, the one playing in the album's colour, a small disc turning where its number was. */
 body.look-album .queue-row { height: 30px; margin-bottom: 0; font-size: 13px; box-shadow: 0 1px 0 rgba(255, 255, 255, .04); }
+html.light body.look-album .queue-row { box-shadow: 0 1px 0 rgba(0, 0, 0, .04); }
+/* (the album's colour is lifted for a dark page: on a light one it's taken down halfway to the words' dark, to be read) */
+html.light #album-artist { color: color-mix(in srgb, rgb(var(--album-tint, var(--accent2))), rgb(var(--text)) 50%); }
+html.light body.look-album .queue-row.active, html.light body.look-album .queue-row.active .duration { color: color-mix(in srgb, rgb(var(--album-tint, var(--accent))), rgb(var(--text)) 50%); }
 body.look-album .queue-row .num { flex-basis: 24px; font-variant-numeric: tabular-nums; }
 body.look-album .queue-row.active { color: rgb(var(--album-tint, var(--accent))); }
 body.look-album .queue-row.active::before { background: rgba(var(--album-tint, var(--accent)), .12); border-radius: 6px; }
@@ -806,6 +871,7 @@ body.no-anim .queue-row.active .num::after { animation: none; }
 .round.mode.on::after { opacity: 1; }
 .round.mode svg { position: relative; }
 .round.mode.on { color: rgb(var(--text)); background: rgba(255, 255, 255, .06); box-shadow: none; } /* (its mark white: red crossed arrows read as "not allowed") */
+html.light .round.mode.on { background: var(--key-face); box-shadow: var(--key-edge); }
 .round.mode.on svg { filter: drop-shadow(0 0 4px rgba(var(--accent), .7)); }
 .round.mode.on::before { opacity: 1; }
 
