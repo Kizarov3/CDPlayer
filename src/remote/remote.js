@@ -274,14 +274,24 @@ function drawDisc(now) {
   const pw = Math.round(r.width * dpr);
   if (canvas.width !== pw) { canvas.width = pw; canvas.height = pw; }
   const side = Math.floor(r.width) - 8, c = r.width / 2;
-  const look = [pw, angle, speed, disc.coverVersion, disc.discArtVersion, JSON.stringify(disc.print), disc.label && disc.label.title].join('|');
+  // (the theme's in it too: the hole is the page's colour, and a light theme draws the disc light — paused, nothing else moves)
+  const light = themeShown.light;
+  const look = [pw, angle, speed, disc.coverVersion, disc.discArtVersion, JSON.stringify(disc.print), disc.label && disc.label.title, colors.bg, light].join('|');
   if (look === lastLook) return;
   lastLook = look;
   const g = canvas.getContext('2d');
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.clearRect(0, 0, r.width, r.width);
-  g.fillStyle = 'rgba(255,255,255,0.04)';
-  g.beginPath(); g.arc(c, c, side / 2 + 4, 0, Math.PI * 2); g.fill();
+  if (light) { // on a light page, a soft grey shadow round it (as the desktop's disc has)
+    g.save();
+    g.shadowColor = 'rgba(0,0,0,0.2)'; g.shadowBlur = 12; g.shadowOffsetY = 2.4;
+    g.fillStyle = 'rgba(0,0,0,0.08)';
+    g.beginPath(); g.arc(c, c, side / 2 + 1.2, 0, Math.PI * 2); g.fill();
+    g.restore();
+  } else {
+    g.fillStyle = 'rgba(255,255,255,0.04)';
+    g.beginPath(); g.arc(c, c, side / 2 + 4, 0, Math.PI * 2); g.fill();
+  }
   g.save();
   g.translate(c, c); g.rotate(angle); g.translate(-c, -c);
   g.imageSmoothingQuality = 'high';
@@ -294,7 +304,7 @@ function drawDisc(now) {
   }
   g.restore();
   if (speed < 0.99) { // stopped, it sits a little darker, as on the desktop
-    g.fillStyle = `rgba(10,11,16,${(0.35 * (1 - speed)).toFixed(3)})`;
+    g.fillStyle = `rgba(10,11,16,${((light ? 0.1 : 0.35) * (1 - speed)).toFixed(3)})`; // (on a light page, only a touch)
     g.beginPath(); g.arc(c, c, side / 2, 0, Math.PI * 2); g.fill();
   }
 }
