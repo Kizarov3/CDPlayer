@@ -131,7 +131,7 @@ function sliderRow(label, slider, valueLabel) {
 
 export function showCard(app, { choices, maxLines, render, copy, save, video }) {
   let picked = choices.picked >= 0 ? [choices.picked] : [], anchor = choices.picked, shownUrl = null, drawing = 0, noteTimer = null;
-  const preview = el('img', { class: 'card-preview', alt: '' });
+  const preview = el('img', { class: 'card-preview tall', alt: '' });
   const note = el('div', { class: 'card-note' });
   const rows = [
     el('div', { class: 'list-row card-line none', onClick: () => set([], -1) }, el('span', { class: 'entry' }, t('— WITHOUT LYRICS —'))),

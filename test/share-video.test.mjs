@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { videoLayout, caseLayout, lyricsAt, lyricLines, videoSpan, pickVideoType, VIDEO_SECONDS } from '../src/renderer/js/share-video.js';
+import { videoLayout, frameA, lyricsAt, lyricLines, videoSpan, pickVideoType, VIDEO_SECONDS } from '../src/renderer/js/share-video.js';
 
 const inside = (box, f) => box.x >= 0 && box.y >= 0 && box.x + box.w <= f.w && box.y + box.h <= f.h;
 const apart = (a, b) => a.y + a.h <= b.y || b.y + b.h <= a.y || a.x + a.w <= b.x || b.x + b.w <= a.x;
@@ -9,20 +9,23 @@ test('a vertical and a square video: everything in the frame, nothing on top of 
   for (const format of ['9:16', '1:1']) {
     const l = videoLayout(format);
     assert.deepStrictEqual([l.w, l.h], format === '9:16' ? [1080, 1920] : [1080, 1080]);
-    for (const part of ['case', 'names', 'lyrics']) assert.ok(inside(l[part], l), `${format} ${part}`);
-    assert.ok(apart(l.case, l.names) && apart(l.case, l.lyrics) && apart(l.names, l.lyrics), format);
+    for (const part of ['art', 'names', 'lyrics']) assert.ok(inside(l[part], l), `${format} ${part}`);
+    assert.ok(apart(l.art, l.names) && apart(l.art, l.lyrics) && apart(l.names, l.lyrics), format);
   }
   assert.strictEqual(VIDEO_SECONDS, 8);
 });
 
-test("JEWEL CASE's video: the case in a real one's proportions, in the frame shut and close or open, clear of the booklet's page", () => {
-  for (const format of ['9:16', '1:1']) {
-    const l = videoLayout(format), { case: c, near, sheet } = caseLayout(format);
-    assert.ok(Math.abs(c.w / c.h - 142 / 125) < 0.01, format);
-    assert.ok(inside(c, l) && inside(sheet, l) && apart(c, sheet), format);
-    const closeW = c.w * near, closeH = c.h * near; // (seen close, shut, in the middle of the frame)
-    assert.ok(closeW <= l.w && closeH <= l.h, format);
+test("each look's things in the frame and clear of each other: the open case, VISUALIZER's strip, HI-FI's display", () => {
+  const looks = { case: { aspect: 2 * 142 / 125 }, strip: { strip: 64 }, display: { display: 340 } };
+  for (const format of ['9:16', '1:1']) for (const [name, opts] of Object.entries(looks)) {
+    const l = frameA(format, opts), parts = ['art', 'strip', 'names', 'lyrics', 'display'].filter((k) => l[k]);
+    for (const k of parts) assert.ok(inside(l[k], l) && l[k].h > 0, `${format} ${name} ${k}`);
+    for (const a of parts) for (const b of parts) if (a < b) assert.ok(apart(l[a], l[b]), `${format} ${name} ${a}/${b}`);
+    if (name === 'case') assert.ok(Math.abs(l.art.w / l.art.h - 2 * 142 / 125) < 0.01, `${format} case proportions`);
   }
+  // (the tall one keeps clear of a story's buttons, top and foot)
+  const tall = videoLayout('9:16');
+  assert.ok(tall.art.y >= 160 && tall.lyrics.y + tall.lyrics.h <= 1760);
 });
 
 test('the lyrics on screen at a moment: the line being sung, and the next', () => {
@@ -91,6 +94,7 @@ function recordingCanvases() {
         save: () => saved.push({ ...state }), restore: () => Object.assign(state, saved.pop() || {}),
         measureText: (t) => ({ width: String(t).length * 10, actualBoundingBoxAscent: 8, actualBoundingBoxDescent: 2 }),
         getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(Math.max(1, w * h) * 4) }),
+        createImageData: (w, h) => ({ data: new Uint8ClampedArray(Math.max(1, w * h) * 4) }),
         createLinearGradient: () => ({ addColorStop() {} }), createRadialGradient: () => ({ addColorStop() {} }), createConicGradient: () => ({ addColorStop() {} }),
         fill: draws('fill'), fillRect: draws('fillRect'), stroke: draws('stroke'), drawImage: draws('drawImage'), fillText: draws('fillText'),
       };

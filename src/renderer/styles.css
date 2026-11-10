@@ -955,6 +955,9 @@ html.light .card { box-shadow: var(--shadow); }
 .card-pick { display: flex; gap: 22px; margin-top: 18px; align-items: flex-start; }
 .card-preview { flex: 0 0 auto; width: 520px; aspect-ratio: 1200 / 630; border-radius: 4px; background: rgba(0, 0, 0, .3); box-shadow: 0 8px 24px rgba(0, 0, 0, .45); }
 html.light .card-preview { background: rgba(0, 0, 0, .05); box-shadow: 0 6px 18px rgba(0, 0, 0, .14); }
+/* (the Now Playing card is 4:5, as a chat shows a picture big; the list of lines as tall as it) */
+.card-preview.tall { width: 300px; aspect-ratio: 4 / 5; }
+.card-preview.tall ~ .card-lines { height: 375px; }
 .card-lines { flex: 1 1 auto; min-width: 0; height: 273px; }
 .card-line { min-height: 28px; margin-bottom: 2px; padding: 0 8px; border-radius: 3px; }
 .card-line:hover { background: var(--hover-fill); }

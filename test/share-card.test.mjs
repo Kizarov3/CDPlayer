@@ -43,6 +43,6 @@ test('the quote gets smaller as it gets longer, and ten long lines still fit', a
   assert.ok(ten.size < 28 && ten.size >= 14, `size ${ten.size}`);
   assert.ok(ten.rows.length * ten.lineHeight <= 300, `${ten.rows.length} rows of ${ten.lineHeight}`);
   assert.ok(ten.rows.every((r) => measure(r.text, ten.size) <= 460));
-  assert.strictEqual(ten.rows[0].text.startsWith('“'), true);
-  assert.strictEqual(ten.rows[ten.rows.length - 1].text.endsWith('”'), true);
+  assert.ok(ten.rows.every((r) => !/[“”]/.test(r.text))); // plain: no quotation marks
+  assert.deepStrictEqual([ten.rows[0].entry, ten.rows[ten.rows.length - 1].entry], [0, 9]);
 });
