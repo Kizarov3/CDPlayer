@@ -1,7 +1,7 @@
 // The phone remote's page: what the PC is playing on a turning disc, the shelf as a list with its cases, and the queue
 // or the changer. Everything it shows comes from the PC (GET /events, the state as it changes); everything pressed goes
 // back as a command (POST /command) — and only while it's connected: a press while it's down is never sent later.
-import { colors, contrast } from './js/theme.js';
+import { colors, contrast, isLight, shown as themeShown } from './js/theme.js';
 import { DeckDisplay } from './js/deck-display.js';
 import { Disc } from './js/disc.js';
 import { glyphSvg } from './js/glyphs.js';
@@ -170,6 +170,10 @@ function take(s) {
       colors[k] = s.colors[k];
       root.setProperty(`--${k}`, s.colors[k].join(', '));
     }
+    // a light theme: WHITE's plastic (html.light), and the canvases drawn light (the disc's case, the deck's LCD digits)
+    const light = isLight(colors.bg);
+    themeShown.light = light;
+    document.documentElement.classList.toggle('light', light);
     root.setProperty('--on-accent', contrast(colors.accent, [255, 255, 255]) >= contrast(colors.accent, colors.bg) ? '255, 255, 255' : colors.bg.join(', '));
     document.querySelector('meta[name="theme-color"]').content = `rgb(${colors.bg.join(',')})`;
     deck.tick();
