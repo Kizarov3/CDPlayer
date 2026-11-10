@@ -1,5 +1,5 @@
-/* The phone remote's page: the player's own look on a phone — its theme's colours (every theme is dark), its font, its
-   ringed keys and pills, its display. */
+/* The phone remote's page: the player's own look on a phone — its theme's colours (and, for a light theme such as WHITE,
+   its light material: html.light below), its font, its ringed keys and pills, its display. */
 :root {
   --bg: 17, 17, 19;         /* until the player says its theme's */
   --card: 31, 31, 34;

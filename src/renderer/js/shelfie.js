@@ -2,7 +2,7 @@
 // dust, obis, stickers, notes, COMPLETE ★ boxes and missing places, as the SHOW and SORT have it), taken off the
 // screen a band of rows at a time (shelf.js), framed in the theme's colours with a line of what it is — "412 DISCS ·
 // 38 COMPLETE ★ · WORTH €3,120 ON DISCOGS" — and the CDPlayer wordmark. Copied or saved as the Now Playing card is.
-import { rgb, FONT } from './theme.js';
+import { rgb, FONT, isLight } from './theme.js';
 import { money } from './shelf-discogs.js';
 import { artistsWanting, missingFor, sameName } from './shelf-missing.js';
 import { t } from './i18n.js';
@@ -71,13 +71,15 @@ export async function drawShelfie(shot, { colors, heading, line, scale = 1 }) {
   const s = scale, pad = Math.round(44 * s), top = Math.round(64 * s), foot = Math.round(78 * s);
   const W = shot.width + pad * 2, H = top + shot.height + foot;
   const canvas = new OffscreenCanvas(W, H), g = canvas.getContext('2d');
+  // (a light theme's, as WHITE's: soft grey where a dark one has black — the shade, the shelf's shadow, its backing, its edge)
+  const light = isLight(colors.bg);
   // The theme's background, lit from the top left in its accent, darker to the foot.
   g.fillStyle = rgb(colors.bg); g.fillRect(0, 0, W, H);
   const glow = g.createRadialGradient(W * 0.15, 0, 0, W * 0.15, 0, Math.max(W, H) * 0.8);
   glow.addColorStop(0, rgb(colors.accent, 0.22)); glow.addColorStop(1, rgb(colors.accent, 0));
   g.fillStyle = glow; g.fillRect(0, 0, W, H);
   const shade = g.createLinearGradient(0, 0, 0, H);
-  shade.addColorStop(0.5, 'rgba(0,0,0,0)'); shade.addColorStop(1, 'rgba(0,0,0,0.35)');
+  shade.addColorStop(0.5, 'rgba(0,0,0,0)'); shade.addColorStop(1, light ? 'rgba(0,0,0,0.05)' : 'rgba(0,0,0,0.35)');
   g.fillStyle = shade; g.fillRect(0, 0, W, H);
   // What it is, over the shelf.
   g.textBaseline = 'alphabetic'; g.textAlign = 'left';
@@ -85,10 +87,10 @@ export async function drawShelfie(shot, { colors, heading, line, scale = 1 }) {
   fitText(g, heading, pad, top - Math.round(22 * s), W - pad * 2);
   // The shelf: its corners rounded, standing off the background.
   const r = Math.round(12 * s), x = pad, y = top;
-  g.save(); g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = 36 * s; g.shadowOffsetY = 12 * s;
-  g.fillStyle = 'rgb(18,16,16)'; roundRect(g, x, y, shot.width, shot.height, r); g.fill(); g.restore();
+  g.save(); g.shadowColor = light ? 'rgba(0,0,0,0.16)' : 'rgba(0,0,0,0.6)'; g.shadowBlur = 36 * s; g.shadowOffsetY = 12 * s;
+  g.fillStyle = light ? rgb(colors.bg) : 'rgb(18,16,16)'; roundRect(g, x, y, shot.width, shot.height, r); g.fill(); g.restore();
   g.save(); roundRect(g, x, y, shot.width, shot.height, r); g.clip(); g.drawImage(shot, x, y); g.restore();
-  g.strokeStyle = 'rgba(255,255,255,0.12)'; g.lineWidth = Math.max(1, s); roundRect(g, x + 0.5, y + 0.5, shot.width - 1, shot.height - 1, r); g.stroke();
+  g.strokeStyle = light ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.12)'; g.lineWidth = Math.max(1, s); roundRect(g, x + 0.5, y + 0.5, shot.width - 1, shot.height - 1, r); g.stroke();
   // Under it: the line, and the wordmark — a little disc and "CDPlayer".
   const base = y + shot.height + Math.round(48 * s);
   g.font = `bold ${Math.round(22 * s)}px ${FONT}`;

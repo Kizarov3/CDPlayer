@@ -335,6 +335,8 @@ body.classic-display #deck-display { display: none; }
 
 #south { flex: 0 0 auto; }
 #hint { padding-top: 18px; text-align: center; font-size: 10px; color: rgb(var(--hint)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* (on a light page the keys' hint and the visualizer's in the muted grey taken a fifth of the way to the words' dark: 4.5:1 and more) */
+html.light #hint, html.light .vis-hint { color: color-mix(in srgb, rgb(var(--muted)), rgb(var(--text)) 20%); }
 #cd-info { text-align: center; padding-bottom: 6px; }
 #cd-title { font-size: 30px; color: rgb(var(--text)); line-height: 1.2; margin: 0 auto; }
 /* How to leave CD View: there while the mouse moves, gone with the cursor when it's left alone. */
@@ -441,11 +443,11 @@ body.look-lyrics:not(.cd-view) #look-lyrics {
 /* (the lines grow with the window, and keep a width that reads well rather than running right across it) */
 #look-lyrics p {
   margin: 0 0 .65em; max-width: 28em; font-size: clamp(22px, 2.6vw, 56px); font-weight: bold; line-height: 1.22; letter-spacing: -.01em;
-  color: rgba(var(--text), .3); transform-origin: 0 50%; transition: color 400ms, transform 400ms var(--spring, ease-out);
+  color: rgba(var(--text), var(--lyr-ahead, .3)); transform-origin: 0 50%; transition: color 400ms, transform 400ms var(--spring, ease-out);
 }
 #look-lyrics.timed p { cursor: pointer; }
-#look-lyrics.timed p:hover { color: rgba(var(--text), .55); }
-#look-lyrics.timed p.sung { color: rgba(var(--text), .22); }
+#look-lyrics.timed p:hover { color: rgba(var(--text), var(--lyr-hover, .55)); }
+#look-lyrics.timed p.sung { color: rgba(var(--text), var(--lyr-sung, .22)); }
 #look-lyrics.timed p.now { color: rgb(var(--text)); transform: scale(1.03); }
 #look-lyrics:not(.timed) p { color: rgba(var(--text), .75); font-size: clamp(18px, 1.9vw, 36px); margin-bottom: .4em; }
 /* No words: the songs of the disc fill the side, centred (and scrolled, if there are many), the one playing lit. */
@@ -458,13 +460,16 @@ body.look-lyrics:not(.cd-view) #look-lyrics.songs {
 #look-lyrics .note.empty { font-size: 15px; line-height: 1.5; }
 #look-lyrics .note.looking { animation: looking-for-words 1.8s ease-in-out infinite; }
 @keyframes looking-for-words { 50% { opacity: .35; } }
-#look-lyrics .heading { margin-bottom: 12px; font-size: clamp(14px, 1.2vw, 20px); letter-spacing: .08em; color: rgba(var(--text), .6); }
+#look-lyrics .heading { margin-bottom: 12px; font-size: clamp(14px, 1.2vw, 20px); letter-spacing: .08em; color: rgba(var(--text), var(--lyr-head, .6)); }
 #look-lyrics .song {
   display: flex; align-items: baseline; gap: 14px; padding: 8px 0; font-size: clamp(18px, 1.8vw, 32px); font-weight: bold;
-  color: rgba(var(--text), .38); cursor: pointer; transition: color 300ms;
+  color: rgba(var(--text), var(--lyr-song, .38)); cursor: pointer; transition: color 300ms;
 }
-#look-lyrics .song:hover { color: rgba(var(--text), .7); }
+#look-lyrics .song:hover { color: rgba(var(--text), var(--lyr-song-hover, .7)); }
 #look-lyrics .song.current { color: rgb(var(--text)); }
+/* (dark words faded on a light page read fainter than light ones on dark: the lines to come at 3:1 and more — they're big
+   and bold —, those sung a step fainter, the one sung now full; the songs and the heading likewise) */
+html.light #look-lyrics { --lyr-ahead: .56; --lyr-hover: .78; --lyr-sung: .4; --lyr-head: .74; --lyr-song: .58; --lyr-song-hover: .8; }
 #look-lyrics .song.skipped .name { text-decoration: line-through; }
 #look-lyrics .song .no { flex: 0 0 2em; text-align: right; font-weight: normal; opacity: .6; font-variant-numeric: tabular-nums; }
 #look-lyrics .song .name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -533,6 +538,7 @@ html.light body.look-hifi #transport .round.primary svg { filter: none; }
 body.look-hifi #player { margin-top: 10px; }
 body.look-hifi #now-row { grid-area: top; min-height: 28px; margin-bottom: 7px; }
 body.look-hifi #now-playing-label { color: rgba(var(--text), .5); font-size: 9.5px; letter-spacing: .2em; }
+html.light body.look-hifi #now-playing-label { color: rgba(var(--text), .74); }
 body.look-hifi #visualizer { display: none; }
 body.look-hifi #track-title { grid-area: title; margin: 10px 20px 0; color: rgb(var(--lcd-ink)); text-shadow: 0 0 14px rgba(var(--lcd-ink), .45); }
 body.look-hifi #track-artist { grid-area: artist; margin: 2px 20px 0; color: rgba(var(--lcd-ink), .78); }
@@ -563,6 +569,9 @@ body.look-hifi #faceplate .pill:active:not(:disabled), body.look-hifi #transport
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, .45), 0 0 0 1px rgba(0, 0, 0, .6);
 }
 html.light body.look-hifi #faceplate .pill, html.light body.look-hifi #transport .round { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), inset 0 -1px 0 rgba(0, 0, 0, .08), 0 0 0 1px rgba(0, 0, 0, .08), 0 2px 5px rgba(0, 0, 0, .12); }
+/* (brightened, white stays white: on a light plate a key under the mouse greys a little instead) */
+html.light body.look-hifi #faceplate .pill:hover:not(:disabled), html.light body.look-hifi #transport .round:hover { background: linear-gradient(rgba(255, 255, 255, .15), rgba(255, 255, 255, .05) 50%, rgba(0, 0, 0, .1)), rgb(234, 236, 239); filter: none; }
+html.light body.look-hifi #faceplate .pill:active:not(:disabled), html.light body.look-hifi #transport .round:active { filter: brightness(.92); }
 html.light body.look-hifi #faceplate .pill:active:not(:disabled), html.light body.look-hifi #transport .round:active { box-shadow: inset 0 1px 3px rgba(0, 0, 0, .15), 0 0 0 1px rgba(0, 0, 0, .08); }
 body.look-hifi #faceplate .pill.on { color: rgb(var(--text)); }
 body.look-hifi #transport { gap: 8px; }
@@ -798,6 +807,7 @@ html.light body.look-album #album-head:not([hidden]) { border-bottom-color: var(
 #album-artist { font-size: 18px; line-height: 24px; color: rgb(var(--album-tint, var(--accent2))); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #album-artist:empty { display: none; }
 #album-line { margin-top: 6px; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: rgba(var(--text), .5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html.light #album-line { color: rgba(var(--text), .74); }
 body.look-album #queue-head { margin-top: 10px; }
 /* Its songs, roomier, the one playing in the album's colour, a small disc turning where its number was. */
 body.look-album .queue-row { height: 30px; margin-bottom: 0; font-size: 13px; box-shadow: 0 1px 0 rgba(255, 255, 255, .04); }
