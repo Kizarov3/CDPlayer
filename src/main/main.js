@@ -1184,8 +1184,9 @@ handle('win:setMiniMode', async (enabled) => {
     if (shotsDir) miniWin.showInactive(); else miniWin.show(); // (the screenshots' run never takes the focus)
     win.hide();
   } else {
-    win.show();
-    win.focus();
+    // (the screenshots' run keeps its window hidden and never takes the focus: shown, it went on to be covered — macOS
+    // then says it's hidden, and the page stops drawing for the rest of the run)
+    if (!shotsDir) { win.show(); win.focus(); }
     if (miniWin) { miniWin.webContents.send('mini-state', { hidden: true }); miniWin.hide(); }
   }
   persistSettings();
