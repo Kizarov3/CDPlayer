@@ -87,11 +87,28 @@ function readThemeFile(p) {
     return parseTheme(JSON.parse(fs.readFileSync(p, 'utf8')));
   } catch { return null; }
 }
-/** Every theme kept, by name. Files that aren't themes are left out. */
-function list() {
+// Every theme kept, with the file it's in. Files that aren't themes are left out.
+function entries() {
   let files;
   try { files = fs.readdirSync(themesDir()).filter((f) => f.endsWith('.cdtheme')); } catch { return []; }
-  return files.map((f) => readThemeFile(path.join(themesDir(), f))).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name));
+  return files.map((f) => ({ file: path.join(themesDir(), f), theme: readThemeFile(path.join(themesDir(), f)) })).filter((e) => e.theme);
+}
+/** Every theme kept, by name. */
+function list() {
+  return entries().map((e) => e.theme).sort((a, b) => a.name.localeCompare(b.name));
+}
+/** Themes of your own kept under a name a built-in theme has taken since (WHITE, added with the light theme: one called WHITE before then
+ *  was hidden behind it) → kept again under a name of their own ("WHITE 2"). Returns { old name: new name }. */
+function freeBuiltinNames() {
+  const renamed = {};
+  for (const { file, theme } of entries()) {
+    if (!BUILTIN.includes(theme.name)) continue;
+    const kept = save(theme);
+    if (!kept) continue; // (couldn't be written: left as it was, to try again next time)
+    try { fs.unlinkSync(file); } catch { /* gone already */ }
+    renamed[theme.name] = kept.name;
+  }
+  return renamed;
 }
 /** Keeps a theme — a new one under a name nothing else has, or `oldName` edited (renamed: the old file goes). */
 function save(theme, oldName = null) {
@@ -121,4 +138,4 @@ function exportFile(name, target) {
   try { fs.writeFileSync(target, JSON.stringify(t, null, 1)); return true; } catch { return false; }
 }
 
-module.exports = { BUILTIN, SCENES, COLOR_KEYS, parseTheme, uniqueName, encodeCode, decodeCode, list, save, remove, importFile, exportFile };
+module.exports = { BUILTIN, SCENES, COLOR_KEYS, parseTheme, uniqueName, encodeCode, decodeCode, list, save, remove, importFile, exportFile, freeBuiltinNames };

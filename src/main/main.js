@@ -62,6 +62,7 @@ const rip = require('./rip');
 const { execFile } = require('child_process');
 const { createOutputRate } = require('./output-rate');
 const { initialTheme } = require('./first-theme');
+const startupTheme = require('./startup-theme');
 
 const APP_VERSION = app.getVersion();
 const APP_ID = 'com.kizarov3.cdplayer'; // = build.appId in package.json
@@ -131,15 +132,15 @@ function persistSettings() {
 
 function createWindow() {
   const saved = boundsOnScreen(settings.bounds) ? settings.bounds : null;
-  // A light theme saved: the window's own background and the page's first frame light too (js/first-paint.js), so it
-  // doesn't flash dark before the renderer has the theme.
-  const light = settings.theme === 'WHITE';
+  // A light theme saved (WHITE, or one of your own with a light background): the window's own background and the page's
+  // first frame in its colours too (js/first-paint.js), so it doesn't flash dark before the renderer has the theme.
+  const light = startupTheme.lightPalette(settings.theme, userThemes.list());
   win = new BrowserWindow({
     ...(saved || MAIN_DEFAULT),
     minWidth: MAIN_MIN.width,
     minHeight: MAIN_MIN.height,
     title: 'CDPlayer',
-    backgroundColor: light ? '#fbfbfc' : '#111113',
+    backgroundColor: light ? startupTheme.hex(light.bg) : '#111113',
     show: false,
     autoHideMenuBar: true,
     icon: process.platform === 'linux' ? path.join(__dirname, '..', 'renderer', 'icon.png') : undefined,
@@ -152,7 +153,7 @@ function createWindow() {
       backgroundThrottling: false,
       autoplayPolicy: 'no-user-gesture-required',
       spellcheck: false,
-      ...(light ? { additionalArguments: ['--cdp-light'] } : {}),
+      ...(light ? { additionalArguments: [`--cdp-light=${startupTheme.paletteArg(light)}`] } : {}),
     },
   });
   if (saved) normalBounds = saved;
@@ -328,7 +329,7 @@ handle('state:load', () => ({
   version: APP_VERSION,
   platform: process.platform,
 }));
-handle('ui:setNativeLight', (light) => { nativeTheme.themeSource = light ? 'light' : 'dark'; });
+handle('ui:setNativeLight', (light) => { const source = light === true ? 'light' : 'dark'; if (nativeTheme.themeSource !== source) nativeTheme.themeSource = source; }); // (only when it changes: the theme editor shows a theme at every colour picked)
 handle('state:saveSettings', (s) => { settings = { ...settings, ...s }; persistSettings(); });
 handle('state:saveQueue', (q) => store.writeQueue(q));
 handle('state:saveHistory', (paths) => store.writeHistory(paths));
@@ -1699,7 +1700,10 @@ app.whenReady().then(() => {
   // First launch only: the system's light/dark picks WHITE or RED (read before the window exists).
   const first = smokeDir || shotsDir ? null : initialTheme({ hasSettings: hadSettings, systemDark: nativeTheme.shouldUseDarkColors });
   if (first) { settings = { ...settings, theme: first }; persistSettings(); }
-  nativeTheme.themeSource = settings.theme === 'WHITE' ? 'light' : 'dark';
+  // A theme of your own named like a built-in one added since (WHITE) gets a name of its own, and stays the one shown.
+  const renamed = userThemes.freeBuiltinNames();
+  if (renamed[settings.theme]) { settings = { ...settings, theme: renamed[settings.theme] }; persistSettings(); }
+  nativeTheme.themeSource = startupTheme.lightPalette(settings.theme, userThemes.list()) ? 'light' : 'dark';
   i18n.loadLocale(settings.language, app.getPreferredSystemLanguages());
   protocol.handle('cdp', media.handle);
   registerWindowsShortcut();
