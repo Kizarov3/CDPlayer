@@ -5,7 +5,7 @@
 import { colors, rgb, FONT, shown } from './theme.js';
 import { angleDelta, coast, releaseVelocity } from './jog.js';
 import { random } from './disc-wear.js';
-import { discLayout, radiusAt, trackAt, R0 } from './disc-data.js';
+import { discLayout, radiusAt, trackAt, R0, SPIN_RAD_PER_MS } from './disc-data.js';
 import { holeCentre } from './disc-centre.js';
 import { t } from './i18n.js';
 import { traySlide, trayReveal, TRAY_TRAVEL, TRAY_GROW } from './tray-motion.js';
@@ -781,7 +781,7 @@ export class Disc {
       if (this.onJog) this.onJog(d, dt);
       this.fling = coast(this.fling, dt);
       if (!this.fling) this.endJog();
-    } else if (!this.jogging) this.angle += 0.045 * this.speed * (1 - this.swapProgress(now)) * (dt / 16); // (out of the drive while discs change)
+    } else if (!this.jogging) this.angle += SPIN_RAD_PER_MS * this.speed * (1 - this.swapProgress(now)) * dt; // (out of the drive while discs change)
     this.stepTray(dt);
     this.flipT = Math.max(0, Math.min(1, this.flipT + (this.flipped ? 1 : -1) * (dt / FLIP_MS)));
     // Not on screen (a PLAYER LOOK without the disc), or not to be drawn (`offstage`: ALBUM's, hidden under its cover):

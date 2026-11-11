@@ -3,13 +3,14 @@
 // none). Recorded as it happens, from a canvas and the audio engine, as MP4 (or WebM where MP4 can't be made).
 // Each PLAYER LOOK's film is its card (share-card.js, share-art.js) with one thing moving. The first frame is the
 // finished picture (what a chat shows of it), nothing comes in, wobbles or pumps, and the lines come in softly:
-//   CLASSIC — the CD turning slowly.            JEWEL CASE — the case open, the disc turning in its tray.
+//   CLASSIC — the CD turning, as in the player. JEWEL CASE — the case open, the disc turning in its tray.
 //   VISUALIZER — the strip of bars, on the music. HI-FI — the deck's display: the time, the line lit in its dots, L/R.
 //   ALBUM — one slow push in on the cover.       LYRICS — the words, big, lit as they're sung.
 //   TERMINAL — the line typing itself behind the cursor.
 import { rgb, lerpColor, FONT } from './theme.js';
 import { drawCells, clock } from './deck-display.js';
 import { lineWords, songPace } from './lyrics.js';
+import { SPIN_RAD_PER_MS } from './disc-data.js';
 import { flattenMp4, mp4Reach } from './mp4-flatten.js';
 import { MONO, clamp01, ease, canvas, paperOf, ground, coverMean, coverSquare, wrapRows, discParts, drawDisc, CASE_RATIO, onShadow,
   bars, deckStrip, names, credit, mmss } from './share-art.js';
@@ -164,7 +165,7 @@ function softLines(g, lines, pos, box, { layoutOf, ink, start, rise = 12 }) {
 const linesType = (key, size, width, rows, font = FONT, weight = 600) => (line) => cachedLayout(line, `${key}${size}${width}`,
   () => fit(scratch(), line.words, (px) => `${weight} ${px}px ${font}`, size, Math.round(size * 0.8), width, rows, 1.22));
 
-// ---- CLASSIC: the CD, turning slowly --------------------------------------------------------------------------------
+// ---- CLASSIC: the CD, turning as it does in the player ----------------------------------------------------------------
 
 function classic(L, s, lines, start) {
   const paper = pageOf(s), r = L.art.w / 2, cx = L.art.x + r, cy = L.art.y + r, parts = discParts(s, Math.round(r), paper.light);
@@ -172,7 +173,7 @@ function classic(L, s, lines, start) {
   const tall = L.h > L.w, layoutOf = linesType('classic', tall ? 54 : 40, L.lyrics.w, 2);
   return (g, at) => {
     g.drawImage(back, 0, 0);
-    drawDisc(g, s, cx, cy, r, (at / 6) * Math.PI * 2, parts); // (a turn every six seconds)
+    drawDisc(g, s, cx, cy, r, at * 1000 * SPIN_RAD_PER_MS, parts); // (as fast as in the player)
     softLines(g, lines, s.position(), L.lyrics, { layoutOf, ink: paper.ink, start });
   };
 }
@@ -200,7 +201,7 @@ function caseFilm(L0, s, lines, start) {
   const tall = L.h > L.w, layoutOf = linesType('case', tall ? 54 : 40, L.lyrics.w, 2);
   return (g, at) => {
     g.drawImage(back, 0, 0);
-    drawDisc(g, s, X, Y, r, (at / 6) * Math.PI * 2, parts);
+    drawDisc(g, s, X, Y, r, at * 1000 * SPIN_RAD_PER_MS, parts);
     g.drawImage(hub, X - r * 0.17, Y - r * 0.17, r * 0.34, r * 0.34);
     softLines(g, lines, s.position(), L.lyrics, { layoutOf, ink: paper.ink, start });
   };

@@ -5,6 +5,10 @@
 
 export const R0 = 0.4, R1 = 0.96, CD_SECONDS = 74 * 60;
 
+// How fast a playing disc turns, wherever it's drawn (the player, the phone remote, TERMINAL's characters, the share
+// videos): radians a millisecond, a turn about every 2.2 s.
+export const SPIN_RAD_PER_MS = 0.045 / 16;
+
 /** Track lengths (s) → { tracks: [{ r0, r1, start, end }], total, end (the written area's edge) }. */
 export function discLayout(durations) {
   const total = durations.reduce((s, d) => s + Math.max(0, d || 0), 0);

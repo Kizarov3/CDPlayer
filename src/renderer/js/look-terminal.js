@@ -3,6 +3,7 @@
 // cell whatever font it came from, and the frames' lines and the blocks are drawn, so they meet with no gaps.
 import { colors, shown } from './theme.js';
 import { asciiCells, onPaper, screen } from './tui.js';
+import { SPIN_RAD_PER_MS } from './disc-data.js';
 
 const FONT_PX = 13;
 const LINE = 1.42;
@@ -37,7 +38,7 @@ export class TerminalLook {
     if (now - this.lastDraw < 1000 / FPS) return;
     const dt = Math.min(250, now - this.lastDraw);
     this.lastDraw = now;
-    if (spinning) this.angle += 0.0027 * dt;
+    if (spinning) this.angle += SPIN_RAD_PER_MS * dt;
     if (this.scrollTop !== null && now - this.scrolledAt > SCROLL_KEPT_MS) this.scrollTop = null;
     this.measure();
     if (!this.cols || !this.rows) return;

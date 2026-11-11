@@ -4,6 +4,7 @@
 import { colors, contrast, isLight, shown as themeShown } from './js/theme.js';
 import { DeckDisplay } from './js/deck-display.js';
 import { Disc } from './js/disc.js';
+import { SPIN_RAD_PER_MS } from './js/disc-data.js';
 import { glyphSvg } from './js/glyphs.js';
 import { t, translatePage } from './js/i18n.js';
 import { moveItem } from './js/queue-move.js';
@@ -270,7 +271,7 @@ function drawDisc(now) {
   const playing = !!(real && real.playing);
   speed += ((playing ? 1 : 0) - speed) * (1 - Math.exp(-dt / 260));
   if (speed < 0.002 && !playing) speed = 0;
-  angle += 0.045 * speed * (dt / 16);
+  angle += SPIN_RAD_PER_MS * speed * dt;
   const pw = Math.round(r.width * dpr);
   if (canvas.width !== pw) { canvas.width = pw; canvas.height = pw; }
   const side = Math.floor(r.width) - 8, c = r.width / 2;
