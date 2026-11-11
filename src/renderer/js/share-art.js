@@ -1,6 +1,7 @@
-// What the Now Playing card (share-card.js) and its videos (share-video.js) are both drawn from: quiet, the cover the
-// hero, one face, and the one thing each PLAYER LOOK has of its own — the CD with the cover printed on it, the jewel
-// case, a strip of bars, a strip of the deck's display. No props: no stickers, no labels shouting, no glows.
+// What the Now Playing card (share-card.js) and its videos (share-video.js) are both drawn from: the cover the hero,
+// one face, and the one thing each PLAYER LOOK has of its own — the CD with the cover printed on it, the jewel case, a
+// strip of bars, a strip of the deck's display; the films on the cover's own colours. No props: no stickers, no labels
+// shouting, no glows.
 import { rgb, lerpColor, FONT, drawThemeImage, isLight } from './theme.js';
 import { drawCells, LCD_INK } from './deck-display.js';
 
@@ -63,6 +64,45 @@ export function addGrain(g, w, h, alpha) {
   g.save(); g.globalAlpha = alpha;
   for (let y = 0; y < h; y += tile.height) for (let x = 0; x < w; x += tile.width) g.drawImage(tile, x, y);
   g.restore();
+}
+
+/**
+ * A film's page in the cover's own colours: the cover blurred right out and filling the frame, two layers of it turning
+ * slowly against each other (each one way only, never back), dimmed under the words — darkened for a dark theme's light
+ * ink, washed towards paper for a light theme's dark ink — with a faint grain. `dim` darkens it further (TERMINAL's
+ * glass). → draw(g, at) (at: seconds into the film).
+ */
+export function ambient(s, w, h, paper, { dim = 1 } = {}) {
+  const n = 64, soft = canvas(n, n), sg = soft.getContext('2d');
+  sg.filter = 'blur(3px) saturate(1.6)';
+  sg.drawImage(coverSquare(s, n), -n * 0.1, -n * 0.1, n * 1.2, n * 1.2); // (past the edges, so the blur doesn't thin there)
+  sg.filter = 'none';
+  const over = canvas(w, h), og = over.getContext('2d');
+  if (paper.light) {
+    og.fillStyle = rgb(paper.top, 0.66); og.fillRect(0, 0, w, h);
+    addGrain(og, w, h, 0.035);
+  } else {
+    og.fillStyle = `rgba(0,0,0,${Math.min(0.85, 0.36 * dim).toFixed(3)})`; og.fillRect(0, 0, w, h);
+    const low = og.createLinearGradient(0, h * 0.45, 0, h);
+    low.addColorStop(0, 'rgba(0,0,0,0)'); low.addColorStop(1, 'rgba(0,0,0,0.45)');
+    og.fillStyle = low; og.fillRect(0, h * 0.45, w, h * 0.55);
+    const vig = og.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.hypot(w, h) * 0.6);
+    vig.addColorStop(0, 'rgba(0,0,0,0)'); vig.addColorStop(1, 'rgba(0,0,0,0.4)');
+    og.fillStyle = vig; og.fillRect(0, 0, w, h);
+    addGrain(og, w, h, 0.05);
+  }
+  const D = Math.hypot(w, h) * 1.12, base = rgb(coverMean(s) || paper.bottom), turn0 = seeded(s.title || '')() * Math.PI * 2;
+  const layer = (g, angle, scale, flip, alpha) => {
+    g.save(); g.globalAlpha = alpha; g.translate(w / 2, h / 2); g.rotate(angle); g.scale(flip * scale, scale);
+    g.drawImage(soft, -D / 2, -D / 2, D, D); g.restore();
+  };
+  return (g, at) => {
+    g.fillStyle = base; g.fillRect(0, 0, w, h);
+    g.imageSmoothingQuality = 'high';
+    layer(g, turn0 + at * 0.045, 1, 1, 1);
+    layer(g, -turn0 - at * 0.03, 1.35, -1, 0.5);
+    g.drawImage(over, 0, 0);
+  };
 }
 
 /** The cover cropped square at `size`; none: a silver CD-R with the song's name written on it in marker. */

@@ -1,18 +1,19 @@
 // The Now Playing card as a video (the card's VIDEO 9:16 and VIDEO 1:1): the song's lines as they're sung, its name,
 // and the song itself, for as long as the lines picked on the card are sung (eight seconds from where it's playing, with
 // none). Recorded as it happens, from a canvas and the audio engine, as MP4 (or WebM where MP4 can't be made).
-// Each PLAYER LOOK's film is its card (share-card.js, share-art.js) with one thing moving. The first frame is the
-// finished picture (what a chat shows of it), nothing comes in, wobbles or pumps, and the lines come in softly:
-//   CLASSIC — the CD turning, as in the player. JEWEL CASE — the case open, the disc turning in its tray.
+// Each PLAYER LOOK's film is its card (share-card.js, share-art.js), big, on the cover's own colours (the cover blurred
+// right out, turning slowly). The first frame is the finished picture (what a chat shows of it), nothing comes in,
+// wobbles or pumps, and the lines come in softly:
+//   CLASSIC — the CD turning, big, off the edge. JEWEL CASE — the case, the disc turning in its clear case beside it.
 //   VISUALIZER — the strip of bars, on the music. HI-FI — the deck's display: the time, the line lit in its dots, L/R.
-//   ALBUM — one slow push in on the cover.       LYRICS — the words, big, lit as they're sung.
+//   ALBUM — one slow push in on the cover.       LYRICS — the words, big, lit as they're sung; the CD in the corner.
 //   TERMINAL — the line typing itself behind the cursor.
 import { rgb, lerpColor, FONT } from './theme.js';
 import { drawCells, clock } from './deck-display.js';
 import { lineWords, songPace } from './lyrics.js';
 import { SPIN_RAD_PER_MS } from './disc-data.js';
 import { flattenMp4, mp4Reach } from './mp4-flatten.js';
-import { MONO, clamp01, ease, canvas, paperOf, ground, coverMean, coverSquare, wrapRows, discParts, drawDisc, CASE_RATIO, onShadow, drawCaseFront, drawDiscCase,
+import { MONO, clamp01, ease, canvas, paperOf, ambient, coverMean, coverSquare, wrapRows, discParts, drawDisc, CASE_RATIO, onShadow, drawCaseFront, drawDiscCase,
   bars, deckStrip, names, credit, mmss } from './share-art.js';
 
 export const VIDEO_SECONDS = 8, MIN_VIDEO_SECONDS = 2, MAX_VIDEO_SECONDS = 180;
@@ -82,35 +83,37 @@ export function pickVideoType(isTypeSupported = (t) => MediaRecorder.isTypeSuppo
 // ---- Where things stand ---------------------------------------------------------------------------------------------
 
 /**
- * Base A in a video: the art (`aspect` wide to tall), a strip under it (`strip` tall: VISUALIZER's bars), the names, and
- * under them the lines (or, with `display`, HI-FI's display that shows them, `display` tall). The tall one keeps clear of
- * the top and the foot, where a story's own buttons go; the square one puts the names beside the art and the lines
- * across under both (a wide art — the open case — goes across the top instead).
- * → { w, h, m, art, strip, names, lyrics, display, side (names beside the art), size (the title's) }
+ * Base A in a video, big: the art (`aspect` wide to tall) as wide as the frame lets it, a strip under it (`strip` tall:
+ * VISUALIZER's bars), then the lines, big (or, with `display`, HI-FI's display that shows them, `display` tall), and the
+ * names small at the foot, as a caption. The tall one keeps clear of the top and the foot, where a story's own buttons
+ * go; the square one puts the names beside the art and the lines across under both (a wide art — the case — goes
+ * across the top instead, the names and the lines under it).
+ * → { w, h, m, art, strip, names, lyrics, display, side (names beside the art), size (the title's), lineSize }
  */
 export function frameA(format, { aspect = 1, strip = 0, display = 0 } = {}) {
-  const tall = format === '9:16', W = 1080, H = tall ? 1920 : 1080, gap = 34;
-  if (tall || aspect > 1.2) {
-    const m = tall ? 84 : 72, size = tall ? 48 : 36, namesH = Math.round(size * 3.3);
-    const lower = display || (tall ? 300 : 0), stripH = strip ? strip + 28 : 0;
-    const others = stripH + gap + namesH + (lower ? gap + lower : 0) + (!tall && !display ? 220 : 0);
-    const ah = Math.min((W - m * 2) / aspect, (tall ? 1600 : H - m * 2) - others), aw = ah * aspect;
-    // (the tall one's things together in the middle, a little above it)
-    const top = tall ? Math.max(160, Math.round((H - ah - others) / 2) - 40) : m, bottom = tall ? top + ah + others : H - m;
-    const art = { x: m, y: top, w: aw, h: ah };
+  const tall = format === '9:16', W = 1080, H = tall ? 1920 : 1080, gap = tall ? 40 : 34;
+  if (tall) {
+    const m = 72, size = 40, top = 200, foot = H - 232, namesH = Math.round(size * 3.3), stripH = strip ? strip + 28 : 0;
+    const names = { x: m, y: foot - namesH, w: W - m * 2, h: namesH };
+    const room = names.y - gap - top - stripH - gap - (display || 300);
+    const ah = Math.min((W - m * 2) / aspect, room), aw = ah * aspect, art = { x: Math.round((W - aw) / 2), y: top, w: aw, h: ah };
     let y = top + ah;
-    const st = strip ? { x: m, y: y + 28, w: aw, h: strip } : null; y += stripH;
-    const dp = display ? { x: m, y: y + gap, w: W - m * 2, h: display } : null; if (display) y += gap + display;
-    const names = { x: m, y: y + gap, w: W - m * 2, h: namesH }; y += gap + namesH;
-    const lyrics = display ? null : { x: m, y: y + gap * 0.6, w: W - m * 2, h: bottom - y - gap * 0.6 };
-    return { w: W, h: H, m, art, strip: st, names, lyrics, display: dp, side: false, size };
+    const st = strip ? { x: art.x, y: y + 28, w: aw, h: strip } : null; y += stripH;
+    const lower = { x: m, y: y + gap, w: W - m * 2, h: names.y - gap - (y + gap) };
+    return { w: W, h: H, m, art, strip: st, names, lyrics: display ? null : lower, display: display ? { ...lower, h: display } : null, side: false, size, lineSize: 72 };
   }
-  const m = 72, size = 36, lower = display || 300, ah = H - m * 2 - 40 - lower, aw = ah * aspect, col = m + aw + 44;
-  const art = { x: m, y: m, w: aw, h: ah }, namesH = Math.round(size * 4.5);
-  const st = strip ? { x: col, y: m, w: W - m - col, h: strip } : null;
-  const names = { x: col, y: m + ah - namesH, w: W - m - col, h: namesH };
-  const below = { x: m, y: m + ah + 40, w: W - m * 2, h: lower };
-  return { w: W, h: H, m, art, strip: st, names, lyrics: display ? null : below, display: display ? below : null, side: true, size };
+  const m = 64, size = 32, namesH = Math.round(size * 3.3);
+  if (aspect > 1.2) {
+    const aw = W - m * 2, ah = aw / aspect, art = { x: m, y: m, w: aw, h: ah };
+    const names = { x: m, y: m + ah + gap, w: aw, h: namesH }, y = names.y + namesH + gap * 0.6;
+    return { w: W, h: H, m, art, strip: null, names, lyrics: { x: m, y, w: aw, h: H - m - y }, display: null, side: false, size, lineSize: 50 };
+  }
+  const lower = display || 320, ah = H - m * 2 - gap - lower, aw = ah * aspect, col = m + aw + 40;
+  const art = { x: m, y: m, w: aw, h: ah }, sideH = Math.round(size * 4.5);
+  const names = { x: col, y: m + ah - sideH, w: W - m - col, h: sideH };
+  const st = strip ? { x: col, y: names.y - strip - 28, w: W - m - col, h: strip } : null; // (just over the names, beside the art)
+  const below = { x: m, y: m + ah + gap, w: W - m * 2, h: lower };
+  return { w: W, h: H, m, art, strip: st, names, lyrics: display ? null : below, display: display ? below : null, side: true, size, lineSize: 50 };
 }
 /** Where CLASSIC's things stand in a '9:16' (Stories) or '1:1' video: { w, h, art, names, lyrics, … } (frameA). */
 export const videoLayout = (format) => frameA(format);
@@ -119,17 +122,17 @@ export const videoLayout = (format) => frameA(format);
 
 // The cover's own colour, for the page's tint (and the fade under ALBUM's cover).
 const pageOf = (s) => paperOf(s.colors, coverMean(s));
-// What doesn't move, drawn once: the page, and whatever `draw(g)` adds to it.
+// What doesn't move, drawn once over the page (which does): whatever `draw(g)` puts there.
 function still(L, paper, s, draw) {
-  const c = canvas(L.w, L.h), g = c.getContext('2d');
-  ground(g, L.w, L.h, paper, s.backdrop);
-  draw(g);
+  const c = canvas(L.w, L.h);
+  draw(c.getContext('2d'));
   return c;
 }
-// The names in their box, and "cdplayer" in the corner.
+// The names in their box, and "cdplayer" in the corner (in the tall one, at the right of the names' last row).
 function namesAndCredit(g, L, s, paper, box = L.names, opts = {}) {
-  names(g, s, box.x, box.y, box.w, opts.size || L.size, paper.ink, { titleRows: L.side ? 2 : 1, ...opts });
-  credit(g, L.w - L.m, L.h - (L.h > L.w ? 260 : 40), paper.ink, L.h > L.w ? 24 : 20, opts.font);
+  const tall = L.h > L.w, room = tall ? 150 : 0;
+  names(g, s, box.x, box.y, box.w - room, opts.size || L.size, paper.ink, { titleRows: L.side ? 2 : 1, ...opts });
+  credit(g, L.w - L.m, tall ? box.y + box.h - 8 : L.h - 34, paper.ink, tall ? 24 : 20, opts.font);
 }
 const spectrumOf = (s, n) => { const sp = s.spectrum && s.spectrum(n); return sp && sp.length ? Array.from(sp, (v) => (v > 1 ? v / 255 : v)) : null; };
 
@@ -167,11 +170,15 @@ const linesType = (key, size, width, rows, font = FONT, weight = 600) => (line) 
 
 // ---- CLASSIC: the CD, turning as it does in the player ----------------------------------------------------------------
 
+// (the disc bigger than its place, running off the frame's edge: the tall one's off the right, the square one's off the
+// top left, its foot where the art's is)
 function classic(L, s, lines, start) {
-  const paper = pageOf(s), r = L.art.w / 2, cx = L.art.x + r, cy = L.art.y + r, parts = discParts(s, Math.round(r), paper.light);
-  const back = still(L, paper, s, (g) => namesAndCredit(g, L, s, paper));
-  const tall = L.h > L.w, layoutOf = linesType('classic', tall ? 54 : 40, L.lyrics.w, 2);
+  const paper = pageOf(s), tall = L.h > L.w, A = L.art, r = A.w * (tall ? 0.6 : 0.56);
+  const cx = tall ? A.x + A.w / 2 + A.w * 0.14 : A.x + A.w - r, cy = A.y + A.h - r, parts = discParts(s, Math.round(r), paper.light);
+  const bg = ambient(s, L.w, L.h, paper), back = still(L, paper, s, (g) => namesAndCredit(g, L, s, paper));
+  const layoutOf = linesType('classic', L.lineSize, L.lyrics.w, 2);
   return (g, at) => {
+    bg(g, at);
     g.drawImage(back, 0, 0);
     drawDisc(g, s, cx, cy, r, at * 1000 * SPIN_RAD_PER_MS, parts); // (as fast as in the player)
     softLines(g, lines, s.position(), L.lyrics, { layoutOf, ink: paper.ink, start });
@@ -181,18 +188,23 @@ function classic(L, s, lines, start) {
 // ---- JEWEL CASE: as the look has it, the closed case and beside it the disc turning in its clear case ---------------
 
 const DISC_CASE = 1.2, CASE_GAP = 0.05; // (the disc's case: its size against the disc's, as disc.js draws it; the gap between them, of the case's height)
+// (the tall one: the case at the top left and the disc in its case under it at the right, a step down; the square one:
+// side by side across the top. Both whole in the frame)
+const STEP = 2 + CASE_GAP; // (the tall one's two cases, one over the other: their height against one's)
 function caseFilm(L0, s, lines, start) {
-  const format = L0.h > L0.w ? '9:16' : '1:1', L = frameA(format, { aspect: CASE_RATIO + CASE_GAP + 1 }), paper = pageOf(s), lt = paper.light;
-  const h = L.art.h, w = h * CASE_RATIO, x0 = L.art.x, y0 = L.art.y;
-  const cs = h, side = cs / DISC_CASE, r = side / 2, X = x0 + w + CASE_GAP * h + cs / 2, Y = y0 + h / 2;
+  const tall = L0.h > L0.w, L = frameA(tall ? '9:16' : '1:1', { aspect: tall ? (1080 - 72 * 2) / 978 : CASE_RATIO + CASE_GAP + 1 }), paper = pageOf(s), lt = paper.light;
+  const h = tall ? L.art.h / STEP : L.art.h, w = h * CASE_RATIO, x0 = L.art.x, y0 = L.art.y, cs = h, side = cs / DISC_CASE, r = side / 2;
+  const X = tall ? L.art.x + L.art.w - cs / 2 : x0 + w + CASE_GAP * h + cs / 2, Y = tall ? y0 + h * (1 + CASE_GAP) + cs / 2 : y0 + h / 2;
   const parts = discParts(s, Math.round(r), lt);
+  const bg = ambient(s, L.w, L.h, paper);
   const back = still(L, paper, s, (g) => {
     drawCaseFront(g, s, x0, y0, w, lt);
     drawDiscCase(g, X, Y, side, lt);
     namesAndCredit(g, L, s, paper);
   });
-  const tall = L.h > L.w, layoutOf = linesType('case', tall ? 54 : 40, L.lyrics.w, 2);
+  const layoutOf = linesType('case', L.lineSize, L.lyrics.w, 2);
   return (g, at) => {
+    bg(g, at);
     g.drawImage(back, 0, 0);
     drawDisc(g, s, X, Y, r, at * 1000 * SPIN_RAD_PER_MS, parts);
     softLines(g, lines, s.position(), L.lyrics, { layoutOf, ink: paper.ink, start });
@@ -202,19 +214,21 @@ function caseFilm(L0, s, lines, start) {
 // ---- VISUALIZER: the cover still, a strip of the music moving under it ----------------------------------------------
 
 function visualizer(L0, s, lines, start) {
-  const format = L0.h > L0.w ? '9:16' : '1:1', tall = format === '9:16', L = frameA(format, { strip: tall ? 64 : 48 }), paper = pageOf(s);
+  const format = L0.h > L0.w ? '9:16' : '1:1', tall = format === '9:16', L = frameA(format, { strip: tall ? 120 : 160 }), paper = pageOf(s);
+  const bg = ambient(s, L.w, L.h, paper);
   const back = still(L, paper, s, (g) => {
     const c = onShadow(L.art.w, L.art.h, paper.light, (cg) => cg.drawImage(coverSquare(s, Math.round(L.art.w)), 0, 0, L.art.w, L.art.h));
     g.drawImage(c.canvas, L.art.x - c.pad, L.art.y - c.pad);
     namesAndCredit(g, L, s, paper);
   });
-  const N = tall ? 64 : 40, level = new Array(N).fill(0.08), layoutOf = linesType('vis', tall ? 54 : 40, L.lyrics.w, 2);
+  const N = tall ? 56 : 32, level = new Array(N).fill(0.08), layoutOf = linesType('vis', L.lineSize, L.lyrics.w, 2);
   let last = null;
   return (g, at) => {
     const dt = last === null ? 1 / 30 : Math.max(0, at - last); last = at;
     const sp = spectrumOf(s, N);
     // quick up, slower down, as a meter
     for (let i = 0; i < N; i++) { const to = sp ? Math.min(1, sp[i] * 1.15) : 0.08; level[i] += (to - level[i]) * Math.min(1, dt * (to > level[i] ? 22 : 7)); }
+    bg(g, at);
     g.drawImage(back, 0, 0);
     bars(g, L.strip.x, L.strip.y, L.strip.w, L.strip.h, level, 1, paper.ink);
     softLines(g, lines, s.position(), L.lyrics, { layoutOf, ink: paper.ink, start });
@@ -227,6 +241,7 @@ function hifi(L0, s, lines, start) {
   const format = L0.h > L0.w ? '9:16' : '1:1', tall = format === '9:16', L = frameA(format, { display: tall ? 340 : 300 }), paper = pageOf(s);
   const D = L.display, C = s.colors, P = tall ? 7 : 6, ROWS = 15, GAP = 4;
   let inner = null, color = null, lt = paper.light;
+  const bg = ambient(s, L.w, L.h, paper);
   const back = still(L, paper, s, (g) => {
     const c = onShadow(L.art.w, L.art.h, lt, (cg) => cg.drawImage(coverSquare(s, Math.round(L.art.w)), 0, 0, L.art.w, L.art.h));
     g.drawImage(c.canvas, L.art.x - c.pad, L.art.y - c.pad);
@@ -271,6 +286,7 @@ function hifi(L0, s, lines, start) {
     const pos = s.position(), dt = last === null ? 33 : Math.max(0, (at - last) * 1000); last = at;
     const levels = (s.levels && s.levels()) || null;
     for (let k = 0; k < 2; k++) { const to = levels ? dbOf(levels[k]) : LOW; level[k] += (to - level[k]) * Math.min(1, dt * (to > level[k] ? 0.012 : 0.005)); }
+    bg(g, at);
     g.drawImage(back, 0, 0);
     g.drawImage(unlit, D.x, D.y);
     // the track and the time, the time going on
@@ -305,32 +321,37 @@ function hifi(L0, s, lines, start) {
 // ---- ALBUM: the cover full frame, one slow push in ------------------------------------------------------------------
 
 function album(L0, s, lines, start) {
-  const tall = L0.h > L0.w, W = L0.w, H = L0.h, m = tall ? 84 : 72, size = tall ? 48 : 36;
+  const tall = L0.h > L0.w, W = L0.w, H = L0.h, m = tall ? 72 : 64, size = tall ? 40 : 32;
   // (the square one is all cover, its words on a dark fade, whatever the theme: the cover is the page)
   const paper0 = pageOf(s), paper = tall ? paper0 : { ...paper0, light: false, bottom: lerpColor(coverMean(s) || [20, 20, 22], [0, 0, 0], 0.75), ink: (a = 1) => `rgba(255,255,255,${a})` };
-  const art = coverSquare(s, W), lt = paper.light;
-  const namesBox = tall ? { x: m, y: 1160, w: W - m * 2 } : { x: m, y: H - m - Math.round(size * 3.3), w: W - m * 2 };
-  const box = tall ? { x: m, y: 1400, w: W - m * 2, h: 220 } : { x: m, y: namesBox.y - 230, w: W - m * 2, h: 200 };
-  const over = still(L0, paper, s, () => {});
-  const front = canvas(W, H), fg = front.getContext('2d');
-  // what lies over the cover: the fade into the page (none on paper: the cover ends cleanly), the names, the credit
-  const bottom = paper.bottom.join(',');
-  if (!lt) {
-    const from = tall ? W * 0.55 : H * 0.28, to = tall ? W : H * 0.64, fade = fg.createLinearGradient(0, from, 0, to);
-    fade.addColorStop(0, `rgba(${bottom},0)`); fade.addColorStop(0.6, `rgba(${bottom},0.75)`); fade.addColorStop(1, `rgba(${bottom},0.95)`);
-    fg.fillStyle = fade; fg.fillRect(0, from, W, to - from);
-    if (to < H) { fg.fillStyle = `rgba(${bottom},0.95)`; fg.fillRect(0, to, W, H - to); }
+  const lt = paper.light, foot = H - (tall ? 232 : m), namesH = Math.round(size * 3.3);
+  const namesBox = { x: m, y: foot - namesH, w: W - m * 2, h: namesH };
+  const box = tall ? { x: m, y: 1180, w: W - m * 2, h: namesBox.y - 40 - 1180 } : { x: m, y: namesBox.y - 250, w: W - m * 2, h: 220 };
+  // the tall one's cover melts into the page below it (the page is the cover, blurred: it runs on into its own colours)
+  const art = coverSquare(s, W), ag = art.getContext('2d');
+  if (tall) {
+    // (over the whole of it: destination-in clears whatever the shape doesn't cover)
+    const melt = ag.createLinearGradient(0, 0, 0, W);
+    melt.addColorStop(0.6, 'rgba(0,0,0,1)'); melt.addColorStop(1, 'rgba(0,0,0,0)');
+    ag.globalCompositeOperation = 'destination-in'; ag.fillStyle = melt; ag.fillRect(0, 0, W, W); ag.globalCompositeOperation = 'source-over';
   }
-  names(fg, s, namesBox.x, namesBox.y, namesBox.w, size, paper.ink, { titleRows: 1 });
-  credit(fg, W - m, H - (tall ? 260 : 40), paper.ink, tall ? 24 : 20);
-  const layoutOf = linesType('album', tall ? 54 : 40, box.w, 2);
-  const cut = tall ? W : H; // where the cover ends
+  const bg = tall ? ambient(s, W, H, paper) : null;
+  const front = canvas(W, H), fg = front.getContext('2d');
+  // what lies over the square one's cover: the fade the words sit on, the names, the credit
+  const bottom = paper.bottom.join(',');
+  if (!tall) {
+    const from = H * 0.22, to = H * 0.6, fade = fg.createLinearGradient(0, from, 0, to);
+    fade.addColorStop(0, `rgba(${bottom},0)`); fade.addColorStop(0.55, `rgba(${bottom},0.88)`); fade.addColorStop(1, `rgba(${bottom},0.97)`);
+    fg.fillStyle = fade; fg.fillRect(0, from, W, to - from);
+    fg.fillStyle = `rgba(${bottom},0.95)`; fg.fillRect(0, to, W, H - to);
+  }
+  namesAndCredit(fg, { w: W, h: H, m, size, side: false }, s, paper, namesBox);
+  const layoutOf = linesType('album', tall ? 72 : 50, box.w, 2);
   return (g, at) => {
-    g.drawImage(over, 0, 0);
+    if (bg) bg(g, at);
     const z = 1 + 0.03 * (1 - Math.exp(-at / 10)), S = W * z; // (one way, slowing, never back)
-    g.save(); g.beginPath(); g.rect(0, 0, W, cut); g.clip();
-    g.drawImage(art, (W - S) / 2, (cut - S) / 2 + (tall ? 0 : 0), S, S);
-    g.restore();
+    if (tall) g.drawImage(art, (W - S) / 2, 0, S, S);
+    else { g.save(); g.beginPath(); g.rect(0, 0, W, H); g.clip(); g.drawImage(art, (W - S) / 2, (H - S) / 2, S, S); g.restore(); }
     g.drawImage(front, 0, 0);
     softLines(g, lines, s.position(), box, { layoutOf, ink: paper.ink, start });
   };
@@ -338,25 +359,28 @@ function album(L0, s, lines, start) {
 
 // ---- LYRICS (base B): the words big, the small CD at the foot -------------------------------------------------------
 
+// (the CD big in the lower right corner, running off both edges and turning; the names at the foot beside it)
 function kinetic(L0, s, lines, start) {
-  const tall = L0.h > L0.w, W = L0.w, H = L0.h, m = tall ? 84 : 72, paper = pageOf(s), rowH = tall ? 124 : 104;
-  const footY = (tall ? 1620 : H - m) - rowH, top = tall ? 250 : m, box = { x: m, y: top, w: W - m * 2, h: footY - top - 60 };
+  const tall = L0.h > L0.w, W = L0.w, H = L0.h, m = tall ? 72 : 64, paper = pageOf(s);
+  const r = tall ? 360 : 250, cx = W - (tall ? 150 : 90), cy = H - (tall ? 250 : 80), parts = discParts(s, r, paper.light);
+  const foot = tall ? H - 232 : H - m, tw = cx - r - m - 24, top = tall ? 220 : m;
+  const box = { x: m, y: top, w: W - m * 2, h: cy - r - 50 - top };
+  const bg = ambient(s, W, H, paper);
   const back = still(L0, paper, s, (g) => {
-    const r = rowH / 2;
-    drawDisc(g, s, m + r, footY + r, r, 0, discParts(s, Math.round(r), paper.light));
-    const tx = m + rowH + 28, tw = W - m - tx - 160;
-    g.save(); g.textBaseline = 'top';
-    g.font = `600 ${tall ? 30 : 26}px ${FONT}`; g.fillStyle = paper.ink(0.96); g.fillText(wrapRows(g, s.title || '', tw, 1)[0] || '', tx, footY + 6);
-    g.font = `400 ${tall ? 30 : 26}px ${FONT}`; g.fillStyle = paper.ink(0.55); if (s.artist) g.fillText(wrapRows(g, s.artist, tw, 1)[0], tx, footY + (tall ? 44 : 38));
-    g.font = `400 ${tall ? 20 : 18}px ${MONO}`; g.fillStyle = paper.ink(0.4);
-    g.fillText([String(s.track || 1).padStart(2, '0'), mmss(s.duration)].filter(Boolean).join(' · '), tx, footY + (tall ? 90 : 78));
+    g.save(); g.textBaseline = 'alphabetic';
+    const size = tall ? 34 : 28, rows = [[`600 ${size}px ${FONT}`, 0.96, s.title], [`400 ${size}px ${FONT}`, 0.55, s.artist],
+      [`400 ${tall ? 22 : 19}px ${MONO}`, 0.42, [String(s.track || 1).padStart(2, '0'), mmss(s.duration)].filter(Boolean).join(' · ')]].filter((x) => x[2]);
+    let y = foot;
+    for (const [font, a, text] of rows.reverse()) { g.font = font; g.fillStyle = paper.ink(a); g.fillText(wrapRows(g, text, tw, 1)[0], m, y); y -= Math.round(size * 1.3); }
     g.restore();
-    credit(g, W - m, H - (tall ? 260 : 40), paper.ink, tall ? 24 : 20);
+    credit(g, m + tw, foot, paper.ink, tall ? 22 : 19); // (at the right of the track's row: the corner is the disc's)
     // no lyrics: the name big where the lines would be
-    if (!lines.length) names(g, { title: s.title, artist: s.artist }, box.x, box.y, box.w, tall ? 84 : 64, paper.ink, { titleRows: 3 });
+    if (!lines.length) names(g, { title: s.title, artist: s.artist }, box.x, box.y, box.w, tall ? 96 : 68, paper.ink, { titleRows: 3 });
   });
-  const big = tall ? 88 : 64, layoutOf = linesType('lyrics', big, box.w, tall ? 5 : 4);
+  const big = tall ? 96 : 68, layoutOf = linesType('lyrics', big, box.w, tall ? 5 : 3);
   return (g, at) => {
+    bg(g, at);
+    drawDisc(g, s, cx, cy, r, at * 1000 * SPIN_RAD_PER_MS, parts);
     g.drawImage(back, 0, 0);
     softLines(g, lines, s.position(), box, { layoutOf, ink: paper.ink, start, rise: 10 });
   };
@@ -377,16 +401,18 @@ function typed(line, pos) {
   return out;
 }
 function terminalFilm(L0, s, lines, start) {
-  const tall = L0.h > L0.w, W = L0.w, H = L0.h, m = tall ? 84 : 72, rowH = tall ? 132 : 108;
-  const p0 = paperOf(s.colors), paper = p0.light ? p0 : { ...p0, top: s.colors.bg.map((v) => Math.round(v * 0.22)), bottom: s.colors.bg.map((v) => Math.round(v * 0.16)) };
-  const footY = (tall ? 1620 : H - m) - rowH, top = tall ? 250 : m, size = tall ? 44 : 34, lead = Math.round(size * 1.3), ink = paper.ink;
+  const tall = L0.h > L0.w, W = L0.w, H = L0.h, m = tall ? 72 : 64, rowH = tall ? 264 : 168;
+  // (the page the cover's colours behind dark glass, as a terminal window with its background blurred)
+  const paper = paperOf(s.colors), bg = ambient(s, W, H, paper, { dim: 2 });
+  const footY = (tall ? H - 232 : H - m) - rowH, top = tall ? 220 : m, size = tall ? 56 : 40, lead = Math.round(size * 1.3), ink = paper.ink;
   const back = still(L0, paper, s, (g) => {
-    g.save(); g.textBaseline = 'top'; g.font = `400 ${tall ? 26 : 22}px ${MONO}`; g.fillStyle = ink(0.4); g.fillText('$ cdplayer now', m, top);
-    g.imageSmoothingEnabled = false; g.drawImage(coverSquare(s, 33), m, footY, rowH, rowH); g.imageSmoothingEnabled = true;
-    const tx = m + rowH + 28, tw = W - m - tx;
-    const rows = [[0.95, [s.title, s.artist].filter(Boolean).join(' — ')], [0.5, s.subtitle], [0.5, [String(s.track || 1).padStart(2, '0'), mmss(s.duration)].filter(Boolean).join(' · ')]].filter(([, t]) => t);
-    g.font = `400 ${tall ? 26 : 22}px ${MONO}`;
-    rows.forEach(([a, text], k) => { g.fillStyle = ink(a); g.fillText(wrapRows(g, text, tw, 1)[0], tx, footY + 6 + k * (tall ? 42 : 34)); });
+    g.save(); g.textBaseline = 'top'; g.font = `400 ${tall ? 30 : 24}px ${MONO}`; g.fillStyle = ink(0.45); g.fillText('$ cdplayer now', m, top);
+    // the cover as a terminal would show it, in blocks
+    g.imageSmoothingEnabled = false; g.drawImage(coverSquare(s, 24), m, footY, rowH, rowH); g.imageSmoothingEnabled = true;
+    const tx = m + rowH + 32, tw = W - m - tx, step = tall ? 46 : 34;
+    const rows = [[0.95, s.title], [0.6, s.artist], [0.45, s.subtitle], [0.45, [String(s.track || 1).padStart(2, '0'), mmss(s.duration)].filter(Boolean).join(' · ')]].filter(([, t]) => t);
+    g.font = `400 ${tall ? 30 : 24}px ${MONO}`;
+    rows.forEach(([a, text], k) => { g.fillStyle = ink(a); g.fillText(wrapRows(g, text, tw, 1)[0], tx, footY + rowH - rows.length * step + k * step + 4); });
     g.restore();
   });
   const box = { x: m, y: top + (tall ? 80 : 62), w: W - m * 2, h: footY - 50 - (top + (tall ? 80 : 62)) }, maxRows = Math.floor(box.h / lead);
@@ -394,6 +420,7 @@ function terminalFilm(L0, s, lines, start) {
   const rowsOf = (text) => { const g = scratch(); g.font = `400 ${size}px ${MONO}`; return wrapRows(g, text, box.w - size, 99); };
   return (g, at) => {
     const pos = s.position();
+    bg(g, at);
     g.drawImage(back, 0, 0);
     // what's been sung since the video began stays on the screen above, fainter; the line now types itself, the rest
     // of it waiting faintly ahead of the cursor, as a shell suggests what you'll type

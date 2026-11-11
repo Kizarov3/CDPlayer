@@ -1537,7 +1537,7 @@ function shareCard() {
       try {
         const made = await recordVideo({ format, audio: withSound ? engine.recordingStream() : null, onTick, begin, playing: withSound ? stillGoing() : () => true,
           seconds: span ? span.end - span.start : VIDEO_SECONDS, song: {
-            ...song, face: disc.renderFace(512, 1).canvas, colors: { ...colors }, timed,
+            ...song, face: disc.renderFace(1024, 1).canvas, colors: { ...colors }, timed,
             // (each PLAYER LOOK its own film: VISUALIZER's moves with the spectrum, HI-FI's meters with each side's level)
             look: state.look, track: state.index + 1, spectrum: (n) => engine.spectrum(n), levels: () => engine.stereo(),
             duration: engine.duration, waveform: state.waveform ? progress.waveform : null, // (TERMINAL's bar)
