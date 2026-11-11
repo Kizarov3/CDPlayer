@@ -1916,6 +1916,19 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.22.0', changes: [
+    '<b>WHITE</b>: a light theme, the player in white plastic with a grey-green LCD. Every look, the shelf, the booklet, the mini player and the phone remote go light with it. A new install picks WHITE on a light system and RED on a dark one; yours keeps its theme',
+    '<b>Now Playing cards you can send</b> (P): each PLAYER LOOK its own quiet card. CLASSIC the disc with your cover on it, JEWEL CASE the case, VISUALIZER the song&rsquo;s bars, HI-FI the deck&rsquo;s display, ALBUM the cover edge to edge, LYRICS the line big, TERMINAL a command&rsquo;s output. Taller, so a chat shows it big. Your theme colours it',
+    '<b>Videos to match</b>: each look&rsquo;s card with one thing moving, the disc turning as fast as in the player. The first frame is the finished picture, with no intro, and the lines fade in as they&rsquo;re sung. Up to three minutes long',
+    '<b>Karaoke on the hard parts</b>: a word sung through heavy effects, that the app can&rsquo;t hear, stays where the lyrics put it instead of jumping early; words like &ldquo;tongue-tied&rdquo; are timed properly. Songs are timed again once',
+    '<b>Linux</b>: the AppImage can be updated by AppImageUpdate, Gear Lever and appimaged too, and software centres show what it is',
+  ], changesIn: { ru: [
+    '<b>WHITE</b>: светлая тема, плеер из белого пластика с серо-зелёным дисплеем. Вместе с ней светлеют все виды, полка, буклет, мини-плеер и пульт на телефоне. Новая установка выбирает WHITE, если система светлая, и RED, если тёмная; у тебя тема остаётся прежней',
+    '<b>Карточки, которые не стыдно отправить</b> (P): у каждого ВИДА ПЛЕЕРА своя спокойная карточка. КЛАССИКА &mdash; диск с твоей обложкой, КОРОБКА CD &mdash; коробка, ВИЗУАЛИЗАТОР &mdash; полоска песни, HI-FI &mdash; дисплей деки, АЛЬБОМ &mdash; обложка во весь кадр, ТЕКСТ &mdash; строка крупно, ТЕРМИНАЛ &mdash; вывод команды. Выше, чтобы в чате она была крупной. Тема её только окрашивает',
+    '<b>Видео под стать</b>: карточка вида, в которой движется что-то одно, диск крутится так же быстро, как в плеере. Первый кадр &mdash; готовая картинка, без вступления, а строки проявляются, когда их поют. До трёх минут',
+    '<b>Караоке на трудных местах</b>: слово, спетое через сильные эффекты, которое приложение не слышит, остаётся там, где его поставил текст, а не выскакивает раньше; слова вроде &laquo;tongue-tied&raquo; размечаются правильно. Песни размечаются заново один раз',
+    '<b>Linux</b>: AppImage теперь обновляют и AppImageUpdate, Gear Lever и appimaged, а магазины приложений показывают, что это за программа',
+  ] } },
   { version: '2.21.0', changes: [
     '<b>Karaoke follows the singer</b>: the first time you open karaoke on an English song, the app works out when each word is sung. It takes a few seconds, happens on your computer and is remembered. Just keep listening',
     '<b>Words in English letters</b>: ABC, in karaoke and the lyrics panel, shows how Japanese, Chinese, Korean and Cyrillic words sound, under each line. Off until you turn it on',
