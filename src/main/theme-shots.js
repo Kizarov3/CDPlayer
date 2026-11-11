@@ -238,6 +238,25 @@ async function run({ win, miniWindow, outDir, themes, audio, nativeImage, store,
         for (let i = 0; i < grayPx.length; i++) grayPx[i] = Math.round(0.299 * rgba[i * 4 + 2] + 0.587 * rgba[i * 4 + 1] + 0.114 * rgba[i * 4]); // (BGRA)
         fs.writeFileSync(path.join(dir, 'darkcheck.json'), JSON.stringify(darkCheck(grayPx, width, height)) + '\n');
       }
+      // Its NOW PLAYING card (P): the panel with the song's first line picked, and the card itself at full size.
+      const cardName = `card-${look.toLowerCase()}`;
+      let cardOk = false;
+      try {
+        key('p');
+        const preview = `(() => { const i = document.querySelector('.overlay:not(.closing) .card-preview.tall'); return !!i && i.complete && i.naturalWidth > 0; })()`;
+        cardOk = there && await waitFor(preview, 8000);
+        if (cardOk) {
+          // (the line being sung is picked as it opens, the first at the song's start; the second added for a quote of two)
+          await js(`(() => { const r = document.querySelectorAll('.overlay:not(.closing) .card-line:not(.none)')[1]; if (r && !r.classList.contains('on')) r.click(); })()`);
+          await pause(1500);
+          cardOk = await waitFor(preview, 8000);
+          await shot(cardName);
+          const b64 = await js(`(async () => { const i = document.querySelector('.overlay:not(.closing) .card-preview.tall'); const c = document.createElement('canvas'); c.width = i.naturalWidth; c.height = i.naturalHeight; c.getContext('2d').drawImage(i, 0, 0); return c.toDataURL('image/png').split(',')[1]; })()`); // (the page's CSP keeps fetch() off its blob: URLs)
+          fs.writeFileSync(path.join(dir, `${cardName}-full.png`), Buffer.from(b64, 'base64'));
+        }
+      } catch (e) { console.log(`theme-shots: ${cardName} failed: ${e.message}`); cardOk = false; }
+      note(cardName, cardOk);
+      await closeAll();
     }
     await pickMenu('PLAYER LOOK', 'CLASSIC');
     await pause(800);
