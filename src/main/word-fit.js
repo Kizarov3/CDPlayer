@@ -5,7 +5,7 @@
  * it isn't decoded again for nothing. One song at a time; a song asked for while another's going replaces any waiting.
  */
 const crypto = require('crypto'), path = require('path');
-const VERSION = 3; // (a change of model or method: songs are timed again)
+const VERSION = 4; // (a change of model or method: songs are timed again. 4: words made of words said as their parts, and how well each word is heard)
 const MODELS = ['vocals.int8.onnx', 'accompaniment.int8.onnx', 'aligner.onnx'];
 
 function createWordFit({ dir, modelsDir, fs, createWorker }) {

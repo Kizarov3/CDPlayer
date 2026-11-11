@@ -110,7 +110,8 @@ async function fitWords(song, lines, models, onProgress = () => {}) {
       const stop = Math.min(limit, stops(start + 0.08, limit));
       const end = Math.max(start + 0.08, stop);
       const begins = soundsInside(all, classes, placed[s.first].first, Math.min(total, Math.ceil(end / SECONDS_PER_FRAME)), parsed[i].ids.slice(s.first, s.last + 1));
-      words[s.word] = { time: start, end, beats: begins ? spacedBeats(start, end, begins.map((f) => f * SECONDS_PER_FRAME)) : [] };
+      const heard = heardLevel(all, classes, total, parsed[i].ids.slice(s.first, s.last + 1), placed.slice(s.first, s.last + 1));
+      words[s.word] = { time: start, end, beats: begins ? spacedBeats(start, end, begins.map((f) => f * SECONDS_PER_FRAME)) : [], heard: Math.round(heard * 1000) / 1000 };
     });
     // (punctuation of its own: over at once, at the word before it, or the first after it)
     let last = null;

@@ -232,6 +232,18 @@ export function wordFitRequest(lines) {
   });
   return out;
 }
+// Where each of a line's words starts in its own timing, the words split at spaces as the voice model gets them (a
+// word may be in several timed pieces, as "gun" "s," or "tongue" "-" "tied").
+function ownStarts(line) {
+  const starts = [];
+  let fresh = true;
+  for (const part of line.words || []) {
+    if (!part.text.trim()) { fresh = true; continue; }
+    if (fresh) starts.push(part.time);
+    fresh = /\s$/.test(part.text);
+  }
+  return starts;
+}
 /**
  * Hand-timed words (their lines' own `words`) checked against what came back for wordFitRequest's: how far the voice in
  * this file is from them over the whole song — the median of each word's difference, when most words agree on it (a
@@ -243,14 +255,7 @@ export function handTimedShift(lines, words) {
   lines.filter((l) => l.text).forEach((line, i) => {
     const got = words[i];
     if (!got || !line.words || !line.words.length) return;
-    // where each of the line's words starts in its own timing (a word may be in several timed pieces, as "gun" "s,")
-    const starts = [];
-    let fresh = true;
-    for (const part of line.words) {
-      if (!part.text.trim()) { fresh = true; continue; }
-      if (fresh) starts.push(part.time);
-      fresh = /\s$/.test(part.text);
-    }
+    const starts = ownStarts(line);
     if (starts.length !== got.length) return;
     got.forEach((w, k) => { if (w && w.end > w.time) diffs.push(w.time - starts[k]); });
   });
@@ -268,13 +273,15 @@ export function handTimedShift(lines, words) {
  */
 export function linesFittedToWords(lines, words, move = 0) {
   let k = 0, last = -Infinity;
+  const ownShift = wordsShift(lines, words, move);
   return lines.map((line, n) => {
     const fitted = line.text ? words[k++] : null;
     let out;
     if (fitted) {
       const next = n + 1 < lines.length ? lines[n + 1].time : line.time + 12;
       const parts = lineWords({ time: line.time, text: line.text }, next);
-      out = { ...line, time: Math.max(fitted[0].time, last), end: fitted[fitted.length - 1].end, words: parts.map((w, i) => ({ text: w.text, time: fitted[i].time, end: fitted[i].end, ...(fitted[i].beats && fitted[i].beats.length ? { beats: fitted[i].beats } : {}) })) };
+      const timed = keepOwnWhereUnheard(line, fitted, ownShift);
+      out = { ...line, time: Math.max(timed[0].time, last), end: timed[timed.length - 1].end, words: parts.map((w, i) => ({ text: w.text, time: timed[i].time, end: timed[i].end, ...(timed[i].beats && timed[i].beats.length ? { beats: timed[i].beats } : {}) })) };
     } else {
       const shift = (w) => ({ ...w, time: w.time + move, ...(w.end !== undefined ? { end: w.end + move } : {}) });
       out = { ...line, time: Math.max(line.time + move, last), ...(line.end !== undefined ? { end: line.end + move } : {}), ...(line.words ? { words: line.words.map(shift) } : {}), ...(line.bg ? { bg: line.bg.map(shift) } : {}) };
@@ -282,6 +289,38 @@ export function linesFittedToWords(lines, words, move = 0) {
     last = out.time;
     return out;
   });
+}
+
+// How far the voice model's words are from the lyrics' own word times over the song, the median (the whole-song move,
+// worked out from the voice's level alone, can be a few tenths off it); `move` when there are too few to tell.
+function wordsShift(lines, words, move) {
+  const diffs = [];
+  lines.filter((l) => l.text).forEach((line, i) => {
+    const got = words[i], starts = ownStarts(line);
+    if (got && starts.length === got.length) got.forEach((w, k) => { if (w) diffs.push(w.time - starts[k]); });
+  });
+  if (diffs.length < 20) return move;
+  diffs.sort((a, b) => a - b);
+  return diffs[diffs.length >> 1];
+}
+// A word the voice model barely hears where it put it (`heard`, its sounds' likelihood there) and that far from the
+// lyrics' own time for it was put where nothing could be heard to go by — a held note sung through effects, say
+// (Myxomatosis's "tongue-tied", 1.1 s early): it keeps its own time, moved as the song's words are, its end at the next word's
+// own start (or the line's end). Only for word-timed lyrics, and only where that leaves the words in their order.
+const UNHEARD = 0.08, FAR_FROM_OWN = 0.8; // (likelihood; seconds)
+function keepOwnWhereUnheard(line, fitted, shift) {
+  const starts = ownStarts(line);
+  if (starts.length !== fitted.length) return fitted;
+  const lineEnd = line.end !== undefined ? line.end : (line.words[line.words.length - 1].end ?? line.words[line.words.length - 1].time);
+  const out = fitted.slice();
+  for (let i = 0; i < out.length; i++) {
+    const f = out[i], own = starts[i] + shift;
+    if (!(f.heard < UNHEARD) || Math.abs(f.time - own) <= FAR_FROM_OWN) continue;
+    if ((i > 0 && out[i - 1].time > own) || (i + 1 < out.length && out[i + 1].time < own)) continue;
+    const end = Math.max(own + 0.1, (i + 1 < starts.length ? starts[i + 1] : lineEnd) + shift);
+    out[i] = { ...f, time: own, end, beats: (f.beats || []).filter((b) => b > own && b < end) };
+  }
+  return out;
 }
 
 /**

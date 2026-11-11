@@ -59,12 +59,16 @@ function phonesOf(word) {
   const d = words();
   if (d.has(w)) return fromDictionary(d.get(w));
   if (w.endsWith("in'") && d.has(`${w.slice(0, -1)}g`)) return fromDictionary(d.get(`${w.slice(0, -1)}g`));
+  // A word made of words ("tongue-tied"): each said as it is, not the whole run together and spelled out letter by letter.
+  const parts = partsOf(word);
+  if (parts.length > 1) return parts.flatMap(phonesOf);
   return fromLetters(w);
 }
+const partsOf = (word) => String(word).split(/[-‐‑‒–—]+/).filter((p) => plain(p).replace(/'/g, ''));
 /** Whether these words (`lines`: arrays of words) are English enough for the dictionary to read them: most it must know. */
 function readsAsEnglish(lines, least = 0.7) {
   const seen = new Set();
-  for (const line of lines) for (const word of line) { const w = plain(word); if (/[a-z]/.test(w)) seen.add(w); }
+  for (const line of lines) for (const word of line) for (const part of partsOf(word)) { const w = plain(part); if (/[a-z]/.test(w)) seen.add(w); }
   if (seen.size < 3) return false;
   let hits = 0;
   for (const w of seen) if (known(w)) hits++;

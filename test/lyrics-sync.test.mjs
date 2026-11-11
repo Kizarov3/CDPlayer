@@ -171,6 +171,27 @@ test('lines take the voice\'s times; one without keeps its own, moved; none star
   assert.strictEqual(out[3].time, 20.5); // (later than the line before it, whatever it was found at)
 });
 
+test("a word the voice model can't hear, put far from the lyrics' own time for it, keeps that time (moved as the song's words are)", () => {
+  // NetEase's "tongue" "-" "tied" stamped apart; the model's one word for them where nothing is heard, a second early
+  const line = (t0) => ({ time: t0, end: t0 + 6, text: 'I feel so tongue-tied"', words: [{ time: t0, text: 'I ' }, { time: t0 + 0.72, text: 'feel ' },
+    { time: t0 + 1.86, text: 'so ' }, { time: t0 + 3.18, text: 'tongue' }, { time: t0 + 4.05, text: '-' }, { time: t0 + 4.68, text: 'tied' }, { time: t0 + 5.97, end: t0 + 6, text: '"' }] });
+  const heard = (t0, at) => [{ time: t0 + 0.05, end: t0 + 0.7, heard: 0.82 }, { time: t0 + 0.77, end: t0 + 1.8, heard: 0.42 }, { time: t0 + 1.91, end: t0 + 2.1, heard: 0.1 }, at];
+  const one = [line(63.23)];
+  let w = linesFittedToWords(one, [heard(63.23, { time: 65.13, end: 68.5, beats: [65.6, 66, 67], heard: 0.04 })], -0.3)[0].words;
+  [63.28, 64, 65.14].forEach((t, i) => near(w[i].time, t)); // (heard, or near their own time: the model's)
+  near(w[3].time, 66.11); // its own 66.41, moved as the song (too few words to measure the model against: by `move`)
+  near(w[3].end, 68.93);
+  assert.ok(!w[3].beats || w[3].beats.every((b) => b > w[3].time && b < w[3].end));
+  // heard, or within reach of its own time: the model's, however far
+  assert.strictEqual(linesFittedToWords(one, [heard(63.23, { time: 65.13, end: 68.5, heard: 0.5 })], -0.3)[0].words[3].time, 65.13);
+  assert.strictEqual(linesFittedToWords(one, [heard(63.23, { time: 65.6, end: 68.5, heard: 0.04 })], -0.3)[0].words[3].time, 65.6);
+  // a song's worth of words the model puts 0.05 s after their own times: that's what the unheard one is moved by, not `move`
+  const many = Array.from({ length: 8 }, (_, n) => line(10 + n * 8));
+  const got = many.map((l) => heard(l.time, { time: l.time + 3.23, end: l.time + 5.5, heard: 0.6 }));
+  got[5] = heard(many[5].time, { time: many[5].time + 2.1, end: many[5].time + 5.5, heard: 0.03 });
+  near(linesFittedToWords(many, got, -0.3)[5].words[3].time, many[5].time + 3.18 + 0.05);
+});
+
 test('hand-timed words a second late against the voice: moved as a whole; on time, or the voice all over the place: left', () => {
   // ten lines of three words, a word in two pieces ("gun" "s, "), a blank piece between words
   const lines = Array.from({ length: 10 }, (_, n) => {

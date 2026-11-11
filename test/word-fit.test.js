@@ -65,6 +65,12 @@ test('words read from the dictionary, an unknown one by its letters, swear words
   assert.ok(phonesOf('zzgrblt').length > 2);
   assert.ok(['Rain', 'runneth', 'zzgrblt', 'boy'].flatMap(phonesOf).every((p) => PHONES.includes(p)));
 });
+test('a word made of words ("tongue-tied", quote and all) said as its parts, not spelled out as one unknown word', () => {
+  assert.deepStrictEqual(phonesOf('tongue-tied"'), [...phonesOf('tongue'), ...phonesOf('tied')]);
+  assert.deepStrictEqual(phonesOf('half–way'), [...phonesOf('half'), ...phonesOf('way')]); // (an en dash too)
+  assert.deepStrictEqual(phonesOf('-'), []);
+  assert.strictEqual(readsAsEnglish([['I', 'feel', 'so', 'tongue-tied', 'and', 'half-way', 'gone']]), true);
+});
 test('a song in another language or run together is not taken for English', () => {
   assert.strictEqual(readsAsEnglish([['I', 'think', "it's", 'gonna', 'rain']]), true);
   assert.strictEqual(readsAsEnglish([['Я', 'иду', 'домой', 'сейчас']]), false);
