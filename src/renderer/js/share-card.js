@@ -4,7 +4,7 @@
 // bases, adding the one thing it has in the player (share-art.js); the theme only colours it.
 import { rgb, FONT, drawThemeImage, isLight } from './theme.js';
 import { currentLineIndex, parseLrc } from './lyrics.js';
-import { MONO, paperOf, ground, coverMean, coverSquare, wrapRows, discParts, drawDisc, caseFront, CASE_RATIO, onShadow,
+import { MONO, paperOf, ground, coverMean, coverSquare, wrapRows, discParts, drawDisc, drawCaseFront, CASE_RATIO, onShadow,
   bars, barValues, deckStrip, names, namesHeight, credit, mmss } from './share-art.js';
 
 const CW = 1080, CH = 1350, M = 84;
@@ -153,8 +153,7 @@ function classicCard(g, song, colors, paper) {
 // JEWEL CASE: the cover in a shut case, lying on the page.
 function caseCard(g, song, colors, paper) {
   baseA(g, song, paper, { aspect: CASE_RATIO, draw: (x, y, w, h) => {
-    const c = onShadow(w, h, paper.light, (cg) => cg.drawImage(caseFront(song, Math.round(w), paper.light), 0, 0, w, h), w * 0.008);
-    g.drawImage(c.canvas, x - c.pad, y - c.pad);
+    drawCaseFront(g, song, x, y, w, paper.light); // (as the JEWEL CASE look draws it)
   } });
 }
 // VISUALIZER: the cover, a thin strip of the song's own bars under it — played so far in full ink, the rest faint.

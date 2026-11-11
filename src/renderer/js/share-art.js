@@ -178,23 +178,76 @@ function holed(face) {
 export const CASE_RATIO = 142 / 125; // a real one's, in mm
 
 /** A shut jewel case from the front: the cover under the clear lid, the ribbed hinge down its left, one soft glare. */
-export function caseFront(s, w, light = false) {
-  const h = w / CASE_RATIO, c = canvas(w, h), g = c.getContext('2d'), band = w * 0.1, side = w * (120 / 142), top = (h - side) / 2;
-  g.beginPath(); g.roundRect(0, 0, w, h, w * 0.008); g.clip();
-  g.fillStyle = light ? '#e9ebee' : '#17181b'; g.fillRect(0, 0, w, h);
-  g.drawImage(coverSquare(s, Math.round(side)), w - side - (h - side) / 2, top, side, side);
-  const hinge = g.createLinearGradient(0, 0, band, 0);
-  const tones = light ? ['#d3d7dc', '#ffffff', '#e1e4e8', '#cdd1d6'] : ['#0d0e10', '#34363b', '#1b1c20', '#0c0d0f'];
-  tones.forEach((t, i) => hinge.addColorStop([0, 0.3, 0.62, 1][i], t));
-  g.fillStyle = hinge; g.fillRect(0, 0, band, h);
-  g.fillStyle = light ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.1)';
-  for (let x = band * 0.2; x < band * 0.9; x += band * 0.17) g.fillRect(x, 0, Math.max(1, w * 0.002), h);
-  g.fillStyle = light ? 'rgba(0,0,0,0.12)' : 'rgba(0,0,0,0.42)'; g.fillRect(band, 0, w * 0.006, h);
-  const glare = g.createLinearGradient(0, 0, w * 0.85, h);
-  glare.addColorStop(0, 'rgba(255,255,255,0.16)'); glare.addColorStop(0.4, 'rgba(255,255,255,0.03)'); glare.addColorStop(0.41, 'rgba(255,255,255,0)');
-  g.fillStyle = glare; g.fillRect(0, 0, w, h);
-  g.strokeStyle = light ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.26)'; g.lineWidth = Math.max(2, w * 0.003); g.strokeRect(1, 1, w - 2, h - 2);
-  return c;
+// A CSS linear-gradient(deg, …) over (x, y, w, h) as a canvas gradient: `stops` [[0…1, colour]] along its line.
+function cssGradient(g, x, y, w, h, deg, stops) {
+  const a = (deg * Math.PI) / 180, dx = Math.sin(a), dy = -Math.cos(a), len = Math.abs(w * dx) + Math.abs(h * dy), cx = x + w / 2, cy = y + h / 2;
+  const gr = g.createLinearGradient(cx - (dx * len) / 2, cy - (dy * len) / 2, cx + (dx * len) / 2, cy + (dy * len) / 2);
+  for (const [at, colour] of stops) gr.addColorStop(at, colour);
+  return gr;
+}
+/**
+ * The closed jewel case as the JEWEL CASE look draws it (styles.css, body.look-case #cover-art over #case-tray), at
+ * (x, y) w across: set down on its shadow, the plastic's thickness catching the light along its lower and right edges,
+ * the tray dark (light grey on a light theme) round the booklet, the cover under the lid (120 mm of 142 across, past
+ * the hinge), and the lid's hinge ridges down its left and its light across. Its sizes are the look's pixels for a
+ * case about 400 px across, scaled.
+ */
+export function drawCaseFront(g, s, x, y, w, light = false) {
+  const h = w / CASE_RATIO, u = w / 400, rad = 3 * u;
+  const box = (dx, dy, fill) => { g.beginPath(); g.roundRect(x + dx, y + dy, w, h, rad); g.fillStyle = fill; g.fill(); };
+  g.save();
+  g.shadowColor = light ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.55)'; g.shadowBlur = (light ? 50 : 70) * u; g.shadowOffsetY = (light ? 24 : 30) * u;
+  box(0, 0, light ? 'rgb(208,211,216)' : 'rgb(24,25,29)');
+  g.restore();
+  const edges = light ? ['rgba(0,0,0,0.1)', 'rgba(170,180,190,0.45)', 'rgba(255,255,255,0.9)'] : ['rgba(0,0,0,0.25)', 'rgba(170,180,190,0.22)', 'rgba(255,255,255,0.35)'];
+  [5, 3, 1].forEach((d, i) => box(d * u, d * u, edges[i]));
+  box(0, 0, light ? 'rgb(208,211,216)' : 'rgb(24,25,29)');
+  g.save();
+  g.beginPath(); g.roundRect(x, y, w, h, rad); g.clip();
+  // the tray under the lid: its hinge band down the left, its edge
+  g.fillStyle = cssGradient(g, x, y, w, h, 90, [[0, 'rgba(0,0,0,0.5)'], [0.045, 'rgba(0,0,0,0.5)'], [0.045, 'rgba(255,255,255,0.25)'], [0.05, 'rgba(255,255,255,0.25)'], [0.05, 'rgba(0,0,0,0)']]);
+  g.fillRect(x, y, w, h);
+  g.strokeStyle = light ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.25)'; g.lineWidth = Math.max(1, u);
+  g.beginPath(); g.roundRect(x + g.lineWidth / 2, y + g.lineWidth / 2, w - g.lineWidth, h - g.lineWidth, rad); g.stroke();
+  // the booklet: 84.5 % across and 96 % down, at 64 % / 50 % (background-size and -position)
+  const bw = w * 0.845, bh = h * 0.96;
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(coverSquare(s, Math.round(Math.max(bw, bh))), x + (w - bw) * 0.64, y + (h - bh) / 2, bw, bh);
+  // the lid: its hinge ridges, the light across it (where the look's pointer rests by default) and from its top left
+  g.fillStyle = cssGradient(g, x, y, w, h, 90, [[0, 'rgba(0,0,0,0.55)'], [0.012, 'rgba(255,255,255,0.25)'], [0.024, 'rgba(0,0,0,0.35)'], [0.036, 'rgba(255,255,255,0.14)'], [0.048, 'rgba(0,0,0,0.2)'], [0.06, 'rgba(0,0,0,0)']]);
+  g.fillRect(x, y, w, h);
+  g.fillStyle = cssGradient(g, x, y, w, h, 115, [[0.13, 'rgba(255,255,255,0)'], [0.31, 'rgba(255,255,255,0.2)'], [0.35, 'rgba(255,255,255,0.05)'], [0.47, 'rgba(255,255,255,0)']]);
+  g.fillRect(x, y, w, h);
+  g.fillStyle = cssGradient(g, x, y, w, h, 160, [[0, 'rgba(255,255,255,0.1)'], [0.3, 'rgba(255,255,255,0)']]);
+  g.fillRect(x, y, w, h);
+  g.restore();
+}
+/** How far past a case drawn w across its shadow and edges reach (for the room round it). */
+export const casePad = (w) => Math.ceil((w / 400) * 110);
+/**
+ * The disc's own clear case as the player draws it beside the closed one (disc.js frame: drawLightCase on a light
+ * theme), `side` the disc's size, centred on (cx, cy): → its size across.
+ */
+export function drawDiscCase(g, cx, cy, side, light = false) {
+  const u = side / 300, cs = side + 60 * u, x = cx - cs / 2, y = cy - cs / 2;
+  g.save();
+  const pane = g.createLinearGradient(0, y, 0, y + cs);
+  if (light) { pane.addColorStop(0, 'rgba(255,255,255,0.72)'); pane.addColorStop(1, 'rgba(255,255,255,0.46)'); g.shadowColor = 'rgba(0,0,0,0.09)'; g.shadowBlur = 16 * u; g.shadowOffsetY = 4 * u; }
+  else { pane.addColorStop(0, 'rgba(255,255,255,0.075)'); pane.addColorStop(1, 'rgba(255,255,255,0.035)'); }
+  g.fillStyle = pane;
+  g.beginPath(); g.roundRect(x, y, cs, cs, 6 * u); g.fill();
+  g.shadowColor = 'transparent';
+  g.lineWidth = Math.max(1, u);
+  g.strokeStyle = light ? 'rgba(0,0,0,0.09)' : 'rgba(255,255,255,0.13)'; g.stroke();
+  g.strokeStyle = light ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.35)';
+  g.beginPath(); g.roundRect(x + 1.5 * u, y + 1.5 * u, cs - 3 * u, cs - 3 * u, 5 * u); g.stroke();
+  g.strokeStyle = light ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.1)';
+  g.beginPath();
+  g.moveTo(x + 10 * u, y + 10.5 * u); g.lineTo(x + cs - 10 * u, y + 10.5 * u);
+  g.moveTo(x + 10 * u, y + cs - 10.5 * u); g.lineTo(x + cs - 10 * u, y + cs - 10.5 * u);
+  g.stroke();
+  g.restore();
+  return cs;
 }
 /** Something drawn on a soft shadow (a case, a cover lying on the page): → { canvas, pad }. */
 export function onShadow(w, h, light, draw, radius = 2) {

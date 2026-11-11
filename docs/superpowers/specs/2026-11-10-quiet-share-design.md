@@ -109,8 +109,9 @@ Rules, for every look:
 Per look:
 
 - **CLASSIC:** the CD turning slowly (the disc the player draws, `song.face`), the lines under the names.
-- **JEWEL CASE:** the case open from frame 0, the disc turning in its tray, the lines below. No lid swing, no camera move,
-  no page sliding in.
+- **JEWEL CASE:** as the JEWEL CASE look has it: the closed case and, beside it, the disc turning in its clear case, the
+  lines below. No lid swing, no camera move, no page sliding in. (2026-11-11: the case drawn as the look draws it; the open
+  case of the first version didn't look like a real one.)
 - **VISUALIZER:** the cover still, the strip under it moving with the spectrum, the lines below.
 - **HI-FI:** the cover with the display strip under it; the line lit in the display's dots as it's sung (as HI-FI's film
   does now), the strip's level marks on the real levels. No push.

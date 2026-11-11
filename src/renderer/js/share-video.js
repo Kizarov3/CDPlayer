@@ -12,7 +12,7 @@ import { drawCells, clock } from './deck-display.js';
 import { lineWords, songPace } from './lyrics.js';
 import { SPIN_RAD_PER_MS } from './disc-data.js';
 import { flattenMp4, mp4Reach } from './mp4-flatten.js';
-import { MONO, clamp01, ease, canvas, paperOf, ground, coverMean, coverSquare, wrapRows, discParts, drawDisc, CASE_RATIO, onShadow,
+import { MONO, clamp01, ease, canvas, paperOf, ground, coverMean, coverSquare, wrapRows, discParts, drawDisc, CASE_RATIO, onShadow, drawCaseFront, drawDiscCase,
   bars, deckStrip, names, credit, mmss } from './share-art.js';
 
 export const VIDEO_SECONDS = 8, MIN_VIDEO_SECONDS = 2, MAX_VIDEO_SECONDS = 180;
@@ -178,31 +178,23 @@ function classic(L, s, lines, start) {
   };
 }
 
-// ---- JEWEL CASE: the case open, the disc turning in its tray --------------------------------------------------------
+// ---- JEWEL CASE: as the look has it, the closed case and beside it the disc turning in its clear case ---------------
 
+const DISC_CASE = 1.2, CASE_GAP = 0.05; // (the disc's case: its size against the disc's, as disc.js draws it; the gap between them, of the case's height)
 function caseFilm(L0, s, lines, start) {
-  const format = L0.h > L0.w ? '9:16' : '1:1', L = frameA(format, { aspect: 2 * CASE_RATIO }), paper = pageOf(s), lt = paper.light;
-  const w = L.art.w / 2, h = L.art.h, x0 = L.art.x, y0 = L.art.y, mean = coverMean(s) || s.colors.bg;
-  const dx = w * (77 / 142), r = w * (60 / 142) * 0.985, X = x0 + w + dx, Y = y0 + h / 2;
-  const parts = discParts(s, Math.round(r), lt), hub = caseHub(r * 0.17, lt);
+  const format = L0.h > L0.w ? '9:16' : '1:1', L = frameA(format, { aspect: CASE_RATIO + CASE_GAP + 1 }), paper = pageOf(s), lt = paper.light;
+  const h = L.art.h, w = h * CASE_RATIO, x0 = L.art.x, y0 = L.art.y;
+  const cs = h, side = cs / DISC_CASE, r = side / 2, X = x0 + w + CASE_GAP * h + cs / 2, Y = y0 + h / 2;
+  const parts = discParts(s, Math.round(r), lt);
   const back = still(L, paper, s, (g) => {
-    // the open case lying on the page: its shadow, the lid out to the left with the booklet in it, the tray
-    const shade = onShadow(w * 2, h, lt, () => {}, w * 0.008);
-    g.drawImage(shade.canvas, x0 - shade.pad, y0 - shade.pad);
-    g.drawImage(lidInside(s, mean, w, h, lt), x0, y0, w, h);
-    const side = h * 0.9, inset = (h - side) / 2;
-    g.save(); g.globalAlpha = lt ? 0.96 : 0.9; g.drawImage(coverSquare(s, Math.round(side)), x0 + w - side - inset, y0 + inset, side, side); g.restore();
-    const glare = g.createLinearGradient(x0, y0, x0 + w * 0.8, y0 + h);
-    glare.addColorStop(0, 'rgba(255,255,255,0.14)'); glare.addColorStop(0.4, 'rgba(255,255,255,0.02)'); glare.addColorStop(0.41, 'rgba(255,255,255,0)');
-    g.fillStyle = glare; g.fillRect(x0, y0, w, h);
-    g.drawImage(trayPlastic(w, h, dx, h / 2, r, lt), x0 + w, y0, w, h);
+    drawCaseFront(g, s, x0, y0, w, lt);
+    drawDiscCase(g, X, Y, side, lt);
     namesAndCredit(g, L, s, paper);
   });
   const tall = L.h > L.w, layoutOf = linesType('case', tall ? 54 : 40, L.lyrics.w, 2);
   return (g, at) => {
     g.drawImage(back, 0, 0);
     drawDisc(g, s, X, Y, r, at * 1000 * SPIN_RAD_PER_MS, parts);
-    g.drawImage(hub, X - r * 0.17, Y - r * 0.17, r * 0.34, r * 0.34);
     softLines(g, lines, s.position(), L.lyrics, { layoutOf, ink: paper.ink, start });
   };
 }
@@ -495,7 +487,6 @@ function wipe(g, text, x, y, w, p, a, b) {
   g.fillText(text, x, y);
 }
 
-
 // ---- The parts of things --------------------------------------------------------------------------------------------
 
 // Text as a vacuum-fluorescent display's dots: drawn small in a bold face, each pixel a dot. → { cols, rows, on: Uint8Array }.
@@ -519,51 +510,6 @@ function glowing(c, pitch, color) {
   g.filter = `blur(${Math.round(pitch * 0.9)}px)`; g.globalAlpha = 0.85; g.drawImage(c, 0, 0);
   g.filter = 'none'; g.globalAlpha = 1; g.drawImage(c, 0, 0);
   return out;
-}
-
-// The lid from the inside, the booklet out of it: clear smoked plastic and the tabs that hold it.
-function lidInside(s, mean, w, h, light = false) {
-  const c = canvas(w, h), g = c.getContext('2d');
-  g.beginPath(); g.roundRect(0, 0, w, h, w * 0.008); g.clip();
-  g.fillStyle = rgb(lerpColor(mean, light ? [236, 238, 241] : [12, 12, 14], 0.82)); g.fillRect(0, 0, w, h);
-  const lit = g.createLinearGradient(w, 0, 0, h);
-  lit.addColorStop(0, 'rgba(255,255,255,0.15)'); lit.addColorStop(0.5, 'rgba(255,255,255,0.02)'); lit.addColorStop(1, light ? 'rgba(0,0,0,0.06)' : 'rgba(0,0,0,0.25)');
-  g.fillStyle = lit; g.fillRect(0, 0, w, h);
-  g.fillStyle = light ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.1)'; g.strokeStyle = light ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.26)'; g.lineWidth = Math.max(2, w * 0.003);
-  const tab = (x, y, from) => { g.beginPath(); g.arc(x, y, w * 0.055, from, from + Math.PI); g.closePath(); g.fill(); g.stroke(); };
-  for (const y of [h * 0.28, h * 0.72]) { tab(w * 0.96, y, Math.PI / 2); tab(w * 0.12, y, -Math.PI / 2); }
-  g.strokeRect(1, 1, w - 2, h - 2);
-  return c;
-}
-// The tray under the disc: dark plastic, the round well the disc sits in. (light: light grey plastic)
-function trayPlastic(w, h, cx, cy, r, light = false) {
-  const c = canvas(w, h), g = c.getContext('2d');
-  g.beginPath(); g.roundRect(0, 0, w, h, w * 0.008); g.clip();
-  const base = g.createLinearGradient(0, 0, w, h);
-  base.addColorStop(0, light ? '#f6f7f9' : '#2b2c30'); base.addColorStop(1, light ? '#e1e4e8' : '#141518');
-  g.fillStyle = base; g.fillRect(0, 0, w, h);
-  g.fillStyle = light ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.08)';
-  for (let x = w * 0.024; x < w * 0.1; x += w * 0.02) g.fillRect(x, 0, Math.max(1, w * 0.002), h);
-  const well = g.createRadialGradient(cx, cy, r * 0.5, cx, cy, r * 1.03);
-  well.addColorStop(0, light ? '#dee1e5' : '#0b0b0d'); well.addColorStop(0.93, light ? '#d8dbe0' : '#0d0d10'); well.addColorStop(1, light ? '#c4c8ce' : '#000');
-  g.fillStyle = well; g.beginPath(); g.arc(cx, cy, r * 1.03, 0, Math.PI * 2); g.fill();
-  g.strokeStyle = light ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.09)'; g.lineWidth = Math.max(2, w * 0.002); g.stroke();
-  g.strokeStyle = light ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.22)'; g.strokeRect(1, 1, w - 2, h - 2);
-  return c;
-}
-// The hub that holds the disc, its teeth round a dark middle.
-function caseHub(r, light = false) {
-  const size = Math.ceil(r * 2), c = canvas(size, size), g = c.getContext('2d'), m = size / 2;
-  const body = g.createRadialGradient(m - r * 0.3, m - r * 0.3, r * 0.1, m, m, r);
-  body.addColorStop(0, light ? '#ffffff' : '#4a4c52'); body.addColorStop(1, light ? '#c6cad0' : '#1b1c20');
-  g.fillStyle = body; g.beginPath(); g.arc(m, m, r * 0.98, 0, Math.PI * 2); g.fill();
-  g.strokeStyle = light ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.75)'; g.lineWidth = Math.max(2, r * 0.05);
-  for (let k = 0; k < 12; k++) {
-    const a = (k / 12) * Math.PI * 2;
-    g.beginPath(); g.moveTo(m + Math.cos(a) * r * 0.42, m + Math.sin(a) * r * 0.42); g.lineTo(m + Math.cos(a) * r * 0.97, m + Math.sin(a) * r * 0.97); g.stroke();
-  }
-  g.fillStyle = light ? '#dcdfe3' : '#08080a'; g.beginPath(); g.arc(m, m, r * 0.38, 0, Math.PI * 2); g.fill();
-  return c;
 }
 
 // A context to measure type on, when laying lines out ahead of drawing them.
