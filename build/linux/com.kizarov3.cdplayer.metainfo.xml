@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The AppStream entry software centres and the AppImage catalog read (usr/share/metainfo in the AppImage).
+     @VERSION@ and @DATE@ are filled in by build/before-pack.js as it's packed. -->
+<component type="desktop-application">
+  <id>com.kizarov3.cdplayer</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>CDPlayer</name>
+  <summary>A music player that feels like a real CD player</summary>
+  <developer id="io.github.kizarov3">
+    <name>Kizarov3</name>
+  </developer>
+  <description>
+    <p>
+      CDPlayer plays your local music, your audio CDs, YouTube Music and SoundCloud, and with Spotify Premium your
+      Spotify albums, the way a CD player would. No account and nothing else to install: MP3, M4A/ALAC, FLAC, WAV,
+      AIFF, AU, OGG and Opus play out of the box.
+    </p>
+    <ul>
+      <li>The disc spins in its jewel case with your cover printed on it, catches the light and wears scratches as you play it</li>
+      <li>The CD shelf: every album in your music folder spine-out, dust on the ones you never play, new ones shrink-wrapped</li>
+      <li>The booklet: the tracklist, lyrics and credits, marked in pen as you play</li>
+      <li>Lyrics and karaoke, each word of an English song timed to the singer's voice, offline</li>
+      <li>Audio CDs played, or ripped to tagged FLAC in one click</li>
+      <li>Player looks, colour themes, a phone remote, and share cards and videos of what's playing</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">cdplayer.desktop</launchable>
+  <icon type="stock">cdplayer</icon>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Player</category>
+  </categories>
+  <url type="homepage">https://github.com/Kizarov3/CDPlayer</url>
+  <url type="bugtracker">https://github.com/Kizarov3/CDPlayer/issues</url>
+  <url type="vcs-browser">https://github.com/Kizarov3/CDPlayer</url>
+  <url type="donation">https://ko-fi.com/Kizarov3</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>The player in CD changer mode, five discs in the carousel</caption>
+      <image>https://raw.githubusercontent.com/Kizarov3/CDPlayer/main/docs/screenshots/main-changer.jpg</image>
+    </screenshot>
+    <screenshot>
+      <caption>The CD shelf, every album spine-out</caption>
+      <image>https://raw.githubusercontent.com/Kizarov3/CDPlayer/main/docs/screenshots/shelf.jpg</image>
+    </screenshot>
+    <screenshot>
+      <caption>The ALBUM look: the album in its jewel case, the disc sliding out</caption>
+      <image>https://raw.githubusercontent.com/Kizarov3/CDPlayer/main/docs/screenshots/look-album.jpg</image>
+    </screenshot>
+    <screenshot>
+      <caption>Karaoke, the line filling in word by word as it's sung</caption>
+      <image>https://raw.githubusercontent.com/Kizarov3/CDPlayer/main/docs/screenshots/karaoke.jpg</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="@VERSION@" date="@DATE@">
+      <url type="details">https://github.com/Kizarov3/CDPlayer/releases/tag/v@VERSION@</url>
+    </release>
+  </releases>
+</component>

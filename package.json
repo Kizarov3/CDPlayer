@@ -142,7 +142,13 @@
         }
       ],
       "maintainer": "Kizarov3",
-      "syncDesktopName": true
+      "syncDesktopName": true,
+      "extraFiles": [
+        {
+          "from": "build/linux/generated/com.kizarov3.cdplayer.metainfo.xml",
+          "to": "usr/share/metainfo/com.kizarov3.cdplayer.metainfo.xml"
+        }
+      ]
     },
     "publish": {
       "provider": "github",

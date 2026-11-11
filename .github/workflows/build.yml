@@ -68,6 +68,16 @@ jobs:
         run: npx electron-builder ${{ matrix.dist }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+      - name: The AppImage's update information and its .zsync, for AppImageUpdate and the AppImage catalog; its AppStream entry checked
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get install -y zsync appstream
+          f=$(ls dist/*-linux.AppImage) && name=$(basename "$f")
+          node scripts/appimage-update-info.js "$f"
+          chmod +x "$f" && "$f" --appimage-updateinformation | tee /dev/stderr | grep -qxF "$(node -p "require('./scripts/appimage-update-info.js').UPDATE_INFO")"
+          (cd dist && zsyncmake -u "$name" -o "$name.zsync" "$name")
+          appstreamcli validate --no-net --explain build/linux/generated/com.kizarov3.cdplayer.metainfo.xml
       - name: Smoke-test the packaged app (decode every format, read tags)
         shell: bash
         run: ${{ matrix.smoke }} --smoke-test=test/fixtures
@@ -78,6 +88,7 @@ jobs:
             dist/*.dmg
             dist/*.exe
             dist/*.AppImage
+            dist/*.AppImage.zsync
           if-no-files-found: error
 
   release:

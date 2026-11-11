@@ -27,7 +27,7 @@ When a new version is out, an **AVAILABLE** button appears in the player's top-l
 
 - **macOS** — keep CDPlayer in **Applications**. Run from the disk image or from Downloads, it can't replace itself: the update is saved to Downloads and **INSTALL** opens it to drag into Applications.
 - **Windows** — run the `.exe` from a folder, not from inside a .zip. It's updated where it is, so it keeps its old file name.
-- **Linux** — the AppImage updates itself; a CDPlayer installed from a package is updated the usual way (the button saves the download and shows it).
+- **Linux** — the AppImage updates itself; a CDPlayer installed from a package is updated the usual way (the button saves the download and shows it). AppImageUpdate, Gear Lever and appimaged can update the AppImage too (from the release after 2.21.0).
 - In a folder CDPlayer can't write to, the update is saved to Downloads and shown to you.
 
 ## Features
