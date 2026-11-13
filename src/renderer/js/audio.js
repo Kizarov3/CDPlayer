@@ -58,6 +58,7 @@ export class AudioEngine {
     const ctx = new AudioContext(rate ? { sampleRate: rate, latencyHint: 'playback' } : { latencyHint: 'playback' });
     this.ctx = ctx;
     this.input = ctx.createGain();
+    this.asleep = false; // (a new graph starts connected: see sleepSoon)
     this.eq = EQ_FREQUENCIES.map((f, i) => {
       const b = ctx.createBiquadFilter();
       b.type = 'peaking'; b.frequency.value = f; b.Q.value = 1.2; b.gain.value = this.eqGains[i]; // same RBJ peaking curve, Q 1.2, as the Java EQ
@@ -388,22 +389,28 @@ export class AudioEngine {
 
   async play() {
     if (!this.deck) return;
-    clearTimeout(this.sleepTimer);
+    this.wake();
     if (this.ctx.state !== 'running') await this.ctx.resume();
     try { await this.deck.el.play(); } catch { /* interrupted by a newer load */ }
   }
   // A song still fading out (a crossfade, a mix) is let go of: it mustn't play on, unheard of, under a paused one.
   pause() { if (this.fadingOut) this.cancelCrossfade(); if (this.deck) this.deck.el.pause(); this.sleepSoon(); }
-  // Paused a few seconds, the audio graph is put to sleep: running, it works through silence all the while (the EQ,
-  // spatial audio, the meters) — a third of what the paused player cost. Anything that sounds wakes it (wake()).
+  // Paused a few seconds, the songs are cut off from the EQ, spatial audio and meters, which would otherwise work
+  // through silence all the while (a third of what the paused player cost). The context itself keeps running: a
+  // suspended one stops the output, the Mac's speakers doze off, and the song came back a moment late after a pause.
+  // Anything that sounds wakes it (wake()).
   sleepSoon(ms = 4000) {
     clearTimeout(this.sleepTimer);
     this.sleepTimer = setTimeout(() => {
       const sounding = (this.deck && !this.deck.el.paused) || this.fadingOut;
-      if (!sounding && this.ctx.state === 'running' && this.ctx.suspend) this.ctx.suspend().catch(() => {});
+      if (!sounding && !this.asleep) { this.input.disconnect(this.eq[0]); this.asleep = true; }
     }, ms);
   }
-  wake() { clearTimeout(this.sleepTimer); if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {}); }
+  wake() {
+    clearTimeout(this.sleepTimer);
+    if (this.asleep) { this.input.connect(this.eq[0]); this.asleep = false; }
+    if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+  }
 
   /**
    * A snatch of the song from where it is now — the way a CD player sounds while it searches — faded in and out over
