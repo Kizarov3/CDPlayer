@@ -205,8 +205,8 @@ export function formatTime(seconds) {
 }
 const formatDuration = (sec) => (sec > 0 ? formatTime(sec) : '--:--');
 
-// What's printed round a pressed disc's rim (disc.js drawLabelPrint): the album's name, who it's by, the year and the
-// record label — the same on the disc the page draws (ALBUM's, the case's), printed as a picture.
+// The album a disc is of — its name, who it's by, the year, the record label: what its own photo is looked up by
+// (discArtFor), and part of the printed face's cache key (disc.js drawLabelPrint prints only the cover).
 const printOf = (d) => (d ? { album: d.album || null, artist: d.albumArtist || d.artist || null, year: yearOf(d), label: (d.credits && d.credits.label) || null } : null);
 // The disc's own picture (a photo of the CD, from the Cover Art Archive), by album: looked up once per album.
 const discArts = new Map();
