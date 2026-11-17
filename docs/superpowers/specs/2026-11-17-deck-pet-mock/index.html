@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тамагочи в деке — макет</title>
+<style>
+  :root { --bg: #111113; --panel: #1f1f22; --ink: #e8e9ec; --dim: #8a8e94; --red: rgb(196,20,28); }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 28px 16px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: .02em; }
+  .lead { color: var(--dim); margin: 0 0 18px; max-width: 780px; }
+  .controls { position: sticky; top: 0; z-index: 5; background: rgba(17,17,19,.95); backdrop-filter: blur(6px); padding: 10px 0 12px; display: grid; gap: 7px; border-bottom: 1px solid #2a2a2e; }
+  .row { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+  .row b { width: 96px; color: var(--dim); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+  .row i { width: 10px; }
+  button { font: 600 11px/1 inherit; font-family: inherit; letter-spacing: .07em; text-transform: uppercase; color: var(--ink); background: #26262a; border: 1px solid #38383d; border-radius: 999px; padding: 7px 11px; cursor: pointer; }
+  button.on { background: var(--red); border-color: var(--red); }
+  button.seq { border-style: dashed; }
+  section { margin-top: 30px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); margin: 0 0 10px; }
+  h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); margin: 18px 0 8px; font-weight: 600; }
+  .note { color: var(--dim); margin: 10px 0 0; max-width: 820px; }
+  .shot { position: relative; overflow: hidden; border-radius: 10px; background-repeat: no-repeat; background-size: 1120px auto; box-shadow: 0 0 0 1px #2a2a2e; }
+  .shot canvas, .shot pre { position: absolute; margin: 0; }
+  .zoomwrap { overflow-x: auto; }
+  .stage { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; }
+  .bigpanel { background: linear-gradient(rgba(0,0,0,.66), rgba(0,0,0,.52)), #2a0b0e; border-radius: 10px; padding: 16px 20px; display: inline-block; }
+  .bigpanel.lcd { background: linear-gradient(rgb(194,206,187), rgb(181,195,174)); }
+  .caption { min-height: 44px; margin-top: 10px; font-size: 15px; max-width: 700px; }
+  .meter { height: 6px; width: 260px; background: #2a2a2e; border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  .meter div { height: 100%; background: var(--red); transition: width .15s; }
+  .meterlabel { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; margin-top: 8px; }
+  pre.term { font: 13px/13px "SF Mono", Menlo, Consolas, monospace; white-space: pre; }
+  .decisions { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .decisions div { background: var(--panel); border-radius: 12px; padding: 14px 16px; }
+  .decisions ul { margin: 6px 0 0; padding-left: 18px; }
+  .decisions li { margin: 4px 0; }
+  .decisions .cut li { color: var(--dim); }
+  @media (max-width: 760px) { .decisions { grid-template-columns: 1fr; } }
+  .say { position: absolute; left: 180px; top: 69px; width: 228px; height: 19px; display: none; align-items: center; justify-content: center; font: 700 11px/1 -apple-system, system-ui, sans-serif; letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; }
+  .say.red { background: rgb(35,13,12); color: rgb(240,50,48); text-shadow: 0 0 8px rgba(220,30,30,.8); }
+  .say.white { background: rgb(190,200,182); color: rgb(31,42,28); }
+  .say.on { display: flex; animation: lamp .36s ease-out; }
+  @keyframes lamp { 0% { opacity: .15 } 35% { opacity: 1; filter: brightness(1.6) } 55% { opacity: .7 } 100% { opacity: 1 } }
+  .sayline { margin-top: 10px; font-size: 13px; color: var(--dim); }
+  .sayline span { color: rgb(240,60,55); font-weight: 700; letter-spacing: .14em; }
+  canvas.pet, .bigpanel canvas { cursor: pointer; }
+  .card .name strong:focus { outline: 1px dashed var(--dim); outline-offset: 3px; }
+  .card { width: 360px; background: var(--panel); border-radius: 16px; padding: 16px; box-shadow: 0 20px 50px rgba(0,0,0,.5), 0 0 0 1px #2e2e33; }
+  .card .strip { background: linear-gradient(rgba(0,0,0,.66), rgba(0,0,0,.52)), #2a0b0e; border-radius: 8px; height: 84px; display: grid; place-items: center; }
+  .card .name { display: flex; justify-content: space-between; align-items: baseline; margin-top: 14px; }
+  .card .name strong { font-size: 20px; letter-spacing: .06em; }
+  .card .name span, .card .lab { color: var(--dim); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+  .card .form { color: var(--red); font-weight: 700; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; margin-top: 2px; }
+  .card dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 14px 0 0; font-size: 13px; }
+  .card dt { color: var(--dim); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding-top: 2px; }
+  .card dd { margin: 0; }
+  .card .shelf { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+  .card .shelf button { padding: 6px; border-radius: 8px; background: #151517; display: grid; place-items: center; }
+  .card .shelf button.on { background: #3a1013; border-color: var(--red); }
+  .card .sect { border-top: 1px solid #2e2e33; margin-top: 14px; padding-top: 10px; }
+  .card .journal { font-size: 13px; margin: 6px 0 0; padding: 0; list-style: none; }
+  .card .journal li { display: grid; grid-template-columns: 58px 1fr; gap: 8px; margin: 3px 0; }
+  .card .journal span { color: var(--dim); }
+  .forms { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .forms > div { background: var(--panel); border-radius: 10px; padding: 12px; }
+  .forms .bigpanel { padding: 10px 12px; margin-bottom: 8px; }
+  .forms b { font-size: 12px; letter-spacing: .08em; }
+  .forms p { margin: 2px 0 0; color: var(--dim); font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Тамагочи в деке — макет v2</h1>
+  <p class="lead">Зверёк из точек в пустом месте дисплея деки. Подложка — настоящие скриншоты CDPlayer. Сверху переключатели: что происходит, кто он сейчас, что надето. Пунктирные кнопки — целые сценки (вылупление, линька, трюк).</p>
+
+  <div class="controls">
+    <div class="row" id="states"><b>Что происходит</b></div>
+    <div class="row" id="forms"><b>Кто он</b></div>
+    <div class="row" id="items"><b>Надето</b></div>
+    <div class="row" id="acts"><b>Ты делаешь</b></div>
+  </div>
+
+  <section>
+    <h2>Крупно</h2>
+    <div class="stage">
+      <div>
+        <div class="bigpanel"><canvas id="bigLed"></canvas></div>
+        <div class="sayline">дисплей пишет: <span id="sayBig">—</span></div>
+        <div class="caption" id="caption"></div>
+        <div id="meterbox"><div class="meterlabel">громкость (симуляция)</div><div class="meter"><div id="meter"></div></div></div>
+      </div>
+      <div class="bigpanel lcd"><canvas id="bigLcd"></canvas></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Что решили агенты</h2>
+    <div class="decisions">
+      <div>
+        <b>Берём</b>
+        <ul>
+          <li><b>Растёт по часам музыки:</b> яйцо → малыш → ребёнок → подросток → взрослый.</li>
+          <li><b>Линька первого числа:</b> взрослая форма пересчитывается по последним 30 дням — повод заглянуть, без штрафа, если не заглянул.</li>
+          <li><b>6 форм по привычкам</b> + <b>5 сюрпризов</b>, которые появляются сами, без подсказок. Найденные навсегда в дневнике, их можно выбрать.</li>
+          <li><b>Любимый альбом</b> (чаще всех слушаешь целиком) — свой танец.</li>
+          <li><b>Вещи за накопленное</b>, не за серии дней. На полке только заработанное.</li>
+          <li><b>Чувствует громкость</b> ~5 раз в секунду: качается, прыгает на пиках, дремлет между треками. Почти бесплатно для процессора.</li>
+          <li><b>Первые 10 минут:</b> яйцо трескается от треков; у кого уже есть история — сразу скачок роста и вещи за прошлое.</li>
+        </ul>
+      </div>
+      <div class="cut">
+        <b>Убрали</b>
+        <ul>
+          <li>ЗВЕЗДУ и микрофон за караоке — пели бы ради зверька, а не ради песни.</li>
+          <li>Колпак за ночь до 3:00 — поощряет недосып. Вместо этого колпак сам появляется поздно ночью.</li>
+          <li>Силуэты «???», «5/12», счётчики и полоски на дисплее — превращают в список дел.</li>
+          <li>Определение темпа (трясти головой / качаться) — дорого и на 25×16 точках не читается.</li>
+          <li>Любые слова про то, сколько ты не слушал.</li>
+        </ul>
+        <b style="display:block;margin-top:12px">Добавили — «чего-то не хватает»</b>
+        <ul style="color:var(--ink)">
+          <li><b>Замечает тебя:</b> глаза следят за курсором, тычок — радуется, три тычка — сальто. Карточка — двойным кликом.</li>
+          <li><b>Чувствует, что ты делаешь с декой:</b> пропуск — кружится голова, перемотка — съезжает, громко — закрывает уши, тихо — наклоняется к цифрам, извлёк диск — выпрыгивает и возвращается с новым.</li>
+          <li><b>Голос:</b> пара слов на дисплее в тишине между треками.</li>
+          <li><b>Характер</b> на каждую установку: сонный, прыгучий, любопытный или застенчивый — меняет, как часто он что делает.</li>
+          <li><b>Имя BLIP</b> (точка на экране и короткий звук) вместо MITE (клещ). Переименовать можно.</li>
+        </ul>
+        <b style="display:block;margin-top:12px">Позже</b>
+        <ul><li>Картинка зверька для шеринга в стиле share-карточек.</li></ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>CLASSIC · RED — в натуральную величину</h2>
+    <div class="zoomwrap"><div class="shot" style="width:620px;height:110px;background-image:url(red-classic.jpg);background-position:-450px -280px"><canvas id="vfdRed" class="pet" style="left:410px;top:49px"></canvas><div class="say red" id="sayRed"></div></div></div>
+  </section>
+
+  <section>
+    <h2>CLASSIC · WHITE</h2>
+    <div class="zoomwrap"><div class="shot" style="width:620px;height:110px;background-image:url(white-classic.jpg);background-position:-450px -280px"><canvas id="vfdWhite" class="pet" style="left:410px;top:49px"></canvas><div class="say white" id="sayWhite"></div></div></div>
+    <p class="note">Слова пишутся на месте ламп PLAY · PAUSE · SHUFFLE на пару секунд — только в тишине между треками или на паузе, не чаще раза в 5 треков. Около 25 слов, все — его собственные, никогда не про тебя.</p>
+  </section>
+
+  <section>
+    <h2>TERMINAL · RED</h2>
+    <div class="zoomwrap"><div class="shot" style="width:730px;height:370px;background-image:url(red-terminal.jpg);background-position:-380px -85px"><pre class="term" id="term" style="left:480px;top:40px"></pre></div></div>
+  </section>
+
+  <section>
+    <h2>JEWEL CASE · RED (×1.6)</h2>
+    <div class="zoomwrap"><div class="shot" style="width:510px;height:250px;background-image:url(red-case.jpg);background-position:-170px -140px;zoom:1.6"><canvas id="doodle" style="left:280px;top:196px"></canvas></div></div>
+  </section>
+
+  <section>
+    <h2>Клик по зверьку — карточка</h2>
+    <div class="card">
+      <div class="strip"><canvas id="cardPet"></canvas></div>
+      <div class="name"><strong id="petName" contenteditable="true" spellcheck="false" title="Click to rename">BLIP</strong><span>click the name to rename</span></div>
+      <div class="form" id="cardForm"></div>
+      <dl>
+        <dt>Hatched</dt><dd>Mar 12, on In Rainbows</dd>
+        <dt>Favourite</dt><dd>Kind of Blue</dd>
+        <dt>Last meal</dt><dd>Blue Train — played through</dd>
+        <dt>Next look</dt><dd>Dec 1</dd>
+        <dt>Temper</dt><dd>A curious one — sniffs at everything</dd>
+      </dl>
+      <div class="sect"><div class="lab">Shelf — click to wear</div><div class="shelf" id="shelf"></div></div>
+      <div class="sect"><div class="lab">Diary</div>
+        <ul class="journal">
+          <li><span>Mar 12</span>Hatched on In Rainbows</li>
+          <li><span>Apr 1</span>Grew up: a night owl</li>
+          <li><span>May 1</span>Molted: a collector</li>
+          <li><span>Jun 3</span>Found a hidden track — a ghost!</li>
+          <li><span>Aug 20</span>Earned a crown: 10 albums whole</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">Только то, что уже было. Ни пустых ячеек, ни «до следующей формы 12 часов».</p>
+  </section>
+
+  <section>
+    <h2>Все формы</h2>
+    <h3>Растёт — по часам музыки</h3>
+    <div class="forms" id="gStages"></div>
+    <h3>Взрослые — по тому, как слушаешь последние 30 дней</h3>
+    <div class="forms" id="gAdults"></div>
+    <h3>Сюрпризы — в плеере без подсказок, тут условия для тебя</h3>
+    <div class="forms" id="gSurprises"></div>
+    <h3>Вещи — за накопленное, навсегда</h3>
+    <div class="forms" id="gItems"></div>
+  </section>
+</main>
+
+<script>
+const W = 25, H = 16, OFF = 5, ROW = 2; // grid; the body's 16×14 box starts at column OFF, row ROW
+const BODY = [
+  "................", ".....######.....", "...##########...", "..############..", ".##############.",
+  ".##############.", ".##############.", ".##############.", ".##############.", ".##############.",
+  "..############..", "...##########...", "....##....##....", "...###....###...",
+];
+const KID = [
+  "................", "................", "................", ".....######.....", "...##########...",
+  "..############..", "..############..", "..############..", "..############..", "..############..",
+  "...##########...", "....########....", "....##....##....", "...###....###...",
+];
+const BABY = [
+  "................", "................", "................", "................", ".....######.....",
+  "....########....", "...##########...", "...##########...", "...##########...", "...##########...",
+  "....########....", ".....######.....", ".....##..##.....", "....###..###....",
+];
+const EGG = [
+  "................", "......####......", ".....######.....", "....########....", "....########....",
+  "...##########...", "...##########...", "...##########...", "...##########...", "...##########...",
+  "....########....", "....########....", ".....######.....", "................",
+];
+const GHOST = [
+  "................", ".....######.....", "...##########...", "..############..", ".##############.",
+  ".##############.", ".##############.", ".##############.", ".##############.", ".##############.",
+  ".##############.", ".##############.",
+];
+const HEMS = [[".##.###..###.##.", ".#...#....#...#."], [".###.##..##.###.", "..#...#..#...#.."]];
+const FACES = {
+  body: { eyes: [5, 6], cols: [[4, 5], [10, 11]], mouth: 9, m: [6, 9] },
+  kid: { eyes: [6, 7], cols: [[4, 5], [10, 11]], mouth: 9, m: [6, 9] },
+  baby: { eyes: [7, 8], cols: [[5, 5], [10, 10]], mouth: 10, m: [7, 8] },
+};
+const Z = ["####", "..#.", ".#..", "####"];
+const NOTE = ["..##", "..#.", "..#.", "###.", "###."];
+const QUESTION = [".##.", "#..#", "..#.", "....", "..#."];
+const HEART = [".#.#.", "#####", ".###.", "..#.."];
+const DISC = [".###.", "#####", "##.##", "#####", ".###."];
+const SNACK = [[".##.", "####", "####", ".##."], [".##.", "..##", "..##", ".##."], ["...#", "....", "..#.", "...."], ["....", "....", "....", "...."]];
+const FEAST = [[".###.", "#####", "##.##", "#####", ".###."], ["..##.", "..###", "...##", "..###", "..##."], ["....#", "...##", ".....", "...#.", "....."], [".....", ".....", ".....", ".....", "....."]];
+
+const STATES = {
+  playing: 'Играет', paused: 'Пауза', eating: 'Доел трек', feast: 'Альбом целиком', fav: 'Любимый альбом', sniff: 'Новый альбом',
+  singing: 'Караоке', asleep: 'Спит', hatch: 'Первые 10 минут', molt: 'Линька 1-го', trick: 'Трюк',
+};
+const SEQ = new Set(['hatch', 'molt', 'trick']);
+const STAGES = { egg: ['ЯЙЦО', 'EGG', 'Появляется, как только включил.'], baby: ['МАЛЫШ', 'BABY', 'Первый альбом целиком.'], kid: ['РЕБЁНОК', 'KID', '10 часов музыки.'], teen: ['ПОДРОСТОК', 'TEEN', '30 часов музыки.'] };
+const ADULTS = {
+  collector: ['КОЛЛЕКЦИОНЕР', 'COLLECTOR', 'Больше всего — альбомы целиком. Носит свой диск.'],
+  raver: ['РЕЙВЕР', 'RAVER', '25+ разных артистов за месяц. Очки.'],
+  owl: ['СОВА', 'NIGHT OWL', 'Много музыки с 23:00 до 4:00. Глаза-блюдца, в полночь светятся.'],
+  loyalist: ['ФАНАТ', 'LOYALIST', 'Один артист — 40% всего. Сердечко.'],
+  bird: ['ЖАВОРОНОК', 'EARLY BIRD', 'Много музыки с 5:00 до 9:00. Хохолок и клюв.'],
+  explorer: ['ИССЛЕДОВАТЕЛЬ', 'EXPLORER', '50+ песен впервые за месяц. Антенна и рюкзак.'],
+};
+const SURPRISES = {
+  vinyl: ['ВИНИЛ', 'VINYL', '10 альбомов до 1980 года целиком. Сам становится пластинкой.'],
+  ghost: ['ПРИЗРАК', 'GHOST', 'Нашёл скрытый трек после тишины.'],
+  metal: ['МЕТАЛЛИСТ', 'METALHEAD', '10 часов Metal / Rock / Punk по тегам. Рога и хайр.'],
+  cat: ['ДЖАЗОВЫЙ КОТ', 'JAZZ CAT', '5 джазовых или блюзовых альбомов целиком, ночью.'],
+  echo: ['ЭХО', 'ECHO', 'Та же песня ровно через год, день в день.'],
+};
+const FORMS = { ...STAGES, ...ADULTS, ...SURPRISES };
+const ITEMS = {
+  none: ['НИЧЕГО'],
+  crown: ['КОРОНА', '10 альбомов целиком'],
+  record: ['ЗОЛОТОЙ ДИСК', 'Один альбом целиком 5 раз'],
+  headphones: ['НАУШНИКИ', '100 часов музыки'],
+  cape: ['ПЛАЩ', '500 часов музыки'],
+  scarf: ['ШАРФ', 'Слушал в 7 разных дней (не подряд — просто 7)'],
+  medal: ['МЕДАЛЬ', '100 альбомов целиком'],
+  party: ['КОЛПАК', 'Сам надевается в день вылупления'],
+};
+const SHELF = ['crown', 'record', 'headphones', 'scarf'];
+let state = 'playing', form = 'collector', item = 'none';
+
+const blank = () => Array.from({ length: H }, () => new Array(W).fill(0));
+const rect = (r0, r1, c0, c1) => { const o = []; for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) o.push([r, c]); return o; };
+// painting in the body's own coordinates (row 0 = top of its 16×14 box), moved by dy/dx
+function pen(g, dy = 0, dx = 0) {
+  const set = (r, c, v) => { const y = r + ROW + dy, x = c + OFF + dx; if (y >= 0 && y < H && x >= 0 && x < W) g[y][x] = v; };
+  return {
+    lit: (cells) => cells.forEach(([r, c]) => set(r, c, 1)),
+    hole: (cells) => cells.forEach(([r, c]) => set(r, c, 0)),
+    stamp: (art, r0, c0, v = 1) => art.forEach((line, r) => [...line].forEach((ch, c) => { if (ch === '#') set(r0 + r, c0 + c, v); })),
+  };
+}
+// extras beside it, in grid coordinates
+function put(g, art, r0, c0) { art.forEach((line, r) => [...line].forEach((ch, c) => { const y = r0 + r, x = c0 + c; if (ch === '#' && y >= 0 && y < H && x >= 0 && x < W) g[y][x] = 1; })); }
+
+function face(p, f, eyes, mouth, look = 0) {
+  const [r0, r1] = f.eyes;
+  for (const [a, b] of f.cols) {
+    if (eyes === 'closed') p.hole(rect(r1, r1, a, b));
+    else if (eyes === 'happy') { p.hole(rect(r0, r0, a, b)); p.hole([[r1, a - 1], [r1, b + 1]]); }
+    else if (eyes === 'x') p.hole([[r0, a], [r1, b]]);
+    else p.hole(rect(r0, r1, a + look, b + look));
+  }
+  const { mouth: m, m: [c0, c1] } = f, mid = Math.floor((c0 + c1) / 2);
+  if (mouth === 'open') p.hole(rect(m - 1, m + 1, c0, c1));
+  else if (mouth === 'smile') { p.hole(rect(m, m, c0, c1)); p.hole([[m - 1, c0 - 1], [m - 1, c1 + 1]]); }
+  else if (mouth === 'small') p.hole(rect(m, m, mid, mid + (c1 > c0 ? 1 : 0)));
+  else p.hole(rect(m, m, c0, c1));
+}
+
+function wear(p, it, t, dancing, idy = 0) {
+  const q = idy ? { lit: (cells) => p.lit(cells.map(([r, c]) => [r + idy, c])), hole: p.hole } : p;
+  if (it === 'crown') { q.lit([[-1, 5], [-1, 7], [-1, 8], [-1, 10], ...rect(0, 0, 5, 10)]); if (!idy) p.hole(rect(1, 1, 5, 10)); }
+  if (it === 'party') { q.lit([[-2, 8], [-2, 9], [-1, 7], [-1, 8], ...rect(0, 0, 6, 9)]); p.hole(rect(1, 1, 5, 10)); }
+  if (it === 'headphones') { q.lit([...rect(-1, -1, 4, 11), [0, 3], [0, 12], [1, 2], [1, 13], ...rect(3, 7, 0, 0), ...rect(3, 7, 15, 15)]); }
+  if (it === 'cape') { q.lit([...rect(5, 12, 0, 0), ...rect(5, 12, 15, 15)]); if (dancing && t % 2) q.lit([[11, -1], [12, -1], [11, 16], [12, 16]]); }
+  if (it === 'record') { p.stamp(DISC, 7, -5); p.lit([[9, 0]]); }
+  if (it === 'scarf') { p.hole(rect(10, 10, 2, 13)); p.lit([[11, 13], [12, 13], [12, 14], [13, 14]]); }
+  if (it === 'medal') { p.hole([[10, 7], [10, 8], [11, 6], [11, 9], [12, 7], [12, 8]]); }
+}
+
+// The creature: its stage or form, its face, what it wears.
+function creature(g, o) {
+  const { f = form, eyes = 'open', mouth = 'neutral', look: look0 = null, dy = 0, dx = 0, t = 0, dancing = false, it = item, idy = 0 } = o;
+  const look = look0 ?? (mouseOn() ? mouseLook : 0);
+  const p = pen(g, dy, dx);
+  if (f === 'egg') {
+    p.stamp(EGG, 0, 0);
+    const crack = [[7, 3], [6, 4], [7, 5], [6, 6], [7, 7], [6, 8], [7, 9], [6, 10], [7, 11], [6, 12]];
+    p.hole(crack.slice(0, o.cracks == null ? 0 : o.cracks));
+    return;
+  }
+  if (f === 'baby') { p.stamp(BABY, 0, 0); face(p, FACES.baby, eyes, mouth, look); wear(p, it === 'cape' || it === 'headphones' ? 'none' : it, t, dancing, idy); return; }
+  if (f === 'kid') { p.stamp(KID, 0, 0); face(p, FACES.kid, eyes, mouth, look); wear(p, it, t, dancing, idy); return; }
+  if (f === 'vinyl') {
+    const cy = 7, cx = 7.5, spin = t % 4;
+    for (let r = 0; r < 14; r++) for (let c = 0; c < 16; c++) {
+      const d = Math.hypot(r - cy, (c - cx) * 1.0);
+      if (d > 6.6) continue;
+      const ang = Math.floor(((Math.atan2(r - cy, c - cx) + Math.PI) / (Math.PI * 2)) * 8 + spin) % 2;
+      const groove = d > 4.6 && d < 5.6 && ang === 0;
+      if (!groove) p.lit([[r, c]]);
+    }
+    face(p, { eyes: [5, 5], cols: [[5, 6], [9, 10]], mouth: 9, m: [7, 8] }, eyes, mouth === 'neutral' ? 'small' : mouth, look);
+    wear(p, it === 'cape' || it === 'scarf' ? 'none' : it, t, dancing, idy);
+    return;
+  }
+  if (f === 'ghost') {
+    p.stamp(GHOST, 0, 0); p.stamp(HEMS[t % 2], 12, 0);
+    face(p, FACES.body, eyes === 'open' ? 'open' : eyes, mouth === 'neutral' ? 'small' : mouth, look);
+    if (eyes === 'open') p.hole(rect(4, 4, 4 + look, 5 + look).concat(rect(4, 4, 10 + look, 11 + look)));
+    wear(p, it, t, dancing, idy);
+    return;
+  }
+  p.stamp(BODY, 0, 0);
+  if (dancing && t % 2) { p.hole([[12, 4], [12, 5]]); p.lit([[11, 3]]); }
+  if (f === 'teen') p.lit([[0, 8], [-1, 8], [-1, 9]]);
+  if (f === 'owl') {
+    p.lit([[0, 2], [0, 13], [1, 2], [1, 3], [1, 12], [1, 13], [-1, 2], [-1, 13]]);
+    if (eyes === 'closed') p.hole([...rect(6, 6, 3, 6), ...rect(6, 6, 9, 12)]);
+    else if (eyes === 'happy') face(p, FACES.body, 'happy', 'neutral');
+    else {
+      p.hole([[4, 4], [4, 5], [5, 3], [6, 3], [7, 4], [7, 5], [5, 6], [6, 6], [4, 10], [4, 11], [5, 9], [6, 9], [7, 10], [7, 11], [5, 12], [6, 12]]);
+      if (look > 0) p.hole([[5, 4], [6, 4], [5, 10], [6, 10]]); else if (look < 0) p.hole([[5, 5], [6, 5], [5, 11], [6, 11]]);
+    }
+    p.hole(mouth === 'open' ? rect(8, 10, 7, 8) : [[9, 7], [9, 8]]);
+  } else if (f === 'raver') {
+    if (eyes === 'closed') p.hole([...rect(6, 6, 3, 6), ...rect(6, 6, 9, 12)]);
+    else p.hole([...rect(5, 6, 3, 6), ...rect(5, 6, 9, 12), [5, 7], [5, 8]]);
+    face(p, { eyes: [99, 99], cols: [], mouth: 9, m: [6, 9] }, 'open', mouth);
+  } else if (f === 'cat') {
+    p.lit([[0, 2], [1, 2], [1, 3], [-1, 2], [0, 13], [1, 13], [1, 12], [-1, 13], [8, 0], [8, -1], [10, 0], [10, -1], [8, 15], [8, 16], [10, 15], [10, 16]]);
+    if (eyes === 'closed' || eyes === 'happy') face(p, FACES.body, eyes, 'neutral');
+    else p.hole([[5, 5 + look], [6, 5 + look], [5, 10 + look], [6, 10 + look]]);
+    p.hole(mouth === 'open' ? rect(8, 10, 6, 9) : [[9, 6], [10, 7], [10, 8], [9, 9]]);
+  } else if (f === 'metal') {
+    p.lit([[-1, 2], [0, 2], [0, 3], [1, 3], [-1, 13], [0, 13], [0, 12], [1, 12], ...rect(4, 11, 0, 0), ...rect(4, 11, 15, 15)]);
+    face(p, FACES.body, eyes, mouth === 'neutral' ? 'open' : mouth, look);
+    if (eyes === 'open') p.lit([[5, 4], [5, 11]]); // angry brows
+  } else {
+    face(p, FACES.body, eyes, mouth, look);
+    if (f === 'collector') { p.stamp(DISC, 7, -5); p.lit([[9, 0]]); }
+    if (f === 'loyalist' && !(dancing && t % 4 > 1)) p.stamp(HEART, 0, -5);
+    if (f === 'bird') { p.lit([[0, 6], [0, 8], [-1, 7], [0, 7], [7, 15], [8, 15], [7, 16]]); }
+    if (f === 'explorer') { p.lit([[0, 8], [-1, 8], ...(t % 4 < 2 ? [[-2, 8], [-2, 9]] : [[-2, 8], [-2, 7]]), ...rect(6, 10, 0, 0), [7, -1], [8, -1], [9, -1]]); }
+    if (f === 'echo') { const k = t % 3; for (const r of [4, 5, 6, 7, 8, 9]) { g[r + ROW + dy] && (g[r + ROW + dy][OFF - 2 - k] = (r === 4 || r === 9) ? 0 : 1); g[r + ROW + dy] && (g[r + ROW + dy][OFF + 17 + k] = (r === 4 || r === 9) ? 0 : 1); } }
+  }
+  wear(p, it, t, dancing, idy);
+}
+
+// the music's loudness, made up: a song with two loud peaks, then the gap before the next one
+function level(t) { const c = t % 36; if (c >= 30) return 0; if (c === 10 || c === 22) return 1; return 0.35 + 0.3 * Math.abs(Math.sin(c * 0.9)); }
+const ADULT_KEYS = Object.keys(ADULTS);
+const isGrown = (f) => !(f in STAGES);
+
+let caption = '';
+// a flash: the creature's own outline lit, its insides dark (only it flashes, not the display)
+function invertBox(g) {
+  const was = g.map((r) => r.slice()), on = (y, x) => y >= 0 && y < H && x >= 0 && x < W && was[y][x];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) g[y][x] = was[y][x] && !(on(y - 1, x) && on(y + 1, x) && on(y, x - 1) && on(y, x + 1)) ? 1 : 0;
+}
+
+// ── it notices you: the cursor, a poke, what you do to the deck ──
+let mouseLook = 0, lastMove = 0, react = null, pokes = [], speech = null;
+const mouseOn = () => Date.now() - lastMove < 3000;
+addEventListener('mousemove', (e) => {
+  lastMove = Date.now();
+  const pets = [...document.querySelectorAll('canvas.pet, .bigpanel canvas, #term')].map((c) => c.getBoundingClientRect()).filter((r) => r.width);
+  const near = pets.sort((a, b) => Math.abs(e.clientY - (a.top + a.height / 2)) - Math.abs(e.clientY - (b.top + b.height / 2)))[0];
+  if (near) { const dx = e.clientX - (near.left + near.width / 2); mouseLook = dx > 60 ? 1 : dx < -60 ? -1 : 0; }
+});
+function act(kind) {
+  if (kind === 'poke') {
+    const now = Date.now(); pokes = pokes.filter((p) => now - p < 1300); pokes.push(now);
+    if (pokes.length >= 3) { pokes = []; kind = 'trick'; }
+  }
+  if (kind === 'poke3') kind = 'trick';
+  react = { kind, t0: Date.now(), dur: { poke: 800, trick: 2100, skip: 1300, seek: 760, loud: 1600, quiet: 1600, eject: 4200 }[kind] };
+  if (kind === 'eject') setTimeout(() => say('NEW? SNIFF SNIFF'), 3000);
+}
+function say(text) { speech = { text, until: Date.now() + 2300 }; for (const id of ['sayRed', 'sayWhite']) { const n = $(id); n.textContent = text; n.classList.remove('on'); void n.offsetWidth; n.classList.add('on'); } }
+const SPEAK = { eating: [10, 4, 'YUM'], feast: [24, 13, 'WHOLE THING!'], fav: [16, 1, 'KIND OF BLUE!!'], sniff: [12, 2, 'NEW? SNIFF SNIFF'], hatch: [66, 25, 'HELLO!'], molt: [36, 23, 'TA-DA'], playing: [72, 31, 'MORE!'] };
+
+function reaction(g) {
+  const el = Date.now() - react.t0, k = Math.floor(el / 120);
+  switch (react.kind) {
+    case 'poke':
+      if (k < 2) creature(g, { dy: 1, eyes: 'closed', mouth: 'small' }); else creature(g, { eyes: 'happy', mouth: 'smile' });
+      caption = 'Ткнул — сжался, моргнул, обрадовался. Три тычка подряд — сальто.'; break;
+    case 'trick': {
+      const s = [{ dy: 1 }, { dy: -2 }, { dy: -1, flip: 1 }, { dy: -2, flip: 1 }, { dy: 1 }][Math.floor(el / 230)];
+      if (s) { creature(g, { dy: s.dy, eyes: 'closed', mouth: 'small' }); if (s.flip) g.reverse(); }
+      else { creature(g, { eyes: 'happy', mouth: 'open' }); put(g, NOTE, 1, 21); }
+      caption = 'Три тычка — сальто'; break;
+    }
+    case 'skip':
+      creature(g, { eyes: 'x', mouth: 'small', dx: k % 2 ? 1 : -1, look: 0 });
+      put(g, [k % 2 ? '#.....#' : '...#...'], 0, OFF + 4); put(g, [k % 2 ? '...#...' : '#.....#'], 1, OFF + 4);
+      caption = 'Пропустил трек — голова кружится'; break;
+    case 'seek': {
+      const dx = [1, 2, 2, 2, 2, 1, 0][Math.min(6, k)];
+      creature(g, { dx, look: 1, mouth: 'small' }); caption = 'Перемотал — съехал вслед'; break;
+    }
+    case 'loud': {
+      const hand = Math.max(4, 9 - k);
+      creature(g, { eyes: 'closed', mouth: 'small', dx: k % 4 === 1 ? 1 : 0, look: 0 });
+      pen(g).lit([[hand, -1], [hand + 1, -1], [hand, 16], [hand + 1, 16]]);
+      caption = 'Громкость под 100% — зажмурился и закрыл уши'; break;
+    }
+    case 'quiet':
+      creature(g, { dx: Math.min(2, k), look: 1, mouth: 'small' }); caption = 'Почти не слышно — наклонился к цифрам'; break;
+    case 'eject': {
+      const j = Math.floor(el / 150);
+      const dy = [1, 1, -3, -8, -16][j];
+      if (j < 5) creature(g, { dy, eyes: j < 2 ? 'open' : 'happy', mouth: 'small', look: 0 });
+      else if (j < 13) { /* gone */ }
+      else if (j < 16) creature(g, { dy: [-8, -3, 1][j - 13], eyes: 'open', mouth: 'small', look: 0 });
+      else { creature(g, { look: 1, dx: j % 2, mouth: 'small' }); if (j % 4 < 3) put(g, QUESTION, 0, 21); }
+      caption = j < 13 ? 'Извлёк диск — выпрыгнул из лотка' : 'Новый диск — вернулся и принюхивается'; break;
+    }
+  }
+  return g;
+}
+function frame(t) {
+  if (react && Date.now() - react.t0 < react.dur) return reaction(blank());
+  react = null;
+  return baseFrame(t);
+}
+
+function baseFrame(t) {
+  const g = blank(), F = FORMS[form];
+  const egg = form === 'egg';
+  switch (state) {
+    case 'playing': {
+      const L = level(t);
+      if (egg) { creature(g, { dx: t % 2 ? 1 : -1, cracks: 0 }); caption = 'Яйцо качается под музыку'; break; }
+      if (L === 0) { creature(g, { eyes: 'closed', mouth: 'small', t }); put(g, Z, t % 2 ? 1 : 3, 21); caption = 'Тишина между треками — дремлет секунду. На альбомах без пауз не спит.'; }
+      else if (L === 1) { creature(g, { eyes: 'happy', mouth: 'open', dy: -2, t, dancing: true }); put(g, NOTE, 0, 21); caption = 'Громкий пик — подпрыгивает'; }
+      else { const dy = t % 2 && L > 0.4 ? -1 : 0; creature(g, { mouth: 'smile', dy, t, dancing: true }); if (L > 0.5) put(g, NOTE, t % 2 ? 1 : 4, 21); caption = 'Качается в такт: чем громче, тем сильнее'; }
+      break;
+    }
+    case 'paused': {
+      const look = mouseOn() ? mouseLook : [0, 1, 0, -1][Math.floor(t / 3) % 4];
+      if (form === 'echo' && t % 20 === 2) say('A YEAR AGO TODAY: SO WHAT');
+      if (egg) creature(g, { cracks: 0 }); else creature(g, { eyes: t % 7 === 3 ? 'closed' : 'open', look, t });
+      caption = 'Пауза — оглядывается и моргает';
+      break;
+    }
+    case 'eating': {
+      if (egg) { creature(g, { cracks: 1 + (Math.floor(t / 3) % 3) * 3, dx: t % 2 }); caption = 'Яйцо: каждый доигранный трек — новая трещина'; break; }
+      creature(g, { mouth: t % 2 ? 'neutral' : 'open', t, look: 1 }); put(g, SNACK[Math.min(3, Math.floor(t / 2) % 5)], 9, 21);
+      caption = 'Трек доигран — перекус';
+      break;
+    }
+    case 'feast': {
+      const c = t % 24;
+      if (c < 12) { creature(g, { mouth: c % 2 ? 'neutral' : 'open', look: 1, t }); put(g, FEAST[Math.min(3, Math.floor(c / 3))], 8, 20); }
+      else { creature(g, { eyes: 'happy', mouth: 'smile', dy: c % 2 ? -2 : 0, t, dancing: true }); put(g, NOTE, c % 2 ? 0 : 3, 21); }
+      caption = 'Альбом от начала до конца — пир и танец';
+      break;
+    }
+    case 'fav': {
+      creature(g, { eyes: 'happy', mouth: 'open', dy: t % 2 ? -2 : 0, dx: t % 4 < 2 ? 0 : 1, t, dancing: true });
+      put(g, t % 2 ? HEART : NOTE, 0, 20);
+      caption = 'Играет его любимый альбом (Kind of Blue) — свой танец';
+      break;
+    }
+    case 'sniff': {
+      creature(g, { look: 1, dx: t % 2, t, mouth: 'small' });
+      if (t % 4 < 3) put(g, QUESTION, 0, 21);
+      put(g, SNACK[0], 11, 21);
+      caption = 'Альбом, который он ещё ни разу не ел — принюхивается';
+      break;
+    }
+    case 'singing': {
+      creature(g, { mouth: t % 2 ? 'open' : 'neutral', eyes: t % 6 < 3 ? 'open' : 'happy', t, dancing: true, dy: t % 4 === 0 ? -1 : 0 });
+      put(g, NOTE, t % 2 ? 0 : 3, 21);
+      caption = 'Караоке — открывает рот вместе со словами';
+      break;
+    }
+    case 'asleep': {
+      if (egg) creature(g, { cracks: 0 }); else creature(g, { eyes: 'closed', mouth: 'small', t });
+      put(g, Z, t % 2 ? 1 : 5, 21);
+      caption = 'Давно не слушал — просто спит. Включишь что угодно — проснётся, зевнёт и покажет, что ел последним.';
+      break;
+    }
+    case 'hatch': {
+      const c = t % 66, grown = isGrown(form) ? form : 'collector';
+      if (c < 6) { creature(g, { f: 'egg', dx: c % 2 ? 1 : -1, cracks: 0 }); caption = 'Включил в настройках — яйцо появилось и качается под музыку'; }
+      else if (c < 18) { creature(g, { f: 'egg', dx: c % 2, cracks: c < 10 ? 3 : c < 14 ? 6 : 10 }); put(g, SNACK[2], 10, 21); caption = 'Каждый доигранный трек — новая трещина'; }
+      else if (c < 24) {
+        const p = pen(g); creature(g, { f: 'baby', eyes: c % 2 ? 'happy' : 'open', mouth: 'small', it: 'none' });
+        p.hole(rect(9, 13, 2, 13)); p.stamp(["...#.#..#.#.#...", "...##########...", "....########....", ".....######....."], 9, 0); // the bottom shell, its broken edge
+        const fly = c - 18; p.stamp(["..####..", ".######.", "########"], -1 - fly, -5 + (fly > 2 ? -1 : 0)); // the top, flying off
+        caption = 'Первый альбом целиком — вылупился!';
+      }
+      else if (c < 30) { creature(g, { f: 'baby', eyes: c % 3 ? 'open' : 'happy', mouth: 'smile', it: 'none', t: c }); caption = 'Малыш'; }
+      else if (c < 50) {
+        const steps = [['flash', 'baby'], ['kid'], ['kid'], ['flash', 'kid'], ['teen'], ['teen'], ['flash', 'teen'], [grown], [grown], [grown]];
+        const s = steps[Math.floor((c - 30) / 2)];
+        creature(g, { f: s[s.length - 1] === 'teen' || s[s.length - 1] === 'kid' || s[s.length - 1] === 'baby' ? s[s.length - 1] : grown, eyes: 'happy', mouth: 'smile', it: 'none', dy: c % 2 ? -1 : 0, t: c, dancing: true });
+        if (s[0] === 'flash' && c % 2) invertBox(g);
+        caption = 'У тебя уже есть история прослушиваний — СКАЧОК РОСТА';
+      }
+      else {
+        const drop = Math.min(0, -6 + (c - 50));
+        creature(g, { f: grown, eyes: c > 57 ? 'happy' : 'open', look: c < 56 ? 0 : 0, mouth: 'smile', it: 'crown', idy: drop, t: c });
+        caption = 'Вещи за прошлое прослушивание сами падают на полку: корона за 10 альбомов целиком';
+      }
+      break;
+    }
+    case 'molt': {
+      const c = t % 36, now = isGrown(form) ? form : 'collector', before = now === 'owl' ? 'collector' : 'owl';
+      if (c < 8) { creature(g, { f: before, t: c, eyes: c % 5 === 2 ? 'closed' : 'open' }); caption = `Конец месяца. Сейчас он — ${FORMS[before][0]}`; }
+      else if (c < 16) { creature(g, { f: before, dx: c % 2 ? 1 : -1, t: c, eyes: 'closed', mouth: 'small' }); if (c % 2) put(g, QUESTION, 0, 21); caption = 'Первое число — линяет…'; }
+      else if (c < 22) { creature(g, { f: c % 2 ? now : before, t: c }); if (c % 2) invertBox(g); caption = 'Первое число — линяет…'; }
+      else { creature(g, { f: now, eyes: 'happy', mouth: 'open', dy: c % 2 ? -1 : 0, t: c, dancing: true }); put(g, NOTE, c % 2 ? 0 : 3, 21); caption = `Новая форма — ${FORMS[now][0]}. Прежняя осталась в дневнике, её можно выбрать.`; }
+      break;
+    }
+    case 'trick': {
+      const c = t % 16;
+      const steps = { 4: { dy: 1 }, 5: { dy: -2 }, 6: { dy: -1, flip: true }, 7: { dy: -2, flip: true }, 8: { dy: 1 } };
+      const s = steps[c];
+      if (c < 4) creature(g, { t: c });
+      else if (s) { creature(g, { dy: s.dy, eyes: 'closed', t: c, mouth: 'small' }); if (s.flip) g.reverse(); }
+      else { creature(g, { eyes: 'happy', mouth: 'open', t: c }); if (c < 12) put(g, NOTE, 1, 21); }
+      caption = 'Редко, примерно раз на 25 треков — сальто';
+      break;
+    }
+  }
+  return g;
+}
+
+// The deck display's way: every dot faintly there, the lit ones in the theme's colour (glowing on LED, ink on the LCD).
+function drawDots(canvas, g, { lcd = false, pitch = 2.6, color = [196, 20, 28] } = {}) {
+  const dpr = devicePixelRatio || 1, pad = lcd ? 0 : Math.ceil(pitch * 1.5), w = W * pitch + pad * 2, h = H * pitch + pad * 2;
+  if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); canvas.style.width = w + 'px'; canvas.style.height = h + 'px'; canvas.style.margin = `-${pad}px`; }
+  const c = canvas.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h); c.translate(pad, pad);
+  const ink = lcd ? [31, 42, 28] : color, s = pitch * 0.8, r = s * 0.3;
+  const dot = (x, y) => { c.beginPath(); c.roundRect(x * pitch, y * pitch, s, s, r); c.fill(); };
+  c.shadowBlur = 0; c.fillStyle = `rgba(${ink},${lcd ? 0.08 : 0.07})`;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (!g[y][x]) dot(x, y);
+  const pass = (blur) => { c.shadowBlur = blur; c.shadowColor = `rgba(${ink},0.7)`; c.fillStyle = `rgba(${ink},${lcd ? 0.92 : 0.9})`; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (g[y][x]) dot(x, y); };
+  if (!lcd) pass(pitch * 2.2);
+  pass(0);
+}
+
+const WORDS = { playing: 'DANCING', paused: 'AWAKE', eating: 'EATING', feast: 'FEAST', fav: 'FAVOURITE!', sniff: 'SNIFFING', singing: 'SINGING', asleep: 'ASLEEP', hatch: 'HATCHING', molt: 'MOLTING', trick: 'TA-DA' };
+function drawTerm(pre, g) {
+  const lines = [];
+  for (let y = 0; y < H; y += 2) { let s = ''; for (let x = 0; x < W; x++) { const a = g[y][x], b = g[y + 1] && g[y + 1][x]; s += a && b ? '█' : a ? '▀' : b ? '▄' : ' '; } lines.push(s); }
+  pre.innerHTML = `<span style="color:rgb(214,58,50)">${lines.join('\n')}</span>\n\n<span style="color:#8a8e94">[${petName()} · ${FORMS[form][1]} · ${react ? react.kind.toUpperCase() : WORDS[state]}]${speech && Date.now() < speech.until ? `  <span style="color:rgb(214,58,50)">"${speech.text}"</span>` : ''}</span>`;
+}
+
+function drawDoodle(canvas, g, seed) {
+  const p = 2.1, dpr = devicePixelRatio || 1, w = W * p + 6, h = H * p + 6;
+  if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); canvas.style.width = w + 'px'; canvas.style.height = h + 'px'; canvas.style.transform = 'rotate(-6deg)'; }
+  const c = canvas.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h); c.translate(3, 3);
+  let n = seed * 9301 + 49297; const rnd = () => ((n = (n * 9301 + 49297) % 233280) / 233280 - 0.5) * 0.7;
+  c.strokeStyle = 'rgba(24,22,48,0.78)'; c.lineWidth = 0.9; c.lineCap = 'round';
+  const on = (x, y) => y >= 0 && y < H && x >= 0 && x < W && g[y][x];
+  c.beginPath();
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (!on(x, y)) continue;
+    const L = x * p, T = y * p, R = L + p, B = T + p;
+    const seg = (x1, y1, x2, y2) => { c.moveTo(x1 + rnd(), y1 + rnd()); c.lineTo(x2 + rnd(), y2 + rnd()); };
+    if (!on(x, y - 1)) seg(L, T, R, T); if (!on(x, y + 1)) seg(L, B, R, B); if (!on(x - 1, y)) seg(L, T, L, B); if (!on(x + 1, y)) seg(R, T, R, B);
+  }
+  c.stroke();
+}
+
+// small item pictures for the shelf and the list
+const ICONS = {
+  crown: ["#.##.#", "######", "######"], record: [".###.", "#####", "##.##", "#####", ".###."], headphones: [".####.", "#....#", "#....#", "##..##", "##..##"],
+  cape: ["######", "#....#", "#....#", "##..##"], scarf: ["######", "######", "....##", "....#."], medal: ["#...#", ".#.#.", "..#..", ".###.", ".###."], party: ["..#..", "..#..", ".###.", "#####"],
+};
+function iconCanvas(key, pitch = 4) {
+  const art = ICONS[key], cv = document.createElement('canvas'), g = Array.from({ length: 6 }, () => new Array(8).fill(0));
+  art.forEach((line, r) => [...line].forEach((ch, c) => { if (ch === '#') g[r + Math.floor((6 - art.length) / 2)][c + Math.floor((8 - line.length) / 2)] = 1; }));
+  const dpr = devicePixelRatio || 1; cv.width = 8 * pitch * dpr; cv.height = 6 * pitch * dpr; cv.style.width = 8 * pitch + 'px'; cv.style.height = 6 * pitch + 'px';
+  const c = cv.getContext('2d'); c.scale(dpr, dpr);
+  for (let y = 0; y < 6; y++) for (let x = 0; x < 8; x++) { c.fillStyle = g[y][x] ? 'rgba(196,20,28,.95)' : 'rgba(196,20,28,.08)'; c.beginPath(); c.roundRect(x * pitch, y * pitch, pitch * 0.8, pitch * 0.8, 1); c.fill(); }
+  return cv;
+}
+
+const $ = (id) => document.getElementById(id);
+let t = 0, lastPose = '', prevState = 'playing';
+function render() {
+  const g = frame(t);
+  drawDots($('vfdRed'), g);
+  drawDots($('vfdWhite'), g, { lcd: true });
+  drawDots($('bigLed'), g, { pitch: 11 });
+  drawDots($('bigLcd'), g, { pitch: 11, lcd: true });
+  drawDots($('cardPet'), g, { pitch: 3.4 });
+  drawTerm($('term'), g);
+  $('caption').textContent = caption;
+  $('meterbox').style.visibility = state === 'playing' ? 'visible' : 'hidden';
+  $('meter').style.width = `${Math.round(level(t) * 100)}%`;
+  const pose = state + form + item;
+  if (pose !== lastPose) { const s = state; if (SEQ.has(s)) state = 'paused'; drawDoodle($('doodle'), frame(0), pose.length); state = s; lastPose = pose; }
+}
+const SPEED = { playing: 220, singing: 250, eating: 330, feast: 300, fav: 260, sniff: 400, paused: 500, asleep: 900, hatch: 320, molt: 300, trick: 230 };
+const petName = () => ($('petName').textContent.trim() || 'BLIP');
+function loop() {
+  t++;
+  const s = SPEAK[state];
+  if (s && !react && t % s[0] === s[1]) say(s[2]);
+  render();
+  const talking = speech && Date.now() < speech.until;
+  if (!talking) { for (const id of ['sayRed', 'sayWhite']) $(id).classList.remove('on'); }
+  $('sayBig').textContent = talking ? speech.text : '—';
+  setTimeout(loop, react ? 120 : SPEED[state]);
+}
+$('petName').addEventListener('input', (e) => { const n = e.target, v = n.textContent.toUpperCase().replace(/[^A-ZА-ЯЁ0-9 ]/g, '').slice(0, 8); if (v !== n.textContent) { n.textContent = v; const r = document.createRange(); r.selectNodeContents(n); r.collapse(false); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); } });
+$('petName').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } });
+document.addEventListener('click', (e) => { if (e.target.matches('canvas.pet, .stage .bigpanel canvas, #cardPet')) act('poke'); });
+
+function buttons(boxId, entries, get, set, cls) {
+  const box = $(boxId);
+  for (const [k, label, gap] of entries) {
+    if (gap) { const i = document.createElement('i'); box.appendChild(i); }
+    const b = document.createElement('button'); b.textContent = label; b.dataset.k = k; if (cls && cls(k)) b.classList.add(cls(k));
+    b.onclick = () => { set(k); refresh(); };
+    box.appendChild(b);
+  }
+}
+function refresh() {
+  if (prevState === 'asleep' && state !== 'asleep') say('YAAAWN… HI');
+  prevState = state;
+  for (const [id, v] of [['states', state], ['forms', form], ['items', item]]) [...$(id).querySelectorAll('button')].forEach((x) => x.classList.toggle('on', x.dataset.k === v));
+  [...$('shelf').querySelectorAll('button')].forEach((x) => x.classList.toggle('on', x.dataset.k === item));
+  const stage = form in STAGES ? FORMS[form][1] : 'ADULT';
+  $('cardForm').textContent = form in STAGES ? `${stage} · growing` : `${FORMS[form][1]} · day 214`;
+  t = 0; render();
+}
+buttons('states', Object.entries(STATES).map(([k, v]) => [k, v]), () => state, (k) => { state = k; }, (k) => (SEQ.has(k) ? 'seq' : ''));
+buttons('forms', [...Object.entries(STAGES).map(([k, v]) => [k, v[0]]), ...Object.entries(ADULTS).map(([k, v], i) => [k, v[0], i === 0]), ...Object.entries(SURPRISES).map(([k, v], i) => [k, v[0], i === 0])], () => form, (k) => { form = k; });
+buttons('items', Object.entries(ITEMS).map(([k, v]) => [k, v[0]]), () => item, (k) => { item = k; });
+for (const [k, label] of [['poke', 'Ткнуть'], ['poke3', 'Ткнуть ×3'], ['skip', 'Пропустить трек'], ['seek', 'Перемотать'], ['loud', 'Громко'], ['quiet', 'Тихо'], ['eject', 'Извлечь диск']]) {
+  const b = document.createElement('button'); b.textContent = label; b.onclick = () => act(k); $('acts').append(b);
+}
+for (const k of SHELF) { const b = document.createElement('button'); b.dataset.k = k; b.title = ITEMS[k][0]; b.append(iconCanvas(k, 3.5)); b.onclick = () => { item = item === k ? 'none' : k; refresh(); }; $('shelf').append(b); }
+
+// the gallery: each form awake and still
+function tile(box, f, ru, why, it = 'none') {
+  const d = document.createElement('div'), panel = document.createElement('div'), c = document.createElement('canvas');
+  panel.className = 'bigpanel'; panel.append(c); d.append(panel); d.insertAdjacentHTML('beforeend', `<b>${ru}</b><p>${why}</p>`); box.append(d);
+  const s = state, fm = form, im = item; state = 'paused'; form = f; item = it;
+  drawDots(c, frame(0), { pitch: 4.4 }); state = s; form = fm; item = im;
+}
+for (const [k, v] of Object.entries(STAGES)) tile($('gStages'), k, v[0], v[2]);
+for (const [k, v] of Object.entries(ADULTS)) tile($('gAdults'), k, v[0], v[2]);
+for (const [k, v] of Object.entries(SURPRISES)) tile($('gSurprises'), k, v[0], v[2]);
+for (const [k, v] of Object.entries(ITEMS)) if (k !== 'none') tile($('gItems'), 'raver', v[0], v[1], k);
+
+refresh(); loop();
+</script>
+</body>
+</html>
