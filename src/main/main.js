@@ -21,7 +21,13 @@ const shotThemes = (() => { const a = process.argv.find((x) => x.startsWith('--t
 const shotArg = (name) => { const a = process.argv.find((x) => x.startsWith(`--${name}=`)); return a ? a.slice(name.length + 3) : null; };
 // `--theme-compare=<before>,<after>`: two --theme-shots folders, screen by screen; exits 1 if any differs (theme-shots.js).
 const compareArg = process.argv.find((a) => a.startsWith('--theme-compare='));
-if (shotsDir || compareArg) {
+// `--perf-report=<file.json> [--perf-seconds=<s>]`: what the player costs and how quickly it answers, scenario by
+// scenario, in the real window (perf-report.js), in a throwaway data folder too.
+const perfArg = process.argv.find((a) => a.startsWith('--perf-report='));
+const perfOut = perfArg ? path.resolve(perfArg.slice('--perf-report='.length)) : null;
+// (`--perf-software`: without the graphics card, as in a virtual machine — where what the window draws costs the most)
+if (perfOut && process.argv.includes('--perf-software')) app.disableHardwareAcceleration();
+if (shotsDir || compareArg || perfOut) {
   process.env.CDPLAYER_HOME = fs.mkdtempSync(path.join(require('os').tmpdir(), 'cdplayer-shots-'));
   process.on('exit', () => { try { fs.rmSync(process.env.CDPLAYER_HOME, { recursive: true, force: true }); } catch { /* left for the system to clear */ } });
 }
@@ -90,7 +96,7 @@ const pendingOpenFiles = [];
 function audioArgs(argv) {
   return argv.slice(1).filter((a) => !a.startsWith('-') && (library.isSupportedAudio(a) || cue.isCueFile(a)) && store.isFile(a));
 }
-const gotLock = !!smokeDir || !!shotsDir || !!compareArg || app.requestSingleInstanceLock();
+const gotLock = !!smokeDir || !!shotsDir || !!compareArg || !!perfOut || app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
@@ -111,6 +117,7 @@ app.on('open-file', (event, filePath) => {
 
 let win = null;
 if (shotsDir) store.writeSettings({ ...store.DEFAULT_SETTINGS, eq: store.DEFAULT_SETTINGS.eq.slice(), animations: false, volume: 0, language: 'en', theme: shotThemes[0] || 'RED' });
+if (perfOut) { store.writeSettings({ ...store.DEFAULT_SETTINGS, eq: store.DEFAULT_SETTINGS.eq.slice(), volume: 0, language: 'en', theme: shotThemes[0] || 'RED' }); store.markOnboarded(); store.writeLastVersion(APP_VERSION); } // (no first-run tour or WHAT'S NEW in its way)
 let settings = store.readSettings();
 let normalBounds = null;
 let miniMode = false;
@@ -171,7 +178,7 @@ function createWindow() {
     persistSettings();
   });
   win.on('closed', () => { win = null; if (miniWin && !miniWin.isDestroyed()) { quitting = true; miniWin.close(); } });
-  win.once('ready-to-show', () => { if (!smokeDir && !shotsDir) win.show(); });
+  win.once('ready-to-show', () => { if (!smokeDir && !shotsDir && !perfOut) win.show(); });
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   // The page's process gone (a crash, or the system ending it): load the player again rather than leave an empty
@@ -190,11 +197,13 @@ function createWindow() {
   win.webContents.on('did-finish-load', () => {
     if (smokeDir) { runSmokeTest(); return; }
     if (shotsDir) { if (win.webContents.getURL().startsWith('cdp://')) runThemeShots(); return; } // (not the blank page the pinning loads first)
+    if (perfOut) { if (win.webContents.getURL().startsWith('cdp://')) runPerfReport(); return; }
     if (pendingOpenFiles.length) { win.webContents.send('open-files', pendingOpenFiles.splice(0)); }
     phonePageBack();
   });
   // (the screenshots' run pins the page's clock first — theme-shots.js)
   if (shotsDir) require('./theme-shots').pinTime(win).then(() => win.loadURL('cdp://app/index.html'));
+  else if (perfOut) require('./perf-report').probe(win).then(() => win.loadURL('cdp://app/index.html'));
   else win.loadURL('cdp://app/index.html');
 }
 
@@ -220,6 +229,18 @@ async function runThemeShots() {
     console.log(`theme-shots: ${r.written.length} pictures in ${shotsDir}`);
     if (made) fs.rmSync(made.root, { recursive: true, force: true });
   } catch (e) { console.error('theme-shots failed:', e); code = 1; }
+  quitting = true;
+  app.exit(code);
+}
+
+async function runPerfReport() {
+  let code = 0;
+  try {
+    const seconds = Number(shotArg('perf-seconds')) || 5;
+    const r = await require('./perf-report').run({ win, app, seconds, bisect: shotArg('perf-bisect'), profile: process.argv.includes('--perf-profile') });
+    fs.writeFileSync(perfOut, JSON.stringify({ platform: process.platform, arch: process.arch, electron: process.versions.electron, at: new Date().toISOString(), ...r }, null, 2) + '\n');
+    console.log(`perf: written to ${perfOut}`);
+  } catch (e) { console.error('perf-report failed:', e); code = 1; }
   quitting = true;
   app.exit(code);
 }
