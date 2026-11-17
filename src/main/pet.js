@@ -118,11 +118,13 @@ function evolve(old, s, now = Date.now(), { hidden = false, echo = false } = {})
   if (s.hours >= 50 && now - p.hatchedAt >= MONTH_DAYS * DAY && monthKey(now) !== p.lastMolt) {
     const from = p.form, to = habitForm(s.month);
     p.form = to; p.lastMolt = monthKey(now);
+    if (HABITS.includes(p.chosen)) p.chosen = null; // (a look of its own picked before: the new one shows)
     if (!p.found[to]) p.found[to] = now;
     if (from !== to) events.push({ kind: 'molt', from, to });
   }
   const stage = p.form ? 'adult' : stageFor(s.hours);
-  if (stage !== p.stage) { p.stage = stage; events.push({ kind: 'grow', stage }); }
+  // (only ever up: fewer hours read later — a folder gone from the shelf — don't shrink it)
+  if (STAGES.indexOf(stage) > STAGES.indexOf(p.stage)) { p.stage = stage; events.push({ kind: 'grow', stage }); }
   for (const [item, earned] of ITEMS) if (!p.items[item] && earned(s)) { p.items[item] = now; events.push({ kind: 'item', item }); }
   for (const form of SURPRISES) {
     if (!p.pending[form]) continue;
@@ -133,6 +135,11 @@ function evolve(old, s, now = Date.now(), { hidden = false, echo = false } = {})
     events.push({ kind: 'found', form });
   }
   return { pet: p, events };
+}
+
+/** The form picked on its card to be shown: one it's found; its own form (or one not found) clears the pick. */
+function choose(p, form) {
+  return { ...p, chosen: form && form !== p.form && p.found[form] ? form : null };
 }
 
 /** What to draw: its stage, the form shown (the stage until it's grown; then the one chosen, if found, or its own), the item worn (the party hat on its hatch day). */
@@ -156,4 +163,4 @@ function isEcho(list, path, now = Date.now()) {
 /** The 1st of the month after `now`: when it next looks again. */
 const nextLook = (now = Date.now()) => { const d = new Date(now); return new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime(); };
 
-module.exports = { empty, parse, format, stats, habitForm, evolve, shown, isEcho, nextLook, monthKey, TEMPERS, HABITS, SURPRISES, STAGES, ITEMS: ITEMS.map(([k]) => k), HOUR, DAY };
+module.exports = { empty, parse, format, stats, habitForm, evolve, choose, shown, isEcho, nextLook, monthKey, TEMPERS, HABITS, SURPRISES, STAGES, ITEMS: ITEMS.map(([k]) => k), HOUR, DAY };

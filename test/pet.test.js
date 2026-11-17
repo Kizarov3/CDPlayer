@@ -150,3 +150,23 @@ test('shown: the stage until adult, the chosen form after; the party hat on its 
   assert.strictEqual(pet.shown(adult, NOW + DAY).form, 'owl'); // (a form not found can't be chosen)
   assert.strictEqual(pet.shown({ ...adult, found: { owl: 1, raver: 2 } }, NOW + DAY).form, 'raver');
 });
+
+test('nothing goes down: fewer hours later (a folder gone from the shelf) keep the stage it reached', () => {
+  const p = { ...pet.empty(NOW - 40 * DAY, fixed), hatchedAt: NOW - 39 * DAY, stage: 'teen' };
+  const { pet: after, events } = pet.evolve(p, quiet({ hours: 12, hoursSince: 12 }), NOW);
+  assert.strictEqual(after.stage, 'teen');
+  assert.ok(!events.some((e) => e.kind === 'grow'));
+});
+
+test('choose: its own form clears the choice, so the next molt shows; a form not found is refused', () => {
+  const p = { ...pet.empty(0, fixed), stage: 'adult', form: 'owl', found: { owl: 1, ghost: 2 }, chosen: 'ghost' };
+  assert.strictEqual(pet.choose(p, 'owl').chosen, null);
+  assert.strictEqual(pet.choose(p, 'ghost').chosen, 'ghost');
+  assert.strictEqual(pet.choose(p, 'raver').chosen, null);
+  // a molt with a habit form picked earlier: the new form is the one shown
+  const dec1 = new Date(2026, 11, 1, 12).getTime();
+  const picked = { ...pet.empty(0, fixed), hatchedAt: NOW - 90 * DAY, stage: 'adult', form: 'owl', found: { owl: 1, bird: 2 }, chosen: 'bird', lastMolt: '2026-10' };
+  const { pet: molted } = pet.evolve(picked, quiet({ hours: 100, hoursSince: 100, month: { plays: 100, night: 0, morning: 0, topShare: 0.9, artists: 3, firsts: 0 } }), dec1);
+  assert.strictEqual(molted.form, 'loyalist');
+  assert.strictEqual(pet.shown(molted, dec1).form, 'loyalist');
+});

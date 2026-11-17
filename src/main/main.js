@@ -432,9 +432,8 @@ handle('pet:get', () => (petOn ? petView() : null));
 handle('pet:set', (fields) => {
   const p = { ...petNow() }, f = fields && typeof fields === 'object' ? fields : {};
   if (typeof f.name === 'string') p.name = f.name.toUpperCase().replace(/[^\p{L}\p{N} ]/gu, '').trim().slice(0, 8) || 'BLIP';
-  if ('chosen' in f) p.chosen = f.chosen && p.found[f.chosen] ? f.chosen : null;
   if ('worn' in f) p.worn = f.worn && p.items[f.worn] ? f.worn : null;
-  petState = p; petChanged = true; clearTimeout(playsTimer); playsTimer = setTimeout(writePlays, 1000);
+  petState = 'chosen' in f ? pet.choose(p, f.chosen) : p; petChanged = true; clearTimeout(playsTimer); playsTimer = setTimeout(writePlays, 1000);
   return petView();
 });
 handle('plays:add', (p) => {

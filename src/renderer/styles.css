@@ -292,7 +292,7 @@ body.classic-display #deck-display { display: none; }
 /* Settings → DECK PET: BLIP (pet-view.js) in the dots between the lamps and the time — not where there's no room for it
    beside them. A word it says takes the lamps' place for a moment. */
 #deck-display { container-type: inline-size; }
-#vfd-pet { display: none; flex: none; cursor: pointer; align-self: center; }
+#vfd-pet { display: none; flex: none; cursor: pointer; align-self: center; width: 65px; height: 42px; } /* (its size before the first frame: drawDots sets it from then on) */
 body.pet-on #vfd-pet { display: block; }
 @container (max-width: 440px) { #vfd-pet { display: none !important; } }
 #vfd-say { display: none; color: rgb(var(--lcd-ink)); text-shadow: var(--lcd-glow); white-space: nowrap; overflow: hidden; text-overflow: clip; }

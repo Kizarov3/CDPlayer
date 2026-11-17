@@ -282,7 +282,11 @@ async function run({ win, miniWindow, outDir, themes, audio, nativeImage, store,
       const termOk = await pickMenu('PLAYER LOOK', 'TERMINAL') && await waitFor(`document.body.classList.contains('look-terminal')`, 4000);
       await pause(1200); await shot('pet-terminal'); note('pet-terminal', termOk);
       await pickMenu('PLAYER LOOK', 'CLASSIC'); await pause(600);
+      // off while it's saying something: the lamps come back, and main stops moving it on
+      await js(`window.__shots.pet.events([{ kind: 'hatch' }])`);
+      const said = await waitFor(`document.getElementById('deck-display').classList.contains('saying')`, 3000);
       await openSettings(); await clickRowButton('DECK PET'); await closeAll();
+      note('pet-off', said && await waitFor(`!document.getElementById('deck-display').classList.contains('saying')`, 2000) && (await js('window.cdp.pet.get()')) === null);
     }
     // SHELF, and a case pulled out of it
     await click('#shelf-button');

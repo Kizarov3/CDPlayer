@@ -28,7 +28,10 @@ export function createPetView({ canvas, say, display, pet, openCard }) {
   function setOn(next) {
     on = !!next;
     document.body.classList.toggle('pet-on', on);
-    if (!on) { view = null; scene = null; react = null; drawnKey = ''; return Promise.resolve(null); }
+    if (!on) {
+      view = null; scene = null; react = null; drawnKey = ''; hush();
+      return pet.on(false).catch(() => null).then(() => null); // (main stops moving it on with each play)
+    }
     return pet.on(true).then((r) => { if (r && on) { view = r.view; events(r.events || [], r.view); } return view; }).catch(() => null);
   }
   const setView = (v) => { if (v) view = v; drawnKey = ''; };
@@ -37,6 +40,8 @@ export function createPetView({ canvas, say, display, pet, openCard }) {
     if (snack) { if (snacksSinceWord < SNACK_WORD_EVERY) return; snacksSinceWord = 0; }
     wordQueue.push({ text: String(text).toUpperCase(), until: performance.now() + WORD_WAIT_MS });
   }
+  /** The lamps back, with no word waiting. */
+  function hush() { word = null; wordQueue = []; display.classList.remove('saying'); }
   function showWord(now) {
     if (word && now > word.until) { word = null; display.classList.remove('saying'); }
     wordQueue = wordQueue.filter((w) => w.until > now);
@@ -107,7 +112,7 @@ export function createPetView({ canvas, say, display, pet, openCard }) {
   /** A frame of the window (app.js): drawn again when its pose moves on, or what it shows has changed. */
   function tick(now, { playing = false, level = () => 0, track = null } = {}) {
     const terminal = document.body.classList.contains('look-terminal');
-    if (!on || !view || !(canvas.offsetParent || terminal)) return;
+    if (!on || !view || !(canvas.offsetParent || terminal)) { if (word) hush(); return; } // (out of sight: no word over the lamps)
     const still = !moving();
     if (react && now - react.at > REACT_MS[react.kind]) react = null;
     const pose = scene ? scene.pose : restingPose(playing, track);
