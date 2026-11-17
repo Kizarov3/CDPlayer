@@ -125,6 +125,7 @@ section { padding: 56px 0; }
   border-radius: 6px; background: var(--case);
   box-shadow: var(--shadow), inset 0 0 0 1px var(--line), inset 0 1px 0 rgba(255, 255, 255, .08);
   perspective: 900px;
+  overflow: clip; /* (the turning disc's corners would widen a phone's page) */
 }
 .case::before { /* the tray's hinge edge */
   content: ""; position: absolute; left: 3%; top: 3%; bottom: 3%; width: 2px; border-radius: 2px; background: var(--line);
@@ -245,11 +246,11 @@ h2 { font-size: 13px; letter-spacing: .14em; margin: 0; color: rgb(var(--accent)
 
 /* Features: four with pictures, the rest as cards. */
 .features { border-top: 1px solid var(--line); }
-.feature { display: grid; grid-template-columns: 1.25fr 1fr; gap: 48px; align-items: center; margin-bottom: 56px; }
+.feature { display: grid; grid-template-columns: 1.25fr 1fr; gap: 48px; align-items: center; margin-bottom: 36px; }
 .feature.flip > img { order: 2; }
 .feature img { border-radius: 8px; box-shadow: var(--shadow), 0 0 0 1px var(--line); }
 .feature h3, .card h3 { font-size: 13px; letter-spacing: .1em; margin: 0 0 10px; }
-.feature img.phone { max-height: 560px; width: auto; justify-self: center; border-radius: 22px; }
+.feature img.phone { max-height: 420px; width: auto; justify-self: center; border-radius: 22px; }
 .feature p { color: rgb(var(--muted)); margin: 0; font-size: 16px; }
 .feature p b, .card p b { color: rgb(var(--text)); }
 .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
@@ -354,3 +355,7 @@ html.i18n-wait body { visibility: hidden; }
 .changelog > summary::after { content: "▾"; font-size: 10px; }
 .changelog[open] > summary::after { content: "▴"; }
 .changelog[open] > summary { margin-bottom: 6px; }
+
+/* Under the download: why it can be trusted, and where the first launch is explained. */
+.trust { margin: 14px 0 0; font-size: 13px; color: rgb(var(--muted)); }
+.trust a { color: rgb(var(--text)); text-decoration: underline; text-decoration-color: rgba(var(--muted), .5); text-underline-offset: 3px; }

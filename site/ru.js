@@ -19,6 +19,7 @@ window.CDP_RU = {
     'deck-size': 'РАЗМЕР · МБ',
     'dl-main': 'СКАЧАТЬ',
     'dl-meta': 'Бесплатно · macOS, Windows и Linux',
+    'trust': 'Открытый код, MIT · <a href="https://github.com/Kizarov3/CDPlayer">исходники на GitHub</a> · без аккаунта и рекламы · <a href="#install">первый запуск по шагам</a>',
 
     'install-h': 'ПЕРВЫЙ ЗАПУСК',
     'mac-1': '<b>Открой .dmg</b> и перетащи <b>CDPlayer</b> в <b>Программы</b>. Один файл и для Apple Silicon, и для Intel.',
