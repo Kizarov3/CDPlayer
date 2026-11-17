@@ -130,32 +130,36 @@ section { padding: 56px 0; }
   content: ""; position: absolute; left: 3%; top: 3%; bottom: 3%; width: 2px; border-radius: 2px; background: var(--line);
 }
 .disc { position: relative; width: 100%; aspect-ratio: 1; border-radius: 50%; transition: transform .6s var(--ease-out); }
-.disc-face, .disc-shine, .disc-hub { position: absolute; border-radius: 50%; }
+.disc-face, .disc-shine, .disc-hub { position: absolute; inset: 0; border-radius: 50%; }
+/* A CD, as the player draws one: silver, the theme's colour only a tint on it, and its middle clear plastic. In parts
+   of its radius (closest-side): the hole to 12.5%, the clear hub to 28%, the mirror band to 38%, the music to the rim. */
 .disc-face {
-  inset: 0;
   background:
-    radial-gradient(circle, transparent 0 17%, rgba(255, 255, 255, .5) 17% 17.6%, transparent 17.6% 21%, rgba(0, 0, 0, .18) 21% 21.4%, transparent 21.4%),
-    repeating-radial-gradient(circle, rgba(255, 255, 255, .07) 0 1px, transparent 1px 7px),
-    radial-gradient(circle, transparent 0 22%, rgb(var(--accent)) 22%, color-mix(in srgb, rgb(var(--accent)) 70%, black) 99%, rgba(255, 255, 255, .7) 99.2%);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, .45), inset 0 0 0 1px rgba(0, 0, 0, .25);
+    radial-gradient(circle closest-side, transparent 0 37.6%, rgba(0, 0, 0, .16) 37.8% 38.3%, rgba(255, 255, 255, .3) 38.5% 39%, transparent 39.4% 97.2%, rgba(255, 255, 255, .55) 98%, rgba(0, 0, 0, .3) 99.4%),
+    radial-gradient(circle closest-side, rgba(255, 255, 255, .16) 0 38%, rgba(var(--accent), .12) 39% 97%),
+    conic-gradient(from 30deg, #b4b8bf, #e6e8ec, #a9aeb6, #d6dae0, #b1b6be, #eceef1, #b4b8bf);
+  -webkit-mask: radial-gradient(circle closest-side, transparent 0 27.8%, #000 28.1%);
+          mask: radial-gradient(circle closest-side, transparent 0 27.8%, #000 28.1%);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, .35);
   animation: spin 3.2s linear infinite;
 }
-.disc-face { overflow: hidden; }
 .disc-print { position: absolute; inset: 0; width: 100%; height: 100%; }
-.disc-print text { fill: rgba(255, 255, 255, .8); font: 700 5.2px var(--font); letter-spacing: 1.6px; }
-.disc-shine { /* the light across the disc, following the mouse */
-  inset: 0; pointer-events: none; mix-blend-mode: screen;
-  background: conic-gradient(from var(--shine, 200deg), transparent 0 8%, rgba(255, 255, 255, .28) 12%, transparent 18% 50%, rgba(255, 255, 255, .2) 62%, transparent 68%);
-  -webkit-mask: radial-gradient(circle, transparent 0 22%, #000 22.5%);
-          mask: radial-gradient(circle, transparent 0 22%, #000 22.5%);
+.disc-print text { fill: rgba(38, 42, 50, .5); font: 700 2.1px var(--font); } /* (pressed into the mirror band) */
+.disc-shine { /* a CD's rainbow where the light falls, following the mouse */
+  pointer-events: none;
+  background:
+    conic-gradient(from var(--shine, 200deg), transparent, rgba(255, 130, 200, .26) 18deg, rgba(120, 200, 255, .32) 36deg, rgba(160, 255, 170, .24) 54deg, transparent 80deg 180deg,
+      rgba(255, 220, 120, .22) 204deg, rgba(140, 180, 255, .28) 224deg, transparent 252deg),
+    conic-gradient(from var(--shine, 200deg), transparent 0 6%, rgba(255, 255, 255, .35) 9%, transparent 13% 55%, rgba(255, 255, 255, .25) 60%, transparent 64%);
+  -webkit-mask: radial-gradient(circle closest-side, transparent 0 38.5%, #000 39.5%);
+          mask: radial-gradient(circle closest-side, transparent 0 38.5%, #000 39.5%);
 }
-.disc-hub {
-  inset: 34%;
-  background: radial-gradient(circle, transparent 0 24%, rgba(20, 20, 22, .92) 24.5% 52%, rgba(200, 204, 210, .55) 53% 56%, rgba(235, 238, 242, .9) 57% 100%);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .2);
-  display: grid; place-items: center;
+.disc-hub { /* the clear plastic round the hole: its edges, the stacking ring, the case seen through it */
+  pointer-events: none;
+  background: radial-gradient(circle closest-side, transparent 0 12.3%, rgba(255, 255, 255, .6) 12.5% 13.1%, rgba(0, 0, 0, .14) 13.3% 13.8%,
+    rgba(200, 210, 222, .1) 14% 20.6%, rgba(255, 255, 255, .3) 21% 22.4%, rgba(0, 0, 0, .1) 22.6% 23%, rgba(200, 210, 222, .1) 23.2% 27.2%,
+    rgba(255, 255, 255, .55) 27.5% 28.2%, rgba(0, 0, 0, .18) 28.2% 28.6%, transparent 28.8%);
 }
-.disc-hole { width: 26%; height: 26%; border-radius: 50%; background: rgb(var(--bg)); box-shadow: inset 0 2px 4px rgba(0, 0, 0, .6); }
 .case:hover .disc-face { animation-duration: 1.6s; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .disc-face { animation: none; } html { scroll-behavior: auto; } }
@@ -323,6 +327,7 @@ footer {
 @media (max-width: 560px) {
   main, .bar, footer { padding-left: 16px; padding-right: 16px; }
   .bar { gap: 10px; }
+  .bar .pill { min-height: 40px; padding-left: 16px; padding-right: 16px; }
   .pills { display: none; }
   .theme-pill { margin-left: auto; }
   .grid { grid-template-columns: 1fr; }
@@ -341,3 +346,11 @@ footer {
 /* The language pill, and the page kept unseen while app.js puts the Russian in (index.html's head). */
 .lang-pill { min-width: 46px; padding-left: 12px; padding-right: 12px; }
 html.i18n-wait body { visibility: hidden; }
+
+/* A release's Changelog, folded under a key below its "What's new". */
+.changelog { margin-top: 14px; }
+.changelog > summary { list-style: none; display: inline-flex; }
+.changelog > summary::-webkit-details-marker { display: none; }
+.changelog > summary::after { content: "▾"; font-size: 10px; }
+.changelog[open] > summary::after { content: "▴"; }
+.changelog[open] > summary { margin-bottom: 6px; }

@@ -191,13 +191,19 @@
     let list = 0; // open <ul> depth
     const close = (to = 0) => { while (list > to) { out.push('</ul>'); list--; } };
     let skipping = false; // the notes' own Download table: the files are the pills under the notes
+    let folded = false; // the Changelog, folded under its key: "What's new" is what most read
+    const unfold = () => { if (folded) { close(); out.push('</details>'); folded = false; } };
     for (const raw of md.replace(/\r/g, '').split('\n')) {
       const line = raw.replace(/\s+$/, '');
       let m;
       if ((m = line.match(/^#{1,6}\s+(.*)/))) {
         close();
+        unfold();
         skipping = /^downloads?$/i.test(m[1].trim());
-        if (!skipping) out.push(`<h3>${inline(m[1])}</h3>`);
+        if (/^changelog$/i.test(m[1].trim())) {
+          out.push(`<details class="changelog"><summary class="pill">${t('FULL CHANGELOG')}</summary>`);
+          folded = true;
+        } else if (!skipping) out.push(`<h3>${inline(m[1])}</h3>`);
         continue;
       }
       if (skipping || /^\s*\|/.test(line)) continue; // (tables aren't drawn)
@@ -213,6 +219,7 @@
       out.push(`<p>${inline(line)}</p>`);
     }
     close();
+    unfold();
     return out.join('');
   }
   /** A release's name for the tracklist: the first of its "What's new" in bold, or its first line. */
