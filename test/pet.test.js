@@ -120,7 +120,7 @@ test('echo: the same song on the same day, a year before', () => {
 
 test('stats: hours, days, month shares, favourite; a song not on the shelf counts for hours', () => {
   const at = (d, h) => NOW - d * DAY + (h - 15) * HOUR;
-  const list = [[at(1, 23), '/x/1.mp3'], [at(2, 23), '/x/2.mp3'], [at(2, 10), '/y/1.mp3'], [at(40, 10), '/stream'], [NOW - 30 * 60e3, '/x/1.mp3']];
+  const list = [[at(1, 23), '/x/1.mp3'], [at(2, 23), '/x/2.mp3'], [at(2, 10), '/y/1.mp3'], [at(40, 10), '/stream'], [NOW - 30 * 60e3, '/x/1.mp3']].sort((a, b) => a[0] - b[0]); // (oldest first, as listens.js keeps it)
   const albums = { '/x/1.mp3': { id: 'X', title: 'X Album', artist: 'Xer' }, '/x/2.mp3': { id: 'X', title: 'X Album', artist: 'Xer' }, '/y/1.mp3': { id: 'Y', title: 'Y', artist: 'Various Artists' } };
   const s = pet.stats({
     list, seconds: (p) => (p === '/stream' ? 0 : 1800), through: { X: { n: 3, last: NOW - HOUR }, Y: { n: 1, last: NOW - 50 * DAY } },

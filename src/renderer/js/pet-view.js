@@ -22,7 +22,7 @@ export function createPetView({ canvas, say, display, pet, openCard }) {
   let scene = null;          // a one-off pose: { pose, t, from }
   let react = null;          // a reaction: { kind, at }
   let step = 0, stepAt = 0, drawnKey = '', grid = null, termAt = null;
-  let look = 0, movedAt = 0, pokes = [];
+  let look = 0, movedAt = 0, pokes = [], rect = null, rectAt = 0, stepLevel = 0, rowsMemo = null;
   let word = null, wordQueue = [], snacksSinceWord = SNACK_WORD_EVERY, lastPeak = 0, wasAsleep = false, favOn = false;
 
   function setOn(next) {
@@ -83,7 +83,9 @@ export function createPetView({ canvas, say, display, pet, openCard }) {
   // its eyes on the cursor; a click is a poke (three quick ones, a somersault); a double-click, its card
   window.addEventListener('mousemove', (e) => {
     if (!on || !canvas.offsetParent) return;
-    const r = canvas.getBoundingClientRect(), dx = e.clientX - (r.left + r.width / 2);
+    const t = performance.now();
+    if (!rect || t - rectAt > 500) { rect = canvas.getBoundingClientRect(); rectAt = t; } // (where it is, looked up twice a second at most: not a layout on every move)
+    const dx = e.clientX - (rect.left + rect.width / 2);
     const next = dx > 60 ? 1 : dx < -60 ? -1 : 0;
     movedAt = performance.now();
     if (next !== look) { look = next; drawnKey = ''; }
@@ -120,12 +122,13 @@ export function createPetView({ canvas, say, display, pet, openCard }) {
     if (!still && now - stepAt >= pace) {
       stepAt = now; step++;
       if (scene && ++scene.t >= SCENE_FRAMES[scene.pose]) scene = scene.then ? { pose: scene.then, t: 0 } : null;
+      stepLevel = playing ? level() : 0; // (the loudness read once a step: it changes every frame, its pose a few times a second)
     }
     if (!playing || level() < 0.02) showWord(now); // (words only in the quiet: paused, or between songs)
     else if (word && now > word.until) showWord(now);
     let lvl = 0;
     if (pose === 'playing' && !react && !still) {
-      lvl = level();
+      lvl = stepLevel;
       if (lvl > 0.85) { if (now - lastPeak < PEAK_EVERY) lvl = 0.8; else lastPeak = now; }
     }
     const eyes = now - movedAt < 3000 ? look : pose === 'paused' ? [0, 1, 0, -1][Math.floor(step / 3) % 4] : 0;
@@ -151,7 +154,12 @@ export function createPetView({ canvas, say, display, pet, openCard }) {
   return {
     setOn, setView, events, tick, still, react: reactTo,
     /** TERMINAL: it in a few characters ({ rows, tones }: pet-sprite.js termPet), its name and the word it's saying; null while it's off. */
-    rows: () => (on && view && termAt ? { ...termPet(termAt.t, termAt.opts), name: view.name, say: word ? word.text : '' } : null),
+    rows: () => {
+      if (!(on && view && termAt)) return null;
+      const say = word ? word.text : '';
+      if (!rowsMemo || rowsMemo.at !== termAt || rowsMemo.say !== say || rowsMemo.name !== view.name) rowsMemo = { at: termAt, say, name: view.name, out: { ...termPet(termAt.t, termAt.opts), name: view.name, say } };
+      return rowsMemo.out;
+    },
     get view() { return view; }, get on() { return on; },
     rename: (name) => pet.set({ name }).then(setView),
     choose: (form) => pet.set({ chosen: form }).then(setView),

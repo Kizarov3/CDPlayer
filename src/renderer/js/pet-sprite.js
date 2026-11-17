@@ -276,12 +276,20 @@ export function drawDots(canvas, g, { lcd = false, pitch = 2.6, color = [196, 20
   const c = canvas.getContext('2d');
   c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h); c.translate(pad, pad);
   const s = pitch * 0.8, r = s * 0.3;
-  const dot = (x, y) => { c.beginPath(); if (c.roundRect) c.roundRect(x * pitch, y * pitch, s, s, r); else c.rect(x * pitch, y * pitch, s, s); c.fill(); };
+  // every dot of a kind in one shape, filled once (a fill with a glow per dot would be hundreds of blurs a frame)
+  const shape = (lit) => {
+    c.beginPath();
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (!g[y][x] !== !lit) continue;
+      if (c.roundRect) c.roundRect(x * pitch, y * pitch, s, s, r); else c.rect(x * pitch, y * pitch, s, s);
+    }
+  };
   c.shadowBlur = 0; c.fillStyle = `rgba(${color},${lcd ? 0.08 : 0.07})`;
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (!g[y][x]) dot(x, y);
-  const pass = (blur) => { c.shadowBlur = blur; c.shadowColor = `rgba(${color},0.7)`; c.fillStyle = `rgba(${color},${lcd ? 0.92 : 0.9})`; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (g[y][x]) dot(x, y); };
-  if (!lcd) pass(pitch * 2.2);
-  pass(0);
+  shape(false); c.fill();
+  shape(true);
+  c.fillStyle = `rgba(${color},${lcd ? 0.92 : 0.9})`;
+  if (!lcd) { c.shadowBlur = pitch * 2.2; c.shadowColor = `rgba(${color},0.7)`; c.fill(); c.shadowBlur = 0; }
+  c.fill();
 }
 
 // ── TERMINAL: BLIP in a few thin characters, as the rest of that look is drawn (not the display's dots blown up) ──

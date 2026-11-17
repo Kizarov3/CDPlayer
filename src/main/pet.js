@@ -39,25 +39,43 @@ function parse(text, now = Date.now(), random = Math.random) {
 const format = (p) => JSON.stringify(p);
 
 const monthKey = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
-const dayKey = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
+// the local day `ms` falls in, as [its midnight, the next midnight) (a clock change makes a day 23 or 25 hours)
+const dayOf = (ms) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); const start = d.getTime(); d.setDate(d.getDate() + 1); return [start, d.getTime()]; };
+// the first play at or after `ms` in a list oldest first
+function firstFrom(list, ms) {
+  let lo = 0, hi = list.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (list[mid][0] < ms) lo = mid + 1; else hi = mid; }
+  return lo;
+}
+const MEMO_MS = 10 * 60e3; // (read all anew at least this often: the shelf's song lengths change with it)
 const realArtist = (a) => (a && a.artist && a.artist !== 'Various Artists' ? a.artist : null);
 
 /**
  * What evolve needs to know, from the history: `list` [[ms, path]] oldest first (listens.js), `seconds(path)` a song's
  * length (0: not known), `through` album-runs.js's { [id]: { n, last } }, `albumOf(path)` → { id, title, artist } |
  * null, `album(id)` → { title, paths } | null, `firsts` Map path → its first play, `since` when it was turned on.
+ * `memo` ({}, kept between calls): what's been added up so far, so a play that only adds to the end of the history
+ * reads only itself and the last 30 days — not years of plays again. Anything else (the oldest trimmed, an import in
+ * the middle, songs moved, a new egg) reads it all anew.
  */
-function stats({ list = [], seconds = () => 0, through = {}, albumOf = () => null, album = () => null, firsts = new Map(), since = 0, now = Date.now() }) {
-  let secs = 0, secsSince = 0;
-  const days = new Set(), from = now - MONTH_DAYS * DAY;
-  const month = { plays: 0, night: 0, morning: 0, topShare: 0, artists: 0, firsts: 0 };
-  const byArtist = new Map();
-  for (const [at, p] of list) {
-    const s = seconds(p) || UNKNOWN_SECONDS;
+function stats({ list = [], seconds = () => 0, through = {}, albumOf = () => null, album = () => null, firsts = new Map(), since = 0, now = Date.now() }, memo = null) {
+  const n = list.length;
+  const same = memo && memo.list === list && memo.since === since && memo.seconds === seconds && memo.n > 0 && n >= memo.n
+    && list[0] === memo.first && list[memo.n - 1] === memo.last && now - memo.at < MEMO_MS && now >= memo.now;
+  let secs = same ? memo.secs : 0, secsSince = same ? memo.secsSince : 0, days = same ? memo.days : 0, dayEnd = same ? memo.dayEnd : -Infinity;
+  for (let i = same ? memo.n : 0; i < n; i++) {
+    const [at, p] = list[i], s = seconds(p) || UNKNOWN_SECONDS;
     secs += s;
     if (at >= since) secsSince += s;
-    days.add(dayKey(at));
-    if (at < from || at > now) continue;
+    if (at >= dayEnd) { days++; dayEnd = dayOf(at)[1]; } // (oldest first: a play past the day's end starts a new day)
+  }
+  if (memo) Object.assign(memo, { list, since, seconds, n, first: list[0], last: list[n - 1], secs, secsSince, days, dayEnd, at: same ? memo.at : now, now });
+  const from = now - MONTH_DAYS * DAY;
+  const month = { plays: 0, night: 0, morning: 0, topShare: 0, artists: 0, firsts: 0 };
+  const byArtist = new Map();
+  for (let i = firstFrom(list, from); i < n; i++) {
+    const [at, p] = list[i];
+    if (at > now) break;
     month.plays++;
     const h = new Date(at).getHours();
     if (h >= 23 || h < 4) month.night++;
@@ -81,7 +99,7 @@ function stats({ list = [], seconds = () => 0, through = {}, albumOf = () => nul
   const favAlbum = fav && maxOne > 0 ? album(fav.id) : null;
   const lastAlbum = list.length ? albumOf(list[list.length - 1][1]) : null;
   return {
-    hours: secs / 3600, hoursSince: secsSince / 3600, throughSince, albums, maxOne, days: days.size, month,
+    hours: secs / 3600, hoursSince: secsSince / 3600, throughSince, albums, maxOne, days, month,
     favourite: favAlbum ? { id: fav.id, title: favAlbum.title, paths: favAlbum.paths } : null,
     lastAlbum: lastAlbum ? lastAlbum.title : null,
   };
@@ -153,11 +171,11 @@ function shown(p, now = Date.now()) {
 /** Whether `path` played now is the same song played on this day of the year, a year ago. */
 function isEcho(list, path, now = Date.now()) {
   const d = new Date(now);
-  return list.some(([at, p]) => {
-    if (p !== path) return false;
-    const a = new Date(at);
-    return a.getFullYear() === d.getFullYear() - 1 && a.getMonth() === d.getMonth() && a.getDate() === d.getDate();
-  });
+  const then = new Date(d.getFullYear() - 1, d.getMonth(), d.getDate());
+  if (then.getDate() !== d.getDate()) return false; // (29 February: no such day a year before)
+  const [start, end] = dayOf(then.getTime());
+  for (let i = firstFrom(list, start); i < list.length && list[i][0] < end; i++) if (list[i][1] === path) return true;
+  return false;
 }
 
 /** The 1st of the month after `now`: when it next looks again. */

@@ -389,6 +389,7 @@ function logPlays(entries) { // (imported: in their places in time, so written a
 // BLIP, the pet in the deck's display (pet.js): kept in pet.json, moved on by each play while DECK PET is on. What it
 // knows is read again from the history (at most every 30 s, and at each play), so it never drifts from it.
 let petState = null, petOn = false, petChanged = false, petStats = null, petStatsAt = 0, petLastMeal = null;
+const petMemo = {}; // (pet.stats: what's been added up of the history, so a play reads only itself and the last 30 days)
 function petNow() {
   if (petState) return petState;
   const text = store.readText('pet.json');
@@ -399,7 +400,7 @@ function petNow() {
 const songSeconds = (p) => { const a = shelf.albumOf(p); return a && a.seconds ? a.seconds[a.paths.indexOf(p)] || 0 : 0; };
 function petStatsNow(now = Date.now(), fresh = false) {
   if (!fresh && petStats && now - petStatsAt < 30e3) return petStats;
-  petStats = pet.stats({ list: listened().list, seconds: songSeconds, through: runsState().through, albumOf: shelf.albumOf, album: shelf.albumById, firsts: firstPlayedAt(), since: petNow().since, now });
+  petStats = pet.stats({ list: listened().list, seconds: songSeconds, through: runsState().through, albumOf: shelf.albumOf, album: shelf.albumById, firsts: firstPlayedAt(), since: petNow().since, now }, petMemo);
   petStatsAt = now;
   return petStats;
 }
