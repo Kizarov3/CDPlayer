@@ -17,6 +17,7 @@ export const SETTING_ROWS = [
   ['LOOK', 'LANGUAGE', 'english russian язык'],
   ['LOOK', 'PLAYER LOOK', 'layout dock stage glass panel вид плеера оформление пульт сцена стекло панель cover обложка apple music jewel case коробка кейс'],
   ['LOOK', 'DISPLAY', 'deck vfd classic digits дисплей'],
+  ['LOOK', 'DECK PET', 'tamagotchi blip pet creature egg тамагочи питомец зверёк'],
   ['LOOK', 'WAVEFORM', 'seek bar волна'],
   ['LOOK', 'AMBIENT BACKGROUND', 'blur cover background фон'],
   ['LOOK', 'DISC WEAR', 'scratches fingerprints царапины'],

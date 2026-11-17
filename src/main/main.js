@@ -419,7 +419,7 @@ function petView(now = Date.now()) {
   return {
     name: p.name, ...look, temper: p.temper, since: p.since, hatchedAt: p.hatchedAt, hatchAlbum: p.hatchAlbum, chosen: p.chosen, worn: p.worn,
     found: p.found, items: p.items, diary, favourite: s.favourite ? { title: s.favourite.title, paths: s.favourite.paths } : null,
-    lastMeal: petLastMeal || s.lastAlbum, nextLook: pet.nextLook(now),
+    lastMeal: petLastMeal || s.lastAlbum, nextLook: pet.nextLook(now), lastPlay: (listened().list[listened().list.length - 1] || [])[0] || null,
   };
 }
 handle('pet:on', (on) => {
@@ -456,7 +456,7 @@ handle('plays:add', (p) => {
   if (album && album.title) petLastMeal = album.title;
   const events = [{ kind: 'snack' }, ...(through ? [{ kind: 'feast' }] : []), ...(opened ? [{ kind: 'sniff' }] : [])];
   const echo = pet.isEcho(listenLog.list, p, now);
-  events.push(...petMove(now, { echo }), ...(echo ? [{ kind: 'echo', path: p }] : []));
+  events.push(...petMove(now, { echo }), ...(echo ? [{ kind: 'echo', title: path.basename(p).replace(/\.[^.]+$/, '') }] : []));
   return { n, pet: { events, view: petView(now) } };
 });
 handle('plays:count', (p) => plays().get(p) || 0);

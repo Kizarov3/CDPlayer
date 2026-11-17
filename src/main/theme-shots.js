@@ -268,6 +268,22 @@ async function run({ win, miniWindow, outDir, themes, audio, nativeImage, store,
       note(name, ok);
       await closeAll();
     };
+    // DECK PET: the egg it starts as, a grown one (dressed up here: a fresh data folder has no history), and its card
+    {
+      await openSettings(); await clickRowButton('DECK PET'); await closeAll();
+      const petOk = await waitFor(`document.body.classList.contains('pet-on') && window.__shots.pet && window.__shots.pet.view`, 4000);
+      await pause(1200); await shot('pet-egg'); note('pet-egg', petOk);
+      await js(`(() => { const p = window.__shots.pet, d = Date.now() - 40 * 86400e3; p.refresh = () => Promise.resolve();
+        p.setView({ ...p.view, stage: 'adult', form: 'raver', item: 'crown', worn: 'crown', hatchedAt: d, hatchAlbum: 'Discovery', temper: 'bouncy',
+          favourite: { title: 'Discovery', paths: [] }, lastMeal: 'In Rainbows', items: { crown: d + 9e8, scarf: d + 5e8 }, found: { raver: d + 3e9, ghost: d + 2e9 },
+          diary: [{ at: d, kind: 'hatch', what: 'Discovery' }, { at: d + 5e8, kind: 'item', what: 'scarf' }, { at: d + 9e8, kind: 'item', what: 'crown' }, { at: d + 2e9, kind: 'form', what: 'ghost' }, { at: d + 3e9, kind: 'form', what: 'raver' }] }); })()`);
+      await pause(800); await shot('pet-raver'); note('pet-raver', petOk);
+      await screen('pet-card', () => js(`document.getElementById('vfd-pet').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`), cardHas('.pet-strip'));
+      const termOk = await pickMenu('PLAYER LOOK', 'TERMINAL') && await waitFor(`document.body.classList.contains('look-terminal')`, 4000);
+      await pause(1200); await shot('pet-terminal'); note('pet-terminal', termOk);
+      await pickMenu('PLAYER LOOK', 'CLASSIC'); await pause(600);
+      await openSettings(); await clickRowButton('DECK PET'); await closeAll();
+    }
     // SHELF, and a case pulled out of it
     await click('#shelf-button');
     const shelfOk = await waitFor(`!document.getElementById('shelf').hidden && document.querySelector('#shelf-body .spine')`, 8000);

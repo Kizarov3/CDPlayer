@@ -24,7 +24,7 @@ import { cardOrder, priceWords, stillWanted } from './want-list.js';
 const layer = () => document.getElementById('overlays');
 const panels = new Map(); // name -> { overlay, card, build }
 // Escape closes the closest thing first, in this order.
-const ESC_ORDER = ['changer-full', 'onboarding', 'guide', 'features', 'faq', 'shortcuts', 'changelog', 'tags', 'check', 'want', 'card', 'year', 'booklet', 'menu', 'theme', 'lyrics', 'eq', 'rip', 'take-along', 'history', 'spotify', 'search', 'settings'];
+const ESC_ORDER = ['changer-full', 'onboarding', 'guide', 'features', 'faq', 'shortcuts', 'changelog', 'tags', 'check', 'want', 'pet', 'card', 'year', 'booklet', 'menu', 'theme', 'lyrics', 'eq', 'rip', 'take-along', 'history', 'spotify', 'search', 'settings'];
 
 // A panel comes out of the button that opened it, and goes back into it: the one just pressed, or — opened by a key —
 // the header's button for it. (Without one, it rises in as before.)
@@ -471,6 +471,7 @@ function buildSettings(app) {
   const discWear = toggle(s.discWear, () => { app.setDiscWear(!s.discWear); setToggle(discWear, s.discWear); });
   const changerMode = toggle(app.changerMode(), async () => { await app.setChangerMode(!app.changerMode()); setToggle(changerMode, app.changerMode()); });
   const discShine = toggle(s.discShine, () => { app.setDiscShine(!s.discShine); setToggle(discShine, s.discShine); });
+  const deckPet = toggle(s.pet, () => { app.setPet(!s.pet); setToggle(deckPet, s.pet); });
   const taskbarDisc = toggle(s.taskbarDisc, () => { app.setTaskbarDisc(!s.taskbarDisc); setToggle(taskbarDisc, s.taskbarDisc); });
   const platform = document.body.dataset.platform;
   const saveFound = toggle(s.saveFound, () => { app.setSaveFound(!s.saveFound); setToggle(saveFound, s.saveFound); });
@@ -518,6 +519,8 @@ function buildSettings(app) {
     hint(t('CLASSIC: as it always was. VISUALIZER: the music drawn across the window, the keys in a bar along the bottom, the queue at the side. LYRICS: the song’s words down the side, lit as they’re sung. HI-FI: a CD player’s front, the keys and two level meters on one panel. ALBUM: the album’s cover instead of the disc, as in a streaming app. JEWEL CASE: the album’s plastic case, shut, its cover under the plastic, beside the player — it opens to hand the disc over and snaps shut again; click it for the booklet. TERMINAL: the player as a console’s screen, in characters: the disc turning in ASCII, frames, blocks for the waveform and the volume, every key by its name.')),
     row(t('DISPLAY'), displayButton),
     hint(t('DECK: a glowing panel like a CD player’s — the track number and the time in segment digits. CLASSIC: just the times.')),
+    row(t('DECK PET'), deckPet),
+    hint(t('BLIP, a little creature in the display’s dots: it hatches from an egg once you play an album through (or after an hour of music), grows with the music, and turns into what your listening says about you. It never goes hungry and never asks for anything. Double-click it for its card.')),
     row(t('WAVEFORM'), waveform),
     row(t('AMBIENT BACKGROUND'), ambient),
     hint(t('COVER: the album’s cover, blurred, behind the player. GRADIENT: as Apple Music has it — the cover in big blurred pieces, slowly turning round each other.')),
@@ -1905,6 +1908,52 @@ export function showFeatures(app) {
   openPanel('features', () => [title(t('WHAT’S SPECIAL')), el('div', { class: 'subtitle' }, t('What CDPlayer does that other players don’t')), gap(10),
     el('div', { class: 'scroll feature-list' }, FEATURES.flatMap((g) => [el('div', { class: 'settings-section' }, g.group), ...g.items.map(item), gap(10)])),
     closeRow(() => closePanel('features'))], { width: 560 });
+}
+
+// BLIP's card (a double-click on it in the display): its name to change, what it is, where it came from, its favourite,
+// what it's earned (to wear) and the forms it's found (to show), and its diary.
+const PET_FORMS = () => ({ egg: t('EGG'), baby: t('BABY'), kid: t('KID'), teen: t('TEEN'), collector: t('COLLECTOR'), raver: t('RAVER'), owl: t('NIGHT OWL'), loyalist: t('LOYALIST'), bird: t('EARLY BIRD'), explorer: t('EXPLORER'), ghost: t('GHOST'), echo: t('ECHO') });
+const PET_ITEMS = () => ({ crown: t('CROWN'), record: t('GOLD RECORD'), headphones: t('HEADPHONES'), scarf: t('SCARF'), party: t('PARTY HAT') });
+const PET_TEMPERS = () => ({ sleepy: t('A sleepy one'), bouncy: t('A bouncy one'), curious: t('A curious one'), shy: t('A shy one') });
+export function showPetCard(app) {
+  const pv = app.petView;
+  if (!pv.on || !pv.view) return;
+  const day = (ms) => (ms ? new Date(ms).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: new Date(ms).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' }) : '');
+  const build = () => {
+    const v = pv.view, forms = PET_FORMS(), items = PET_ITEMS();
+    const canvas = el('canvas', {});
+    pv.still(canvas, 4);
+    const name = el('input', { class: 'pet-name', value: v.name, maxlength: '8', spellcheck: 'false', 'aria-label': t('Its name') });
+    name.addEventListener('input', () => { const at = name.selectionStart; name.value = name.value.toUpperCase(); name.setSelectionRange(at, at); });
+    name.addEventListener('change', () => pv.rename(name.value).then(() => refreshPanel('pet')));
+    name.addEventListener('keydown', (e) => { if (e.key === 'Enter') name.blur(); });
+    const days = v.hatchedAt ? Math.floor((Date.now() - v.hatchedAt) / 86400e3) + 1 : 0;
+    const info = (label, value) => (value ? el('div', { class: 'pet-info' }, el('span', {}, label), el('span', {}, value)) : null);
+    const earned = Object.keys(v.items || {}).filter((k) => items[k]);
+    const found = Object.keys(v.found || {}).filter((k) => forms[k]);
+    const said = (d) => (d.kind === 'hatch' ? (d.what ? t('Hatched on {album}', { album: d.what }) : t('Hatched'))
+      : d.kind === 'form' ? t('Became a {form}', { form: forms[d.what] || d.what }) : t('Earned the {item}', { item: items[d.what] || d.what }));
+    const pills = (keys, names, current, pick) => el('div', { class: 'pet-pills' }, keys.map((k) => {
+      const b = pill(names[k], () => pick(k).then(() => refreshPanel('pet')));
+      if (current === k) b.classList.add('on');
+      return b;
+    }));
+    return [
+      el('div', { class: 'pet-strip' }, canvas),
+      el('div', { class: 'pet-head' }, name, el('span', { class: 'pet-form' }, v.hatchedAt ? `${forms[v.form] || v.form} · ${t('DAY {n}', { n: days })}` : t('NOT HATCHED YET'))),
+      gap(10),
+      info(t('HATCHED'), v.hatchedAt ? (v.hatchAlbum ? t('{date}, on {album}', { date: day(v.hatchedAt), album: v.hatchAlbum }) : day(v.hatchedAt)) : ''),
+      info(t('FAVOURITE'), v.favourite && v.favourite.title),
+      info(t('LAST MEAL'), v.lastMeal),
+      info(t('NEXT LOOK'), v.stage === 'teen' || v.stage === 'adult' ? day(v.nextLook) : ''),
+      info(t('TEMPER'), PET_TEMPERS()[v.temper]),
+      earned.length ? [gap(12), section(t('SHELF')), pills(earned, items, v.worn, (k) => pv.wear(v.worn === k ? null : k))] : null,
+      v.stage === 'adult' && found.length > 1 ? [gap(12), section(t('FORMS')), pills(found, forms, v.form, (k) => pv.choose(k))] : null,
+      v.diary && v.diary.length ? [gap(12), section(t('DIARY')), el('div', { class: 'scroll pet-diary' }, v.diary.map((d) => el('div', { class: 'pet-line' }, el('span', {}, day(d.at)), el('span', {}, said(d)))))] : null,
+      closeRow(() => closePanel('pet')),
+    ];
+  };
+  pv.refresh().then(() => openPanel('pet', build, { width: 400 }));
 }
 
 export function showShortcuts() {

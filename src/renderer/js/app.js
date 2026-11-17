@@ -21,6 +21,7 @@ import * as changer from './changer.js';
 import { insertNext, pinnedNext, afterRemove } from './play-next.js';
 import { discEndsAfter } from './sleep-end.js';
 import { DeckDisplay } from './deck-display.js';
+import { createPetView } from './pet-view.js';
 import { createChangerView } from './changer-view.js';
 import { pointAtDrawn } from './tour-view.js';
 import { dockIcon } from './dock-disc.js';
@@ -80,7 +81,7 @@ const state = {
   softwareRendering: false, // the window put together without the graphics card (gpu-status.js, render-budget.js)
   skipped: new Set(),  // songs (paths) marked SKIP in their case: passed over as the music moves on, still played when picked
   nextUp: null,        // the queue's { start, end }: the run put to PLAY NEXT (play-next.js)
-  volume: 100, volumeBeforeMute: -1, transition: 'OFF', crossfade: 5, mono: false, spatial: false, spatialAmount: 50, waveform: true, ambient: true, ambientStyle: 'COVER', miniMode: false, discord: true, discNoise: false, discWear: true, discShine: true, taskbarDisc: true,
+  volume: 100, volumeBeforeMute: -1, transition: 'OFF', crossfade: 5, mono: false, spatial: false, spatialAmount: 50, waveform: true, ambient: true, ambientStyle: 'COVER', miniMode: false, discord: true, discNoise: false, discWear: true, discShine: true, taskbarDisc: true, pet: false,
   trayBusy: false, // the tray is moving or the disc is being read: transport presses wait
   saveFound: false, // covers and lyrics found online are written into the song's file
   ripFormat: 'FLAC', // what RIP saves a CD as: FLAC, MP3 or WAV
@@ -113,6 +114,9 @@ const deckDisplay = new DeckDisplay({
   elapsed: $('elapsed'), length: $('length'), disc: $('vfd-disc'),
 });
 deckDisplay.left = showRemaining;
+// Settings → DECK PET: BLIP, in the display's dots (pet-view.js; main's pet.js says what it is).
+const petView = createPetView({ canvas: $('vfd-pet'), say: $('vfd-say'), display: $('deck-display'), pet: cdp.pet, openCard: () => panels.showPetCard(app) });
+if (globalThis.__shots) globalThis.__shots.pet = petView; // (only in the --theme-shots run: theme-shots.js dresses it up for its pictures)
 // Settings → SOUND CHECK (sound-check.js): every song at the same loudness — not Spotify's (it does its own) nor a live CD's.
 const soundCheck = createSoundCheck({
   details: (p) => cdp.details(p, { withCover: false }).catch(() => null),
@@ -1650,8 +1654,9 @@ function nextTrack() {
   return true;
 }
 // NEXT pressed (not a song ending): when there's nowhere to go, it says so.
-function userNext() { if (!nextTrack()) setStatus(state.queue.length ? t('THAT WAS THE LAST SONG') : t('NOTHING TO PLAY · S OPENS THE SHELF')); }
+function userNext() { petView.react('skip'); if (!nextTrack()) setStatus(state.queue.length ? t('THAT WAS THE LAST SONG') : t('NOTHING TO PLAY · S OPENS THE SHELF')); }
 function previousTrack() {
+  petView.react('skip');
   if (!state.queue.length) { setStatus(t('NOTHING TO PLAY · S OPENS THE SHELF')); return; }
   if (engine.deck && engine.position > 5) { seekTo(0); return; }
   if (state.shuffle !== 'OFF') {
@@ -1829,7 +1834,7 @@ function passOver(token) {
     if (next >= 0) { movingOn = state.loadToken + 1; goTo(next); }
   }, 1500);
 }
-function seek(delta) { if (engine.deck) seekTo(engine.position + delta); }
+function seek(delta) { if (engine.deck) { petView.react('seek'); seekTo(engine.position + delta); } }
 function seekTo(seconds) {
   if (!engine.deck) return;
   engine.seek(seconds);
@@ -1960,7 +1965,7 @@ async function closeTray({ play = true } = {}) {
   if (play || resume.playing) { await engine.play(); setPlaying(engine.playing); } else setPlaying(false);
 }
 // E closes it as it was: playing again only if it was playing when it opened (PLAY closes it and plays).
-function toggleTray() { if (disc.trayOpen) closeTray({ play: false }); else openTray({ eject: true }); }
+function toggleTray() { if (disc.trayOpen) closeTray({ play: false }); else { petView.react('eject'); openTray({ eject: true }); } }
 
 // ---- Spotify discs ---------------------------------------------------------------------------------------------
 // An album or playlist from the SPOTIFY panel goes in as a whole disc of spotify:track:… entries. The Web Playback
@@ -2220,7 +2225,7 @@ function watchForShake(now) {
 
 function recordHistory(p) {
   state.history = [p, ...state.history.filter((h) => h !== p)].slice(0, HISTORY_LIMIT);
-  cdp.addPlay(p).catch(() => {});
+  cdp.addPlay(p).then((r) => { if (r && r.pet) petView.events(r.pet.events, r.pet.view); }).catch(() => {});
   cdp.saveHistory(state.history);
   panels.refreshHistoryIfOpen(app);
 }
@@ -2418,6 +2423,7 @@ async function setQuality(level) {
 }
 function setDiscWear(on) { state.discWear = on; updateWear(); saveSettingsSoon(); }
 function setTaskbarDisc(on) { state.taskbarDisc = on; cdp.setTaskbarDisc(on); }
+function setPet(on) { state.pet = !!on; petView.setOn(state.pet); saveSettingsSoon(); }
 function setDiscShine(on) { state.discShine = on; disc.setShine(on); pushMini(true); saveSettingsSoon(); }
 
 function setupMediaSession() {
@@ -2620,6 +2626,7 @@ function setVolume(v, { fromSlider = false } = {}) {
   const was = state.volume;
   state.volume = Math.max(0, Math.min(100, Math.round(v)));
   engine.setVolume(state.volume / 100);
+  if (was <= 85 && state.volume > 85) petView.react('loud'); else if (was >= 15 && state.volume < 15) petView.react('quiet'); // (the pet: hands over its ears, or leaning in)
   if ((was === 0) !== (state.volume === 0) && engine.playing) setStatus(stateStatus()); // SOUND OFF said, or taken back
   if (spotifySession) spotifySession.setVolume(state.volume / 100);
   $('volume-value').textContent = `${state.volume}%`;
@@ -3097,7 +3104,7 @@ const appendAndPlay = (p) => addToQueue([p], { sorted: true, play: true });
 
 let settingsTimer = null, queueTimer = null;
 function settingsSnapshot() {
-  return { volume: state.volume, crossfade: state.crossfade, transition: state.transition, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, ambientStyle: state.ambientStyle, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, changer: state.changerMode, streaming: state.streaming, playModes: { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } }, display: state.display, look: state.look, ripFormat: state.ripFormat, romanize: romanOn() };
+  return { volume: state.volume, crossfade: state.crossfade, transition: state.transition, mono: state.mono, animations: anim.enabled, theme: THEMES[state.themeIndex].name, eq: state.eq, waveform: state.waveform, ambient: state.ambient, ambientStyle: state.ambientStyle, discord: state.discord, discNoise: state.discNoise, discWear: state.discWear, discShine: state.discShine, taskbarDisc: state.taskbarDisc, output: state.output, saveFound: state.saveFound, lyricsOffset: state.lyricsOffset, shelfSort: state.shelfSort, language: state.language, quality: state.quality, spatial: state.spatial, spatialAmount: state.spatialAmount, soundCheck: state.soundCheck, changer: state.changerMode, streaming: state.streaming, playModes: { ...state.playModes, [modeKey()]: { shuffle: state.shuffle, repeat: state.repeat } }, display: state.display, look: state.look, ripFormat: state.ripFormat, romanize: romanOn(), pet: state.pet };
 }
 function saveSettingsSoon() { clearTimeout(settingsTimer); settingsTimer = setTimeout(() => cdp.saveSettings(settingsSnapshot()), 300); }
 function queueSnapshot() {
@@ -3542,6 +3549,7 @@ function terminalModel() {
   const position = engine.position, duration = engine.duration;
   return {
     words: { now: t('NOW PLAYING'), volume: t('VOLUME'), disc: 'CD', tray: t('TRAY'), noDisc: t('NO DISC') }, tray: disc.trayT,
+    pet: petView.rows(),
     title: textOf('track-title'), artist: textOf('track-artist'), album: d ? d.album : '', year: d ? yearOf(d) : '',
     source: [textOf('track-source'), textOf('quality-badge')].filter(Boolean).join(' · '), status: textOf('status').replace(/^●\s*/, ''),
     elapsed: formatTime(position), remaining: duration > 0 ? `-${formatTime(Math.max(0, duration - position))}` : '--:--',
@@ -3690,6 +3698,7 @@ function frame(now) {
   // measuring the disc there made the whole shelf lay itself out again every frame.
   const underShelf = isShelfOpen() && !$('shelf').classList.contains('carrying');
   if (underShelf) { requestAnimationFrame(frame); return; }
+  if (petView.on) petView.tick(now, { playing: engine.playing, track: state.loadedPath, level: () => { const s = engine.stereo(); return s ? (s[0] + s[1]) / 2 : 0; } });
   visualizer.setSpectrum(engine.playing ? engine.spectrum(visualizer.n) : null, dt);
   const overlayShown = state.visualizerMode && !inImmersive();
   if (overlayShown) bigVisualizer.setSpectrum(engine.playing ? engine.spectrum(bigVisualizer.n) : null, dt);
@@ -3731,7 +3740,7 @@ function frame(now) {
 // ---- The app object the panels module works through ------------------------------------------------------------
 
 export const app = {
-  state, engine, disc, THEMES, BUILTIN_EQ_PRESETS, cdp, libraryCheck: () => panels.showLibraryCheck(app), shareShelf, showYear: (y) => panels.showYear(app, y),
+  setPet, petView, state, engine, disc, THEMES, BUILTIN_EQ_PRESETS, cdp, libraryCheck: () => panels.showLibraryCheck(app), shareShelf, showYear: (y) => panels.showYear(app, y),
   setStatus, setStreaming, queueDisplay, displayName, formatTime, ensureDetails, load, addToQueue, playNext, appendAndPlay, seekTo,
   detailsFor: (p) => detailsCache.get(p),
   playQueueIndex: (i) => { if (i >= 0 && i < state.queue.length) goTo(i); },
@@ -3911,6 +3920,7 @@ async function start() {
   state.ambientStyle = s.ambientStyle === 'GRADIENT' ? 'GRADIENT' : 'COVER';
   state.ripFormat = s.ripFormat || 'FLAC';
   setRomanOn(s.romanize);
+  state.pet = !!s.pet; petView.setOn(state.pet);
   state.discord = s.discord !== false;
   setDiscNoise(!!s.discNoise);
   state.discWear = s.discWear !== false;

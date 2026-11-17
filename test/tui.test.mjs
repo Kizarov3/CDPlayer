@@ -183,3 +183,13 @@ test('asciiCells on paper: white is the paper (no character), anything else as o
   assert.strictEqual(paper[0][0], null);
   assert.deepStrictEqual(paper[0][1], dark[0][1]);
 });
+
+test('DECK PET: BLIP in half-blocks at the top right of NOW PLAYING, the song beside it, never over it; not where there is no room', () => {
+  const pet = Array.from({ length: 8 }, (_, r) => (r === 3 ? '█'.repeat(25) : ' '.repeat(12) + '▀' + ' '.repeat(12)));
+  const g = screen(model({ pet }), 140, 40), p = panes(140, 40), end = 140 - 2;
+  assert.strictEqual(rowText(g, 4).slice(end - 25, end), '█'.repeat(25));
+  assert.ok(!/[^\s█▀]/.test(rowText(g, 4).slice(end - 26, end)), 'the title stops short of it');
+  assert.ok(g.hits.some((h) => h.act === 'seek' && h.y > 8));
+  assert.ok(!rowText(screen(model({ pet }), 60, 24), 4).includes('█'.repeat(25)));
+  assert.strictEqual(g.cells[0][p.discWidth].ch, '┌');
+});

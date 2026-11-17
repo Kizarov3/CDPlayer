@@ -289,6 +289,15 @@ html:not(.light) body[data-theme="RED"] #deck-display {
 body.classic-display #times { display: flex; }
 body.classic-display #deck-display { display: none; }
 #cd-info #deck-display { width: 460px; max-width: 100%; margin: 14px auto 0; text-align: left; }
+/* Settings → DECK PET: BLIP (pet-view.js) in the dots between the lamps and the time — not where there's no room for it
+   beside them. A word it says takes the lamps' place for a moment. */
+#deck-display { container-type: inline-size; }
+#vfd-pet { display: none; flex: none; cursor: pointer; align-self: center; }
+body.pet-on #vfd-pet { display: block; }
+@container (max-width: 440px) { #vfd-pet { display: none !important; } }
+#vfd-say { display: none; color: rgb(var(--lcd-ink)); text-shadow: var(--lcd-glow); white-space: nowrap; overflow: hidden; text-overflow: clip; }
+#deck-display.saying .vfd-flags > .vfd-flag { display: none; }
+#deck-display.saying #vfd-say { display: inline; }
 /* One row: shuffle · skip back · previous · PLAY · next · skip forward · repeat, centered in the column. */
 #controls { margin-top: 16px; display: flex; justify-content: center; align-items: center; min-height: 68px; }
 #transport { display: flex; align-items: center; }
@@ -2041,3 +2050,16 @@ body.no-anim .tour-spot, body.no-anim .tour-bubble { transition: none; }
 .waiting-row .waiting-bar { flex: 1; max-width: 55%; height: 10px; border-radius: 5px; background: rgba(var(--muted), 0.18); animation: waiting 1.2s ease-in-out infinite alternate; }
 @keyframes waiting { from { opacity: 0.45; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .waiting-row .waiting-bar { animation: none; } }
+
+/* BLIP's card (panels.js showPetCard): it on a strip of the display, its name to change, what it is, what it's earned. */
+.pet-strip { height: 92px; border-radius: 8px; display: grid; place-items: center; background: var(--lcd); box-shadow: var(--lcd-edge); }
+.pet-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.pet-name { width: 9ch; font: inherit; font-size: 20px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgb(var(--text)); background: none; border: 0; border-bottom: 1px dashed transparent; padding: 0; outline: none; }
+.pet-name:hover, .pet-name:focus { border-bottom-color: rgba(var(--muted), .6); }
+.pet-form { color: rgb(var(--accent)); font-size: 11px; font-weight: 700; letter-spacing: .1em; white-space: nowrap; }
+.pet-info { display: grid; grid-template-columns: 110px 1fr; gap: 12px; font-size: 13px; margin: 5px 0; }
+.pet-info span:first-child, .pet-line span:first-child { color: rgb(var(--muted)); font-size: 11px; letter-spacing: .08em; padding-top: 2px; }
+.pet-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.pet-pills .on { color: rgb(var(--accent)); box-shadow: inset 0 0 0 1px rgb(var(--accent)); }
+.pet-diary { max-height: 140px; margin-top: 6px; }
+.pet-line { display: grid; grid-template-columns: 70px 1fr; gap: 10px; font-size: 13px; margin: 4px 0; }
