@@ -1,0 +1,53 @@
+name: Website
+
+# Builds the site (site/, the screenshots, every release's notes and downloads) and publishes it on GitHub Pages.
+# Rebuilt when the site changes, when a release is published or its notes edited, and after each tag's Build
+# (its release is made with the workflow's own token, which doesn't wake other workflows).
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', 'docs/screenshots/**', 'scripts/build-site.mjs', '.github/workflows/pages.yml']
+  release:
+    types: [published, edited, deleted]
+  workflow_run:
+    workflows: [Build]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'v'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/build-site.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
