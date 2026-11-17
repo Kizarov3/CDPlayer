@@ -1916,6 +1916,13 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.22.1', changes: [
+    '<b>Cards and videos in colour</b> (P): the page is the cover itself, blurred right out, slowly turning in the videos. The art as big as the frame lets it, the lines big, the names a small caption at the foot. CLASSIC&rsquo;s disc runs off the edge, LYRICS&rsquo; CD turns in the corner, TERMINAL sits on dark glass',
+    '<b>Back from a pause at once</b>: after a pause of more than a few seconds, the song came back a moment late on the Mac&rsquo;s speakers. Now it&rsquo;s heard as soon as you press PLAY',
+  ], changesIn: { ru: [
+    '<b>Карточки и видео в цвете</b> (P): фон &mdash; сама обложка, сильно размытая, в видео она медленно вращается. Картинка такая большая, какую позволяет кадр, строки крупные, а названия &mdash; маленькая подпись внизу. Диск КЛАССИКИ уходит за край, CD у ТЕКСТА крутится в углу, ТЕРМИНАЛ на тёмном стекле',
+    '<b>Звук сразу после паузы</b>: если пауза длилась дольше нескольких секунд, песня во встроенных динамиках Mac возвращалась с задержкой. Теперь звук идёт, как только нажимаешь PLAY',
+  ] } },
   { version: '2.22.0', changes: [
     '<b>WHITE</b>: a light theme, the player in white plastic with a grey-green LCD. Every look, the shelf, the booklet, the mini player and the phone remote go light with it. A new install picks WHITE on a light system and RED on a dark one; yours keeps its theme',
     '<b>Now Playing cards you can send</b> (P): each PLAYER LOOK its own quiet card. CLASSIC the disc with your cover on it, JEWEL CASE the case, VISUALIZER the song&rsquo;s bars, HI-FI the deck&rsquo;s display, ALBUM the cover edge to edge, LYRICS the line big, TERMINAL a command&rsquo;s output. Taller, so a chat shows it big. Your theme colours it',
