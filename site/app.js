@@ -9,9 +9,33 @@
     set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* private window */ } },
   };
 
+  /* ---------- The language: English as written, or Russian from ru.js (the head's script picked it). ---------- */
+  const root = document.documentElement;
+  const RU = window.CDP_RU;
+  const ru = root.lang === 'ru' && !!RU;
+  /** `en` in this page's language, with {name}s from `vars` (a Russian entry may be a function of them). */
+  const t = (en, vars = {}) => {
+    let s = (ru && RU.text[en]) || en;
+    if (typeof s === 'function') s = s(vars);
+    return s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
+  };
+  if (ru) {
+    document.querySelectorAll('[data-i18n]').forEach((el) => { const h = RU.html[el.dataset.i18n]; if (h) el.innerHTML = h; });
+    for (const [attr, key] of [['alt', 'i18nAlt'], ['title', 'i18nTitle'], ['aria-label', 'i18nLabel']]) {
+      document.querySelectorAll(`[data-${key.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase())}]`).forEach((el) => {
+        const h = RU.html[el.dataset[key]]; if (h) el.setAttribute(attr, h);
+      });
+    }
+    document.title = RU.html['doc-title'];
+    const lang = $('#lang');
+    lang.textContent = 'EN'; lang.lang = 'en';
+  }
+  root.classList.remove('i18n-wait');
+  // The other language: the page again in it (where it was, and with the release it had open in the address).
+  $('#lang').addEventListener('click', () => { store.set('cdp-lang', ru ? 'en' : 'ru'); location.reload(); });
+
   /* ---------- Themes: the pill cycles through the player's built-in ones. ---------- */
   const THEMES = ['RED', 'BLUE', 'SUNSET', 'FOREST', 'GALAXY', 'OCEAN', 'MATRIX', 'AUTUMN', 'SNOW', 'WHITE'];
-  const root = document.documentElement;
   const showTheme = () => { $('#theme-name').textContent = root.dataset.theme || 'RED'; };
   $('#theme').addEventListener('click', () => {
     const next = THEMES[(THEMES.indexOf(root.dataset.theme) + 1) % THEMES.length];
@@ -76,8 +100,10 @@
   }
   const os = detectOS();
   const mb = (bytes) => Math.round(bytes / 1048576);
-  const DATE = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-  const fmtDate = (iso) => DATE.format(new Date(iso));
+  const DATE = ru
+    ? new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+    : new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const fmtDate = (iso) => DATE.format(new Date(iso)).replace(/ г\.$/, '');
 
   function showDownload(latest) {
     const version = latest.tag_name.replace(/^v/, '');
@@ -88,24 +114,24 @@
     document.querySelectorAll('.deck-status [data-os]').forEach((s) => s.classList.toggle('lit', os in OS ? s.dataset.os === os : true));
     if (main) {
       key.href = btn.href = main.browser_download_url;
-      btn.textContent = `DOWNLOAD FOR ${OS[os].name.toUpperCase()}`;
-      meta.innerHTML = `<code>${esc(main.name)}</code> · ${mb(main.size)} MB · ${OS[os].note}<br>Version ${esc(version)}, released ${fmtDate(latest.published_at)}`;
+      btn.textContent = t('DOWNLOAD FOR {os}', { os: OS[os].name.toUpperCase() });
+      meta.innerHTML = `<code>${esc(main.name)}</code> · ${t('{mb} MB', { mb: mb(main.size) })} · ${t(OS[os].note)}<br>${t('Version {version}, released {date}', { version: esc(version), date: fmtDate(latest.published_at) })}`;
       seg($('#seg-size'), String(mb(main.size)), 3);
     } else {
       key.href = btn.href = `#others`;
-      btn.textContent = os === 'mobile' ? 'FOR YOUR COMPUTER' : 'DOWNLOAD';
-      meta.textContent = os === 'mobile'
-        ? `CDPlayer runs on macOS, Windows and Linux. Version ${version}, ${fmtDate(latest.published_at)}.`
-        : `Version ${version}, ${fmtDate(latest.published_at)}. Pick your system:`;
+      btn.textContent = t(os === 'mobile' ? 'FOR YOUR COMPUTER' : 'DOWNLOAD');
+      meta.textContent = t(os === 'mobile'
+        ? 'CDPlayer runs on macOS, Windows and Linux. Version {version}, {date}.'
+        : 'Version {version}, {date}. Pick your system:', { version, date: fmtDate(latest.published_at) });
       const sizes = Object.keys(OS).map((k) => assetFor(k)).filter(Boolean).map((a) => mb(a.size));
       if (sizes.length) seg($('#seg-size'), String(Math.max(...sizes)), 3);
-      $('#deck-size-label').textContent = 'UP TO · MB';
+      $('#deck-size-label').textContent = t('UP TO · MB');
     }
     const others = Object.keys(OS).filter((k) => k !== os).map((k) => {
       const a = assetFor(k);
-      return a ? `<a class="pill" href="${esc(a.browser_download_url)}">${OS[k].name.toUpperCase()} <small>${mb(a.size)} MB</small></a>` : '';
+      return a ? `<a class="pill" href="${esc(a.browser_download_url)}">${OS[k].name.toUpperCase()} <small>${t('{mb} MB', { mb: mb(a.size) })}</small></a>` : '';
     }).join('');
-    $('#others').innerHTML = `<span>${main ? 'Other systems:' : ''}</span>${others}<a class="pill" href="#releases">ALL VERSIONS</a>`;
+    $('#others').innerHTML = `<span>${main ? t('Other systems:') : ''}</span>${others}<a class="pill" href="#releases">${t('ALL VERSIONS')}</a>`;
   }
 
   /* ---------- First-launch tabs, opened at this system. ---------- */
@@ -116,9 +142,9 @@
   document.querySelectorAll('[data-tab]').forEach((t) => t.addEventListener('click', () => pickTab(t.dataset.tab)));
   pickTab(os in OS ? os : 'mac');
   document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText($('#' + b.dataset.copy).textContent); b.textContent = 'COPIED'; }
-    catch { b.textContent = 'SELECT IT'; }
-    setTimeout(() => { b.textContent = 'COPY'; }, 1600);
+    try { await navigator.clipboard.writeText($('#' + b.dataset.copy).textContent); b.textContent = t('COPIED'); }
+    catch { b.textContent = t('SELECT IT'); }
+    setTimeout(() => { b.textContent = t('COPY'); }, 1600);
   }));
 
   /* ---------- The looks. ---------- */
@@ -137,8 +163,8 @@
   function pickLook(i) {
     const [name, file, text] = LOOKS[i];
     tabs.querySelectorAll('[data-look]').forEach((b) => b.setAttribute('aria-selected', String(+b.dataset.look === i)));
-    cap.innerHTML = text;
-    img.alt = `CDPlayer's ${name} look`;
+    cap.innerHTML = ru ? t(`look-${name}`) : text;
+    img.alt = t("CDPlayer's {name} look", { name });
     if (img.getAttribute('src') === `shots/${file}`) return;
     img.classList.add('fading');
     const next = new Image();
@@ -193,21 +219,21 @@
   function titleOf(r) {
     const body = (r.body || '').replace(/\r/g, '');
     const m = body.match(/^\s*[-*]\s+\*\*(.+?)\*\*/m);
-    let t = m ? m[1] : (body.split('\n').find((l) => l.trim() && !/^#/.test(l)) || '');
-    t = t.replace(/[*`#]/g, '').replace(/^\s*[-*]\s+/, '').trim().replace(/[.:]$/, '');
-    if (r.name && !/^v?\d+(\.\d+)+$/.test(r.name.trim()) && !t) t = r.name;
-    return t || 'Fixes and small changes';
+    let title = m ? m[1] : (body.split('\n').find((l) => l.trim() && !/^#/.test(l)) || '');
+    title = title.replace(/[*`#]/g, '').replace(/^\s*[-*]\s+/, '').trim().replace(/[.:]$/, '');
+    if (r.name && !/^v?\d+(\.\d+)+$/.test(r.name.trim()) && !title) title = r.name;
+    return title || t('Fixes and small changes');
   }
 
   function showReleases(releases) {
     const list = $('#tracklist');
     const total = releases.length;
-    $('#rel-note').textContent = `${total} RELEASES`;
+    $('#rel-note').textContent = t('{n} RELEASES', { n: total });
     const SHOWN = 10;
     list.innerHTML = releases.map((r, i) => {
       const ver = r.tag_name.replace(/^v/, '');
       return `<li class="track${i === 0 ? ' latest' : ''}"${i >= SHOWN ? ' hidden' : ''} data-i="${i}" id="v${esc(ver)}">
-        <button type="button" aria-expanded="false"><span class="no">${total - i}.</span><span class="ver">${esc(ver)}</span><span class="title">${esc(titleOf(r))}${i === 0 ? '<span class="badge">LATEST</span>' : ''}</span><span class="date">${fmtDate(r.published_at)}</span></button>
+        <button type="button" aria-expanded="false"><span class="no">${total - i}.</span><span class="ver">${esc(ver)}</span><span class="title">${esc(titleOf(r))}${i === 0 ? `<span class="badge">${t('LATEST')}</span>` : ''}</span><span class="date">${fmtDate(r.published_at)}</span></button>
       </li>`;
     }).join('');
     const toggle = (li, open) => {
@@ -221,9 +247,9 @@
         notes = document.createElement('div');
         notes.className = 'notes';
         const files = r.assets.filter((a) => /\.(dmg|exe|AppImage)$/i.test(a.name))
-          .map((a) => `<a class="pill" href="${esc(a.browser_download_url)}">${esc(a.name)} <small>${mb(a.size)} MB</small></a>`).join('');
-        notes.innerHTML = markdown(r.body || 'No notes for this one.') +
-          `<div class="rel-files">${files}<a class="pill" href="${esc(r.html_url)}">ON GITHUB</a></div>`;
+          .map((a) => `<a class="pill" href="${esc(a.browser_download_url)}">${esc(a.name)} <small>${t('{mb} MB', { mb: mb(a.size) })}</small></a>`).join('');
+        notes.innerHTML = (r.body ? markdown(r.body) : `<p>${t('No notes for this one.')}</p>`) +
+          `<div class="rel-files">${files}<a class="pill" href="${esc(r.html_url)}">${t('ON GITHUB')}</a></div>`;
         li.appendChild(notes);
       }
       if (notes) notes.hidden = !open;
@@ -235,7 +261,7 @@
     const more = $('#rel-more');
     if (total > SHOWN) {
       more.hidden = false;
-      more.textContent = `SHOW ALL ${total}`;
+      more.textContent = t('SHOW ALL {n}', { n: total });
       more.addEventListener('click', () => { list.querySelectorAll('.track[hidden]').forEach((li) => { li.hidden = false; }); more.hidden = true; });
     }
   }
@@ -255,7 +281,8 @@
     showDownload(releases[0]);
     showReleases(releases);
   }).catch(() => {
-    $('#tracklist').innerHTML = `<li class="loading">The releases couldn't be loaded here. They're all on <a href="https://github.com/${REPO}/releases">GitHub</a>.</li>`;
-    $('#dl-meta').innerHTML = `Pick your system's file on the <a href="https://github.com/${REPO}/releases/latest">latest release</a>.`;
+    const link = (html, href) => html.replace('<a>', `<a href="${href}">`);
+    $('#tracklist').innerHTML = `<li class="loading">${link(t("The releases couldn't be loaded here. They're all on <a>GitHub</a>."), `https://github.com/${REPO}/releases`)}</li>`;
+    $('#dl-meta').innerHTML = link(t("Pick your system's file on the <a>latest release</a>."), `https://github.com/${REPO}/releases/latest`);
   });
 })();

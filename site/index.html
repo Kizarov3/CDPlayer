@@ -19,21 +19,33 @@
     var t = localStorage.getItem('cdp-theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'WHITE' : 'RED');
     document.documentElement.dataset.theme = t;
   } catch (e) { document.documentElement.dataset.theme = 'RED'; }
+  // The language too, as the app's AUTO: Russian for a Russian system, or as chosen on the pill. The page waits
+  // unseen until app.js has put the words in (or 1.5 s, whatever happens to it).
+  try {
+    var l = localStorage.getItem('cdp-lang') || (/^ru\b/i.test(navigator.language || '') ? 'ru' : 'en');
+    if (l === 'ru') {
+      document.documentElement.lang = 'ru';
+      document.documentElement.classList.add('i18n-wait');
+      setTimeout(function () { document.documentElement.classList.remove('i18n-wait'); }, 1500);
+    }
+  } catch (e) { /* English */ }
 </script>
+<script src="ru.js" defer></script>
 <script src="app.js" defer></script>
 </head>
 <body>
 
 <header class="bar">
-  <a class="brand" href="#top" aria-label="CDPlayer, to the top"><img src="icon.png" alt="" width="28" height="28"><span>CDPLAYER</span></a>
+  <a class="brand" href="#top" aria-label="CDPlayer, to the top" data-i18n-label="brand-label"><img src="icon.png" alt="" width="28" height="28"><span>CDPLAYER</span></a>
   <nav class="pills" aria-label="Sections">
-    <a class="pill" href="#download">DOWNLOAD</a>
-    <a class="pill" href="#looks">LOOKS</a>
-    <a class="pill" href="#features">FEATURES</a>
-    <a class="pill" href="#releases">RELEASES</a>
+    <a class="pill" href="#download" data-i18n="nav-download">DOWNLOAD</a>
+    <a class="pill" href="#looks" data-i18n="nav-looks">LOOKS</a>
+    <a class="pill" href="#features" data-i18n="nav-features">FEATURES</a>
+    <a class="pill" href="#releases" data-i18n="nav-releases">RELEASES</a>
     <a class="pill" href="https://github.com/Kizarov3/CDPlayer">GITHUB</a>
   </nav>
-  <button class="pill theme-pill" id="theme" type="button" title="Change the theme, as in the player"><span class="swatch"></span><span id="theme-name">RED</span></button>
+  <button class="pill theme-pill" id="theme" type="button" title="Change the theme, as in the player" data-i18n-title="theme-title"><span class="swatch"></span><span id="theme-name">RED</span></button>
+  <button class="pill lang-pill" id="lang" type="button" title="По-русски" data-i18n-title="lang-title" lang="ru">RU</button>
 </header>
 <div class="ticks" aria-hidden="true"></div>
 
@@ -52,20 +64,20 @@
   </div>
 
   <div class="hero-side">
-    <div class="spinning"><span class="dot"></span>NOW SPINNING</div>
-    <h1>A music player that feels like a real CD&nbsp;player.</h1>
-    <p class="lede">For your music files, your CDs, YouTube Music, SoundCloud and Spotify. The disc spins with your cover printed on it, your albums stand on a shelf, and each one has its booklet. Free, no account, nothing else to install.</p>
+    <div class="spinning" data-i18n="spinning"><span class="dot"></span>NOW SPINNING</div>
+    <h1 data-i18n="h1">A music player that feels like a real CD&nbsp;player.</h1>
+    <p class="lede" data-i18n="lede">For your music files, your CDs, YouTube Music, SoundCloud and Spotify. The disc spins with your cover printed on it, your albums stand on a shelf, and each one has its booklet. Free, no account, nothing else to install.</p>
 
     <div class="deck" id="deck">
       <div class="deck-col">
-        <div class="deck-label">VERSION</div>
+        <div class="deck-label" data-i18n="deck-version">VERSION</div>
         <div class="seg" id="seg-version" aria-label="Version"></div>
       </div>
       <div class="deck-status" aria-label="Systems">
         <span data-os="mac">MACOS</span><span data-os="win">WINDOWS</span><span data-os="linux">LINUX</span>
       </div>
       <div class="deck-col right">
-        <div class="deck-label" id="deck-size-label">SIZE · MB</div>
+        <div class="deck-label" id="deck-size-label" data-i18n="deck-size">SIZE · MB</div>
         <div class="seg" id="seg-size" aria-label="Download size in megabytes"></div>
       </div>
     </div>
@@ -75,8 +87,8 @@
         <svg viewBox="0 0 24 24" width="30" height="30"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </a>
       <div class="get-text">
-        <a class="dl-button" id="dl-main" href="https://github.com/Kizarov3/CDPlayer/releases/latest">DOWNLOAD</a>
-        <div class="dl-meta" id="dl-meta">Free · macOS, Windows and Linux</div>
+        <a class="dl-button" id="dl-main" href="https://github.com/Kizarov3/CDPlayer/releases/latest" data-i18n="dl-main">DOWNLOAD</a>
+        <div class="dl-meta" id="dl-meta" data-i18n="dl-meta">Free · macOS, Windows and Linux</div>
       </div>
     </div>
     <div class="others" id="others"></div>
@@ -85,7 +97,7 @@
 
 <section class="install" id="install">
   <div class="section-head">
-    <h2>FIRST LAUNCH</h2>
+    <h2 data-i18n="install-h">FIRST LAUNCH</h2>
     <div class="tabs" role="tablist" aria-label="System">
       <button class="pill" role="tab" data-tab="mac">MACOS</button>
       <button class="pill" role="tab" data-tab="win">WINDOWS</button>
@@ -94,35 +106,35 @@
   </div>
   <div class="steps" data-panel="mac">
     <ol>
-      <li><b>Open the .dmg</b> and drag <b>CDPlayer</b> into <b>Applications</b>. One file for Apple Silicon and Intel Macs.</li>
-      <li><b>Right-click CDPlayer → Open → Open.</b> Only the first time: the app isn't signed with a paid Apple certificate, so macOS asks once.</li>
-      <li><b>Pick your music folder.</b> Your albums go onto the shelf, and a short guide shows you round the window.</li>
+      <li data-i18n="mac-1"><b>Open the .dmg</b> and drag <b>CDPlayer</b> into <b>Applications</b>. One file for Apple Silicon and Intel Macs.</li>
+      <li data-i18n="mac-2"><b>Open CDPlayer.</b> If macOS says it can't check it, click <b>Done</b>, then go to <b>System Settings → Privacy &amp; Security</b> and click <b>Open Anyway</b> near the bottom. Only the first time: the app isn't signed with a paid Apple certificate. On macOS 14 and older, <b>right-click → Open → Open</b> is enough.</li>
+      <li data-i18n="pick-folder"><b>Pick your music folder.</b> Your albums go onto the shelf, and a short guide shows you round the window.</li>
     </ol>
-    <p class="aside">Keep it in Applications: from there it updates itself.</p>
+    <p class="aside" data-i18n="mac-aside">Keep it in Applications: from there it updates itself.</p>
   </div>
   <div class="steps" data-panel="win" hidden>
     <ol>
-      <li><b>Download the .exe</b> and put it in a folder of its own (not inside a .zip). There's nothing to install.</li>
-      <li><b>Double-click it.</b> If Windows SmartScreen says it protected your PC, click <b>More info → Run anyway</b>. Only the first time: the app isn't signed with a paid certificate.</li>
-      <li><b>Pick your music folder.</b> Your albums go onto the shelf, and a short guide shows you round the window.</li>
+      <li data-i18n="win-1"><b>Download the .exe</b> and put it in a folder of its own (not inside a .zip). There's nothing to install.</li>
+      <li data-i18n="win-2"><b>Double-click it.</b> If Windows SmartScreen says it protected your PC, click <b>More info → Run anyway</b>. Only the first time: the app isn't signed with a paid certificate.</li>
+      <li data-i18n="pick-folder"><b>Pick your music folder.</b> Your albums go onto the shelf, and a short guide shows you round the window.</li>
     </ol>
-    <p class="aside">Windows 10 and 11. It updates itself where it is.</p>
+    <p class="aside" data-i18n="win-aside">Windows 10 and 11. It updates itself where it is.</p>
   </div>
   <div class="steps" data-panel="linux" hidden>
     <ol>
-      <li><b>Make the AppImage executable</b>, in a terminal or in the file's Properties:
-        <div class="cmd"><code id="chmod">chmod +x CDPlayer-*-linux.AppImage</code><button class="pill copy" type="button" data-copy="chmod">COPY</button></div></li>
-      <li><b>Double-click it.</b> There's nothing to install.</li>
-      <li><b>Pick your music folder.</b> Your albums go onto the shelf, and a short guide shows you round the window.</li>
+      <li><span data-i18n="linux-1"><b>Make the AppImage executable</b>, in a terminal or in the file's Properties:</span>
+        <div class="cmd"><code id="chmod">chmod +x CDPlayer-*-linux.AppImage</code><button class="pill copy" type="button" data-copy="chmod" data-i18n="copy">COPY</button></div></li>
+      <li data-i18n="linux-2"><b>Double-click it.</b> There's nothing to install.</li>
+      <li data-i18n="pick-folder"><b>Pick your music folder.</b> Your albums go onto the shelf, and a short guide shows you round the window.</li>
     </ol>
-    <p class="aside">The AppImage updates itself, and AppImageUpdate, Gear Lever and appimaged can update it too. It's in the <a href="https://appimage.github.io/CDPlayer/">AppImage catalog</a>.</p>
+    <p class="aside" data-i18n="linux-aside">The AppImage updates itself, and AppImageUpdate, Gear Lever and appimaged can update it too. It's in the <a href="https://appimage.github.io/CDPlayer/">AppImage catalog</a>.</p>
   </div>
-  <p class="updates"><b>Updates:</b> when a new version is out, an <span class="kbd">AVAILABLE</span> button lights up in the player's top-left corner. One click downloads it (checked against its SHA-256), then <span class="kbd">RESTART TO UPDATE</span>, and your queue is kept.</p>
+  <p class="updates" data-i18n="updates"><b>Updates:</b> when a new version is out, an <span class="kbd">AVAILABLE</span> button lights up in the player's top-left corner. One click downloads it (checked against its SHA-256), then <span class="kbd">RESTART TO UPDATE</span>, and your queue is kept.</p>
 </section>
 
 <section class="looks" id="looks">
   <div class="section-head">
-    <h2>PLAYER LOOK</h2>
+    <h2 data-i18n="looks-h">PLAYER LOOK</h2>
     <div class="tabs" role="tablist" aria-label="Player look" id="look-tabs"></div>
   </div>
   <figure class="screen">
@@ -132,75 +144,75 @@
 </section>
 
 <section class="features" id="features">
-  <div class="section-head"><h2>WHAT'S IN IT</h2></div>
+  <div class="section-head"><h2 data-i18n="features-h">WHAT'S IN IT</h2></div>
 
   <div class="feature">
-    <img src="shots/shelf.jpg" alt="The CD shelf: albums spine-out on wooden boards, sorted by artist" loading="lazy">
+    <img src="shots/shelf.jpg" data-i18n-alt="shelf-alt" alt="The CD shelf: albums spine-out on wooden boards, sorted by artist" loading="lazy">
     <div>
-      <h3>THE CD SHELF</h3>
-      <p>Every album in your music folder, spine-out, kept up to date as you add or rip albums. Sort by artist, year, colour or most played, or put up dividers of your own. Albums you never play gather dust, new ones arrive shrink-wrapped, and <b>PULL ONE</b> pulls out an album at random, dusty ones first.</p>
+      <h3 data-i18n="shelf-h">THE CD SHELF</h3>
+      <p data-i18n="shelf-p">Every album in your music folder, spine-out, kept up to date as you add or rip albums. Sort by artist, year, colour or most played, or put up dividers of your own. Albums you never play gather dust, new ones arrive shrink-wrapped, and <b>PULL ONE</b> pulls out an album at random, dusty ones first.</p>
     </div>
   </div>
   <div class="feature flip">
-    <img src="shots/booklet.jpg" alt="The booklet: the album's tracklist with tally marks in pen and a favourite circled" loading="lazy">
+    <img src="shots/booklet.jpg" data-i18n-alt="booklet-alt" alt="The booklet: the album's tracklist with tally marks in pen and a favourite circled" loading="lazy">
     <div>
-      <h3>THE BOOKLET</h3>
-      <p>Each album's tracklist, lyrics and credits, marked in pen as you listen: tally marks for each song, your favourite circled, and on the back cover how many times you've played the whole album.</p>
+      <h3 data-i18n="booklet-h">THE BOOKLET</h3>
+      <p data-i18n="booklet-p">Each album's tracklist, lyrics and credits, marked in pen as you listen: tally marks for each song, your favourite circled, and on the back cover how many times you've played the whole album.</p>
     </div>
   </div>
   <div class="feature">
-    <img src="shots/karaoke.jpg" alt="Karaoke: the lyrics lit word by word as they're sung" loading="lazy">
+    <img src="shots/karaoke.jpg" data-i18n-alt="karaoke-alt" alt="Karaoke: the lyrics lit word by word as they're sung" loading="lazy">
     <div>
-      <h3>LYRICS &amp; KARAOKE</h3>
-      <p>Lyrics are found online and light up word by word as they're sung. On English songs, small voice models that come with the app time each word to the singing in your file, offline. <b>ABC</b> spells out Japanese, Chinese, Korean and Cyrillic lyrics in Latin letters.</p>
+      <h3 data-i18n="karaoke-h">LYRICS &amp; KARAOKE</h3>
+      <p data-i18n="karaoke-p">Lyrics are found online and light up word by word as they're sung. On English songs, small voice models that come with the app time each word to the singing in your file, offline. <b>ABC</b> spells out Japanese, Chinese, Korean and Cyrillic lyrics in Latin letters.</p>
     </div>
   </div>
   <div class="feature flip">
-    <img class="phone" src="shots/remote-playing.jpg" alt="The phone remote in a phone's browser: the disc, the song and the keys" loading="lazy">
+    <img class="phone" src="shots/remote-playing.jpg" data-i18n-alt="remote-alt" alt="The phone remote in a phone's browser: the disc, the song and the keys" loading="lazy">
     <div>
-      <h3>PHONE REMOTE</h3>
-      <p>Scan a QR code and your phone becomes the remote, in its browser, on your Wi-Fi. There's nothing to install and nothing goes over the internet. Skip, set the volume, pick albums from the shelf, rearrange the queue.</p>
+      <h3 data-i18n="remote-h">PHONE REMOTE</h3>
+      <p data-i18n="remote-p">Scan a QR code and your phone becomes the remote, in its browser, on your Wi-Fi. There's nothing to install and nothing goes over the internet. Skip, set the volume, pick albums from the shelf, rearrange the queue.</p>
     </div>
   </div>
 
   <div class="grid">
-    <div class="card"><h3>REAL CDS</h3><p>Play an audio CD, named from MusicBrainz, or <b>RIP</b> it to verified, tagged FLAC in one click.</p></div>
-    <div class="card"><h3>STREAMING</h3><p>YouTube Music and SoundCloud play like your own discs. Your Spotify albums and playlists play too, with Premium.</p></div>
-    <div class="card"><h3>CD CHANGER</h3><p>Five discs in a carousel, each keeping its own music. DISC SKIP, and keys 1 to 5 to play a slot.</p></div>
-    <div class="card"><h3>THE SOUND</h3><p>Gapless albums, AUTOMIX, a 10-band EQ, Sound Check, spatial audio for headphones, lossless up to 192 kHz.</p></div>
-    <div class="card"><h3>MAKE IT YOURS</h3><p>Eleven themes and seven player looks, from a hi-fi deck to a terminal. Make your own theme and share it as a code.</p></div>
-    <div class="card"><h3>HISTORY</h3><p>What you played, day by day. Import your plays from Spotify, Last.fm or Apple Music, and scrobble to Last.fm and ListenBrainz.</p></div>
-    <div class="card"><h3>NOW PLAYING CARDS</h3><p>A picture or a video of what's playing, with lines of its lyrics, ready to send. Discord status too.</p></div>
-    <div class="card"><h3>EVERY FORMAT</h3><p>MP3, M4A/ALAC, FLAC, WAV, AIFF, OGG and Opus play out of the box. English and Russian.</p></div>
+    <div class="card"><h3 data-i18n="cd-h">REAL CDS</h3><p data-i18n="cd-p">Play an audio CD, named from MusicBrainz, or <b>RIP</b> it to verified, tagged FLAC in one click.</p></div>
+    <div class="card"><h3 data-i18n="stream-h">STREAMING</h3><p data-i18n="stream-p">YouTube Music and SoundCloud play like your own discs. Your Spotify albums and playlists play too, with Premium.</p></div>
+    <div class="card"><h3 data-i18n="changer-h">CD CHANGER</h3><p data-i18n="changer-p">Five discs in a carousel, each keeping its own music. DISC SKIP, and keys 1 to 5 to play a slot.</p></div>
+    <div class="card"><h3 data-i18n="sound-h">THE SOUND</h3><p data-i18n="sound-p">Gapless albums, AUTOMIX, a 10-band EQ, Sound Check, spatial audio for headphones, lossless up to 192 kHz.</p></div>
+    <div class="card"><h3 data-i18n="yours-h">MAKE IT YOURS</h3><p data-i18n="yours-p">Eleven themes and seven player looks, from a hi-fi deck to a terminal. Make your own theme and share it as a code.</p></div>
+    <div class="card"><h3 data-i18n="history-h">HISTORY</h3><p data-i18n="history-p">What you played, day by day. Import your plays from Spotify, Last.fm or Apple Music, and scrobble to Last.fm and ListenBrainz.</p></div>
+    <div class="card"><h3 data-i18n="cards-h">NOW PLAYING CARDS</h3><p data-i18n="cards-p">A picture or a video of what's playing, with lines of its lyrics, ready to send. Discord status too.</p></div>
+    <div class="card"><h3 data-i18n="formats-h">EVERY FORMAT</h3><p data-i18n="formats-p">MP3, M4A/ALAC, FLAC, WAV, AIFF, OGG and Opus play out of the box. English and Russian.</p></div>
   </div>
 </section>
 
 <section class="releases" id="releases">
   <div class="section-head">
-    <h2>RELEASES</h2>
+    <h2 data-i18n="releases-h">RELEASES</h2>
     <span class="head-note" id="rel-note"></span>
   </div>
-  <p class="rel-lede">Every update, newest first. Click one to read what's in it.</p>
-  <ol class="tracklist" id="tracklist"><li class="loading">Loading…</li></ol>
+  <p class="rel-lede" data-i18n="rel-lede">Every update, newest first. Click one to read what's in it.</p>
+  <ol class="tracklist" id="tracklist"><li class="loading" data-i18n="loading">Loading…</li></ol>
   <button class="pill more" id="rel-more" type="button" hidden>SHOW ALL</button>
 </section>
 
 <section class="support">
   <div>
-    <h2>MADE BY ONE PERSON</h2>
-    <p>CDPlayer is free and open source. If it brings back the feeling of putting on a CD, you can buy its maker a coffee.</p>
+    <h2 data-i18n="support-h">MADE BY ONE PERSON</h2>
+    <p data-i18n="support-p">CDPlayer is free and open source. If it brings back the feeling of putting on a CD, you can buy its maker a coffee.</p>
   </div>
   <div class="support-keys">
-    <a class="pill big accent" href="https://ko-fi.com/Kizarov3">SUPPORT ON KO-FI</a>
-    <a class="pill big" href="https://github.com/Kizarov3/CDPlayer/issues">REPORT A BUG</a>
+    <a class="pill big accent" href="https://ko-fi.com/Kizarov3" data-i18n="kofi">SUPPORT ON KO-FI</a>
+    <a class="pill big" href="https://github.com/Kizarov3/CDPlayer/issues" data-i18n="bug">REPORT A BUG</a>
   </div>
 </section>
 
 </main>
 
 <footer>
-  <span>CDPlayer · MIT License</span>
-  <span>Spotify, YouTube Music and SoundCloud are trademarks of their owners; CDPlayer isn't affiliated with them.</span>
+  <span data-i18n="license">CDPlayer · MIT License</span>
+  <span data-i18n="trademarks">Spotify, YouTube Music and SoundCloud are trademarks of their owners; CDPlayer isn't affiliated with them.</span>
 </footer>
 
 </body>

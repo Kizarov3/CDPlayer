@@ -11,7 +11,7 @@ A desktop music player that feels like a real CD player — for your local music
 
 ## Download
 
-Grab the file for your system from [**Releases**](https://github.com/Kizarov3/CDPlayer/releases):
+On **[kizarov3.github.io/CDPlayer](https://kizarov3.github.io/CDPlayer/)** the download for your system is one button, with the first launch step by step and every release's notes. Or grab the file from [**Releases**](https://github.com/Kizarov3/CDPlayer/releases):
 
 | System | File | How to run |
 | --- | --- | --- |
@@ -19,7 +19,7 @@ Grab the file for your system from [**Releases**](https://github.com/Kizarov3/CD
 | **Windows** 10 / 11 | `CDPlayer-x.y.z-windows.exe` | Double-click — no installation |
 | **Linux** | `CDPlayer-x.y.z-linux.AppImage` | `chmod +x`, then double-click |
 
-The builds aren't signed with a paid certificate, so the first launch asks once: on macOS right-click the app → **Open** → **Open**; on Windows **More info** → **Run anyway**.
+The builds aren't signed with a paid certificate, so the first launch asks once: on macOS, if it says it can't check the app, click **Done**, then **Open Anyway** in System Settings → **Privacy & Security** (on macOS 14 and older, right-click the app → **Open** → **Open**); on Windows **More info** → **Run anyway**.
 
 ### Updating
 

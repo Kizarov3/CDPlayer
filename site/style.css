@@ -337,3 +337,7 @@ footer {
   .section-head .tabs { margin-left: 0; }
   .support { padding: 24px; }
 }
+
+/* The language pill, and the page kept unseen while app.js puts the Russian in (index.html's head). */
+.lang-pill { min-width: 46px; padding-left: 12px; padding-right: 12px; }
+html.i18n-wait body { visibility: hidden; }
