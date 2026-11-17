@@ -777,7 +777,6 @@ body.look-case #case-box.holding #album-disc { opacity: 1; }
 body.look-case #album-disc { --s: 100%; }
 body.look-album #divider, body.look-visualizer #divider, body.look-lyrics #divider, body.look-album #now-playing-label, body.look-album #visualizer, body.look-album #deck-display, body.look-album #now-row .grow { display: none; }
 body.look-album #times { display: flex; }
-body.look-album #backdrop-art { filter: saturate(1.6) brightness(1.1); }
 body.look-album #backdrop::before { background: linear-gradient(rgba(15, 15, 17, .62), rgba(9, 9, 10, .78)); }
 body.look-album #backdrop::after { background: none; }
 body.look-album #header .pill, body.look-album #status-pill { background: rgba(255, 255, 255, .08); box-shadow: none; border: none; color: rgb(var(--text)); }

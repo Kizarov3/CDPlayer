@@ -2478,7 +2478,11 @@ function paintCoverGlow() {
       g.drawImage(cover, (iw - s) / 2, (ih - s) / 2, s, s, 0, 0, 48, 48);
       g.globalAlpha = 1;
       out.imageSmoothingEnabled = true; out.imageSmoothingQuality = 'high';
+      // ALBUM and JEWEL CASE: the glow brighter and more coloured — drawn so here, once, not as a CSS filter the window
+      // would put the whole background through again on every frame (without a graphics card, most of what it cost)
+      out.filter = state.look === 'ALBUM' || state.look === 'CASE' ? 'saturate(1.6) brightness(1.1)' : 'none';
       out.drawImage(glowSmall, 0, 0, art.width, art.height);
+      out.filter = 'none';
     };
     cancelAnimationFrame(glowFade);
     if (before) {
@@ -3673,18 +3677,35 @@ function stepLookInset(dt) {
 }
 
 let last = performance.now(), idleCheck = 0, windowShown = true;
-cdp.onWindowShown((shown) => { windowShown = shown; });
+cdp.onWindowShown((shown) => { windowShown = shown; if (shown) wakeFrames(); });
 // While you're in another app, the window only needs to look alive: drawing it at 30 frames a second instead of 60
 // roughly halves what the spinning disc and visualizer cost. Watched — CDPlayer in front, or CD View, Visualizer Mode
 // or Karaoke on screen — it stays at full rate.
 // Drawn without the graphics card, it's 30 always (render-budget.js).
+// When the window was last touched (the mouse moved or pressed, a key, the wheel), or the music stopped or started:
+// for STIR_MS after, it draws at full rate even paused (frame()).
+const STIR_MS = 2500;
+let stirredAt = 0, playingSeen = false;
+// The next frame: on the display's next one, or — with frames to spare (in the background, at rest, hidden) — after a
+// sleep, so the window isn't woken 60 times a second only to find it has nothing to draw. A touch ends the sleep.
+let frameTimer = 0;
+function nextFrame(delay = 0) {
+  if (delay > 4) frameTimer = setTimeout(() => { frameTimer = 0; requestAnimationFrame(frame); }, delay);
+  else requestAnimationFrame(frame);
+}
+function wakeFrames() { if (frameTimer) { clearTimeout(frameTimer); frameTimer = 0; requestAnimationFrame(frame); } }
+for (const kind of ['pointermove', 'pointerdown', 'wheel', 'keydown']) window.addEventListener(kind, () => { stirredAt = performance.now(); wakeFrames(); }, { capture: true, passive: true });
 function frame(now) {
   // Hidden (the mini player up, or the window minimised or on another space): nothing to draw. The window keeps
   // running in the background for the music, so its frames would still come 60 a second: looked in on 4 times instead.
-  if (state.miniMode || !windowShown) { setTimeout(() => requestAnimationFrame(frame), 250); last = now; return; }
+  if (state.miniMode || !windowShown) { nextFrame(250); last = now; return; }
   const watched = document.hasFocus() || state.cdView || state.visualizerMode || isKaraokeOpen() || !!discMorph;
-  const gap = discMorph ? 0 : frameGap({ watched, software: state.softwareRendering, playing: engine.playing || !!jog }); // (CD View coming or going: every frame)
-  if (gap && now - last < gap - 2) { requestAnimationFrame(frame); return; }
+  if (engine.playing !== playingSeen) { playingSeen = engine.playing; stirredAt = now; } // (paused just now: the visualizer and the disc settle at full rate)
+  // At rest: paused, the disc still (not turning, its tray, art or eject not moving), no theme particles, nothing touched for a moment — a few
+  // frames a second are as good as sixty (render-budget.js); a touch brings sixty back on the next frame.
+  const resting = !engine.playing && !jog && !discMorph && now - stirredAt > STIR_MS && !disc.animating && !disc.morph && !(disc.artT > 0 && disc.artT < 1) && particles.mode === 'NONE';
+  const gap = discMorph ? 0 : frameGap({ watched, software: state.softwareRendering, playing: engine.playing || !!jog, resting }); // (CD View coming or going: every frame)
+  if (gap && now - last < gap - 2) { nextFrame(gap - (now - last) - 8); return; } // (8: the display's next frame comes after the sleep)
   const dt = Math.min(100, now - last); last = now;
   if (engine.deck && engine.playing && !jog) { // turning the disc, the seek bar shows where it has got to (turnJog)
     updateProgressUi();
@@ -3697,7 +3718,8 @@ function frame(now) {
   // The shelf covers the player (unless a spine is being carried over it): nothing of the player is drawn under it —
   // measuring the disc there made the whole shelf lay itself out again every frame.
   const underShelf = isShelfOpen() && !$('shelf').classList.contains('carrying');
-  if (underShelf) { requestAnimationFrame(frame); return; }
+  if (underShelf) { nextFrame(100); return; } // (nothing of the player to draw: looked in on now and then — a touch wakes it)
+  if (globalThis.__perf) globalThis.__perf.frames.push([now, dt, gap]); // (only in the --perf-report run: the frames drawn)
   if (petView.on) petView.tick(now, { playing: engine.playing, track: state.loadedPath, level: () => { const s = engine.stereo(); return s ? (s[0] + s[1]) / 2 : 0; } });
   visualizer.setSpectrum(engine.playing ? engine.spectrum(visualizer.n) : null, dt);
   const overlayShown = state.visualizerMode && !inImmersive();
@@ -3734,7 +3756,7 @@ function frame(now) {
       document.body.classList.add('cursor-hidden'); state.cursorHidden = true;
     }
   }
-  requestAnimationFrame(frame);
+  nextFrame(gap ? gap - 8 : 0);
 }
 
 // ---- The app object the panels module works through ------------------------------------------------------------
@@ -3778,6 +3800,7 @@ export const app = {
   anyOverlayOpen, rememberFocus: () => document.activeElement && document.activeElement.blur(),
   loadHistoryFromDisk: async () => { const s = await cdp.loadState(); state.history = s.history; },
 };
+if (globalThis.__perf) globalThis.__perf.app = app; // (only in the --perf-report run: perf-report.js switches the looks through it)
 
 // ---- Startup ---------------------------------------------------------------------------------------------------
 

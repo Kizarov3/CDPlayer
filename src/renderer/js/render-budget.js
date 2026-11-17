@@ -11,9 +11,13 @@ export const RESTING_FRAME_MS = 1000 / 10;
 export const SOFTWARE_PAUSED_FRAME_MS = 1000 / 15;
 export const MAX_GLOW_SIDE = 2560; // the glow is a soft blur: more pixels than this show nothing more
 
-/** The least time between drawn frames (ms): 0 for every frame the display gives. `playing`: music is playing. */
-export function frameGap({ watched, software, playing = true }) {
-  if (!watched && !playing) return RESTING_FRAME_MS;
+/**
+ * The least time between drawn frames (ms): 0 for every frame the display gives. `playing`: music is playing.
+ * `resting`: paused with nothing on its way anywhere (the disc still, nothing touched for a moment, no theme particles):
+ * 10 frames a second even watched — a touch makes it not resting, so what follows the mouse is at full rate at once.
+ */
+export function frameGap({ watched, software, playing = true, resting = false }) {
+  if ((!watched || resting) && !playing) return RESTING_FRAME_MS;
   if (software && !playing) return SOFTWARE_PAUSED_FRAME_MS;
   return watched && !software ? 0 : BACKGROUND_FRAME_MS;
 }

@@ -27,3 +27,10 @@ test('the cover glow stays 48 px for the graphics card to stretch, and is stretc
   assert.strictEqual(Math.round((big.width / big.height) * 100), Math.round((1920 / 1080) * 100));
   assert.deepStrictEqual(glowSize({ software: true, width: 0, height: 0, dpr: 1 }), { width: 48, height: 48 }); // not laid out yet
 });
+
+test('at rest (paused, the disc still, nothing touched for a moment): 10 frames a second even watched — what moves on a touch is back at full rate at once', () => {
+  assert.strictEqual(frameGap({ watched: true, software: false, playing: false, resting: true }), 100);
+  assert.strictEqual(frameGap({ watched: true, software: true, playing: false, resting: true }), 100);
+  assert.strictEqual(frameGap({ watched: true, software: false, playing: false, resting: false }), 0);
+  assert.strictEqual(frameGap({ watched: true, software: false, playing: true, resting: true }), 0, 'playing is never at rest');
+});
