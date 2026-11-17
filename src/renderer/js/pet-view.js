@@ -3,7 +3,7 @@
 // noticing you (its eyes follow the cursor, a click is a poke, it feels a skip, a seek, the volume, the tray) and now
 // and then saying a word or two in place of the lamps, only in the quiet between songs. Driven by the window's own
 // frame loop (app.js), at its own few frames a second; nothing at all while it's off.
-import { frame, drawDots, termRows, FRAME_MS, SCENE_FRAMES, REACT_MS } from './pet-sprite.js';
+import { frame, drawDots, termPet, FRAME_MS, SCENE_FRAMES, REACT_MS } from './pet-sprite.js';
 import { colors, shown } from './theme.js';
 import { LCD_INK } from './deck-display.js';
 import { t } from './i18n.js';
@@ -21,7 +21,7 @@ export function createPetView({ canvas, say, display, pet, openCard }) {
   let on = false, view = null;
   let scene = null;          // a one-off pose: { pose, t, from }
   let react = null;          // a reaction: { kind, at }
-  let step = 0, stepAt = 0, drawnKey = '', grid = null;
+  let step = 0, stepAt = 0, drawnKey = '', grid = null, termAt = null;
   let look = 0, movedAt = 0, pokes = [];
   let word = null, wordQueue = [], snacksSinceWord = SNACK_WORD_EVERY, lastPeak = 0, wasAsleep = false, favOn = false;
 
@@ -138,6 +138,7 @@ export function createPetView({ canvas, say, display, pet, openCard }) {
     if (key === drawnKey) return;
     drawnKey = key;
     grid = frame(still ? 0 : (scene ? scene.t : step), opts);
+    termAt = { t: still ? 0 : (scene ? scene.t : step), opts };
     if (canvas.offsetParent) drawDots(canvas, grid, { lcd: shown.light, color, pitch: 2.6 });
   }
 
@@ -149,8 +150,8 @@ export function createPetView({ canvas, say, display, pet, openCard }) {
 
   return {
     setOn, setView, events, tick, still, react: reactTo,
-    /** TERMINAL: it as 8 lines of half-blocks, or null while it's off. */
-    rows: () => (on && view && grid ? termRows(grid) : null),
+    /** TERMINAL: it in a few characters ({ rows, tones }: pet-sprite.js termPet), its name and the word it's saying; null while it's off. */
+    rows: () => (on && view && termAt ? { ...termPet(termAt.t, termAt.opts), name: view.name, say: word ? word.text : '' } : null),
     get view() { return view; }, get on() { return on; },
     rename: (name) => pet.set({ name }).then(setView),
     choose: (form) => pet.set({ chosen: form }).then(setView),

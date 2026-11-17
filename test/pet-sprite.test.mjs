@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { frame, termRows, W, H, POSES, FORMS, REACTIONS } from '../src/renderer/js/pet-sprite.js';
+import { frame, termRows, termPet, W, H, POSES, FORMS, REACTIONS } from '../src/renderer/js/pet-sprite.js';
 
 const ok = (g) => g.length === H && g.every((row) => row.length === W && row.every((v) => v === 0 || v === 1));
 const lit = (g) => g.flat().reduce((a, b) => a + b, 0);
@@ -33,4 +33,19 @@ test('TERMINAL: two rows of dots to a character, 8 lines of 25', () => {
   assert.strictEqual(rows.length, 8);
   assert.ok(rows.every((r) => [...r].length === 25 && /^[ ▀▄█]+$/.test(r)));
   assert.ok(rows.join('').includes('█'));
+});
+
+test('TERMINAL glyphs: 3 lines of 13 cells for every pose, form and reaction, a tone for each cell', () => {
+  const fine = (p) => p.rows.length === 3 && p.rows.every((r, i) => [...r].length === 13 && [...p.tones[i]].length === 13 && /^[am ]+$/.test(p.tones[i]));
+  for (const form of FORMS) for (const pose of POSES) for (const t of [0, 1, 5, 13, 23, 40, 60]) assert.ok(fine(termPet(t, { pose, form, item: 'crown', level: 0.6 })), `${pose} ${form} ${t}`);
+  for (const react of REACTIONS) for (const ms of [0, 300, 900, 2000]) assert.ok(fine(termPet(0, { form: 'kid', react, reactMs: ms })), react);
+  const face = (o) => termPet(0, { pose: 'paused', form: 'kid', ...o }).rows[1];
+  assert.match(face({}), /o o/);
+  assert.notStrictEqual(face({ look: 1 }), face({ look: -1 }));
+  assert.match(termPet(0, { form: 'kid', react: 'skip', reactMs: 0 }).rows[1], /@ @/);
+  assert.notStrictEqual(termPet(0, { pose: 'paused', form: 'raver' }).rows[1], face({}));
+  assert.strictEqual(termPet(0, { form: 'kid', react: 'eject', reactMs: 1500 }).rows.join('').trim(), '');
+  const crowned = termPet(0, { pose: 'paused', form: 'kid', item: 'crown' });
+  assert.notStrictEqual(crowned.rows[0], termPet(0, { pose: 'paused', form: 'kid' }).rows[0]);
+  assert.ok(crowned.tones[0].includes('a'), 'what it wears is in the accent');
 });

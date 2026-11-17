@@ -283,3 +283,140 @@ export function drawDots(canvas, g, { lcd = false, pitch = 2.6, color = [196, 20
   if (!lcd) pass(pitch * 2.2);
   pass(0);
 }
+
+// ── TERMINAL: BLIP in a few thin characters, as the rest of that look is drawn (not the display's dots blown up) ──
+// A box of 3 lines × 13 cells: what it holds on the left (cols 0–2), its body (3–9, 7 wide; an egg or a baby 5), what's
+// beside it on the right (10–12): a note, its Z's, a ?, what it's eating. Its eyes say what it feels (o o, ^ ^, - -,
+// @ @, > <) and follow the cursor; its form adds one thing of its own. Body in the muted tone, its face and what it
+// wears in the accent: `tones` has an `a` or `m` for every cell.
+export const TERM_W = 13;
+const BIG_TOP = { teen: ' ,-v-. ', owl: ' ^---^ ', explorer: ' ,-+-. ' };
+const ITEM_TOP = { crown: ' .WWW. ', party: ' ,-A-. ' };
+
+function termBox() {
+  const rows = Array.from({ length: 3 }, () => new Array(TERM_W).fill(' ')), tones = rows.map((r) => r.map(() => ' '));
+  const put = (r, c, text, tone = 'm') => [...text].forEach((ch, i) => {
+    const x = c + i;
+    if (r >= 0 && r < 3 && x >= 0 && x < TERM_W && ch !== ' ') { rows[r][x] = ch; tones[r][x] = tone; }
+  });
+  const done = (flip = false) => {
+    const out = { rows: rows.map((r) => r.join('')), tones: tones.map((r) => r.join('')) };
+    if (flip) { out.rows.reverse(); out.tones.reverse(); }
+    return out;
+  };
+  return { put, done };
+}
+
+const EYE = { open: ['o', 'o'], closed: ['-', '-'], happy: ['^', '^'], x: ['@', '@'], loud: ['>', '<'], small: ['.', '.'], big: ['O', 'O'] };
+const MOUTH = { neutral: 'w', smile: 'w', open: 'o', small: '.' };
+
+// The creature: its stage or form, its face, what it wears; `dx` sways it a cell.
+function termCreature(b, { f, eyes = 'open', mouth = 'neutral', look = 0, dx = 0, it = null, cracks = 0, t = 0 }) {
+  const [l, r] = EYE[eyes] || EYE.open, m = MOUTH[mouth] || mouth;
+  if (f === 'egg') {
+    const x = 4 + dx;
+    b.put(0, x, ' .-. '); b.put(1, x, '(   )'); b.put(2, x, " `-' ");
+    b.put(1, x + 1, ['', ' , ', ' / ', '/\\/'][Math.min(3, cracks)] || '', 'a');
+    return;
+  }
+  if (f === 'baby') {
+    const x = 4 + dx;
+    b.put(1, x, '(   )'); b.put(2, x, " ' ' ");
+    b.put(1, x + 1, `${l}${m === '-' ? '.' : m}${r}`, 'a');
+    if (it === 'crown' || it === 'party') b.put(0, x, it === 'crown' ? ' www ' : '  A  ', 'a');
+    return;
+  }
+  const x = 3 + dx, ghost = f === 'ghost';
+  b.put(0, x, BIG_TOP[f] || ' ,---. ');
+  b.put(1, x, '(     )');
+  if (ghost) b.put(2, x + 1, t % 2 ? '~v~v~' : 'v~v~v');
+  else { b.put(2, x, " `- -' "); b.put(2, x + 3, m, 'a'); }
+  if (f === 'raver' && (eyes === 'open' || eyes === 'happy')) b.put(1, x + 2, '■-■', 'a'); // shades
+  else {
+    const s = look > 0 ? 2 : look < 0 ? 0 : 1, round = ghost && eyes === 'open';
+    b.put(1, x + 1 + s, `${round ? '°' : l} ${round ? '°' : r}`, 'a');
+  }
+  if (f === 'owl') { b.put(0, x + 1, '^', 'a'); b.put(0, x + 5, '^', 'a'); }
+  if (f === 'collector') b.put(1, 0, '(o)', 'a');
+  if (f === 'loyalist' && t % 4 < 3) b.put(0, 1, '<3', 'a');
+  if (f === 'bird') { b.put(0, 1, '*', 'a'); b.put(2, x + 3, 'v', 'a'); }
+  if (f === 'explorer') b.put(0, x + 3, '+', 'a');
+  if (f === 'echo') { const k = t % 2; b.put(1, k, '((', 'a'); b.put(1, 11 - k, '))', 'a'); }
+  if (it === 'crown' || it === 'party') b.put(0, x, ITEM_TOP[it], 'a');
+  if (it === 'headphones') { b.put(1, x, '[', 'a'); b.put(1, x + 6, ']', 'a'); }
+  if (it === 'scarf') b.put(2, x + 6, "'~~", 'a');
+  if (it === 'record' && f !== 'collector') b.put(1, 0, '(@)', 'a');
+}
+
+function termReaction(b, { form, item, react, reactMs: el = 0 }) {
+  const k = Math.floor(el / 120), base = { f: form, it: item };
+  switch (react) {
+    case 'poke': termCreature(b, { ...base, ...(k < 2 ? { eyes: 'closed', mouth: 'small' } : { eyes: 'happy', mouth: 'smile' }) }); break;
+    case 'trick': {
+      const s = Math.floor(el / 230);
+      if (s < 5) { termCreature(b, { ...base, eyes: 'closed', mouth: 'small', dx: s % 2 }); return b.done(s === 2 || s === 3); }
+      termCreature(b, { ...base, eyes: 'happy', mouth: 'open' }); b.put(0, 11, '♪', 'a');
+      break;
+    }
+    case 'skip': termCreature(b, { ...base, eyes: 'x', mouth: 'small', dx: k % 2 }); b.put(0, 10 + (k % 2), '*', 'a'); break;
+    case 'seek': termCreature(b, { ...base, look: 1, mouth: 'small', dx: k < 6 ? 1 : 0 }); break;
+    case 'loud': termCreature(b, { ...base, eyes: 'loud', mouth: 'small' }); b.put(1, 10, '!!', 'a'); break;
+    case 'quiet': termCreature(b, { ...base, eyes: 'small', look: 1, mouth: 'small', dx: 1 }); b.put(0, 11, '?', 'a'); break;
+    case 'eject': {
+      const j = Math.floor(el / 150);
+      if (j < 3) termCreature(b, { ...base, eyes: j ? 'happy' : 'big', mouth: 'small' });
+      else if (j >= 13) { termCreature(b, { ...base, look: 1, mouth: 'small', dx: j % 2 }); if (j % 4 < 3) b.put(0, 11, '?', 'a'); }
+      break;
+    }
+  }
+  return b.done();
+}
+
+/** TERMINAL's BLIP: { rows: 3 strings of 13 cells, tones: the same with `a` (accent) or `m` (muted) per cell }. Same options as frame(). */
+export function termPet(t, { pose = 'paused', form = 'egg', item = null, level = 0, look = 0, from = null, react = null, reactMs = 0 } = {}) {
+  const b = termBox(), egg = form === 'egg', base = { f: form, it: item, t, look };
+  if (react) return termReaction(b, { form, item, react, reactMs });
+  const note = (r) => b.put(r, 11, '♪', 'a');
+  switch (pose) {
+    case 'playing':
+      if (egg) termCreature(b, { ...base, dx: t % 2 });
+      else if (level < 0.02) { termCreature(b, { ...base, eyes: 'closed', mouth: 'small' }); b.put(t % 2 ? 0 : 1, 11, t % 2 ? 'Z' : 'z', 'a'); }
+      else if (level > 0.85) { termCreature(b, { ...base, eyes: 'happy', mouth: 'open', dx: t % 2 }); note(0); }
+      else { termCreature(b, { ...base, mouth: 'smile', dx: t % 2 && level > 0.4 ? 1 : 0 }); if (level > 0.5) note(t % 2 ? 0 : 1); }
+      break;
+    case 'paused': termCreature(b, egg ? base : { ...base, eyes: t % 7 === 3 ? 'closed' : 'open' }); break;
+    case 'snack':
+      if (egg) termCreature(b, { ...base, cracks: 1 + (Math.floor(t / 3) % 3), dx: t % 2 });
+      else {
+        termCreature(b, { ...base, look: 1, eyes: t < 4 ? 'big' : 'open', mouth: t < 4 ? 'open' : t % 2 ? 'smile' : 'open' });
+        if (t < 2) b.put(1, 12, 'o', 'a'); else if (t < 4) b.put(1, 11, 'o', 'a'); else if (t < 7) b.put(2, 10 + (t % 2), '·', 'a');
+      }
+      break;
+    case 'feast':
+      if (t < 12) { termCreature(b, { ...base, look: 1, eyes: 'big', mouth: t % 2 ? 'smile' : 'open' }); b.put(1, 10, ['(@)', '(@', '(', ''][Math.min(3, Math.floor(t / 3))], 'a'); }
+      else { termCreature(b, { ...base, eyes: 'happy', mouth: 'smile', dx: t % 2 }); note(t % 2 ? 0 : 1); }
+      break;
+    case 'fav': termCreature(b, { ...base, eyes: 'happy', mouth: 'open', dx: t % 2 }); b.put(t % 2 ? 0 : 1, 11, t % 2 ? '<3' : '♪', 'a'); break;
+    case 'sniff': termCreature(b, { ...base, look: 1, mouth: 'small', dx: t % 2 }); if (t % 4 < 3) b.put(0, 11, '?', 'a'); b.put(2, 11, '·', 'a'); break;
+    case 'asleep': termCreature(b, egg ? base : { ...base, eyes: 'closed', mouth: 'small' }); b.put(t % 2 ? 0 : 1, 11, t % 2 ? 'Z' : 'z', 'a'); break;
+    case 'hatch': {
+      const c = Math.min(t, 63);
+      if (c < 6) termCreature(b, { f: 'egg', dx: c % 2 });
+      else if (c < 18) termCreature(b, { f: 'egg', dx: c % 2, cracks: c < 10 ? 1 : c < 14 ? 2 : 3 });
+      else if (c < 24) { termCreature(b, { f: 'baby', eyes: c % 2 ? 'happy' : 'big', mouth: 'small' }); b.put(2, 4, '\\___/'); b.put(0, 9 + Math.min(3, c - 18), '^'); }
+      else if (c < 40 || form === 'baby') termCreature(b, { f: 'baby', eyes: c % 3 ? 'open' : 'happy', mouth: 'smile' });
+      else { termCreature(b, { f: form, it: item, eyes: c > 50 ? 'happy' : 'open', mouth: 'smile', t: c }); if (c < 46 && c % 2) note(0); }
+      break;
+    }
+    case 'molt': {
+      const before = from && from !== form ? from : form === 'owl' ? 'collector' : 'owl';
+      if (t < 8) termCreature(b, { f: before, it: item, t, eyes: t % 5 === 2 ? 'closed' : 'open' });
+      else if (t < 16) { termCreature(b, { f: before, it: item, t, dx: t % 2, eyes: 'closed', mouth: 'small' }); if (t % 2) b.put(0, 11, '?', 'a'); }
+      else if (t < 22) termCreature(b, { f: t % 2 ? form : before, it: item, t, eyes: 'big' });
+      else { termCreature(b, { ...base, eyes: 'happy', mouth: 'open', dx: t % 2 }); note(t % 2 ? 0 : 1); }
+      break;
+    }
+    case 'trick': return termReaction(b, { form, item, react: 'trick', reactMs: t * FRAME_MS.trick });
+  }
+  return b.done();
+}

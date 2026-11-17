@@ -184,12 +184,15 @@ test('asciiCells on paper: white is the paper (no character), anything else as o
   assert.deepStrictEqual(paper[0][1], dark[0][1]);
 });
 
-test('DECK PET: BLIP in half-blocks at the top right of NOW PLAYING, the song beside it, never over it; not where there is no room', () => {
-  const pet = Array.from({ length: 8 }, (_, r) => (r === 3 ? '█'.repeat(25) : ' '.repeat(12) + '▀' + ' '.repeat(12)));
+test('DECK PET: BLIP in a few characters at the top right of NOW PLAYING, face in the accent, its word under it; the song never over it; not where there is no room', () => {
+  const pet = { rows: ['    ,---.    ', '   ( o o )   ', "    `-w-'    "], tones: ['    mmmmm    ', '   mmaaamm   ', '    mmamm    '], name: 'BLIP', say: 'YUM' };
   const g = screen(model({ pet }), 140, 40), p = panes(140, 40), end = 140 - 2;
-  assert.strictEqual(rowText(g, 4).slice(end - 25, end), '█'.repeat(25));
-  assert.ok(!/[^\s█▀]/.test(rowText(g, 4).slice(end - 26, end)), 'the title stops short of it');
-  assert.ok(g.hits.some((h) => h.act === 'seek' && h.y > 8));
-  assert.ok(!rowText(screen(model({ pet }), 60, 24), 4).includes('█'.repeat(25)));
+  assert.strictEqual(rowText(g, 2).slice(end - 13, end), '   ( o o )   ');
+  assert.strictEqual(g.cells[2][end - 13 + 5].color, 'accent');
+  assert.strictEqual(g.cells[2][end - 13 + 3].color, 'muted');
+  assert.strictEqual(rowText(g, 4).slice(end - 9, end), 'BLIP> YUM');
+  assert.ok(!/\S/.test(rowText(g, 1).slice(end - 15, end - 13)), 'the title stops short of it');
   assert.strictEqual(g.cells[0][p.discWidth].ch, '┌');
+  assert.ok(!rowText(screen(model({ pet }), 40, 24), 2).includes('( o o )'));
+  assert.ok(!rowText(screen(model({ pet: { ...pet, say: '' } }), 140, 40), 4).includes('BLIP>'));
 });

@@ -280,6 +280,7 @@ async function run({ win, miniWindow, outDir, themes, audio, nativeImage, store,
       await pause(800); await shot('pet-raver'); note('pet-raver', petOk);
       await screen('pet-card', () => js(`document.getElementById('vfd-pet').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`), cardHas('.pet-strip'));
       const termOk = await pickMenu('PLAYER LOOK', 'TERMINAL') && await waitFor(`document.body.classList.contains('look-terminal')`, 4000);
+      await js(`window.__shots.pet.events([{ kind: 'sniff' }])`);
       await pause(1200); await shot('pet-terminal'); note('pet-terminal', termOk);
       await pickMenu('PLAYER LOOK', 'CLASSIC'); await pause(600);
       // off while it's saying something: the lamps come back, and main stops moving it on

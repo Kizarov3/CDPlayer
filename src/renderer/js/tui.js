@@ -218,10 +218,17 @@ function nowPlaying(grid, m, x0, w, h) {
   grid.box(x0, 0, w, h, m.words.now || '', m.status || '');
   const x = x0 + 2, end = x0 + w - 2;
   const inner = h - 2;
-  // Settings → DECK PET: BLIP in half-blocks at the frame's top right, where there's room for it beside the song
-  const pet = m.pet && end - x >= 52 && inner >= 12 ? m.pet : null;
-  if (pet) pet.forEach((row, r) => [...row].forEach((c, i) => { if (c !== ' ') grid.put(end - 25 + i, 1 + r, c, 'accent'); }));
-  const width = end - x - (pet ? 27 : 0);
+  // Settings → DECK PET: BLIP, a few characters at the frame's top right (its body muted, its face and what it wears in
+  // the accent), and what it says under it as a prompt, BLIP> YUM — where there's room beside the song
+  const pet = m.pet && end - x >= 40 && inner >= 8 ? m.pet : null;
+  if (pet) {
+    pet.rows.forEach((row, r) => [...row].forEach((c, i) => { if (c !== ' ') grid.put(end - row.length + i, 1 + r, c, pet.tones[r][i] === 'a' ? 'accent' : 'muted'); }));
+    if (pet.say) {
+      const said = clip(pet.say, 24), name = `${pet.name || 'BLIP'}> `, sx = end - textWidth(name) - textWidth(said);
+      grid.put(sx, 4, name, 'muted'); grid.put(sx + textWidth(name), 4, said, 'accent');
+    }
+  }
+  const width = end - x - (pet ? 15 : 0);
   // what's always there: the song, the bar, the keys, the volume; the room left over goes to the levels
   const album = m.album && m.source && m.source.includes(m.album) ? '' : [m.album, m.year].filter(Boolean).join(' · '); // (the source's line often says it already)
   const lines = [m.title, m.artist, album, m.source].filter(Boolean);
@@ -242,7 +249,7 @@ function nowPlaying(grid, m, x0, w, h) {
     }
     y += levels;
   }
-  y = Math.max(y + 1, pet ? 10 : 0, h - 2 - (m.tools && m.tools.some(Boolean) ? 4 : 3)); // (the bar, a gap, the keys, the volume, the tools: down to the frame's bottom edge)
+  y = Math.max(y + 1, h - 2 - (m.tools && m.tools.some(Boolean) ? 4 : 3)); // (the bar, a gap, the keys, the volume, the tools: down to the frame's bottom edge)
 
   // The seek bar: its waveform, lit as far as the song's got.
   const elapsed = m.elapsed || '', remaining = m.remaining || '';
