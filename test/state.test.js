@@ -21,8 +21,18 @@ test('reads a settings.txt written by the Java version', () => {
     volume: 70, crossfade: 5, mono: true, animations: false, theme: 'OCEAN', eq: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
     waveform: false, miniMode: false, bounds: { x: 10, y: 20, width: 1200, height: 900 }, ambient: false, discord: false,
     discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false,
-    playModes: { QUEUE: { shuffle: 'OFF', repeat: 'OFF' }, CHANGER: { shuffle: 'OFF', repeat: 'OFF' } }, display: 'DECK', transition: 'CROSSFADE', streaming: false, look: 'CLASSIC', ambientStyle: 'COVER', ripFormat: 'FLAC', romanize: false,
+    playModes: { QUEUE: { shuffle: 'OFF', repeat: 'OFF' }, CHANGER: { shuffle: 'OFF', repeat: 'OFF' } }, display: 'DECK', transition: 'CROSSFADE', streaming: false, look: 'CLASSIC', ambientStyle: 'COVER', ripFormat: 'FLAC', romanize: false, pet: false,
   });
+});
+
+test('DECK PET: off unless turned on, and it survives a save (line 34)', () => {
+  fs.writeFileSync(path.join(home, 'settings.txt'), '70\n5\n1\n0\nOCEAN\n0,0,0,0,0,0,0,0,0,0\n0\n0\n\n0\n1\n');
+  assert.strictEqual(store.readSettings().pet, false);
+  store.writeSettings({ ...store.readSettings(), pet: true });
+  assert.strictEqual(store.readSettings().pet, true);
+  assert.strictEqual(fs.readFileSync(path.join(home, 'settings.txt'), 'utf8').split('\n')[33], '1');
+  store.writeSettings({ ...store.readSettings(), pet: false });
+  assert.strictEqual(store.readSettings().pet, false);
 });
 
 test('TRANSITION: OFF unless picked, or CROSSFADE for a file with crossfade seconds; the seconds kept while another is picked', () => {

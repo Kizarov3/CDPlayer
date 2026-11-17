@@ -231,7 +231,11 @@ function scanAlbums(onProgress) {
 let onShelf = null;
 function byTrack(albums) {
   const map = new Map();
-  for (const a of albums) { const album = { id: a.id, paths: a.tracks.map((t) => t.path), discs: a.tracks.map((t) => t.disc) }; for (const p of album.paths) map.set(p, album); }
+  for (const a of albums) {
+    // (title, artist and each song's length: for the deck's pet, pet.js)
+    const album = { id: a.id, title: a.title, artist: a.artist, paths: a.tracks.map((t) => t.path), discs: a.tracks.map((t) => t.disc), seconds: a.tracks.map((t) => t.duration || 0) };
+    for (const p of album.paths) map.set(p, album);
+  }
   return map;
 }
 /** Whether `p` is the last track of its disc on a shelf album (albumOf's: paths in disc and track order, their discs). */
@@ -261,6 +265,12 @@ function albumOf(p) {
   return onShelf.get(p) || null;
 }
 const albumTracks = (p) => { const a = albumOf(p); return a ? a.paths : null; };
+/** The shelf album with `id` (albumOf's), or null. */
+function albumById(id) {
+  albumOf('');
+  for (const a of onShelf.values()) if (a.id === id) return a;
+  return null;
+}
 
 // ---- Covers ---------------------------------------------------------------------------------------------------
 
@@ -367,4 +377,4 @@ async function albumCoverFull(firstTrack) {
 /** A file's tags changed: its album's cover thumbnail is made again next time. */
 function forget(filePath) { thumbs.delete(filePath); fromWeb.delete(filePath); onShelf = null; } // its tags changed: it may be on another album now
 
-module.exports = { COVER_FILE, scanAlbums, trackInfo, trackNumbers, albumOf, albumTracks, isLastOfDisc, touchedAt, isWrapped, readCache, cacheHas, folderNames, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };
+module.exports = { COVER_FILE, scanAlbums, trackInfo, trackNumbers, albumOf, albumById, albumTracks, isLastOfDisc, touchedAt, isWrapped, readCache, cacheHas, folderNames, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };

@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('cdp', {
   details: invoke('meta:details'),
   stream: { search: invoke('stream:search'), album: invoke('stream:album'), prepare: invoke('stream:prepare'), locked: invoke('stream:locked'), available: invoke('stream:available'), install: invoke('stream:install') },
   addPlay: invoke('plays:add'),
+  pet: { on: invoke('pet:on'), get: invoke('pet:get'), set: invoke('pet:set') },
   playCount: invoke('plays:count'),
   playTimes: invoke('plays:times'),
   skips: { list: invoke('skips:list'), set: invoke('skips:set') },

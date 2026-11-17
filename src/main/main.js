@@ -54,6 +54,7 @@ const shelf = require('./shelf');
 const { recordPlay } = require('./plays');
 const relocate = require('./relocate');
 const albumRuns = require('./album-runs');
+const pet = require('./pet');
 const listens = require('./listens');
 const { yearOnShelf } = require('./year-shelf');
 const tagWriter = require('./tag-writer');
@@ -365,6 +366,7 @@ let runs = null, runsChanged = false;
 const runsState = () => (runs = runs || albumRuns.parse(store.readText('album-runs.json')));
 function writePlays() {
   playsTimer = null;
+  if (petChanged) { petChanged = false; store.writeText('pet.json', pet.format(petState)); }
   if (runsChanged) { runsChanged = false; store.writeText('album-runs.json', JSON.stringify(runs)); }
   store.writePlayCounts(playCounts);
   if (lastPlayed) store.writeLastPlayed(lastPlayed);
@@ -384,6 +386,57 @@ function logPlays(entries) { // (imported: in their places in time, so written a
   listens.merge(listened(), entries);
   store.writeText('listens.txt', listens.format(listenLog));
 }
+// BLIP, the pet in the deck's display (pet.js): kept in pet.json, moved on by each play while DECK PET is on. What it
+// knows is read again from the history (at most every 30 s, and at each play), so it never drifts from it.
+let petState = null, petOn = false, petChanged = false, petStats = null, petStatsAt = 0, petLastMeal = null;
+function petNow() {
+  if (petState) return petState;
+  const text = store.readText('pet.json');
+  petState = pet.parse(text);
+  if (text == null) petChanged = true; // (a new egg: written with the plays)
+  return petState;
+}
+const songSeconds = (p) => { const a = shelf.albumOf(p); return a && a.seconds ? a.seconds[a.paths.indexOf(p)] || 0 : 0; };
+function petStatsNow(now = Date.now(), fresh = false) {
+  if (!fresh && petStats && now - petStatsAt < 30e3) return petStats;
+  petStats = pet.stats({ list: listened().list, seconds: songSeconds, through: runsState().through, albumOf: shelf.albumOf, album: shelf.albumById, firsts: firstPlayedAt(), since: petNow().since, now });
+  petStatsAt = now;
+  return petStats;
+}
+function petMove(now = Date.now(), opts = {}) {
+  const { pet: next, events } = pet.evolve(petNow(), petStatsNow(now, true), now, opts);
+  if (JSON.stringify(next) !== JSON.stringify(petState)) { petState = next; petChanged = true; clearTimeout(playsTimer); playsTimer = setTimeout(writePlays, 1000); }
+  return events;
+}
+/** What the renderer draws and its card shows. */
+function petView(now = Date.now()) {
+  const p = petNow(), s = petStatsNow(now), look = pet.shown(p, now);
+  const diary = [
+    ...(p.hatchedAt ? [{ at: p.hatchedAt, kind: 'hatch', what: p.hatchAlbum }] : []),
+    ...Object.entries(p.found).map(([what, at]) => ({ at, kind: 'form', what })),
+    ...Object.entries(p.items).map(([what, at]) => ({ at, kind: 'item', what })),
+  ].sort((a, b) => a.at - b.at);
+  return {
+    name: p.name, ...look, temper: p.temper, since: p.since, hatchedAt: p.hatchedAt, hatchAlbum: p.hatchAlbum, chosen: p.chosen, worn: p.worn,
+    found: p.found, items: p.items, diary, favourite: s.favourite ? { title: s.favourite.title, paths: s.favourite.paths } : null,
+    lastMeal: petLastMeal || s.lastAlbum, nextLook: pet.nextLook(now),
+  };
+}
+handle('pet:on', (on) => {
+  petOn = !!on;
+  if (!petOn) return null;
+  const events = petMove();
+  return { events, view: petView() };
+});
+handle('pet:get', () => (petOn ? petView() : null));
+handle('pet:set', (fields) => {
+  const p = { ...petNow() }, f = fields && typeof fields === 'object' ? fields : {};
+  if (typeof f.name === 'string') p.name = f.name.toUpperCase().replace(/[^\p{L}\p{N} ]/gu, '').trim().slice(0, 8) || 'BLIP';
+  if ('chosen' in f) p.chosen = f.chosen && p.found[f.chosen] ? f.chosen : null;
+  if ('worn' in f) p.worn = f.worn && p.items[f.worn] ? f.worn : null;
+  petState = p; petChanged = true; clearTimeout(playsTimer); playsTimer = setTimeout(writePlays, 1000);
+  return petView();
+});
 handle('plays:add', (p) => {
   const now = Date.now();
   listened(); // (begun before this play counts in the first and last plays it starts from)
@@ -393,11 +446,18 @@ handle('plays:add', (p) => {
   clearTimeout(playsTimer); playsTimer = setTimeout(writePlays, 1000);
   // Played, its album is out of its shrink-wrap for good (not only while its play count is kept).
   const album = shelf.albumOf(p), w = album && wrap();
-  if (album) { albumRuns.heard(runsState(), album.id, album.paths.indexOf(p), album.paths.length, Date.now(), (i) => skipped().has(album.paths[i])); runsChanged = true; }
-  if (w && !w.torn.has(album.id)) { w.torn.add(album.id); store.writeWrap(w); }
+  let through = false, opened = false;
+  if (album) { through = albumRuns.heard(runsState(), album.id, album.paths.indexOf(p), album.paths.length, Date.now(), (i) => skipped().has(album.paths[i])).through; runsChanged = true; }
+  if (w && !w.torn.has(album.id)) { w.torn.add(album.id); store.writeWrap(w); opened = true; }
   if (album) wantList.played(album.id); // a FOUND IT album heard: its card comes off the WANT LIST
   phoneShelf = null; // the phone's shelf counts it (and shows the album unwrapped) when it's next read
-  return n;
+  if (!petOn) return { n, pet: null };
+  // the pet: a snack for every play, a feast for an album played through, a sniff at an album never heard before
+  if (album && album.title) petLastMeal = album.title;
+  const events = [{ kind: 'snack' }, ...(through ? [{ kind: 'feast' }] : []), ...(opened ? [{ kind: 'sniff' }] : [])];
+  const echo = pet.isEcho(listenLog.list, p, now);
+  events.push(...petMove(now, { echo }), ...(echo ? [{ kind: 'echo', path: p }] : []));
+  return { n, pet: { events, view: petView(now) } };
 });
 handle('plays:count', (p) => plays().get(p) || 0);
 // Songs not to play as the music moves on (SKIP in the case): passed over, still played when picked; an album heard in
@@ -448,7 +508,11 @@ handle('hidden:get', (file) => {
 });
 handle('hidden:put', (file, entry) => { if (typeof file === 'string' && (entry === null || hiddenEntry(entry))) hiddenCache.put(file, entry); });
 handle('hidden:name', (d) => (d && typeof d === 'object' ? online.findHiddenName({ artist: d.artist, title: d.title, duration: Number(d.duration) }) : { name: null }));
-handle('hidden:update', (file, fields) => { if (typeof file === 'string' && fields && typeof fields === 'object') hiddenCache.update(file, fields); });
+handle('hidden:update', (file, fields) => {
+  if (!(typeof file === 'string' && fields && typeof fields === 'object')) return;
+  hiddenCache.update(file, fields);
+  if (fields.found === true && (petOn || store.readText('pet.json') != null)) petMove(Date.now(), { hidden: true }); // the pet: GHOST
+});
 
 // AUTOMIX (automix.js): where songs measured before start, wind down and end, kept in automix.json.
 const automixCache = require('./automix-cache').createAutomixCache({

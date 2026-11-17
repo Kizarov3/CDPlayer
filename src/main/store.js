@@ -30,7 +30,7 @@ const file = (name) => path.join(dataDir(), name);
 const FILES = {
   queue: 'queue.txt', onboarded: 'onboarded', lastVersion: 'lastversion.txt', lastPath: 'lastpath.txt', musicFolders: 'music-folders.txt',
   settings: 'settings.txt', eqPresets: 'eq-presets.txt', history: 'history.txt', spotify: 'spotify.txt',
-  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt', firstPlayed: 'firstplayed.txt', shelfColors: 'shelf-colors.json', changer: 'changer.txt', changerQueue: 'changer-queue.txt', remote: 'remote.json', movesDeclined: 'moves-declined.txt', skipped: 'skipped.txt', dividers: 'dividers.txt', wantList: 'want-list.json',
+  miniPosition: 'mini-position.txt', plays: 'plays.txt', lastPlayed: 'lastplayed.txt', dust: 'dust.txt', notes: 'notes.txt', hiddenMissing: 'missing-hidden.txt', wrap: 'wrap.txt', firstPlayed: 'firstplayed.txt', shelfColors: 'shelf-colors.json', changer: 'changer.txt', changerQueue: 'changer-queue.txt', remote: 'remote.json', movesDeclined: 'moves-declined.txt', skipped: 'skipped.txt', dividers: 'dividers.txt', wantList: 'want-list.json', pet: 'pet.json',
 };
 
 function readText(name) {
@@ -73,7 +73,7 @@ const safePath = (p) => typeof p === 'string' && !/[\r\n]/.test(p);
 // lines keep their defaults.
 const DEFAULT_SETTINGS = {
   volume: 100, crossfade: 5, mono: false, animations: true, theme: 'RED', eq: new Array(10).fill(0),
-  waveform: true, miniMode: false, bounds: null, ambient: true, discord: false, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false, playModes: defaultPlayModes(), display: 'DECK', transition: 'OFF', streaming: false, look: 'CLASSIC', ambientStyle: 'COVER', ripFormat: 'FLAC', romanize: false,
+  waveform: true, miniMode: false, bounds: null, ambient: true, discord: false, discNoise: false, saveFound: false, lyricsOffset: 0, shelfSort: 'ARTIST', discWear: true, output: null, language: 'AUTO', quality: 'HIGH', spatial: false, spatialAmount: 50, discShine: true, taskbarDisc: process.platform !== 'win32', soundCheck: 'OFF', changer: false, playModes: defaultPlayModes(), display: 'DECK', transition: 'OFF', streaming: false, look: 'CLASSIC', ambientStyle: 'COVER', ripFormat: 'FLAC', romanize: false, pet: false,
 };
 const SHELF_SORTS = ['ARTIST', 'NEW', 'PLAYED', 'RECENT', 'YEAR', 'COLOR', 'PRICE', 'MINE'];
 const QUALITIES = ['HIGH', 'LOSSLESS', 'HIRES'];
@@ -144,6 +144,7 @@ function readSettings() {
   const ripFormat = String(l[31] || '').trim();
   s.ripFormat = RIP_FORMATS.includes(ripFormat) ? ripFormat : 'FLAC';
   s.romanize = String(l[32] || '').trim() === '1';
+  s.pet = String(l[33] || '').trim() === '1'; // DECK PET (pet.js)
   return s;
 }
 function writeSettings(s) {
@@ -161,7 +162,7 @@ function writeSettings(s) {
     SOUND_CHECKS.includes(s.soundCheck) ? s.soundCheck : 'OFF', s.changer ? 'ON' : 'OFF', writePlayModes(s.playModes),
     DISPLAYS.includes(s.display) ? s.display : 'DECK', `${transition} ${seconds}`, s.streaming ? 'ON' : 'OFF',
     LOOKS.includes(s.look) ? s.look : 'CLASSIC', s.ambientStyle === 'GRADIENT' ? 'GRADIENT' : 'COVER',
-    RIP_FORMATS.includes(s.ripFormat) ? s.ripFormat : 'FLAC', s.romanize ? '1' : '0'].join('\n') + '\n';
+    RIP_FORMATS.includes(s.ripFormat) ? s.ripFormat : 'FLAC', s.romanize ? '1' : '0', s.pet ? '1' : '0'].join('\n') + '\n';
   return writeText(FILES.settings, content);
 }
 
