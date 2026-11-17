@@ -136,9 +136,9 @@ function evolve(old, s, now = Date.now(), { hidden = false, echo = false } = {})
   if (s.hours >= 50 && now - p.hatchedAt >= MONTH_DAYS * DAY && monthKey(now) !== p.lastMolt) {
     const from = p.form, to = habitForm(s.month);
     p.form = to; p.lastMolt = monthKey(now);
-    if (HABITS.includes(p.chosen)) p.chosen = null; // (a look of its own picked before: the new one shows)
     if (!p.found[to]) p.found[to] = now;
-    if (from !== to) events.push({ kind: 'molt', from, to });
+    // A form picked on its card stays picked — the new one is found, there to pick; no TA-DA, as nothing shown changes.
+    if (from !== to && !(p.chosen && p.found[p.chosen])) events.push({ kind: 'molt', from, to });
   }
   const stage = p.form ? 'adult' : stageFor(s.hours);
   // (only ever up: fewer hours read later — a folder gone from the shelf — don't shrink it)

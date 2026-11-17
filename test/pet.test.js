@@ -163,10 +163,14 @@ test('choose: its own form clears the choice, so the next molt shows; a form not
   assert.strictEqual(pet.choose(p, 'owl').chosen, null);
   assert.strictEqual(pet.choose(p, 'ghost').chosen, 'ghost');
   assert.strictEqual(pet.choose(p, 'raver').chosen, null);
-  // a molt with a habit form picked earlier: the new form is the one shown
+  // a molt with a form picked on its card: the pick stays (it was chosen), the new form is found, nothing shown changes
   const dec1 = new Date(2026, 11, 1, 12).getTime();
   const picked = { ...pet.empty(0, fixed), hatchedAt: NOW - 90 * DAY, stage: 'adult', form: 'owl', found: { owl: 1, bird: 2 }, chosen: 'bird', lastMolt: '2026-10' };
-  const { pet: molted } = pet.evolve(picked, quiet({ hours: 100, hoursSince: 100, month: { plays: 100, night: 0, morning: 0, topShare: 0.9, artists: 3, firsts: 0 } }), dec1);
+  const { pet: molted, events } = pet.evolve(picked, quiet({ hours: 100, hoursSince: 100, month: { plays: 100, night: 0, morning: 0, topShare: 0.9, artists: 3, firsts: 0 } }), dec1);
   assert.strictEqual(molted.form, 'loyalist');
-  assert.strictEqual(pet.shown(molted, dec1).form, 'loyalist');
+  assert.ok(molted.found.loyalist);
+  assert.strictEqual(pet.shown(molted, dec1).form, 'bird');
+  assert.ok(!events.some((e) => e.kind === 'molt'), 'no TA-DA when what is shown stays the same');
+  // and picked its own new form back: the pick clears, its own shows on
+  assert.strictEqual(pet.choose(molted, 'loyalist').chosen, null);
 });
