@@ -18,12 +18,19 @@ function dataDir() {
   if (process.platform === 'win32') {
     // The Windows-only Java fork kept its data in %LOCALAPPDATA%\CDPlayer, while the cross-platform Java build used
     // ~\.cdplayer on Windows too — pick up whichever one this user already has.
-    const local = path.join(process.env.LOCALAPPDATA || os.homedir(), 'CDPlayer');
-    resolvedDir = !fs.existsSync(local) && fs.existsSync(unixStyle) ? unixStyle : local;
+    resolvedDir = windowsDataDir(path.join(process.env.LOCALAPPDATA || os.homedir(), 'CDPlayer'), unixStyle);
   } else {
     resolvedDir = unixStyle;
   }
   return resolvedDir;
+}
+// %LOCALAPPDATA%\CDPlayer unless only ~\.cdplayer has this user's things in it. The portable .exe unpacks the app
+// into %LOCALAPPDATA%\CDPlayer\app before it starts, so that folder being there says nothing: it counts only with
+// something else in it.
+function windowsDataDir(local, unixStyle) {
+  let hasData = false;
+  try { hasData = fs.readdirSync(local).some((f) => f.toLowerCase() !== 'app'); } catch { /* not there */ }
+  return !hasData && fs.existsSync(unixStyle) ? unixStyle : local;
 }
 
 const file = (name) => path.join(dataDir(), name);
@@ -436,7 +443,7 @@ const readLastVersion = () => { const t = readText(FILES.lastVersion); return t 
 const writeLastVersion = (v) => writeText(FILES.lastVersion, v);
 
 module.exports = {
-  dataDir, file, FILES, readText, writeText, appendText, freeze, isFile, isDir,
+  dataDir, windowsDataDir, file, FILES, readText, writeText, appendText, freeze, isFile, isDir,
   readSettings, writeSettings, DEFAULT_SETTINGS, readQueue, readChangerQueue, writeQueue, readHistory, writeHistory, readHistoryAll, writeHistoryAll, readMovesDeclined, writeMovesDeclined, readSkipped, writeSkipped, HISTORY_LIMIT,
   readPlayCounts, writePlayCounts, readLastPlayed, writeLastPlayed, readFirstPlayed, writeFirstPlayed, readDust, writeDust, readNotes, writeNotes, readDividers, writeDividers, readHiddenMissing, writeHiddenMissing, readWrap, writeWrap, readShelfColors, writeShelfColors,
   readEqPresets, writeEqPresets, readLastPath, writeLastPath, readMusicFolders, writeMusicFolders, musicFolders, noMusicFolderYet, isOnboarded, markOnboarded, readLastVersion, writeLastVersion,

@@ -55,3 +55,17 @@ test('skipped.txt: a path with a line break in it can\'t be kept, the others are
   fs.writeFileSync(path.join(home, 'skipped.txt'), '/a.mp3\r\n/b.mp3\r\n');
   assert.deepStrictEqual(store.readSkipped(), new Set(['/a.mp3', '/b.mp3']), 'Windows line ends');
 });
+
+test('Windows: the portable .exe\'s unpacked app alone in %LOCALAPPDATA%\\CDPlayer doesn\'t hide a library kept in ~\\.cdplayer', () => {
+  const root = fs.mkdtempSync(path.join(home, 'win-'));
+  const local = path.join(root, 'Local', 'CDPlayer');
+  const unix = path.join(root, '.cdplayer');
+  assert.strictEqual(store.windowsDataDir(local, unix), local, 'neither there: the Windows folder');
+  fs.mkdirSync(unix, { recursive: true });
+  fs.writeFileSync(path.join(unix, 'history.txt'), 'x');
+  assert.strictEqual(store.windowsDataDir(local, unix), unix, 'only ~\\.cdplayer: that one');
+  fs.mkdirSync(path.join(local, 'app', '2.23.0'), { recursive: true });
+  assert.strictEqual(store.windowsDataDir(local, unix), unix, 'just the app unpacked there: still ~\\.cdplayer');
+  fs.writeFileSync(path.join(local, 'settings.txt'), 'x');
+  assert.strictEqual(store.windowsDataDir(local, unix), local, 'things of its own in it: the Windows folder');
+});
