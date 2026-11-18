@@ -227,24 +227,40 @@ function wmiStartCommand(commandLine) {
 }
 
 /**
- * Writes installScript's script next to the download and starts it so that it outlives this process. → a Promise
- * that settles once it's started — CDPlayer should quit only then. Windows: by WMI (see wmiStartCommand), or, if that
- * fails, the ordinary way; elsewhere a detached process outlives its parent anyway.
+ * Writes installScript's script next to the download and starts it so that it outlives this process. → a Promise of
+ * whether it was started — CDPlayer should quit only then, and otherwise show the download. Windows: by WMI (see
+ * wmiStartCommand), or, if that fails, the ordinary way; elsewhere a detached process outlives its parent anyway.
+ * Started in the download's folder, never in the one CDPlayer was given: run as SYSTEM, the 32-bit portable launcher
+ * hands it a folder only the 32-bit side can see (C:\Windows\System32\config\systemprofile, really SysWOW64), and
+ * nothing can be started from there.
  */
+// PowerShell by its full path: a bare name is looked for in the folder it's started in first.
+const powershellExe = () => path.win32.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+
 function startInstaller(platform, { pid, file, target }, { run = execFile, start = spawn } = {}) {
   const { name, text } = installScript(platform, { pid, file, target });
-  const script = path.join(path.dirname(file), name);
+  const dir = path.dirname(file);
+  const script = path.join(dir, name);
   fs.writeFileSync(script, text, { mode: 0o755 });
-  if (platform !== 'win32') {
-    start('/bin/sh', [script], { detached: true, stdio: 'ignore' }).unref();
-    return Promise.resolve();
-  }
+  // A child started the ordinary way → whether it really started (a spawn that fails says so by an 'error' event,
+  // which unheard would bring CDPlayer down).
+  const launch = (cmd, args, opts) => new Promise((resolve) => {
+    let child;
+    try { child = start(cmd, args, { ...opts, cwd: dir, detached: true, stdio: 'ignore' }); } catch { resolve(false); return; }
+    if (typeof child.once === 'function') {
+      child.once('spawn', () => resolve(true));
+      child.once('error', () => resolve(false));
+    } else resolve(true);
+    child.unref();
+  });
+  if (platform !== 'win32') return launch('/bin/sh', [script], {});
   const args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script];
-  const commandLine = ['powershell.exe', ...args].map((a) => (/[\s"]/.test(a) ? `"${a}"` : a)).join(' ');
+  const ps = powershellExe();
+  const commandLine = [ps, ...args].map((a) => (/[\s"]/.test(a) ? `"${a}"` : a)).join(' ');
   return new Promise((resolve) => {
-    run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', wmiStartCommand(commandLine)], { windowsHide: true, timeout: 20000 }, (e) => {
-      if (e) start('powershell.exe', args, { detached: true, stdio: 'ignore', windowsHide: true }).unref(); // better than nothing
-      resolve();
+    run(ps, ['-NoProfile', '-NonInteractive', '-Command', wmiStartCommand(commandLine)], { cwd: dir, windowsHide: true, timeout: 20000 }, (e) => {
+      if (!e) resolve(true);
+      else launch(ps, args, { windowsHide: true }).then(resolve); // better than nothing
     });
   });
 }

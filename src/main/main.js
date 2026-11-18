@@ -1552,15 +1552,13 @@ handle('updates:install', async () => {
   if (!updateDownload) return false;
   const { plan, promise } = updateDownload;
   const file = await promise;
-  if (plan.kind === 'replace') {
-    await updates.startInstaller(process.platform, { pid: process.pid, file, target: plan.target });
+  if (plan.kind === 'replace' && await updates.startInstaller(process.platform, { pid: process.pid, file, target: plan.target })) {
     app.quit();
-  } else if (process.platform === 'darwin') {
-    await shell.openPath(file);
-  } else {
-    shell.showItemInFolder(file);
+    return true;
   }
-  return true;
+  if (process.platform === 'darwin') await shell.openPath(file);
+  else shell.showItemInFolder(file);
+  return plan.kind !== 'replace'; // false: it was to be swapped in, but the installer couldn't be started
 });
 // Text for the user to paste elsewhere (the Spotify dashboard's Redirect URI). Only short plain text.
 handle('clipboard:write', async (text) => { if (typeof text === 'string' && text.length <= 20000) await clipboard.writeText(text); return true; });

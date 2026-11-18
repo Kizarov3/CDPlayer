@@ -3857,7 +3857,8 @@ async function onUpdateClick() {
     // One click: a second while the first is starting the installer would start another, racing it for the same files.
     u.phase = 'installing';
     if (u.install === 'replace') { setStatus(t('UPDATING — BACK IN A MOMENT')); saveEverythingNow(); }
-    await cdp.installUpdate().catch(() => { setStatus(t('COULDN’T INSTALL THE UPDATE')); cdp.openReleasesPage(); });
+    const installed = await cdp.installUpdate().catch(() => { setStatus(t('COULDN’T INSTALL THE UPDATE')); cdp.openReleasesPage(); return true; });
+    if (installed === false) setStatus(t('COULDN’T INSTALL THE UPDATE')); // the download is shown to put in place by hand
     u.phase = 'ready'; // still here: the download was opened or shown (or installing failed), so it can be again
     return;
   }

@@ -153,7 +153,8 @@ test('Windows: the installer is started by WMI, so it outlives CDPlayer, and CDP
     assert.strictEqual(done, false); // not before WMI has answered
     await p;
     assert.ok(fs.existsSync(path.join(dir, 'install.ps1')));
-    assert.strictEqual(calls[0][0], 'powershell.exe');
+    assert.match(calls[0][0], /^[A-Z]:\\Windows\\System32\\WindowsPowerShell\\v1\.0\\powershell\.exe$/i); // by its full path
+    assert.match(calls[0][1].at(-1), /CommandLine = '[A-Z]:\\Windows\\System32\\WindowsPowerShell\\v1\.0\\powershell\.exe /i);
     const command = calls[0][1].at(-1);
     assert.match(command, /Invoke-CimMethod -ClassName Win32_Process -MethodName Create/);
     assert.ok(command.includes(`-File ${path.join(dir, 'install.ps1')}`) || command.includes(`-File "${path.join(dir, 'install.ps1')}"`));
@@ -162,9 +163,33 @@ test('Windows: the installer is started by WMI, so it outlives CDPlayer, and CDP
 
     // WMI failing: the ordinary way, as a last resort
     const failing = (cmd, args, opts, cb) => cb(new Error('no WMI'));
-    await startInstaller('win32', { pid: 7, file, target: 'C:\\x.exe' }, { run: failing, start });
+    assert.strictEqual(await startInstaller('win32', { pid: 7, file, target: 'C:\\x.exe' }, { run: failing, start }), true);
     assert.strictEqual(started.length, 1);
-    assert.strictEqual(started[0][0], 'powershell.exe');
+    assert.match(started[0][0], /\\powershell\.exe$/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the installer is started in the download\'s folder, and one that can\'t be started says so instead of bringing CDPlayer down', async () => {
+  const { EventEmitter } = require('events');
+  const { startInstaller } = require('../src/main/updates');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cdplayer-inst-'));
+  try {
+    const file = path.join(dir, 'CDPlayer-2.23.0-windows.exe');
+    const opts = [];
+    // As SYSTEM the folder CDPlayer was started in can't be seen by it: WMI's PowerShell and the ordinary one both fail.
+    const noWmi = (cmd, args, o, cb) => { opts.push(o); cb(Object.assign(new Error('spawn powershell.exe ENOENT'), { code: 'ENOENT' })); };
+    const failsToSpawn = (cmd, args, o) => {
+      opts.push(o);
+      const child = Object.assign(new EventEmitter(), { unref() {} });
+      setImmediate(() => child.emit('error', Object.assign(new Error('spawn powershell.exe ENOENT'), { code: 'ENOENT' })));
+      return child;
+    };
+    assert.strictEqual(await startInstaller('win32', { pid: 7, file, target: 'C:\\x.exe' }, { run: noWmi, start: failsToSpawn }), false);
+    assert.deepStrictEqual(opts.map((o) => o.cwd), [dir, dir]);
+    const throws = () => { throw new Error('EACCES'); };
+    assert.strictEqual(await startInstaller('darwin', { pid: 7, file: path.join(dir, 'CDPlayer.dmg'), target: '/Applications/CDPlayer.app' }, { start: throws }), false);
+    const spawns = (cmd, args, o) => { const c = Object.assign(new EventEmitter(), { unref() {} }); setImmediate(() => c.emit('spawn')); assert.strictEqual(o.cwd, dir); return c; };
+    assert.strictEqual(await startInstaller('linux', { pid: 7, file: path.join(dir, 'CDPlayer.AppImage'), target: '/home/a/CDPlayer.AppImage' }, { start: spawns }), true);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
