@@ -1965,6 +1965,17 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.23.0', changes: [
+    '<b>BLIP</b> (Settings &rarr; DECK PET): a little creature in the display&rsquo;s dots that grows with your music. It hatches once you play an album through, eats what&rsquo;s played, bobs to it, watches the cursor, and once grown takes a form from a month of your listening. Double-click it for its card. It never goes hungry and never asks for anything; off until you turn it on',
+    '<b>Lighter on the processor</b>: paused, minimised or behind other windows, CDPlayer takes a half to a third of what it did. ALBUM and JEWEL CASE are much lighter on computers without a graphics card',
+    '<b>Starts at once on Windows</b>: the .exe used to unpack the whole app on every start, which took 10&ndash;40 seconds. Now it unpacks once per version, and every start after that takes under a second',
+    '<b>A cleaner disc</b>: the cover on the spinning disc now goes right to the rim, with no coloured band, names, stars or small print round the edge. A disc with its own photo looks as before',
+  ], changesIn: { ru: [
+    '<b>БЛИП</b> (Настройки &rarr; ПИТОМЕЦ НА ДИСПЛЕЕ): зверёк из точек дисплея, который растёт вместе с твоей музыкой. Он вылупляется, когда ты дослушаешь альбом, ест то, что играет, качается в такт, следит за курсором, а повзрослев, принимает облик по тому, что ты слушал за месяц. Двойной щелчок &mdash; его карточка. Он никогда не голодает и ничего не просит; выключен, пока ты его не включишь',
+    '<b>Меньше нагрузки на процессор</b>: на паузе, свёрнутый или за другими окнами CDPlayer берёт в два-три раза меньше, чем раньше. АЛЬБОМ и КОРОБКА CD намного легче на компьютерах без видеокарты',
+    '<b>Мгновенный запуск на Windows</b>: раньше .exe распаковывал всё приложение при каждом запуске, и это занимало 10&ndash;40 секунд. Теперь он распаковывается один раз на версию, и потом запуск занимает меньше секунды',
+    '<b>Чистый диск</b>: обложка на вращающемся диске теперь идёт до самого края, без цветной полосы, названий, звёзд и мелкого текста по кругу. Диск со своей фотографией выглядит как раньше',
+  ] } },
   { version: '2.22.1', changes: [
     '<b>Cards and videos in colour</b> (P): the page is the cover itself, blurred right out, slowly turning in the videos. The art as big as the frame lets it, the lines big, the names a small caption at the foot. CLASSIC&rsquo;s disc runs off the edge, LYRICS&rsquo; CD turns in the corner, TERMINAL sits on dark glass',
     '<b>Back from a pause at once</b>: after a pause of more than a few seconds, the song came back a moment late on the Mac&rsquo;s speakers. Now it&rsquo;s heard as soon as you press PLAY',
