@@ -101,15 +101,19 @@ const MB_TYPE_RANK = { Album: 0, EP: 1, Single: 2 };
 // The album a song is on, as a MusicBrainz release group: the one named by the album tag when there is one, otherwise
 // the earliest official studio release (albums before EPs before singles) with a recording of this song by this
 // artist — so a song gets its album's cover, not a compilation's or a live bootleg's. → { id, title } or null.
+/** The artist's release group of this name (the album itself, not a remix, live or fan-made one) → { id, title } | null. */
+async function releaseGroupNamed(artist, album) {
+  const json = await musicBrainz('release-group', `releasegroup:${phrase(album)} AND artist:${phrase(artist)}`);
+  // (the search may put one of those first: no secondary type before one, an album before an EP, then the most releases)
+  const groups = (json['release-groups'] || []).filter((g) => g.score >= 90 && sameSong({ title: g.title, artist: credited(g) }, artist, album));
+  const rank = (g) => [(g['secondary-types'] || []).length ? 1 : 0, MB_TYPE_RANK[g['primary-type']] ?? 3, -(g.count || 0)];
+  const group = groups.sort((a, b) => (rankBefore(rank(a), rank(b)) ? -1 : rankBefore(rank(b), rank(a)) ? 1 : 0))[0];
+  return group ? { id: group.id, title: group.title } : null;
+}
 async function musicBrainzAlbum({ artist, title, album }) {
   if (album) {
-    const json = await musicBrainz('release-group', `releasegroup:${phrase(album)} AND artist:${phrase(artist)}`);
-    // The album itself, not a remix, live or fan-made one of the same name that the search may put first: no secondary
-    // type before one, an album before an EP, then the one with the most releases.
-    const groups = (json['release-groups'] || []).filter((g) => g.score >= 90 && sameSong({ title: g.title, artist: credited(g) }, artist, album));
-    const rank = (g) => [(g['secondary-types'] || []).length ? 1 : 0, MB_TYPE_RANK[g['primary-type']] ?? 3, -(g.count || 0)];
-    const group = groups.sort((a, b) => (rankBefore(rank(a), rank(b)) ? -1 : rankBefore(rank(b), rank(a)) ? 1 : 0))[0];
-    if (group) return { id: group.id, title: group.title };
+    const group = await releaseGroupNamed(artist, album);
+    if (group) return group;
   }
   const json = await musicBrainz('recording', `recording:${phrase(bareTitle(title))} AND artist:${phrase(artist)}`);
   let best = null;
@@ -279,7 +283,12 @@ function bareAlbum(album) {
  * album's own picture on the disc, not its cover's. `releaseId` first, then the album's other releases (CDs first).
  * → data URL, or null when nobody has uploaded one.
  */
-async function findDiscArt({ artist, album, releaseId }) {
+/** "OK Computer OKNOTOK 1997 2017" → "OK Computer OKNOTOK 1997", "OK Computer OKNOTOK", "OK Computer", "OK": its title cut back a word at a time. */
+function shorterTitles(album) {
+  const words = String(album || '').trim().split(/\s+/).filter(Boolean);
+  return words.slice(1).map((_, i) => words.slice(0, words.length - 1 - i).join(' '));
+}
+async function findDiscArt({ artist, album, releaseId, cutBack = false }) {
   const ids = releaseId ? [releaseId] : [], cds = new Set(releaseId ? [releaseId] : []), sets = new Set();
   // (offline: it throws — not "none"). An edition's name ("… (Special Edition)", "[Remastered 2011]") found as the album.
   const bare = bareAlbum(album);
@@ -310,6 +319,20 @@ async function findDiscArt({ artist, album, releaseId }) {
   const photo = await bestDiscPhoto(asked(unique.filter((id) => cds.has(id)).slice(0, 12)))
     || await bestDiscPhoto(asked(unique.filter((id) => !cds.has(id)).slice(0, 6)));
   if (photo) return photo.art;
+  // An edition named past the album's own title ("OK Computer OKNOTOK 1997 2017") with no photo of its own discs:
+  // the album's — its title cut back a word at a time, to the first that's an album of the artist's (not this one).
+  // (looked for even when one of the edition's releases didn't answer: a reissue has dozens, and one often doesn't)
+  if (!releaseId && !cutBack && artist) {
+    for (const title of shorterTitles(bare).slice(0, 4)) {
+      let other = null;
+      try { other = await releaseGroupNamed(artist, title); } catch { failed = true; break; }
+      if (other && (!group || other.id !== group.id)) {
+        const art = await findDiscArt({ artist, album: other.title, cutBack: true }).catch(() => { failed = true; return null; });
+        if (art) return art;
+        break;
+      }
+    }
+  }
   if (failed) throw new Error('disc art: lookup failed');
   return null;
 }
@@ -524,4 +547,4 @@ async function findLyrics({ title, artist, album, duration, guessed }) {
   return null;
 }
 
-module.exports = { bareAlbum, findDiscArt, fetchJson, musicBrainzAlbum, sameSong, hiddenNameFrom, findHiddenName, findCover, findCoverUrl, findAlbumCover, findAlbumCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, wordOverlapRatio };
+module.exports = { bareAlbum, shorterTitles, findDiscArt, fetchJson, musicBrainzAlbum, sameSong, hiddenNameFrom, findHiddenName, findCover, findCoverUrl, findAlbumCover, findAlbumCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, wordOverlapRatio };

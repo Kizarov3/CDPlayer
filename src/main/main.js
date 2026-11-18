@@ -683,11 +683,12 @@ function lookForBiggerDiscArt(q, name, file) {
 async function discArtFor(q, name) {
   const file = path.join(discArtDir(), `${name}.jpg`), none = path.join(discArtDir(), `${name}.none`);
   if (fs.existsSync(file)) { lookForBiggerDiscArt(q, name, file); return `data:image/jpeg;base64,${fs.readFileSync(file).toString('base64')}`; }
-  if (fs.existsSync(none) && Date.now() - fs.statSync(none).mtimeMs < 30 * 86400000) return null; // (looked again in a month)
+  // (looked again in a month — or now, if found missing before an edition was looked for under the album's own name)
+  if (fs.existsSync(none) && fs.readFileSync(none, 'utf8') === 'cut back' && Date.now() - fs.statSync(none).mtimeMs < 30 * 86400000) return null;
   let art;
   try { art = await online.findDiscArt(q); } catch { return null; } // (offline: looked for another time)
   fs.mkdirSync(discArtDir(), { recursive: true });
-  if (art) fs.writeFileSync(file, Buffer.from(art.split(',')[1], 'base64')); else fs.writeFileSync(none, '');
+  if (art) { fs.writeFileSync(file, Buffer.from(art.split(',')[1], 'base64')); fs.rmSync(none, { force: true }); } else fs.writeFileSync(none, 'cut back');
   return art;
 }
 handle('online:lyrics', (details) => (shotsDir ? null : online.findLyrics(details))); // (the screenshots' run is offline: the test song's own lyrics)
