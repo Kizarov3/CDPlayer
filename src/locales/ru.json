@@ -101,6 +101,7 @@
   "ANIMATIONS": "АНИМАЦИЯ",
   "APPRAISAL STOPPED · NO CONNECTION": "ОЦЕНКА ПРЕРВАНА · НЕТ СЕТИ",
   "APPRAISE": "ОЦЕНИТЬ",
+  "APPRAISED · NONE OF THESE ARE ON DISCOGS": "ОЦЕНКА ГОТОВА · НИ ОДНОГО ИЗ НИХ НЕТ НА DISCOGS",
   "APPRAISED · DISCOGS COULDN’T ANSWER FOR {n}": {
     "one": "ОЦЕНЕНО · DISCOGS НЕ ОТВЕТИЛ ПО {n} АЛЬБОМУ",
     "few": "ОЦЕНЕНО · DISCOGS НЕ ОТВЕТИЛ ПО {n} АЛЬБОМАМ",
@@ -383,6 +384,7 @@
   "EDIT {theme}": "ИЗМЕНИТЬ {theme}",
   "EGG": "ЯЙЦО",
   "EJECT": "ИЗВЛЕЧЬ",
+  "END OF DISC · PLAY STARTS IT AGAIN": "ДИСК ЗАКОНЧИЛСЯ · PLAY ЗАПУСТИТ ЕГО СНОВА",
   "END OF DISC · SLEEP WELL": "ДИСК ЗАКОНЧИЛСЯ · СПОКОЙНОЙ НОЧИ",
   "END OF QUEUE": "КОНЕЦ ОЧЕРЕДИ",
   "END OF THE LAST DISC": "КОНЕЦ ПОСЛЕДНЕГО ДИСКА",

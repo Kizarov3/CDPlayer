@@ -46,13 +46,13 @@ export async function openBooklet(app, from, content = null, lid = null) {
 
   // Under it: back and forward, which spread this is, and closing — the clicks and keys, said and to hand.
   const where = el('span', { class: 'booklet-where' });
-  const bar = el('div', { class: 'booklet-bar' },
-    el('button', { class: 'pill', title: t('Back a page (←)'), onClick: () => turn(-1) }, '‹'), where,
-    el('button', { class: 'pill', title: t('Next page (→)'), onClick: () => turn(1) }, '›'),
+  const back = el('button', { class: 'pill', title: t('Back a page (←)'), onClick: () => turn(-1) }, '‹');
+  const forward = el('button', { class: 'pill', title: t('Next page (→)'), onClick: () => turn(1) }, '›');
+  const bar = el('div', { class: 'booklet-bar' }, back, where, forward,
     el('button', { class: 'pill', title: t('Put the booklet back (Esc)'), onClick: () => closeBooklet() }, t('CLOSE')));
   bar.style.top = `${Math.round((window.innerHeight + size) / 2) + 12}px`;
   root.append(bar);
-  book = { root, spread, leaves: [], turned: 0, from, app, content, where, lid, openedAt: performance.now() };
+  book = { root, spread, leaves: [], turned: 0, from, app, content, where, back, forward, lid, openedAt: performance.now() };
   buildLeaves();
   stack();
 
@@ -150,6 +150,7 @@ function stack() {
   book.leaves.forEach((leaf, i) => { leaf.style.zIndex = String(i < book.turned ? i + 1 : book.leaves.length * 2 - i); });
   // The front cover on its own, then the spreads inside counted from 1 (the booklet opens at the first of them).
   book.where.textContent = book.turned ? t('{n} OF {total}', { n: book.turned, total: book.leaves.length }) : t('COVER');
+  book.back.disabled = book.turned === 0; book.forward.disabled = book.turned >= book.leaves.length; // (nothing that way)
 }
 
 /** Closes the booklet back into the case (and the art back into the corner). */

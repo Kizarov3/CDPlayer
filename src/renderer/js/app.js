@@ -1009,6 +1009,7 @@ function trayHolds(autoPlay, seamless) {
 }
 async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0, reload = false, seamless = false } = {}) {
   const token = ++state.loadToken;
+  discEnded = false;
   if (reload && path === state.loadedPath && scrobbleFor === token - 1) scrobbleFor = token; // the same song again: heard so far, and sent, as it was
   stopStreamReading();
   // The tray's out: the new song waits on it, and plays when it closes (nothing plays from an open tray).
@@ -1641,6 +1642,7 @@ async function toggle() {
     return;
   }
   if (jog) { jog.wasPlaying = !jog.wasPlaying; setPlaying(jog.wasPlaying); return; } // plays on (or not) once the disc is let go
+  if (discEnded && !engine.playing && state.queue.length) { const first = state.queue.findIndex((_, i) => !isSkipped(i)); goTo(first < 0 ? 0 : first); return; }
   if (engine.playing) { engine.pause(); setPlaying(false); }
   else { await engine.play(); setPlaying(engine.playing); } // a Spotify track can be refused
 }
@@ -1828,8 +1830,14 @@ function trackFinished(deck) {
   // rather than let the following song start playing underneath.
   if (next < 0 || !continuesCurrent(state.queue[next])) engine.pause();
   if (next >= 0) { movingOn = state.loadToken + 1; goTo(next, automixStart(next)); return; }
+  // The end of the disc: said so (not just PAUSED), the visualizer let go of, and PLAY starts it again from the top
+  // as a CD player does — not the last song over again.
   setPlaying(false);
+  discEnded = !state.changerMode;
+  if (state.visualizerMode) toggleVisualizerMode();
+  setStatus(t('END OF DISC · PLAY STARTS IT AGAIN'));
 }
+let discEnded = false;
 // The music moving on came to a song that won't play (gone, broken, a stream that failed): on past it after a moment,
 // as a CD player skips a bad track — once round the queue at most. One picked by hand stays, saying why.
 let movingOn = 0, passedOver = 0;

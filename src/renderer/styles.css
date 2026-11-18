@@ -307,6 +307,8 @@ body.pet-on #vfd-pet { display: block; }
 .row-value { font-size: 10px; color: rgb(var(--muted)); margin-left: 8px; min-width: 36px; }
 #volume-slider { width: 120px; height: 20px; }
 #tray-button { margin-right: 6px; font-size: 12px; padding: 6px 11px; }
+#tray-button::before { left: 10px; }
+#tray-button.on { padding-left: 24px; } /* (room for its lamp, as any pill that is on has: it sat on the ⏏) */
 
 #queue-card {
   margin-top: 20px;
@@ -1052,7 +1054,7 @@ html.light .card-preview { background: rgba(0, 0, 0, .05); box-shadow: 0 6px 18p
 .setting-row.found { animation: setting-found 1.6s ease-out; border-radius: 6px; }
 @keyframes setting-found { 0%, 30% { background: rgba(var(--accent), .28); box-shadow: 0 0 0 6px rgba(var(--accent), .28); } 100% { background: transparent; box-shadow: 0 0 0 6px transparent; } }
 .list-row.plain { cursor: default; color: rgb(var(--muted)); min-height: 20px; }
-.list-row .when { flex: none; width: 40px; color: rgb(var(--muted)); font-weight: normal; font-variant-numeric: tabular-nums; }
+.list-row .when { flex: none; min-width: 40px; white-space: nowrap; margin-right: 4px; color: rgb(var(--muted)); font-weight: normal; font-variant-numeric: tabular-nums; }
 .list-row .when.count { width: auto; white-space: nowrap; margin-right: 4px; } /* "12 SONGS" on an album found online */
 .history-day { margin: 12px 0 6px; font-size: 9px; color: rgb(var(--accent2)); }
 .history-day:first-child { margin-top: 0; }
@@ -2027,6 +2029,7 @@ body.no-anim .tour-spot, body.no-anim .tour-bubble { transition: none; }
 @media (max-width: 900px) {
   /* The deck display's flags closer together, so ИГРАЕТ … ПОВТОР 1 fit beside the track and the time. */
   .vfd-flags { gap: 8px; letter-spacing: .04em; }
+  .vfd-flag[data-flag="one"] { margin-left: -4px; } /* (REPEAT 1 keeps its space: the gap above is 4px less) */
   /* A case: its cover a little smaller, so the songs keep their room beside it, and its buttons smaller. */
   .case-card { gap: 22px; }
   .case-front { height: auto; width: 44%; align-self: flex-start; }

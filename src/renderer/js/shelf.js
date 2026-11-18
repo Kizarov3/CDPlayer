@@ -1357,6 +1357,7 @@ async function appraise() {
   if (!result.stopped && !result.error) shelf.appraised = true;
   if (result.error) say(t('APPRAISAL STOPPED · NO CONNECTION'));
   else if (result.skipped) say(t('APPRAISED · DISCOGS COULDN’T ANSWER FOR {n}', { n: result.skipped }));
+  else if (!result.stopped && !totalNote()) say(t('APPRAISED · NONE OF THESE ARE ON DISCOGS')); // (not a silent end)
   updateAppraiseCount();
   if (shelf.open) render();
 }

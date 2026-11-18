@@ -386,7 +386,15 @@ export class Disc {
   setTray(open) {
     this.trayOpen = open;
     if (this.trayT === (open ? 1 : 0)) return Promise.resolve();
-    return new Promise((resolve) => { const prev = this.trayDone; this.trayDone = () => { if (prev) prev(); resolve(); }; });
+    return new Promise((resolve) => {
+      const prev = this.trayDone;
+      let settled = false;
+      const done = () => { if (settled) return; settled = true; clearTimeout(late); if (prev) prev(); resolve(); };
+      // (the frames that run the motor stopped coming: the tray is put where it was going rather than E waiting on it
+      // for good — it was seen stuck at OPENING, every E after ignored)
+      const late = setTimeout(() => { if (this.trayDone === done) { this.trayT = this.trayOpen ? 1 : 0; this.trayDone = null; } done(); }, TRAY_MS * 2 + 500);
+      this.trayDone = done;
+    });
   }
   stepTray(dt) {
     const target = this.trayOpen ? 1 : 0;
