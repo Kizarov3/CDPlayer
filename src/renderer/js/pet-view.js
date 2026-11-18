@@ -9,7 +9,7 @@ import { LCD_INK } from './deck-display.js';
 import { t } from './i18n.js';
 
 const ASLEEP_AFTER = 3 * 86400e3; // no music for this long: it's asleep
-const WORD_MS = 2300, WORD_WAIT_MS = 60e3, SNACK_WORD_EVERY = 5, PEAK_EVERY = 20e3, POKES_MS = 1300;
+const WORD_MS = 2300, WORD_WAIT_MS = 60e3, SNACK_WORD_EVERY = 5, PEAK_EVERY = 20e3, POKES_MS = 1300, CARD_WAIT_MS = 320;
 const TRICK_ODDS = { sleepy: 30, bouncy: 12, curious: 25, shy: 40 }; // one in this many snacks ends in a somersault
 const moving = () => !document.body.classList.contains('no-anim') && !matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -90,12 +90,17 @@ export function createPetView({ canvas, say, display, pet, openCard }) {
     movedAt = performance.now();
     if (next !== look) { look = next; drawnKey = ''; }
   }, { passive: true });
-  canvas.addEventListener('click', () => {
+  // (a double-click's card waits a moment: a third quick click makes it the somersault instead — three quick clicks
+  // are a double-click on the way)
+  let cardTimer = 0;
+  canvas.addEventListener('click', (e) => {
     const now = performance.now();
     pokes = pokes.filter((p) => now - p < POKES_MS); pokes.push(now);
-    if (pokes.length >= 3) { pokes = []; reactTo('trick'); } else reactTo('poke');
+    if (e.detail >= 3 || pokes.length >= 3) { clearTimeout(cardTimer); cardTimer = 0; pokes = []; reactTo('trick'); return; }
+    reactTo('poke');
+    if (e.detail === 2) { clearTimeout(cardTimer); cardTimer = setTimeout(() => { cardTimer = 0; pokes = []; openCard(); }, CARD_WAIT_MS); }
   });
-  canvas.addEventListener('dblclick', (e) => { e.preventDefault(); openCard(); });
+  canvas.addEventListener('dblclick', (e) => e.preventDefault());
 
   /** The pose it's in now, with no scene or reaction: the music playing, its favourite, paused, or asleep. */
   function restingPose(playing, track) {

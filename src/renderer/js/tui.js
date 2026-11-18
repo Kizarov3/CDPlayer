@@ -224,7 +224,8 @@ function nowPlaying(grid, m, x0, w, h) {
   if (pet) {
     pet.rows.forEach((row, r) => [...row].forEach((c, i) => { if (c !== ' ') grid.put(end - row.length + i, 1 + r, c, pet.tones[r][i] === 'a' ? 'accent' : 'muted'); }));
     if (pet.say) {
-      const said = clip(pet.say, 24), name = `${pet.name || 'BLIP'}> `, sx = end - textWidth(name) - textWidth(said);
+      const said = clip(pet.say, 24), name = 'BLIP> ', // (its own name only on its card, never on the display)
+        sx = end - textWidth(name) - textWidth(said);
       grid.put(sx, 4, name, 'muted'); grid.put(sx + textWidth(name), 4, said, 'accent');
     }
   }
