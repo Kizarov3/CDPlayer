@@ -255,6 +255,8 @@ h2 { font-size: 13px; letter-spacing: .14em; margin: 0; color: rgb(var(--accent)
 .feature p b, .card p b { color: rgb(var(--text)); }
 .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 .card { padding: 20px; border-radius: 8px; background: rgba(var(--card), .55); box-shadow: inset 0 0 0 1px var(--line); }
+.card.wide { grid-column: 1 / -1; }
+.card.wide p { max-width: 80ch; } /* (a ninth card: across its own row, so the four columns stay even) */
 .card h3 { color: rgb(var(--accent)); font-size: 12px; }
 .card p { margin: 0; color: rgb(var(--muted)); font-size: 14px; }
 
