@@ -241,6 +241,8 @@ h2 { font-size: 13px; letter-spacing: .14em; margin: 0; color: rgb(var(--accent)
   background: rgb(var(--card)); transition: opacity .2s;
 }
 .screen img.fading { opacity: .25; }
+.screen video { display: block; width: 100%; height: auto; aspect-ratio: 1280 / 768; border-radius: 8px; box-shadow: var(--shadow), 0 0 0 1px var(--line); background: rgb(var(--card)); cursor: pointer; }
+.watch { padding-bottom: 0; }
 .screen figcaption { color: rgb(var(--muted)); font-size: 14px; margin-top: 14px; text-align: center; min-height: 1.6em; }
 .screen figcaption b { color: rgb(var(--text)); }
 

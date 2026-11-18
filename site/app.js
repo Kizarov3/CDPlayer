@@ -45,6 +45,21 @@
   });
   showTheme();
 
+  /* ---------- The video: plays only while it's in sight (and loads only then); with reduced motion, it waits for a click. ---------- */
+  const demo = $('#demo');
+  if (demo) {
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let wanted = !still;
+    if (still) demo.controls = true;
+    else {
+      new IntersectionObserver(([e]) => {
+        if (e.isIntersecting && wanted) { demo.preload = 'auto'; demo.play().catch(() => { demo.controls = true; }); }
+        else demo.pause();
+      }, { threshold: 0.35 }).observe(demo);
+      demo.addEventListener('click', () => { wanted = demo.paused; if (demo.paused) demo.play().catch(() => {}); else demo.pause(); });
+    }
+  }
+
   /* ---------- The disc's shine follows the mouse, as DISC SHINE does in the player. ---------- */
   const shine = $('#shine');
   const caseEl = $('#case');
