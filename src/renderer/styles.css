@@ -322,6 +322,7 @@ body.pet-on #vfd-pet { display: block; }
 #queue-actions { flex: 0 1 auto; margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; }
 #queue-info { font-size: 10px; color: rgb(var(--muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #queue-next { font-size: 9px; color: rgb(var(--muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#queue-next.hint { white-space: normal; line-height: 1.35; }
 #queue-list { margin-top: 10px; flex: 1 1 auto; min-height: 60px; }
 .queue-row {
   display: flex; align-items: center; gap: 8px;

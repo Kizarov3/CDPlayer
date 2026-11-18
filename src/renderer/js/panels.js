@@ -398,13 +398,13 @@ function buildSettings(app) {
 
   // TRANSITION: how one song goes into the next — OFF (back to back, gapless), AUTOMIX, or CROSSFADE over the seconds
   // set below it (only shown then; kept while another is picked).
-  const TRANSITION_NAMES = { OFF: t('OFF'), AUTOMIX: t('AUTOMIX'), CROSSFADE: t('CROSSFADE') };
+  const TRANSITION_NAMES = { OFF: t('GAPLESS'), AUTOMIX: t('AUTOMIX'), CROSSFADE: t('CROSSFADE') };
   const TRANSITION_HINTS = {
     OFF: t('Each song follows the last with no gap, as on a CD — the silence that’s in the files stays.'),
     AUTOMIX: t('Blends one song into the next where it winds down, so there’s no silence between them. An album played in order stays gapless.'),
     CROSSFADE: t('Every song fades into the next over the seconds set — albums too.'),
   };
-  const transitionButton = pill(TRANSITION_NAMES[s.transition] || t('OFF'), () => showMenu(transitionButton, ['OFF', 'AUTOMIX', 'CROSSFADE'].map((mode) => ({
+  const transitionButton = pill(TRANSITION_NAMES[s.transition] || TRANSITION_NAMES.OFF, () => showMenu(transitionButton, ['OFF', 'AUTOMIX', 'CROSSFADE'].map((mode) => ({
     label: TRANSITION_NAMES[mode], current: mode === s.transition,
     pick: () => { app.setTransition(mode); refreshSettingsIfOpen(app); },
   }))), t('How one song goes into the next'));
@@ -1263,7 +1263,7 @@ async function startLibraryScan(app) {
   search.index = []; search.labels = {}; search.tags = {}; search.scanning = true;
   const result = await app.cdp.scanLibrary().catch(() => ({ folder: null, files: [] }));
   if (generation !== search.generation) return; // superseded by a newer scan
-  search.index = result.files; search.labels = result.labels || {}; search.tags = result.tags || {}; search.folder = result.name || null; search.scanning = false;
+  search.index = result.files; search.labels = result.labels || {}; search.tags = result.tags || {}; search.folder = result.name ? result.name.toLocaleUpperCase() : null; // (said in capitals, as all around it is) search.scanning = false;
   refreshSearchResults(app);
 }
 

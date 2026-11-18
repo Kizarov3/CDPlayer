@@ -30,7 +30,8 @@ and a fresh-eyes reviewer. Where they disagreed, the call below is noted.
   up to 8 characters, upper case. The name is shown only on the card, never on the display.
 - **Off by default.** A setting turns it on. People find it in What's new and in Settings — never an in-app prompt.
 - **Where:** a 25×16 dot grid (~2.6 px pitch) in `#deck-display` between the flags and the time, in CLASSIC,
-  VISUALIZER, HI-FI and CD VIEW. Dark themes: lit dots in the theme's accent with the digits' glow, unlit dots faintly
+  HI-FI and CD VIEW (VISUALIZER shows no deck display, so it's not there; CD VIEW only where its display has the room —
+  not at the default 1120 px window, as built in v1). Dark themes: lit dots in the theme's accent with the digits' glow, unlit dots faintly
   there (as the 88:88 behind the time). WHITE: LCD ink, no glow. TERMINAL: the same bitmap in half-block characters
   (▀▄█) in NOW PLAYING, with a caption `[BLIP · COLLECTOR · DANCING]`. Hidden in LYRICS, ALBUM and (in v1) JEWEL CASE;
   hidden when the display is too narrow.

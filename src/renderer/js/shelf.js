@@ -1053,7 +1053,12 @@ async function openCase(a, spine) {
   };
   // Into the queue or the changer; the case goes back once it's in — not when a full changer's question was turned
   // down (Esc there closes the question, and the case stays out).
-  const putIn = async (opts) => { const r = await app.loadDisc(discOfAlbum(a), a.tracks.map((t) => t.path), opts); if (!(r && r.cancelled)) closeCase(); };
+  const putIn = async (opts) => {
+    const r = await app.loadDisc(discOfAlbum(a), a.tracks.map((t) => t.path), opts);
+    if (r && r.cancelled) return;
+    closeCase();
+    if (!opts && !app.changerMode()) say(t('ADDED {n} TO QUEUE', { n: a.tracks.length })); // (said where it's seen: the status line is under the shelf)
+  };
   const addNote = pill(t('+ NOTE'), () => { addNote.hidden = true; lidFace.append(stickyNote({ id: a.id, text: '', onSave: saveNote })); }, t('Stick a note on the case'));
   addNote.hidden = !!a.note;
   const fileButton = dividerButton(a, spine);

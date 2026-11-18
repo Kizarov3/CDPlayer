@@ -54,7 +54,7 @@ button { font-family: inherit; outline: none; }
   display: grid; place-items: center; cursor: pointer;
   opacity: 0; transition: opacity 120ms, background 120ms;
 }
-#close svg { width: 8px; height: 8px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+#close svg { width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; } /* (out to the full player — an × read as closing CDPlayer) */
 #panel:hover #close { opacity: 1; }
 #close:hover { background: rgba(var(--text), .45); }
 

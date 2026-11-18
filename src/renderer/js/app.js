@@ -150,6 +150,7 @@ function stateStatus() {
   if (engine.playing && matchingWords) return t('MATCHING THE WORDS TO THE SINGING · KEEP LISTENING');
   if (engine.playing) return state.volume === 0 ? t('NOW SPINNING · SOUND OFF') : t('NOW SPINNING'); // (silent: said, so it isn't taken for broken)
   if (spotifyActive() && spotifyTrouble) return spotifyTrouble;
+  if (discEnded) return t('END OF DISC · PLAY STARTS IT AGAIN'); // (said for good, not only for its six seconds)
   return state.loadedPath ? t('PAUSED') : t('READY TO PLAY');
 }
 // CD VIEW has no status line: what a key just did (paused, volume, shuffle…) is said for a moment where its hint is
@@ -542,9 +543,11 @@ function renderQueueList() {
   if (!state.queue.length || state.index < 0) {
     $('queue-info').textContent = t('QUEUE EMPTY');
     $('queue-next').textContent = t('OPEN THE SHELF (S) AND PICK AN ALBUM — OR DROP SONGS HERE');
+    $('queue-next').classList.add('hint'); // (said whole, on two lines if it must: it was cut off at "OR DROP SONG…")
     list.replaceChildren();
     return;
   }
+  $('queue-next').classList.remove('hint');
   $('queue-info').textContent = (state.shuffle !== 'OFF' ? t('QUEUE {at} / {of} · SHUFFLED', { at: state.index + 1, of: state.queue.length }) : t('QUEUE {at} / {of}', { at: state.index + 1, of: state.queue.length }))
     + (state.repeat === 'ALL' ? ` · ${t('ROUND AGAIN AT THE END')}` : '');
   const next = upcomingIndex();
@@ -1833,6 +1836,7 @@ function trackFinished(deck) {
   // The end of the disc: said so (not just PAUSED), the visualizer let go of, and PLAY starts it again from the top
   // as a CD player does — not the last song over again.
   setPlaying(false);
+  updateProgressUi(true); // (the last moment shown: 1:47 of 1:47, as the mini player has it — not the frame before)
   discEnded = !state.changerMode;
   if (state.visualizerMode) toggleVisualizerMode();
   setStatus(t('END OF DISC · PLAY STARTS IT AGAIN'));
