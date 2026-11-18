@@ -80,7 +80,7 @@ const MB_USER_AGENT = 'CDPlayer/2 ( https://github.com/Kizarov3/CDPlayer )';
 let mbNextSlot = 0;
 // A 503 is MusicBrainz saying "slow down" (other requests from the same address count too), not "no": asked again,
 // after a longer pause each time, before giving up.
-async function mbFetch(pathAndQuery, tries = 3) {
+async function mbFetch(pathAndQuery, tries = 4) {
   const wait = mbNextSlot - Date.now();
   mbNextSlot = Math.max(Date.now(), mbNextSlot) + 1100;
   if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
@@ -88,7 +88,7 @@ async function mbFetch(pathAndQuery, tries = 3) {
     return await fetchJson(`https://musicbrainz.org/ws/2/${pathAndQuery}`, { headers: { 'User-Agent': MB_USER_AGENT } });
   } catch (e) {
     if (e.status !== 503 || tries <= 1) throw e;
-    mbNextSlot = Math.max(mbNextSlot, Date.now() + 2000 * (4 - tries));
+    mbNextSlot = Math.max(mbNextSlot, Date.now() + 1000 * 2 ** (5 - tries)); // (2, 4, 8 s)
     return mbFetch(pathAndQuery, tries - 1);
   }
 }
@@ -288,12 +288,13 @@ function shorterTitles(album) {
   const words = String(album || '').trim().split(/\s+/).filter(Boolean);
   return words.slice(1).map((_, i) => words.slice(0, words.length - 1 - i).join(' '));
 }
-async function findDiscArt({ artist, album, releaseId, cutBack = false }) {
+async function findDiscArt({ artist, album, releaseId, found = null }) {
   const ids = releaseId ? [releaseId] : [], cds = new Set(releaseId ? [releaseId] : []), sets = new Set();
   // (offline: it throws — not "none"). An edition's name ("… (Special Edition)", "[Remastered 2011]") found as the album.
   const bare = bareAlbum(album);
-  let group = artist && album ? await musicBrainzAlbum({ artist, album, title: album }) : null;
-  if (!group && artist && bare !== album) group = await musicBrainzAlbum({ artist, album: bare, title: bare });
+  // (the album searched for as an album only: as a song of its name too, it was one more request that could fail)
+  let group = found || (artist && album ? await releaseGroupNamed(artist, album) : null);
+  if (!group && artist && bare !== album) group = await releaseGroupNamed(artist, bare);
   let failed = false; // (a lookup that went wrong, not one that found nothing: tried again another time, not "none")
   const lost = (e) => { if (!e || e.status !== 404) failed = true; return null; };
   if (group) {
@@ -322,12 +323,12 @@ async function findDiscArt({ artist, album, releaseId, cutBack = false }) {
   // An edition named past the album's own title ("OK Computer OKNOTOK 1997 2017") with no photo of its own discs:
   // the album's — its title cut back a word at a time, to the first that's an album of the artist's (not this one).
   // (looked for even when one of the edition's releases didn't answer: a reissue has dozens, and one often doesn't)
-  if (!releaseId && !cutBack && artist) {
+  if (!releaseId && !found && artist) {
     for (const title of shorterTitles(bare).slice(0, 4)) {
       let other = null;
-      try { other = await releaseGroupNamed(artist, title); } catch { failed = true; break; }
+      try { other = await releaseGroupNamed(artist, title); } catch { failed = true; continue; } // (MusicBrainz fails some searches outright — any with "OKNOTOK" in it: the next, shorter title is tried)
       if (other && (!group || other.id !== group.id)) {
-        const art = await findDiscArt({ artist, album: other.title, cutBack: true }).catch(() => { failed = true; return null; });
+        const art = await findDiscArt({ artist, album: other.title, found: other }).catch(() => { failed = true; return null; });
         if (art) return art;
         break;
       }
