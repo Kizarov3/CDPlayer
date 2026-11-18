@@ -3709,14 +3709,26 @@ const STIR_MS = 2500;
 let stirredAt = 0, playingSeen = false;
 // The next frame: on the display's next one, or — with frames to spare (in the background, at rest, hidden) — after a
 // sleep, so the window isn't woken 60 times a second only to find it has nothing to draw. A touch ends the sleep.
-let frameTimer = 0;
+let frameTimer = 0, framePending = false, frameFailed = false;
+const askFrame = () => { framePending = true; requestAnimationFrame(frame); };
 function nextFrame(delay = 0) {
-  if (delay > 4) frameTimer = setTimeout(() => { frameTimer = 0; requestAnimationFrame(frame); }, delay);
-  else requestAnimationFrame(frame);
+  if (delay > 4) frameTimer = setTimeout(() => { frameTimer = 0; askFrame(); }, delay);
+  else askFrame();
 }
-function wakeFrames() { if (frameTimer) { clearTimeout(frameTimer); frameTimer = 0; requestAnimationFrame(frame); } }
-for (const kind of ['pointermove', 'pointerdown', 'wheel', 'keydown']) window.addEventListener(kind, () => { stirredAt = performance.now(); wakeFrames(); }, { capture: true, passive: true });
+function wakeFrames() { if (frameTimer) { clearTimeout(frameTimer); frameTimer = 0; askFrame(); } }
+// A frame that fails still asks for the next: one error in it used to end the loop for good — the music played on
+// while the time, the karaoke, the disc and its tray stood still (stuck at OPENING) until CDPlayer was restarted.
 function frame(now) {
+  framePending = false;
+  try { drawFrame(now); } catch (e) {
+    if (!frameFailed) { frameFailed = true; console.error('frame:', e); } // (said once: it would come again 60 times a second)
+    if (!framePending && !frameTimer) nextFrame(16);
+  }
+}
+// …and if the loop is lost some other way (no frame asked for, none waiting), it's started again.
+setInterval(() => { if (!framePending && !frameTimer) askFrame(); }, 1000);
+for (const kind of ['pointermove', 'pointerdown', 'wheel', 'keydown']) window.addEventListener(kind, () => { stirredAt = performance.now(); wakeFrames(); }, { capture: true, passive: true });
+function drawFrame(now) {
   // Hidden (the mini player up, or the window minimised or on another space): nothing to draw. The window keeps
   // running in the background for the music, so its frames would still come 60 a second: looked in on 4 times instead.
   if (state.miniMode || !windowShown) { nextFrame(250); last = now; return; }
@@ -3995,7 +4007,7 @@ async function start() {
   setTrackTitle(t('Pick a track to get started.'), null);
   renderQueue();
   deckDisplay.powerOn();
-  requestAnimationFrame(frame);
+  askFrame();
   setInterval(playbackTick, 40);
   cdp.remoteStatus().then(onRemoteStatus).catch(() => {});
   checkForUpdate();
