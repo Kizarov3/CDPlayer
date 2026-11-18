@@ -249,7 +249,10 @@ function ownStarts(line) {
  * this file is from them over the whole song — the median of each word's difference, when most words agree on it (a
  * version of the song that starts a little sooner or later than the one they were timed to). → seconds (voice − words),
  * or 0: they're right already, or the voice doesn't agree with itself enough to move them by.
+ * Only the words the model heard clearly count: a rap it can barely make out has its words put anywhere, and in Linkin
+ * Park's In the End those outvoted the sung ones, all a steady 1.1 s off — the karaoke ran a second ahead of the voice.
  */
+const HEARD_CLEARLY = 0.15; // (likelihood: the sung words of In the End .17–.98, its rap's .01–.1)
 export function handTimedShift(lines, words) {
   const diffs = [];
   lines.filter((l) => l.text).forEach((line, i) => {
@@ -257,7 +260,7 @@ export function handTimedShift(lines, words) {
     if (!got || !line.words || !line.words.length) return;
     const starts = ownStarts(line);
     if (starts.length !== got.length) return;
-    got.forEach((w, k) => { if (w && w.end > w.time) diffs.push(w.time - starts[k]); });
+    got.forEach((w, k) => { if (w && w.end > w.time && !(w.heard < HEARD_CLEARLY)) diffs.push(w.time - starts[k]); });
   });
   if (diffs.length < 20) return 0;
   diffs.sort((a, b) => a - b);

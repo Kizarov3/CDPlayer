@@ -206,3 +206,17 @@ test('hand-timed words a second late against the voice: moved as a whole; on tim
   assert.strictEqual(handTimedShift(lines, heard(-0.9, wild)), 0);
   assert.strictEqual(handTimedShift(lines.slice(0, 3), heard(-0.9).slice(0, 3)), 0); // too few words to go by
 });
+
+test("hand-timed words: a rap the model barely hears doesn't outvote the sung words it hears clearly", () => {
+  // (In the End: its sung lines a steady 1.1 s off in this file, its rap's words put anywhere, barely heard)
+  const lines = Array.from({ length: 24 }, (_, n) => {
+    const t0 = 10 + n * 4;
+    return { time: t0, text: 'got so far', words: [{ time: t0, text: 'got ' }, { time: t0 + 0.5, text: 'so ' }, { time: t0 + 1, text: 'far' }] };
+  });
+  let s = 7;
+  const wild = () => { s = (s * 16807) % 2147483647; return (s / 2147483647 - 0.5) * 6; };
+  const got = lines.map((l, n) => [0, 0.5, 1].map((d) => (n % 3 === 0
+    ? { time: l.time + d + 1.1, end: l.time + d + 1.5, heard: 0.7 }
+    : { time: l.time + d + wild(), end: l.time + d + 5, heard: 0.03 })));
+  assert.strictEqual(handTimedShift(lines, got), 1.1);
+});
