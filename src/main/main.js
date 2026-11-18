@@ -167,9 +167,10 @@ function createWindow() {
   if (saved) normalBounds = saved;
   win.on('resize', captureNormalBounds);
   win.on('move', captureNormalBounds);
-  // (whether there's anything of it to see: with background throttling off, a hidden window never hears it's hidden)
-  for (const [event, shown] of [['hide', false], ['minimize', false], ['show', true], ['restore', true]]) {
-    win.on(event, () => win.webContents.send('window-shown', shown && !win.isMinimized()));
+  // (whether there's anything of it to see: with background throttling off, a hidden window never hears it's hidden;
+  // focus too, so a 'restore' that never comes can't leave the window drawing four times a second)
+  for (const [event, shown] of [['hide', false], ['minimize', false], ['show', true], ['restore', true], ['focus', true]]) {
+    win.on(event, () => win.webContents.send('window-shown', shown && !win.isMinimized() && win.isVisible()));
   }
   win.on('enter-full-screen', () => win.webContents.send('fullscreen-changed', true));
   win.on('leave-full-screen', () => win.webContents.send('fullscreen-changed', false));
