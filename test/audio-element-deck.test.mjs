@@ -361,3 +361,19 @@ test('while a mix is still fading the old song out, no next seam starts', async 
   assert.strictEqual(engine.deck.url, 'cdp://app/media?p=b');
   engine.stop();
 });
+
+test('reading failing in a song\'s last moments ends it (on to the next) instead of leaving it "playing" for good; earlier, or before the length is known, it\'s left alone', async () => {
+  const engine = new AudioEngine();
+  const ended = [];
+  engine.onEnded = (d) => ended.push(d);
+  const el = new FakeElement();
+  await engine.load('spotify:track:A', { autoPlay: true, element: el });
+  el.currentTime = 120; el.fire('error');
+  assert.deepStrictEqual(ended, [], 'mid-song: not taken for its end');
+  el.currentTime = 199.8; el.fire('error');
+  assert.deepStrictEqual(ended, [engine.deck]);
+  const early = new FakeElement(); early.duration = NaN;
+  await engine.load('spotify:track:B', { autoPlay: true, element: early });
+  early.fire('error');
+  assert.strictEqual(ended.length, 1, 'no length yet: the load\'s to report');
+});

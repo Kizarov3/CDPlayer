@@ -1,6 +1,6 @@
 // The changer's carousel, seen from above: five slots round a tray, each disc with its cover printed on it, the
 // playing one turned to the laser on the side facing the big disc. Under it, the playing disc's tracklist.
-import { el, followPlaying } from './widgets.js';
+import { el, followPlaying, keepFollowing } from './widgets.js';
 import { trayAngle } from './changer.js';
 import { t } from './i18n.js';
 
@@ -58,6 +58,7 @@ export function createChangerView(root, { tray, heading, list, onPlaySlot, onPla
     // (the highlight slides from the song before only on the same disc)
     const sameDisc = lastActive && lastActive.key && lastActive.key.split(':')[0] === key?.split(':')[0];
     if (key && key !== shownKey) followPlaying(list.querySelector('.queue-row.active'), sameDisc ? lastActive.top : null, list);
+    else keepFollowing(list.querySelector('.queue-row.active'), list);
     shownKey = key;
   }
   let shownKey = null, lastActive = null;

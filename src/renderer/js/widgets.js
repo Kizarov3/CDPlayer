@@ -291,10 +291,19 @@ const still = () => !anim.enabled || matchMedia('(prefers-reduced-motion: reduce
  * The song playing moved on in a list: the list scrolls to its row (gently), and the highlight slides there from the
  * row that was (`fromTop`, that row's offsetTop) — when that was near.
  */
+// A list being scrolled to its playing row, until when: the list drawn again meanwhile (its scrollTop put back as it
+// was) would stop that smooth scroll where it had got to, so the scroll is picked up again (keepFollowing).
+const following = new WeakMap();
+const FOLLOW_MS = 800;
 export function followPlaying(row, fromTop, list) {
   if (!row) return;
   row.scrollIntoView({ block: 'center', behavior: still() ? 'auto' : 'smooth' });
+  following.set(list, performance.now() + FOLLOW_MS);
   const dy = fromTop - row.offsetTop;
   if (fromTop === null || still() || !dy || Math.abs(dy) > list.clientHeight * 2) return;
   row.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 360, easing: EASE.out, pseudoElement: '::before' });
+}
+/** After `list` was drawn again with its scrollTop put back: a scroll to the playing `row` still under way goes on. */
+export function keepFollowing(row, list) {
+  if (row && performance.now() < (following.get(list) || 0)) row.scrollIntoView({ block: 'center', behavior: still() ? 'auto' : 'smooth' });
 }

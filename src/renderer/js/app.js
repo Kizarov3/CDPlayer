@@ -9,7 +9,7 @@ import { Visualizer } from './visualizer.js';
 import { Particles } from './particles.js';
 import { TerminalLook } from './look-terminal.js';
 import { traySlide, TRAY_TRAVEL, TRAY_GROW } from './tray-motion.js';
-import { anim, EASE, el, pill, roundButton, modeButton, Slider, fitText, pulse, followPlaying, smooth, pathFrames, swingLid } from './widgets.js';
+import { anim, EASE, el, pill, roundButton, modeButton, Slider, fitText, pulse, followPlaying, keepFollowing, smooth, pathFrames, swingLid } from './widgets.js';
 import { openBooklet, closeBooklet, isBookletOpen } from './booklet.js';
 import { setLookLyrics, showLookSongs, followLookLyrics } from './look-lyrics.js';
 import { needsRoman, prepareRoman, romanOn, setRomanOn, backingText } from './romanize.js';
@@ -575,6 +575,7 @@ function renderQueueList() {
   list.scrollTop = scrollTop;
   // The song playing moved on: the list follows it, if it went out of sight (scrolling by hand is left alone otherwise).
   if (state.index !== shownIndex && drag.index < 0) followPlaying(rows[state.index], was, list); // the next songs in sight too
+  else keepFollowing(rows[state.index], list);
   shownIndex = state.index;
 }
 let shownIndex = -1;
@@ -1000,12 +1001,18 @@ async function applyQuality(details, token, path) {
 
 // `seamless`: the track is already playing — started on the standby deck as the last one ended (gapless) — so only
 // what's shown and kept is brought up to date.
+// The tray's out (or on its way out): a song that was to play waits on it, and plays when it closes — false then.
+function trayHolds(autoPlay, seamless) {
+  if (!autoPlay || seamless || !(disc.trayOpen || trayResume)) return autoPlay;
+  if (trayResume) trayResume.playing = true;
+  return false;
+}
 async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0, reload = false, seamless = false } = {}) {
   const token = ++state.loadToken;
   if (reload && path === state.loadedPath && scrobbleFor === token - 1) scrobbleFor = token; // the same song again: heard so far, and sent, as it was
   stopStreamReading();
   // The tray's out: the new song waits on it, and plays when it closes (nothing plays from an open tray).
-  if (disc.trayOpen && autoPlay && !seamless) { autoPlay = false; if (trayResume) trayResume.playing = true; }
+  autoPlay = trayHolds(autoPlay, seamless);
   preparedNext = null;
   dropJog();
   disc.discPresent = true;
@@ -1076,6 +1083,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   }
   followSoundCheck(path, soundMode, token);
   if (reload) recordedFor = token; // the same song again: already in HISTORY
+  autoPlay = trayHolds(autoPlay, seamless); // (the tray opened while it loaded: it waits on it too)
   if (autoPlay && !seamless) await engine.play();
   if (token !== state.loadToken) return;
   setPlaying(autoPlay);
@@ -2037,6 +2045,7 @@ async function loadSpotify(path, token, { autoPlay, startAt }) {
   const ok = await engine.load(path, { autoPlay: false, element }).catch(() => false);
   if (!ok || token !== state.loadToken) return;
   if (startAt > 0) engine.seek(Math.min(startAt, engine.duration));
+  autoPlay = trayHolds(autoPlay, false);
   if (autoPlay) await engine.play();
   if (token !== state.loadToken) return;
   setPlaying(autoPlay && engine.playing);

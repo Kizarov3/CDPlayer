@@ -162,6 +162,14 @@ export class AudioEngine {
     const deck = { el, source, trim: trimNode, filter, gain, url, start: 0, end: null, endFired: false };
     el.addEventListener('play', () => this.wake()); // (however it was started: a crossfade's, a gapless seam's)
     el.addEventListener('ended', () => { if (this.onEnded && deck === this.deck && deck !== this.seaming) this.onEnded(deck); }); // a deck left behind (crossfade, gapless) ends unheard
+    // Reading the file failing in the song's last moments (a seek right up to its end can): no 'ended' comes, and the
+    // player would stand there "playing" for good — the song is over, so on to the next. (A load that fails is the
+    // load's to report: before the length is known this leaves it alone.)
+    el.addEventListener('error', () => {
+      if (!this.onEnded || deck !== this.deck || deck === this.seaming || !(el.duration > 0)) return;
+      const end = deck.end != null ? deck.end : el.duration;
+      if (end - el.currentTime < 2) this.onEnded(deck);
+    });
     return deck;
   }
   disposeDeck(deck) {
