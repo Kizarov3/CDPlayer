@@ -169,8 +169,15 @@ function createWindow() {
   win.on('move', captureNormalBounds);
   // (whether there's anything of it to see: with background throttling off, a hidden window never hears it's hidden;
   // focus too, so a 'restore' that never comes can't leave the window drawing four times a second)
-  for (const [event, shown] of [['hide', false], ['minimize', false], ['show', true], ['restore', true], ['focus', true]]) {
-    win.on(event, () => win.webContents.send('window-shown', shown && !win.isMinimized() && win.isVisible()));
+  // A window with focus is shown, whatever isVisible() says: on opening, 'focus' can come while the window isn't visible
+  // yet, and its "hidden" came after 'show' — the window then drew nothing (time, karaoke, CD View stood still) until
+  // it was left and come back to. The rest are looked at once the event's over, not halfway through it (and not by
+  // isFocused(): just hidden, a window still says it has focus).
+  for (const event of ['hide', 'minimize', 'show', 'restore', 'focus']) {
+    win.on(event, () => {
+      if (event === 'focus') { win.webContents.send('window-shown', true); return; }
+      setTimeout(() => { if (!win.isDestroyed()) win.webContents.send('window-shown', !win.isMinimized() && win.isVisible()); }, 0);
+    });
   }
   win.on('enter-full-screen', () => win.webContents.send('fullscreen-changed', true));
   win.on('leave-full-screen', () => win.webContents.send('fullscreen-changed', false));

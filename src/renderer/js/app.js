@@ -3731,7 +3731,7 @@ for (const kind of ['pointermove', 'pointerdown', 'wheel', 'keydown']) window.ad
 function drawFrame(now) {
   // Hidden (the mini player up, or the window minimised or on another space): nothing to draw. The window keeps
   // running in the background for the music, so its frames would still come 60 a second: looked in on 4 times instead.
-  if (state.miniMode || !windowShown) { nextFrame(250); last = now; return; }
+  if (state.miniMode || (!windowShown && !document.hasFocus())) { nextFrame(250); last = now; return; } // (with focus it's shown, whatever was heard)
   const watched = document.hasFocus() || state.cdView || state.visualizerMode || isKaraokeOpen() || !!discMorph;
   if (engine.playing !== playingSeen) { playingSeen = engine.playing; stirredAt = now; } // (paused just now: the visualizer and the disc settle at full rate)
   // At rest: paused, the disc still (not turning, its tray, art or eject not moving), no theme particles, nothing touched for a moment — a few
