@@ -39,8 +39,22 @@ test('hatch by an hour of listening since it was turned on', () => {
   assert.strictEqual(still.stage, 'egg');
 });
 
-test('imported history: an egg first, then a growth spurt to TEEN at most, items it earned, no molt', () => {
-  const lots = quiet({ hours: 400, albums: 50, maxOne: 6, days: 90, month: { plays: 900, night: 0.6, morning: 0, topShare: 0.1, artists: 40, firsts: 10 } });
+test('imported history of a month or more: an egg first, then a growth spurt all the way to its form, wearing what it earned first', () => {
+  const lots = quiet({ hours: 400, albums: 50, maxOne: 6, days: 90, firstAt: NOW - 90 * DAY, month: { plays: 900, night: 0.6, morning: 0, topShare: 0.1, artists: 40, firsts: 10 } });
+  const egg = pet.evolve(pet.empty(NOW, fixed), lots, NOW);
+  assert.strictEqual(egg.pet.stage, 'egg');
+  assert.deepStrictEqual(egg.events, []);
+  const { pet: p, events } = pet.evolve(egg.pet, { ...lots, throughSince: 1 }, NOW + HOUR);
+  assert.strictEqual(p.stage, 'adult');
+  assert.strictEqual(p.form, 'owl');
+  assert.deepStrictEqual(events.map((e) => e.kind), ['hatch', 'molt', 'grow', 'item', 'item', 'item', 'item']);
+  assert.deepStrictEqual(Object.keys(p.items).sort(), ['crown', 'headphones', 'record', 'scarf']);
+  assert.strictEqual(p.worn, 'crown');
+  assert.strictEqual(pet.shown(p, NOW + HOUR).item, 'crown');
+});
+
+test('history younger than a month: the growth spurt stops at TEEN, no molt', () => {
+  const lots = quiet({ hours: 400, albums: 50, maxOne: 6, days: 20, firstAt: NOW - 20 * DAY, month: { plays: 900, night: 0.6, morning: 0, topShare: 0.1, artists: 40, firsts: 10 } });
   const egg = pet.evolve(pet.empty(NOW, fixed), lots, NOW);
   assert.strictEqual(egg.pet.stage, 'egg');
   assert.deepStrictEqual(egg.events, []);

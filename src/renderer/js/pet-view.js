@@ -72,6 +72,9 @@ export function createPetView({ canvas, say, display, pet, openCard }) {
     const echo = has('echo');
     if (echo) queueWord(t('A YEAR AGO TODAY: {song}', { song: echo.title || t('THIS SONG') }));
     if (has('grow') && !has('hatch')) reactTo('trick');
+    // each thing earned, said in turn (it was put on its card's shelf without a word)
+    const names = { crown: t('CROWN'), record: t('GOLD RECORD'), headphones: t('HEADPHONES'), scarf: t('SCARF') };
+    for (const e of list) if (e.kind === 'item' && names[e.item]) queueWord(t('NEW: {item}', { item: names[e.item] }));
     drawnKey = '';
   }
 

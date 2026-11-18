@@ -99,7 +99,7 @@ function stats({ list = [], seconds = () => 0, through = {}, albumOf = () => nul
   const favAlbum = fav && maxOne > 0 ? album(fav.id) : null;
   const lastAlbum = list.length ? albumOf(list[list.length - 1][1]) : null;
   return {
-    hours: secs / 3600, hoursSince: secsSince / 3600, throughSince, albums, maxOne, days, month,
+    hours: secs / 3600, hoursSince: secsSince / 3600, throughSince, albums, maxOne, days, month, firstAt: n ? list[0][0] : null,
     favourite: favAlbum ? { id: fav.id, title: favAlbum.title, paths: favAlbum.paths } : null,
     lastAlbum: lastAlbum ? lastAlbum.title : null,
   };
@@ -132,8 +132,10 @@ function evolve(old, s, now = Date.now(), { hidden = false, echo = false } = {})
     p.hatchedAt = now; p.hatchAlbum = s.lastAlbum || null; p.stage = 'baby';
     events.push({ kind: 'hatch' });
   }
-  // grown up: on the first reading of each month (once it's had 50 h and 30 days)
-  if (s.hours >= 50 && now - p.hatchedAt >= MONTH_DAYS * DAY && monthKey(now) !== p.lastMolt) {
+  // grown up: on the first reading of each month, once it's had 50 h and 30 days — of its own, or of the history it
+  // hatched into (a month of music before it was turned on: its growth spurt goes all the way, as the design has it)
+  const grownFrom = Math.min(p.hatchedAt, s.firstAt || p.hatchedAt);
+  if (s.hours >= 50 && now - grownFrom >= MONTH_DAYS * DAY && monthKey(now) !== p.lastMolt) {
     const from = p.form, to = habitForm(s.month);
     p.form = to; p.lastMolt = monthKey(now);
     if (!p.found[to]) p.found[to] = now;
@@ -144,6 +146,8 @@ function evolve(old, s, now = Date.now(), { hidden = false, echo = false } = {})
   // (only ever up: fewer hours read later — a folder gone from the shelf — don't shrink it)
   if (STAGES.indexOf(stage) > STAGES.indexOf(p.stage)) { p.stage = stage; events.push({ kind: 'grow', stage }); }
   for (const [item, earned] of ITEMS) if (!p.items[item] && earned(s)) { p.items[item] = now; events.push({ kind: 'item', item }); }
+  // hatched with things already earned: it comes out wearing the first (the hatching drops it on its head)
+  if (events.some((e) => e.kind === 'hatch') && !p.worn) p.worn = (events.find((e) => e.kind === 'item') || {}).item || null;
   for (const form of SURPRISES) {
     if (!p.pending[form]) continue;
     delete p.pending[form];
