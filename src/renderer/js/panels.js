@@ -1965,6 +1965,19 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.24.0', changes: [
+    '<b>The real booklet</b>: an album&rsquo;s booklet now has its real pages in it &mdash; scans of the CD&rsquo;s booklet, the back of the case and the tray under the disc, from the Cover Art Archive. A two-page scan lies across a spread',
+    '<b>No more frozen window at start</b>: in 2.23.0 the time, karaoke and CD View could stand still right after opening while the music played, until you left the window and came back. Fixed',
+    '<b>Karaoke in step</b> with hand-timed lyrics: a song whose rap the voice model barely makes out (In the End) lit its words a second early. Now they light within a tenth of a second',
+    '<b>BLIP</b> hatched into a month or more of history grows all the way at once, comes out wearing the first thing it earned, and says each new one on the display (NEW: CROWN)',
+    '<b>More disc photos</b>: editions named past the album&rsquo;s title (OK Computer OKNOTOK 1997 2017) get the album&rsquo;s printed disc, and MusicBrainz&rsquo;s busy moments no longer lose it',
+  ], changesIn: { ru: [
+    '<b>Настоящий буклет</b>: в буклете альбома теперь его настоящие страницы &mdash; сканы буклета диска, задника коробки и вкладки под диском из Cover Art Archive. Скан двух страниц ложится на разворот',
+    '<b>Окно больше не застывает при запуске</b>: в 2.23.0 время, караоке и CD View могли стоять сразу после открытия, пока играла музыка, &mdash; до тех пор, пока не переключишься на другое окно и обратно. Исправлено',
+    '<b>Караоке в такт</b> с вручную синхронизированным текстом: в песне, где модель плохо разбирает рэп (In the End), слова загорались на секунду раньше. Теперь &mdash; с точностью до десятой доли секунды',
+    '<b>БЛИП</b>, вылупившийся при истории за месяц и больше, сразу вырастает до конца, появляется в первой заработанной вещи и сообщает о каждой новой на дисплее (NEW: CROWN)',
+    '<b>Больше фото дисков</b>: издания с длинным названием (OK Computer OKNOTOK 1997 2017) получают напечатанный диск альбома, а перегрузки MusicBrainz больше не мешают его найти',
+  ] } },
   { version: '2.23.0', changes: [
     '<b>BLIP</b> (Settings &rarr; DECK PET): a little creature in the display&rsquo;s dots that grows with your music. It hatches once you play an album through, eats what&rsquo;s played, bobs to it, watches the cursor, and once grown takes a form from a month of your listening. Double-click it for its card. It never goes hungry and never asks for anything; off until you turn it on',
     '<b>Lighter on the processor</b>: paused, minimised or behind other windows, CDPlayer takes a half to a third of what it did. ALBUM and JEWEL CASE are much lighter on computers without a graphics card',
