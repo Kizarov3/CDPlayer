@@ -339,7 +339,10 @@ async function songContent(app) {
     liveLyrics: () => app.state.lyrics,
     onClose: () => { app.disc.artOpen = false; }, // the art shrinks back into the corner of the case
     story: null, openStory: (url) => app.cdp.openStory(url),
-    start() { tellStory(app, this, { releaseId: c.albumMbid, artist: c.albumArtist || d.artist, album: d.album, title: d.title }); },
+    start() {
+      tellStory(app, this, { releaseId: c.albumMbid, artist: c.albumArtist || d.artist, album: d.album, title: d.title });
+      findScans(app, this, { releaseId: c.albumMbid || null, artist: c.albumArtist || d.artist, album: d.album });
+    },
   };
 }
 
@@ -356,6 +359,18 @@ function tellStory(app, content, query, tries = 3) {
     content.story = story;
     // Come while the booklet's being read (not just as it opens): at the end, so the page being read stays put.
     content.storyLate = isBookletOpen() && book.content === content && performance.now() - book.openedAt > 1500;
+    refreshBooklet(content);
+  }).catch(() => {});
+}
+
+// The real booklet's scans, the case's back and what's under the disc (main/booklet-scans.js), when someone has put
+// them up: slotted in after the album's story — or at the end, when they came while the booklet was being read.
+function findScans(app, content, query) {
+  if (!query.artist || !query.album || !app.cdp.bookletScans) return;
+  app.cdp.bookletScans(query).then((scans) => {
+    if (!scans || !scans.length || !isBookletOpen() || book.content !== content) return;
+    content.scans = scans;
+    content.scansLate = performance.now() - book.openedAt > 1500;
     refreshBooklet(content);
   }).catch(() => {});
 }
@@ -413,7 +428,9 @@ export async function albumBooklet(app, album, cover, { play, onClose = () => {}
   setLyrics();
   content.openStory = (url) => app.cdp.openStory(url);
   content.start = () => {
-    tellStory(app, content, { releaseId: (details.find((d) => d && d.credits && d.credits.albumMbid) || { credits: {} }).credits.albumMbid, artist: album.artist, album: album.title });
+    const releaseId = (details.find((d) => d && d.credits && d.credits.albumMbid) || { credits: {} }).credits.albumMbid;
+    tellStory(app, content, { releaseId, artist: album.artist, album: album.title });
+    findScans(app, content, { releaseId: releaseId || null, artist: album.artist, album: album.title });
     const missing = album.tracks.map((t, i) => i).filter((i) => !found[i] && details[i]);
     let next = 0;
     const worker = async () => {
@@ -485,6 +502,20 @@ function insidePages(content, spread, size) {
   };
   if (!content.storyLate) addStory();
 
+  // The real booklet, scanned: a page each — a scan of two pages side by side across a spread, its left half on a
+  // left-hand page (a blank first when it would land on a right one).
+  const addScans = () => {
+    (content.scans || []).forEach((scan, i) => {
+      const img = () => el('img', { src: scan.art, alt: '', draggable: 'false' });
+      const scanPage = (key, half) => { const p = el('div', { class: `page scan${half ? ` half ${half}` : ''}` }, img()); p.dataset.key = key; return p; };
+      if (scan.width / scan.height > 1.6) {
+        if (pages.length % 2) { const b = blankPage(); b.dataset.key = `scan:${i}:blank`; pages.push(b); }
+        pages.push(scanPage(`scan:${i}`, 'left'), scanPage(`scan:${i}:r`, 'right'));
+      } else pages.push(scanPage(`scan:${i}`));
+    });
+  };
+  if (!content.scansLate) addScans();
+
   // Lyrics: each song's on its own pages.
   for (const song of content.lyrics) {
     const synced = parseLrc(song.raw);
@@ -505,6 +536,7 @@ function insidePages(content, spread, size) {
   page.dataset.key = 'credits:0';
   pages.push(page);
   if (content.storyLate) addStory();
+  if (content.scansLate) addScans();
 
   sizer.remove();
   return pages;

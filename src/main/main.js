@@ -698,6 +698,35 @@ async function discArtFor(q, name) {
   if (art) { fs.writeFileSync(file, Buffer.from(art.split(',')[1], 'base64')); fs.rmSync(none, { force: true }); } else fs.writeFileSync(none, 'cut back');
   return art;
 }
+// The real booklet's scans (online.findBookletScans), kept once found — or once found not to be there (looked for
+// again in a month). One lookup per album at a time.
+const scansDir = () => path.join(store.dataDir(), 'booklet-scans');
+const scanLookups = new Map();
+handle('online:bookletScans', (q) => {
+  if (!q || !q.artist || !q.album || shotsDir) return null;
+  const name = require('crypto').createHash('sha1').update(`1\n${q.artist}\n${q.album}`.toLowerCase()).digest('hex');
+  if (!scanLookups.has(name)) scanLookups.set(name, scansFor(q, name).finally(() => scanLookups.delete(name)));
+  return scanLookups.get(name);
+});
+async function scansFor(q, name) {
+  const dir = path.join(scansDir(), name), list = path.join(dir, 'scans.json'), none = path.join(scansDir(), `${name}.none`);
+  const read = (s) => ({ ...s, art: `data:image/jpeg;base64,${fs.readFileSync(path.join(dir, s.file)).toString('base64')}` });
+  try { return JSON.parse(fs.readFileSync(list, 'utf8')).map(read); } catch {}
+  if (fs.existsSync(none) && Date.now() - fs.statSync(none).mtimeMs < 30 * 86400000) return [];
+  let scans;
+  try { scans = await online.findBookletScans(q); } catch { return null; } // (offline: looked for another time)
+  fs.mkdirSync(scansDir(), { recursive: true });
+  if (!scans.length) { fs.writeFileSync(none, ''); return []; }
+  fs.mkdirSync(dir, { recursive: true });
+  const kept = scans.map((s, i) => {
+    const file = `${i}.jpg`;
+    fs.writeFileSync(path.join(dir, file), Buffer.from(s.art.split(',')[1], 'base64'));
+    return { file, kind: s.kind, width: s.width, height: s.height };
+  });
+  fs.writeFileSync(list, JSON.stringify(kept)); // (last: a half-written folder isn't taken for a whole one)
+  fs.rmSync(none, { force: true });
+  return scans;
+}
 handle('online:lyrics', (details) => (shotsDir ? null : online.findLyrics(details))); // (the screenshots' run is offline: the test song's own lyrics)
 handle('spotify:classify', (text) => spotify.classifySpotifyLink(text));
 handle('spotify:resolve', async (text) => {

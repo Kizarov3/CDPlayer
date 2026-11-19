@@ -337,6 +337,41 @@ async function findDiscArt({ artist, album, releaseId, found = null }) {
   if (failed) throw new Error('disc art: lookup failed');
   return null;
 }
+/**
+ * The real booklet's pages, the back of the case and what's under the disc, as scanned for the Cover Art Archive
+ * (booklet-scans.js picks the release and the scans). → [{ art (data URL), kind, width, height }], [] when nobody has
+ * scanned them; throws when a lookup failed (offline), so it's looked for another time.
+ */
+async function findBookletScans({ artist, album, releaseId }) {
+  const scans = require('./booklet-scans');
+  let group = artist && album ? await releaseGroupNamed(artist, album) : null;
+  const bare = bareAlbum(album);
+  if (!group && artist && bare !== album) group = await releaseGroupNamed(artist, bare);
+  let failed = false;
+  const lost = (e) => { if (!e || e.status !== 404) failed = true; return null; };
+  const json = group ? await mbFetch(`release?release-group=${group.id}&inc=media&fmt=json&limit=100`).catch(lost) : null;
+  const ids = scans.scanReleases((json && json.releases) || [], releaseId || null);
+  const found = await Promise.all(ids.map(async (id) => {
+    const index = await fetchJson(`https://coverartarchive.org/release/${id}`, { timeout: 20000 }).catch(lost);
+    return { id, picks: scans.scanPicks(index && index.images) };
+  }));
+  const picks = scans.bestScans(found, releaseId || null);
+  if (!picks.length && failed) throw new Error('booklet scans: lookup failed');
+  const got = await Promise.all(picks.map(async (p) => {
+    let art = await fetchImageDataUrl(p.url, 60000).catch(() => null);
+    if (!art) { failed = true; return null; }
+    let img = nativeImage.createFromDataURL(art);
+    const LONG = 1600; // (an original can be 5000 px: past this a page looks no sharper)
+    if (Math.max(img.getSize().width, img.getSize().height) > LONG) {
+      img = img.getSize().width >= img.getSize().height ? img.resize({ width: LONG, quality: 'best' }) : img.resize({ height: LONG, quality: 'best' });
+      art = `data:image/jpeg;base64,${img.toJPEG(88).toString('base64')}`;
+    }
+    const { width, height } = img.getSize();
+    return { art, kind: p.kind, width, height };
+  }));
+  if (failed && got.some((g) => !g)) throw new Error('booklet scans: a page did not come');
+  return got.filter(Boolean);
+}
 /** A cover for the Tags panel, by address (the Cover Art Archive's, from lookupTags). → data URL or null. */
 async function coverFromUrl(url) {
   if (!/^https:\/\/coverartarchive\.org\//.test(url)) return null;
@@ -548,4 +583,4 @@ async function findLyrics({ title, artist, album, duration, guessed }) {
   return null;
 }
 
-module.exports = { bareAlbum, shorterTitles, findDiscArt, fetchJson, musicBrainzAlbum, sameSong, hiddenNameFrom, findHiddenName, findCover, findCoverUrl, findAlbumCover, findAlbumCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, wordOverlapRatio };
+module.exports = { bareAlbum, shorterTitles, findDiscArt, findBookletScans, fetchJson, musicBrainzAlbum, sameSong, hiddenNameFrom, findHiddenName, findCover, findCoverUrl, findAlbumCover, findAlbumCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, wordOverlapRatio };

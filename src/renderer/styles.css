@@ -1891,6 +1891,15 @@ html.light .booklet .page, html.light .booklet.paper .page { box-shadow: 0 0 0 1
 .booklet .barcode-digits { font: 1em "SF Mono", Menlo, Consolas, monospace; color: #000; text-align: center; letter-spacing: .12em; }
 .booklet .made-with { margin-top: .3em; font-size: .85em; letter-spacing: .12em; }
 .booklet .page.blank { background: var(--b-paper); }
+.booklet .page.scan { padding: 0; background: #0d0d0d; overflow: hidden; }
+.booklet .page.scan img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.booklet .page.scan.half img { width: 200%; max-width: none; }
+.booklet .page.scan.half.right img { margin-left: -100%; }
+.booklet .page.scan::after { /* the fold's shadow, as on the printed pages */
+  content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(to right, rgba(0, 0, 0, .28), rgba(0, 0, 0, 0) 7%);
+}
+.booklet .face.back .page.scan::after { background: linear-gradient(to left, rgba(0, 0, 0, .28), rgba(0, 0, 0, 0) 7%); }
+.booklet .face .page.scan { background: #0d0d0d; }
 
 /* ---- The rip panel (panels.js showRip): the disc's tracks as they're ripped ---- */
 .rip-head { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; margin-top: 6px; font-size: 11px; color: rgb(var(--muted)); }
