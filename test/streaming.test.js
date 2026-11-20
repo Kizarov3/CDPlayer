@@ -127,6 +127,37 @@ test("a streamed song's names: no file extension, no YouTube \"- Topic\", the al
   assert.strictEqual((await streaming.details('https://music.youtube.com/watch?v=unknown', { withCover: false })).title, 'YOUTUBE MUSIC'); // (not its address)
 });
 
+test("an album whose biggest picture YouTube refuses (yt-dlp's unsigned maxresdefault guess) gets its next one down", async () => {
+  // What yt-dlp really lists for a YouTube Music album (MEGATERA･ZERO's オノガミ): the 1200 px one 404s.
+  const list = 'https://music.youtube.com/playlist?list=OLAKonogami';
+  const dir = 'https://i9.ytimg.com/s_p/OLAKonogami';
+  infos.set(list, {
+    title: 'Album - オノガミ', webpage_url: list,
+    thumbnails: [{ url: `${dir}/mqdefault.jpg?sqp=a&rs=b`, width: 180 }, { url: `${dir}/sddefault.jpg?sqp=c&rs=d`, width: 640 }, { url: `${dir}/maxresdefault.jpg`, width: 1200 }],
+    entries: [{ id: 'w8M_NuklmTY', title: 'オノガミ', artists: ['MEGATERA･ZERO'], duration: 231 }],
+  });
+  files.set(`${dir}/sddefault.jpg?sqp=c&rs=d`, 'COVER640');
+  files.set(`${dir}/mqdefault.jpg?sqp=a&rs=b`, 'COVER180');
+  await streaming.album(list);
+  const d = await streaming.details('https://music.youtube.com/watch?v=w8M_NuklmTY');
+  assert.strictEqual(Buffer.from(d.cover.split(',')[1], 'base64').toString(), 'COVER640');
+});
+
+test("a song kept with only that refused picture gets the square cover among its video's pictures, not a 16:9 one", async () => {
+  const page = 'https://music.youtube.com/watch?v=legacyOnoga';
+  streaming.remember(page, { title: 'オノガミ', artist: 'MEGATERA･ZERO', cover: 'https://i9.ytimg.com/s_p/OLAKold/maxresdefault.jpg' }); // (as streams.json kept it)
+  files.set('https://cdn.example/legacy.webm', bytes(10));
+  infos.set(page, { url: 'https://cdn.example/legacy.webm', ext: 'webm', title: 'オノガミ', thumbnails: [
+    { url: 'https://i.ytimg.com/vi/legacyOnoga/maxresdefault.jpg', width: 1280, height: 720 },
+    { url: 'https://yt3.example/art=w544-h544', width: 544, height: 544 },
+    { url: 'https://yt3.example/art=w226-h226', width: 226, height: 226 }] });
+  files.set('https://i.ytimg.com/vi/legacyOnoga/maxresdefault.jpg', 'WIDE');
+  files.set('https://yt3.example/art=w544-h544', 'SQUARE');
+  await streaming.resolve(page);
+  const d = await streaming.details(page);
+  assert.strictEqual(Buffer.from(d.cover.split(',')[1], 'base64').toString(), 'SQUARE');
+});
+
 test('an album asked for by something not a stream page is refused before yt-dlp sees it', async () => {
   await assert.rejects(streaming.album('--exec=touch /tmp/x'), /Not a stream page/);
   await assert.rejects(streaming.resolve('-o /tmp/x'), /Not a stream page/);

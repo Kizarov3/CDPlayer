@@ -115,12 +115,26 @@ test('MusicBrainz without an album: the earliest official studio album, not a si
   assert.strictEqual(found.url, 'https://coverartarchive.org/release-group/follow-the-leader/front-500');
 });
 
-test('no MusicBrainz cover: falls back to the first store hit as before', async () => {
-  answer([[/itunes/, { results: [{ trackName: 'Other', artistName: 'Band', artworkUrl100: 'https://a/100x100bb.jpg' }] }],
+test('no MusicBrainz cover: falls back to the first store hit by the same artist', async () => {
+  answer([[/itunes/, { results: [{ trackName: 'Other', artistName: 'Nova Drift', artworkUrl100: 'https://a/100x100bb.jpg' }] }],
     [/deezer/, { data: [] }], [/musicbrainz/, { recordings: [], 'release-groups': [] }], [/https:\/\/a\//, 'JPEG']]);
   const found = await findCover({ artist: 'Nova Drift', title: 'Afterglow' });
   assert.strictEqual(found.source, 'ITUNES');
   assert.strictEqual(found.name, undefined);
+});
+
+test('another artist\'s hit is no fallback: a karaoke single of the song is not its cover', async () => {
+  // What iTunes answers for "MEGATERA･ZERO オノガミ" (Dragon Ball Super's opening): only a karaoke studio's single.
+  answer([[/itunes/, { results: [{ trackName: 'Onogami"Dragon Ball Super: Beerus"(Karaoke Originally Performed By :Megatera Zero)', artistName: 'Studio Megaane', artworkUrl100: 'https://k/100x100bb.jpg' }] }],
+    [/deezer/, { data: [] }], [/musicbrainz/, { recordings: [], 'release-groups': [] }], [/https:\/\/k\//, 'JPEG']]);
+  const found = await findCover({ artist: 'MEGATERA･ZERO', title: 'オノガミ', album: 'オノガミ' });
+  assert.strictEqual(found.cover, null);
+});
+
+test('a song with no artist known still falls back to the first store hit', async () => {
+  answer([[/itunes/, { results: [{ trackName: 'Other', artistName: 'Band', artworkUrl100: 'https://a/100x100bb.jpg' }] }],
+    [/deezer/, { data: [] }], [/musicbrainz/, { recordings: [], 'release-groups': [] }], [/https:\/\/a\//, 'JPEG']]);
+  assert.strictEqual((await findCover('afterglow')).source, 'ITUNES');
 });
 
 test('a song with an album tag gets that album\'s cover, not a remix album the song search finds first', async () => {

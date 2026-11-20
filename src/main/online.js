@@ -405,7 +405,9 @@ async function findCover(name) {
       if (sameSong(hit, v.artist, v.title)) {
         const cover = await fetchImageDataUrl(hit.url).catch(() => null);
         if (cover) return { cover, url: hit.url, source: label, name: v };
-      } else if (!fallback && label !== 'SPOTIFY') fallback = { hit, label };
+      // (the last resort: a hit that isn't the song — but never another artist's, when the artist is known: for
+      // MEGATERA･ZERO's オノガミ iTunes has only a karaoke studio's single of it)
+      } else if (!fallback && label !== 'SPOTIFY' && (!v.artist || wordOverlapRatio(v.artist, hit.artist) >= 0.5)) fallback = { hit, label };
     }
   }
   const album = typeof name === 'object' && name ? name.album : null;

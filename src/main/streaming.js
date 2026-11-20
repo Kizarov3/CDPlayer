@@ -179,7 +179,8 @@ async function resolve(page, { fresh = false } = {}) {
     }
     remember(page, {
       title: songTitle(info.track || info.title), artist: artistName(info.artist || (info.artists && info.artists[0]) || info.uploader), album: info.album,
-      year: info.release_year, duration: info.duration, cover: songInfo(page)?.cover || bestThumb(info.thumbnails),
+      year: info.release_year, duration: info.duration, cover: songInfo(page)?.cover || thumbsBySize(info.thumbnails)[0],
+      covers: songInfo(page)?.covers || thumbsBySize(info.thumbnails),
     });
     if (isLocked(page)) remember(page, { locked: false }); // (it plays after all)
     found.set(page, entry);
@@ -262,6 +263,13 @@ const bestThumb = (list) => {
   const l = (list || []).filter((x) => x && x.url);
   return l.length ? l.reduce((a, b) => ((b.width || 0) > (a.width || 0) ? b : a)).url : null;
 };
+// Its pictures, the square ones (a cover) before the rest (a song's video: 16:9, the cover between two bars), each
+// biggest first — for when the biggest can't be had: yt-dlp lists an album's 1200 px one (maxresdefault) by guess,
+// unsigned, and YouTube refuses it; the cover is then the 640 px one. (Without it, the song went without a cover and
+// the one found online by its name was shown: for MEGATERA･ZERO's オノガミ, a karaoke single's.) → [url]
+const isSquare = (x) => !(x.width && x.height) || Math.abs(x.width - x.height) <= 0.02 * x.width;
+const thumbsBySize = (list) => (list || []).filter((x) => x && x.url)
+  .sort((a, b) => (isSquare(b) - isSquare(a)) || (b.width || 0) - (a.width || 0)).slice(0, 3).map((x) => x.url);
 
 /**
  * What `query` finds: albums on YouTube Music, or songs on SoundCloud — [{ kind: 'album'|'song', page, title,
@@ -345,15 +353,22 @@ async function album(page) {
     title: e.title || null, artist: artistName((e.artists && e.artists[0]) || e.channel || e.uploader), duration: e.duration || null,
   }));
   const artist = tracks.length && tracks.every((t) => t.artist === tracks[0].artist) ? tracks[0].artist : (tracks[0] && tracks[0].artist) || null;
-  const cover = bestThumb(r.thumbnails);
-  tracks.forEach((t, i) => glimpse(t.page, { title: t.title, artist: t.artist, albumArtist: artist, album: title, duration: t.duration, cover, track: i + 1, of: tracks.length }));
+  const cover = bestThumb(r.thumbnails), covers = thumbsBySize(r.thumbnails);
+  tracks.forEach((t, i) => glimpse(t.page, { title: t.title, artist: t.artist, albumArtist: artist, album: title, duration: t.duration, cover, covers, track: i + 1, of: tracks.length }));
   return { title, artist, cover, thumb: await coverData(smallThumb(r.thumbnails)), thumbnails: r.thumbnails || [], page: r.webpage_url || page, tracks };
 }
 
-// A cover's picture, as a data: URL (as a file's own cover is), kept for the session.
+// A cover's picture, as a data: URL (as a file's own cover is), kept for the session: the first of `urls` (one address
+// or a list, best first) that can be had.
 const pictures = new Map();
-async function coverData(url) {
-  if (!url) return null;
+async function coverData(urls) {
+  for (const url of new Set((Array.isArray(urls) ? urls : [urls]).filter(Boolean))) {
+    const data = await onePicture(url);
+    if (data) return data;
+  }
+  return null;
+}
+function onePicture(url) {
   if (pictures.has(url)) return pictures.get(url);
   const job = (async () => {
     try {
@@ -379,7 +394,7 @@ async function details(page, { withCover = true } = {}) {
     lyrics: null, duration: k.duration || 0, ext, stream: sourceOf(page),
     quality: [sourceOf(page), f && f.bitrate ? `${f.bitrate} KBPS` : null].filter(Boolean).join(' · '),
     format: f ? { sampleRate: f.sampleRate, bitsPerSample: null, lossless: false } : null,
-    replayGain: null, cover: withCover ? await coverData(k.cover) : undefined,
+    replayGain: null, cover: withCover ? await coverData([k.cover, ...(k.covers || [])]) : undefined,
   };
 }
 
