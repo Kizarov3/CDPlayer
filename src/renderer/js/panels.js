@@ -1966,6 +1966,11 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.24.3', changes: [
+    '<b>Spotify&rsquo;s setup shows where you are</b>: the four dots under its steps were plain grey buttons; the one for the step you&rsquo;re on is lit again',
+  ], changesIn: { ru: [
+    '<b>Настройка Spotify показывает, где вы</b>: четыре точки под её шагами были простыми серыми кнопками; точка текущего шага снова подсвечена',
+  ] } },
   { version: '2.24.2', changes: [
     '<b>The right lyrics</b>: a song whose real name has a letter like &Oslash; or &eacute; where its file has a plain O or E (lynch.&rsquo;s BL&Oslash;OD) finds its own words, and a song of another artist whose title only shares a word with yours (Brotha Lynch Hung&rsquo;s Blood on da Rug for BLOOD) is never taken instead',
   ], changesIn: { ru: [
