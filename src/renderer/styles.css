@@ -2075,3 +2075,8 @@ body.no-anim .tour-spot, body.no-anim .tour-bubble { transition: none; }
 .pet-pills .on { color: rgb(var(--accent)); box-shadow: inset 0 0 0 1px rgb(var(--accent)); }
 .pet-diary { max-height: 140px; margin-top: 6px; }
 .pet-line { display: grid; grid-template-columns: 70px 1fr; gap: 10px; font-size: 13px; margin: 4px 0; }
+
+/* Spotify's setup steps: a dot each, the one you're on lit (its rules went with the old first-launch cards) */
+.guide-dots { display: flex; justify-content: center; gap: 8px; margin: 8px 0 4px; }
+.guide-dot { width: 8px; height: 8px; padding: 0; border: none; border-radius: 50%; cursor: pointer; background: rgba(var(--text), .22); }
+.guide-dot.on { background: rgb(var(--accent)); }
