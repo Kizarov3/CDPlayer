@@ -29,7 +29,10 @@ async function fetchImageDataUrl(url, timeout = TIMEOUT_MS) {
 
 function significantWords(text) {
   // Letters and digits of any script, so a Cyrillic or Japanese title is compared too rather than waved through.
-  return new Set(String(text).toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3));
+  // A Latin letter's accent or slash doesn't make another word: lynch.'s BLØOD is a file's BLOOD, Beyoncé is Beyonce.
+  const folded = String(text).toLowerCase().normalize('NFD').replace(/([a-z])\p{M}+/gu, '$1')
+    .replace(/[øœæßđłþ]/g, (c) => ({ ø: 'o', œ: 'oe', æ: 'ae', ß: 'ss', đ: 'd', ł: 'l', þ: 'th' })[c]).normalize('NFC');
+  return new Set(folded.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3));
 }
 function wordOverlapRatio(query, result) {
   const q = significantWords(query);
@@ -72,6 +75,11 @@ const variantsOf = (name) => (typeof name === 'string' ? searchVariants(name).ma
 // A hit is this song when its title matches the title and its artist the artist (when there is one).
 function sameSong(hit, artist, title) {
   return wordOverlapRatio(bareTitle(title), hit.title) >= 0.5 && (!artist || wordOverlapRatio(artist, hit.artist) >= 0.5);
+}
+// For lyrics, the other way round too: most of the hit's own title is in the song's. Else "BLOOD" by lynch. took
+// Brotha Lynch Hung's "Blood on da Rug" (blood, and Lynch, in both).
+function sameLyricsSong(hit, artist, title) {
+  return sameSong(hit, artist, title) && wordOverlapRatio(bareTitle(hit.title), title) > 0.5;
 }
 
 // MusicBrainz + Cover Art Archive: the open, community-run catalogue, for the indie, local and older releases the
@@ -500,7 +508,7 @@ async function findCoverUrl(name) {
 // timings), among those that are this song. → { lyrics, entry } or null.
 function pickLrclib(json, { artist, title, duration }) {
   const entries = (Array.isArray(json) ? json : [json]).filter((e) => e && (e.syncedLyrics || e.plainLyrics)
-    && sameSong({ title: e.trackName || e.name || '', artist: e.artistName || '' }, artist, title));
+    && sameLyricsSong({ title: e.trackName || e.name || '', artist: e.artistName || '' }, artist, title));
   if (!entries.length) return null;
   if (duration > 0) entries.sort((x, y) => Math.abs((x.duration || 0) - duration) - Math.abs((y.duration || 0) - duration));
   return entries[0].syncedLyrics || entries[0].plainLyrics;
@@ -517,7 +525,7 @@ async function unisonLyrics({ artist, title, album, duration }) {
   let json;
   try { json = await fetchJson(url); } catch (e) { return e && e.status ? null : UNREACHABLE; } // 404 = nobody has written them yet
   const data = json && json.data;
-  if (!data || typeof data.lyrics !== 'string' || !sameSong({ title: data.song || '', artist: data.artist || '' }, artist, title)) return null;
+  if (!data || typeof data.lyrics !== 'string' || !sameLyricsSong({ title: data.song || '', artist: data.artist || '' }, artist, title)) return null;
   if (data.format === 'lrc') return data.lyrics.trim() || null;
   if (data.format !== 'ttml') return null;
   const length = ttmlDuration(data.lyrics) || data.duration;
@@ -585,4 +593,4 @@ async function findLyrics({ title, artist, album, duration, guessed }) {
   return null;
 }
 
-module.exports = { bareAlbum, shorterTitles, findDiscArt, findBookletScans, fetchJson, musicBrainzAlbum, sameSong, hiddenNameFrom, findHiddenName, findCover, findCoverUrl, findAlbumCover, findAlbumCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, wordOverlapRatio };
+module.exports = { bareAlbum, shorterTitles, findDiscArt, findBookletScans, fetchJson, musicBrainzAlbum, sameSong, hiddenNameFrom, findHiddenName, findCover, findCoverUrl, findAlbumCover, findAlbumCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, wordOverlapRatio, sameLyricsSong };

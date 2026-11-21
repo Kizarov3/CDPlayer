@@ -120,7 +120,7 @@ const CLOSE_ENOUGH = 0.25; // seconds: a version this near the reference is left
  */
 async function kugouLyrics({ artist, title, duration, reference }) {
   if (!artist || !title) return null;
-  const { sameSong } = require('./online'); // (online.js asks this module; required late, after it has loaded)
+  const { sameLyricsSong } = require('./online'); // (online.js asks this module; required late, after it has loaded)
   let candidates;
   try {
     let url = `https://lyrics.kugou.com/search?ver=1&man=yes&client=pc&keyword=${encodeURIComponent(`${artist} - ${title}`)}&hash=`;
@@ -130,7 +130,7 @@ async function kugouLyrics({ artist, title, duration, reference }) {
   const checkable = lineStarts(reference).length > 0;
   const apart = (c) => (duration > 0 ? Math.abs((c.duration || 0) / 1000 - duration) : 0);
   const hits = candidates
-    .filter((c) => c.id && c.accesskey && sameSong({ title: c.song || '', artist: c.singer || '' }, artist, title))
+    .filter((c) => c.id && c.accesskey && sameLyricsSong({ title: c.song || '', artist: c.singer || '' }, artist, title))
     .filter((c) => apart(c) <= (checkable ? CHECKED_SLACK : LENGTH_SLACK))
     .sort((a, b) => apart(a) - apart(b))
     .slice(0, checkable ? VERSIONS : 1);

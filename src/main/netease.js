@@ -69,7 +69,7 @@ async function getJson(url) {
  */
 async function neteaseLyrics({ artist, title, duration }) {
   if (!artist || !title) return null;
-  const { sameSong } = require('./online'); // (online.js asks this module; required late, after it has loaded)
+  const { sameLyricsSong } = require('./online'); // (online.js asks this module; required late, after it has loaded)
   let songs;
   try {
     const json = await getJson(`https://music.163.com/api/search/get?s=${encodeURIComponent(`${artist} ${title}`)}&type=1&limit=10`);
@@ -77,7 +77,7 @@ async function neteaseLyrics({ artist, title, duration }) {
   } catch (e) { return e && e.status ? null : UNREACHABLE; }
   const length = (s) => (s.duration || 0) / 1000;
   const hits = songs
-    .filter((s) => sameSong({ title: s.name || '', artist: (s.artists || []).map((a) => a.name).join(' ') }, artist, title))
+    .filter((s) => sameLyricsSong({ title: s.name || '', artist: (s.artists || []).map((a) => a.name).join(' ') }, artist, title))
     .filter((s) => !(duration > 0) || Math.abs(length(s) - duration) <= LENGTH_SLACK)
     .sort((a, b) => (duration > 0 ? Math.abs(length(a) - duration) - Math.abs(length(b) - duration) : 0));
   if (!hits.length) return null;
