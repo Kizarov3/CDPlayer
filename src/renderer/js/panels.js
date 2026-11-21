@@ -1263,7 +1263,8 @@ async function startLibraryScan(app) {
   search.index = []; search.labels = {}; search.tags = {}; search.scanning = true;
   const result = await app.cdp.scanLibrary().catch(() => ({ folder: null, files: [] }));
   if (generation !== search.generation) return; // superseded by a newer scan
-  search.index = result.files; search.labels = result.labels || {}; search.tags = result.tags || {}; search.folder = result.name ? result.name.toLocaleUpperCase() : null; // (said in capitals, as all around it is) search.scanning = false;
+  search.index = result.files; search.labels = result.labels || {}; search.tags = result.tags || {}; search.folder = result.name ? result.name.toLocaleUpperCase() : null; // (said in capitals, as all around it is)
+  search.scanning = false;
   refreshSearchResults(app);
 }
 
