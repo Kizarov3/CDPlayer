@@ -1966,6 +1966,15 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.24.1', changes: [
+    '<b>The search counts your songs again</b>: in 2.24.0 it could say SCANNING YOUR MUSIC FOLDER&hellip; for ever, and SCANNING&hellip; where it meant NO MATCHES. Fixed',
+    '<b>YouTube Music covers</b>: a song from an album has the album&rsquo;s own square cover again, where YouTube had no picture at the size asked for; a song kept from before finds it the next time it plays',
+    '<b>The right artist&rsquo;s cover</b>: a cover found online by the song&rsquo;s name is never another artist&rsquo;s when the artist is known (a karaoke studio&rsquo;s single stood in for an anime opening&rsquo;s)',
+  ], changesIn: { ru: [
+    '<b>Поиск снова считает песни</b>: в 2.24.0 он мог бесконечно писать СКАНИРУЮ ПАПКУ С МУЗЫКОЙ&hellip;, а вместо НИЧЕГО НЕ НАЙДЕНО &mdash; СКАНИРУЮ&hellip;. Исправлено',
+    '<b>Обложки YouTube Music</b>: у песни с альбома снова его квадратная обложка там, где у YouTube не было картинки нужного размера; песня, сохранённая раньше, найдёт её при следующем запуске',
+    '<b>Обложка нужного исполнителя</b>: обложка, найденная в сети по названию песни, никогда не берётся у другого исполнителя, когда исполнитель известен (вместо опенинга аниме стоял сингл караоке-студии)',
+  ] } },
   { version: '2.24.0', changes: [
     '<b>The real booklet</b>: an album&rsquo;s booklet now has its real pages in it &mdash; scans of the CD&rsquo;s booklet, the back of the case and the tray under the disc, from the Cover Art Archive. A two-page scan lies across a spread',
     '<b>No more frozen window at start</b>: in 2.23.0 the time, karaoke and CD View could stand still right after opening while the music played, until you left the window and came back. Fixed',
