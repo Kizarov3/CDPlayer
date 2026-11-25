@@ -143,9 +143,9 @@ test('an album becomes disc tracks, with its biggest cover, across pages of trac
   });
   const r = await spotify.discTracks({ kind: 'album', id: 'a1' });
   assert.deepStrictEqual(r.tracks, [
-    { uri: 'spotify:track:t1', title: 'One', artist: 'A', album: 'Alb', durationMs: 1000, cover: 'L' },
-    { uri: 'spotify:track:t2', title: 'Two', artist: 'A', album: 'Alb', durationMs: 2000, cover: 'L' },
-    { uri: 'spotify:track:t3', title: 'Three', artist: 'B', album: 'Alb', durationMs: 3000, cover: 'L' },
+    { uri: 'spotify:track:t1', title: 'One', artist: 'A', album: 'Alb', durationMs: 1000, cover: 'L', credits: { albumArtist: 'A' } },
+    { uri: 'spotify:track:t2', title: 'Two', artist: 'A', album: 'Alb', durationMs: 2000, cover: 'L', credits: { albumArtist: 'A' } },
+    { uri: 'spotify:track:t3', title: 'Three', artist: 'B', album: 'Alb', durationMs: 3000, cover: 'L', credits: { albumArtist: 'A' } },
   ]);
 });
 
@@ -164,6 +164,20 @@ test('a grandfathered app: /items is missing, so /tracks is read instead', async
   connected();
   answer({ ...TOKEN, 'https://api.spotify.com/v1/playlists/p1/tracks': { body: { items: [{ track: { type: 'track', uri: 'spotify:track:t1', name: 'One', duration_ms: 1, artists: [], album: { name: 'Al', images: [] } } }], next: null } } });
   assert.deepStrictEqual((await spotify.discTracks({ kind: 'playlist', id: 'p1' })).tracks.map((t) => t.uri), ['spotify:track:t1']);
+});
+
+test('what Spotify says of an album comes with its songs, for the booklet: date, label, small print, barcode, places', async () => {
+  connected();
+  answer({ ...TOKEN, 'https://api.spotify.com/v1/albums/a1': { body: {
+    name: 'Alb', artists: [{ name: 'A' }], images: [], release_date: '1998-08-18', label: 'Immortal', genres: [],
+    copyrights: [{ text: '1998 Immortal', type: 'C' }, { text: '(P) 1998 Epic', type: 'P' }], external_ids: { upc: '074646900123' },
+    tracks: { items: [{ uri: 'spotify:track:t1', name: 'One', duration_ms: 1, artists: [{ name: 'A' }], track_number: 1, disc_number: 1 },
+      { uri: 'spotify:track:t2', name: 'Two', duration_ms: 1, artists: [{ name: 'A' }], track_number: 1, disc_number: 2 }], next: null },
+  } } });
+  const { tracks } = await spotify.discTracks({ kind: 'album', id: 'a1' });
+  const album = { albumArtist: 'A', released: '1998-08-18', label: 'Immortal', copyright: '© 1998 Immortal · ℗ 1998 Epic', barcode: '074646900123' };
+  assert.deepStrictEqual(tracks[0].credits, { ...album, track: { no: 1, of: null } });
+  assert.deepStrictEqual(tracks[1].credits, { ...album, track: { no: 1, of: null }, disc: { no: 2, of: null } });
 });
 
 test("a followed playlist: Spotify withholds its songs, and that's said rather than an empty disc", async () => {

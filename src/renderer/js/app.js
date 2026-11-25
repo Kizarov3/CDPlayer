@@ -2043,8 +2043,10 @@ function stopSpotify() {
 async function playSpotifyDisc(tracks, name) {
   if (!tracks.length) return;
   for (const track of tracks) {
-    spotifyTracks.set(track.uri, track);
-    detailsCache.set(track.uri, { title: track.title, artist: track.artist, album: track.album, duration: track.durationMs / 1000 });
+    // The same song on two discs in the changer: what the album's own disc said of it isn't lost to a playlist's.
+    const known = spotifyTracks.get(track.uri), credits = { ...((known && known.credits) || {}), ...(track.credits || {}) };
+    spotifyTracks.set(track.uri, { ...track, credits, disc: name || null });
+    detailsCache.set(track.uri, { title: track.title, artist: track.artist, album: track.album, duration: track.durationMs / 1000, credits });
   }
   if (isShelfOpen()) closeShelf();
   await insertDisc(tracks.map((track) => track.uri), { status: t('{disc} ON THE TRAY', { disc: String(name || 'SPOTIFY').toUpperCase() }), kind: 'spotify', title: name || 'Spotify' });
@@ -2066,7 +2068,7 @@ async function loadSpotify(path, token, { autoPlay, startAt }) {
   updateProgressUi(true);
   renderQueue(); saveQueueSoon();
   panels.refreshSettingsIfOpen(app);
-  const details = { title: track.title, artist: track.artist, album: track.album, lyrics: null, cover: null, coverUrl: track.cover, duration: track.durationMs / 1000, ext: 'SPOTIFY' };
+  const details = { title: track.title, artist: track.artist, album: track.album, lyrics: null, cover: null, coverUrl: track.cover, duration: track.durationMs / 1000, ext: 'SPOTIFY', credits: track.credits || {} };
   state.details = details; state.detailsPath = path; printDisc();
   showSetDisc(null); // (Spotify doesn't say which disc)
   setTrackTitle(details.title, details.artist);
@@ -2076,9 +2078,11 @@ async function loadSpotify(path, token, { autoPlay, startAt }) {
   $('track-source').textContent = `SPOTIFY${track.album ? ` · ${track.album.toUpperCase()}` : ''}`;
   state.lyrics = null; state.lyricsSource = null;
   lyricsChanged();
+  renderQueue(); // (once more, with this song's details: the album's heading over it)
   if (details.title) lookUpLyrics(details, token);
   details.cover = track.cover ? await cdp.spotifyCover(track.cover).catch(() => null) : null;
   if (token !== state.loadToken) return;
+  state.coverFrom = details.cover ? 'Spotify' : null;
   await setCover(details.cover);
   updateMediaSession();
 }
@@ -3309,14 +3313,13 @@ function buildStaticUi() {
   disc.onGrab = startJog;
   disc.onJog = turnJog;
   disc.onJogEnd = endJog;
-  disc.onArtClick = (from) => { if (!spotifyActive()) openBooklet(app, from); };
+  disc.onArtClick = (from) => openBooklet(app, from);
   // CASE's case: clicked, it opens and its booklet comes out of the lid's tabs (the cover seen on the case is the
   // booklet's: the lid's clear while it's out), put back in, the lid shuts; with nothing in the player, it's the way to
   // the shelf. The light on its plastic follows the pointer.
   $('cover-art').addEventListener('click', async () => {
     if (state.look !== 'CASE' || caseFlying || isBookletOpen() || $('cover-art').classList.contains('open')) return;
     if (!caseDiscOut) { toggleShelf(); return; }
-    if (spotifyActive()) return;
     const r = $('case-box').getBoundingClientRect(), col = $('disc-column').getBoundingClientRect();
     const box = { left: r.left + r.width * 0.099, top: r.top + r.height * 0.02, width: r.width * 0.845, height: r.height * 0.96 }; // (the booklet, under the tabs)
     setLid(true, true);
@@ -3814,7 +3817,7 @@ export const app = {
   coverSource: () => state.coverFrom || null,
   switchTheme, previewTheme, restoreTheme, shownTheme: () => shownTheme, saveTheme, importTheme, pasteThemeCode, exportTheme, copyThemeCode, deleteTheme,
   copyReport, noteScrobbling, setQuality, setSoundCheck, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setRipFormat, setAnimations, setCrossfade, setTransition, setEq, armSleepTimer, armSleepAtEnd, setDisplay, setLook, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setTaskbarDisc, setOutput, listOutputs, currentOutputName,
-  insertDisc, playSpotifyDisc, spotifyActive, stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
+  insertDisc, playSpotifyDisc, spotifyActive, spotifyDiscName: (p) => (spotifyTracks.get(p) || {}).disc || 'Spotify', stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
   menu: (anchor, items, opts) => panels.menu(anchor, items, opts),
   choosePressingFor: (album, anchor, onChosen) => choosePressing(album, anchor, null, onChosen),

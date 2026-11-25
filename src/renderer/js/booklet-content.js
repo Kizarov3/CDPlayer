@@ -64,6 +64,24 @@ export function sameAlbum(a, b) {
   return !!a && !!b && name(a) === name(b);
 }
 
+/**
+ * A Spotify disc's songs ([{ p, i (its place in the queue), d (its details) }]) as the album they are, the way the
+ * shelf has one, each song with its place in the queue — or null when they're of several albums: a playlist.
+ */
+export function spotifyAlbum(songs) {
+  const name = songs[0] && songs[0].d && songs[0].d.album;
+  if (!name || !songs.every((x) => x.d && sameAlbum(x.d.album, name))) return null;
+  const c = creditsOf(songs[0].d);
+  const tracks = songs.map(({ p, i, d }) => ({
+    path: p, index: i, title: d.title, artist: d.artist, duration: d.duration,
+    track: (creditsOf(d).track || {}).no || null, disc: (creditsOf(d).disc || {}).no || 1,
+  }));
+  return {
+    title: name, artist: c.albumArtist || songs[0].d.artist, year: (/^\d{4}/.exec(c.released || '') || [null])[0],
+    discs: new Set(tracks.map((tr) => tr.disc)).size, tracks,
+  };
+}
+
 // ---- The owner's marks, in pen: what a well-used booklet collects -----------------------------------------------
 
 const MONTHS = [t('Jan'), t('Feb'), t('Mar'), t('Apr'), t('May'), t('Jun'), t('Jul'), t('Aug'), t('Sep'), t('Oct'), t('Nov'), t('Dec')];

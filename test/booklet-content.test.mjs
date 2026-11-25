@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { albumCredits, albumSummary, albumSmallPrint, sameAlbum, ownerMarks } from '../src/renderer/js/booklet-content.js';
+import { albumCredits, albumSummary, albumSmallPrint, sameAlbum, ownerMarks, spotifyAlbum } from '../src/renderer/js/booklet-content.js';
 
 const song = (credits, extra = {}) => ({ title: 'x', artist: 'Limp Bizkit', duration: 200, quality: 'AAC · 256 KBPS', credits, ...extra });
 
@@ -129,4 +129,19 @@ test('the back cover says how many times the album was played through, a single 
   const m = ownerMarks({ plays: [1, 1], first: [null, null], last: [null, null], through: 3 });
   assert.ok(m.notes.includes('start to end ×3'));
   assert.ok(!ownerMarks({ plays: [4], first: [null], last: [null], through: 4 }).notes.some((n) => n.includes('×')));
+});
+
+test('a Spotify disc: an album when all its songs are of one, in their order on it; a playlist is not', () => {
+  const uri = (n) => `spotify:track:t${n}`;
+  const d = (title, album, credits = {}) => ({ title, artist: 'Korn', album, duration: 200, credits });
+  const of = (no, disc = null) => ({ albumArtist: 'Korn', released: '1998-08-18', track: { no, of: null }, ...(disc ? { disc: { no: disc, of: null } } : {}) });
+  const songs = [{ p: uri(1), i: 0, d: d('It’s On!', 'Follow the Leader', of(1)) }, { p: uri(2), i: 1, d: d('Freak on a Leash', 'Follow the Leader', of(2)) }];
+  assert.deepStrictEqual(spotifyAlbum(songs), {
+    title: 'Follow the Leader', artist: 'Korn', year: '1998', discs: 1,
+    tracks: [{ path: uri(1), index: 0, title: 'It’s On!', artist: 'Korn', duration: 200, track: 1, disc: 1 }, { path: uri(2), index: 1, title: 'Freak on a Leash', artist: 'Korn', duration: 200, track: 2, disc: 1 }],
+  });
+  assert.strictEqual(spotifyAlbum([{ p: uri(1), i: 4, d: d('A', 'X', of(1, 1)) }, { p: uri(2), i: 5, d: d('B', 'X', of(1, 2)) }]).discs, 2);
+  assert.strictEqual(spotifyAlbum([...songs, { p: uri(3), i: 2, d: d('Clocks', 'A Rush of Blood') }]), null);
+  assert.strictEqual(spotifyAlbum([]), null);
+  assert.strictEqual(spotifyAlbum([{ p: uri(1), i: 0, d: null }]), null);
 });

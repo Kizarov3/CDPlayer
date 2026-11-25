@@ -288,13 +288,26 @@ async function search(query) {
   } catch (e) { return asError(e); }
 }
 
+// What Spotify says of an album, as a file's tags would (metadata.js creditsFrom), for the booklet: only what's there
+// (an app in Development mode isn't told everything).
+function albumCredits(a) {
+  // "1998 Epic", "(C) 1998 Epic" or "© 1998 Epic", told apart by its type: each with its own sign.
+  const small = (a.copyrights || []).filter((c) => c && c.text).map((c) => `${c.type === 'P' ? '℗' : '©'} ${c.text.replace(/^\s*(\((c|p|r)\)|[©℗])\s*/i, '')}`);
+  const out = {
+    albumArtist: artistNames(a.artists), released: a.release_date, genre: (a.genres || []).join(', '), label: a.label,
+    copyright: [...new Set(small)].join(' · '), barcode: (a.external_ids || {}).upc || (a.external_ids || {}).ean,
+  };
+  for (const k of Object.keys(out)) if (!out[k]) delete out[k];
+  return out;
+}
 const discTrack = (t, album) => ({
   uri: t.uri, title: t.name, artist: artistNames(t.artists) || album.artist, album: album.name,
   durationMs: t.duration_ms || 0, cover: album.cover,
+  credits: { ...album.credits, ...(t.track_number ? { track: { no: t.track_number, of: null } } : {}), ...(t.disc_number > 1 ? { disc: { no: t.disc_number, of: null } } : {}) },
 });
 async function albumTracks(id) {
   const a = await userApi(`/albums/${encodeURIComponent(id)}`);
-  const album = { name: a.name, artist: artistNames(a.artists), cover: biggest(a.images) };
+  const album = { name: a.name, artist: artistNames(a.artists), cover: biggest(a.images), credits: albumCredits(a) };
   const tracks = ((a.tracks || {}).items || []).map((t) => discTrack(t, album));
   let url = (a.tracks || {}).next;
   for (let pages = 0; url && pages < 20; pages++) {
@@ -314,7 +327,7 @@ async function playlistTracks(id) {
     for (const entry of page.items || []) {
       const t = entry && (entry.item || entry.track);
       if (!t || entry.is_local || t.is_local || (t.type && t.type !== 'track') || !/^spotify:track:/.test(t.uri || '')) continue;
-      const album = { name: (t.album || {}).name || '', artist: '', cover: biggest((t.album || {}).images) };
+      const album = { name: (t.album || {}).name || '', artist: '', cover: biggest((t.album || {}).images), credits: albumCredits(t.album || {}) };
       tracks.push(discTrack(t, album));
     }
     url = page.next;

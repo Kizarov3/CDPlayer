@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { paginate, leavesFor, ean13 } from '../src/renderer/js/booklet-layout.js';
+import { paginate, leavesFor, nearLeaves, ean13 } from '../src/renderer/js/booklet-layout.js';
 
 test('pages fill up to what fits, then continue on the next page', () => {
   const fits = (onPage) => onPage.reduce((h, n) => h + n, 0) <= 10; // items are heights
@@ -15,6 +15,13 @@ test('front cover first, back cover last on a leaf back, a blank page when the i
   assert.deepStrictEqual(leavesFor('F', ['1'], 'B', blank), [{ front: 'F', back: '1' }, { front: '-', back: 'B' }]);
   assert.deepStrictEqual(leavesFor('F', ['1', '2', '3'], 'B', blank), [{ front: 'F', back: '1' }, { front: '2', back: '3' }, { front: '-', back: 'B' }]);
   assert.deepStrictEqual(leavesFor('F', [], 'B', blank), [{ front: 'F', back: 'B' }]);
+});
+
+test('only the leaves that can be seen, or a turn away from it, are near', () => {
+  assert.deepStrictEqual(nearLeaves(0, 89), { from: 0, to: 1 });   // the cover, and the leaf under it
+  assert.deepStrictEqual(nearLeaves(7, 89), { from: 5, to: 8 });   // seen: 6's back and 7's front; 5 and 8 a turn away
+  assert.deepStrictEqual(nearLeaves(89, 89), { from: 87, to: 88 });
+  assert.deepStrictEqual(nearLeaves(1, 1), { from: 0, to: 0 });
 });
 
 test('EAN-13 and UPC-A barcodes; invalid ones print nothing', () => {

@@ -40,6 +40,14 @@ function checkDigit(twelve) {
 }
 
 /**
+ * Of `count` leaves with `turned` of them turned over, the ones worth keeping in the page ({ from, to }, inclusive): the
+ * two that are seen, and the one each way that a turn — on or back — would show.
+ */
+export function nearLeaves(turned, count) {
+  return { from: Math.max(0, turned - 2), to: Math.min(count - 1, turned + 1) };
+}
+
+/**
  * A barcode tag → { digits (13), bits (95 modules, '1' = bar) }, or null when it isn't a valid EAN-13 or UPC-A
  * (a UPC-A is an EAN-13 starting with 0). A 12-digit EAN without its check digit gets one.
  */
