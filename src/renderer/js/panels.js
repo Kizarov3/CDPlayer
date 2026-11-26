@@ -1642,7 +1642,7 @@ function searchSpotify(app, query) {
 }
 async function putSpotifyOnTray(app, item) {
   sp.status = t('READING {name}…', { name: item.name.toUpperCase() }); refreshPanel('spotify');
-  const r = await app.cdp.spotifyDiscTracks({ kind: item.kind, id: item.id }).catch(() => ({ error: 'OFFLINE' }));
+  const r = await app.cdp.spotifyDiscTracks({ kind: item.kind, id: item.id, uri: item.uri, albumId: item.albumId }).catch(() => ({ error: 'OFFLINE' }));
   if (r.error) {
     sp.status = spotifyMessage(r.error, r.detail);
     if (r.error === 'SIGN_IN') sp.account = { ...sp.account, reconnectNeeded: true }; // the panel offers RECONNECT
@@ -1650,7 +1650,7 @@ async function putSpotifyOnTray(app, item) {
   }
   sp.status = '';
   closePanel('spotify');
-  app.playSpotifyDisc(r.tracks, item.name);
+  app.playSpotifyDisc(r.tracks, r.name || item.name, { start: r.start || 0 }); // (a song: its album, from it)
 }
 
 // Text to paste somewhere else (the Spotify dashboard's Redirect URI): clicking it copies it, and it says so.
@@ -1748,7 +1748,7 @@ function buildSpotify(app) {
     b.classList.toggle('on', !sp.found && sp.tab === tab);
     return b;
   }));
-  const field = el('input', { class: 'text-input', type: 'text', placeholder: t('Search Spotify for an album or playlist'), value: sp.query, spellcheck: 'false' });
+  const field = el('input', { class: 'text-input', type: 'text', placeholder: t('Search Spotify for a song, album or playlist'), value: sp.query, spellcheck: 'false' });
   field.addEventListener('input', () => searchSpotify(app, field.value));
   // Liked Songs: the first of the playlists, as in Spotify.
   const liked = { kind: 'liked', id: 'liked', name: t('♥ LIKED SONGS'), owner: '', total: null };
@@ -1760,10 +1760,12 @@ function buildSpotify(app) {
     return el('button', { class: `spotify-heart${on ? ' on' : ''}`, title: on ? t('In your Spotify library (on the shelf) — click to take it out') : t('Save to your Spotify library — it goes on the shelf'),
       onClick: (e) => { e.stopPropagation(); toggleSaved(app, uri); } }, on ? '♥' : '♡');
   };
-  const rows = items.map((item) => el('div', { class: 'list-row', title: t('Put {name} on the tray', { name: item.name }), onClick: () => putSpotifyOnTray(app, item) },
+  const kindName = { track: t('SONG'), album: t('ALBUM'), playlist: t('PLAYLIST') };
+  const length = (ms) => { const s = Math.round(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  const rows = items.map((item) => el('div', { class: 'list-row', title: item.kind === 'track' ? t('Put {album} on the tray, from {name}', { album: item.albumName || item.name, name: item.name }) : t('Put {name} on the tray', { name: item.name }), onClick: () => putSpotifyOnTray(app, item) },
     heart(item),
     el('span', { class: 'entry' }, `${item.name}${item.owner ? ` · ${item.owner}` : ''}`),
-    el('span', { class: 'duration' }, `${sp.found ? `${({ album: t('ALBUM'), playlist: t('PLAYLIST') })[item.kind] || item.kind.toUpperCase()} · ` : ''}${item.total == null ? '' : t('{n} TRACKS', { n: item.total })}`)));
+    el('span', { class: 'duration' }, `${sp.found ? `${kindName[item.kind] || item.kind.toUpperCase()} · ` : ''}${item.kind === 'track' ? length(item.durationMs) : item.total == null ? '' : t('{n} TRACKS', { n: item.total })}`)));
   if (!sp.found && sp.next[sp.tab] !== null && sp.lists[sp.tab]) rows.push(el('div', { class: 'row-pills' }, pill(t('MORE'), () => loadSpotifyList(app, sp.tab))));
   if (sp.found && !sp.found.length) rows.push(el('div', { class: 'list-row plain' }, t('NOTHING FOUND')));
   const drm = sp.drm === false ? hint(t("Spotify playback isn't supported on this system — Widevine isn't available.")) : [];

@@ -117,18 +117,43 @@ test('playlists: the old and the renamed track count both read', async () => {
   ], next: null });
 });
 
-test('search asks for at most 10 albums and playlists (the development-mode limit)', async () => {
+test('search asks for at most 10 songs, albums and playlists (the development-mode limit): songs first', async () => {
   connected();
   answer({ ...TOKEN, 'https://api.spotify.com/v1/search': { body: {
+    tracks: { items: [{ id: 't1', uri: 'spotify:track:t1', name: 'Idioteque', artists: [{ name: 'Radiohead' }], duration_ms: 309000, album: { id: 'a1', name: 'Kid A' } }, null] },
     albums: { items: [{ id: 'a1', name: 'Kid A', artists: [{ name: 'Radiohead' }], total_tracks: 10 }] },
     playlists: { items: [null, { id: 'p1', name: 'Kid A deep cuts', owner: { display_name: 'x' }, items: { total: 4 } }] },
   } } });
   const r = await spotify.search('kid a');
-  assert.deepStrictEqual(r.items.map((i) => `${i.kind}:${i.id}`), ['album:a1', 'playlist:p1']);
+  assert.deepStrictEqual(r.items.map((i) => `${i.kind}:${i.id}`), ['track:t1', 'album:a1', 'playlist:p1']);
+  assert.deepStrictEqual(r.items[0], { kind: 'track', id: 't1', uri: 'spotify:track:t1', name: 'Idioteque', owner: 'Radiohead', durationMs: 309000, albumId: 'a1', albumName: 'Kid A' });
   const u = new URL(requests[1].url);
   assert.strictEqual(u.searchParams.get('q'), 'kid a');
-  assert.strictEqual(u.searchParams.get('type'), 'album,playlist');
+  assert.strictEqual(u.searchParams.get('type'), 'track,album,playlist');
   assert.strictEqual(u.searchParams.get('limit'), '10');
+});
+
+test('a song picked from a search: its album goes on the tray, starting from that song', async () => {
+  connected();
+  answer({ ...TOKEN, 'https://api.spotify.com/v1/albums/a1': { body: {
+    name: 'Kid A', artists: [{ name: 'Radiohead' }], images: [img(640, 'L')],
+    tracks: { items: [{ uri: 'spotify:track:t0', name: 'Everything', duration_ms: 1 }, { uri: 'spotify:track:t1', name: 'Idioteque', duration_ms: 2 }], next: null },
+  } } });
+  const r = await spotify.discTracks({ kind: 'track', id: 't1', uri: 'spotify:track:t1', albumId: 'a1' });
+  assert.deepStrictEqual(r.tracks.map((t) => t.uri), ['spotify:track:t0', 'spotify:track:t1']);
+  assert.strictEqual(r.start, 1);
+  assert.strictEqual(r.name, 'Kid A');
+});
+
+test("a song whose album can't be read (or isn't on it): the song alone", async () => {
+  connected();
+  answer({ ...TOKEN,
+    'https://api.spotify.com/v1/albums/a9': { status: 404, body: {} },
+    'https://api.spotify.com/v1/tracks/t1': { body: { uri: 'spotify:track:t1', name: 'Single', duration_ms: 5, artists: [{ name: 'X' }], album: { name: 'S', artists: [{ name: 'X' }], images: [img(300, 'c')] } } },
+  });
+  const r = await spotify.discTracks({ kind: 'track', id: 't1', uri: 'spotify:track:t1', albumId: 'a9' });
+  assert.deepStrictEqual(r.tracks.map((t) => [t.uri, t.title, t.artist, t.cover]), [['spotify:track:t1', 'Single', 'X', 'c']]);
+  assert.strictEqual(r.start, 0);
 });
 
 test('an album becomes disc tracks, with its biggest cover, across pages of tracks', async () => {

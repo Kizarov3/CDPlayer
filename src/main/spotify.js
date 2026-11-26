@@ -273,6 +273,8 @@ const nextOffset = (json) => { if (!json.next) return null; const n = Number(new
 const artistNames = (a) => (a || []).map((x) => x.name).filter(Boolean).join(', ');
 const biggest = (images) => { const list = (images || []).filter((i) => i && i.url); list.sort((a, b) => (b.width || 0) - (a.width || 0)); return list.length ? list[0].url : null; };
 const albumItem = (a) => ({ kind: 'album', id: a.id, name: a.name, owner: artistNames(a.artists), total: a.total_tracks || 0 });
+// A song found by a search: picked, its album goes on the tray from it (discTracks kind 'track').
+const trackItem = (t) => ({ kind: 'track', id: t.id, uri: t.uri, name: t.name, owner: artistNames(t.artists), durationMs: t.duration_ms || 0, albumId: (t.album || {}).id || null, albumName: (t.album || {}).name || '' });
 const playlistItem = (p) => ({ kind: 'playlist', id: p.id, name: p.name, owner: (p.owner && (p.owner.display_name || p.owner.id)) || '', total: ((p.items || p.tracks) || {}).total || 0 });
 
 async function savedAlbums(offset = 0) {
@@ -289,8 +291,9 @@ async function playlists(offset = 0) {
 }
 async function search(query) {
   try {
-    const json = await userApi(`/search?q=${encodeURIComponent(query)}&type=album,playlist&limit=10`);
-    return { items: [...((json.albums || {}).items || []).filter(Boolean).map(albumItem), ...((json.playlists || {}).items || []).filter(Boolean).map(playlistItem)] };
+    const json = await userApi(`/search?q=${encodeURIComponent(query)}&type=track,album,playlist&limit=10`);
+    const found = (k) => ((json[k] || {}).items || []).filter(Boolean);
+    return { items: [...found('tracks').filter((t) => t.id && t.uri).map(trackItem), ...found('albums').map(albumItem), ...found('playlists').map(playlistItem)] };
   } catch (e) { return asError(e); }
 }
 
@@ -340,9 +343,23 @@ async function playlistTracks(id) {
   }
   return tracks;
 }
-/** An album's or playlist's songs, as a disc. A playlist the user only follows comes back empty: 'NOT_SHARED'. */
-async function discTracks({ kind, id }) {
+// A song from a search: its album, from that song on — a CD's track picked, the rest of the disc after it. Its album not
+// to be had (or the song not on it, as a compilation's copy can be): the song alone.
+async function songDisc({ id, uri, albumId }) {
+  if (albumId) {
+    try {
+      const tracks = await albumTracks(albumId), start = tracks.findIndex((t) => t.uri === uri);
+      if (start >= 0) return { tracks, start, name: tracks[0].album };
+    } catch (e) { if (!e.status || e.status === 401) throw e; }
+  }
+  const t = await userApi(`/tracks/${encodeURIComponent(id)}`);
+  const a = t.album || {};
+  return { tracks: [discTrack(t, { name: a.name || '', artist: artistNames(a.artists), cover: biggest(a.images), credits: albumCredits(a) })], start: 0, name: a.name || t.name };
+}
+/** An album's or playlist's songs, as a disc (a song's: its album, `start` at it). A playlist the user only follows comes back empty: 'NOT_SHARED'. */
+async function discTracks({ kind, id, uri, albumId }) {
   try {
+    if (kind === 'track') return await songDisc({ id, uri, albumId });
     const tracks = kind === 'liked' ? await likedTracks() : kind === 'album' ? await albumTracks(id) : await playlistTracks(id);
     if (!tracks.length) return { error: kind === 'playlist' ? 'NOT_SHARED' : 'EMPTY' };
     return { tracks };
