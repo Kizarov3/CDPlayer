@@ -2017,6 +2017,23 @@ export function showShortcuts() {
 
 // Newest first. Only the entry matching the running version is ever shown.
 const CHANGELOG = [
+  { version: '2.25.0', changes: [
+    '<b>Spotify on the shelf</b>: the albums you saved on Spotify stand among your own, at their artist&rsquo;s letter, with a green band on their spines. SHOW on the shelf has ON SPOTIFY and YOUR FILES; your own files win when you have the same album',
+    '<b>&hearts; likes</b>: like a song from the player, an album from its case or from the Spotify panel, and it&rsquo;s saved in your Spotify library. LIKED SONGS comes first among the playlists, and PLAYED LATELY shows what you played anywhere. (Connect Spotify again once in its panel to let CDPlayer save likes)',
+    '<b>Songs in Spotify&rsquo;s search</b>: it finds songs too, before albums and playlists. Picking one puts its album on the tray and plays from that song',
+    '<b>Booklets for Spotify discs</b>: an album has a whole one &mdash; the songs&rsquo; words, its story, scans, date, label and small print; a playlist has its list and the playing song&rsquo;s words. They open at once',
+    '<b>PLAY ON&hellip;</b> sends the music to another of your Spotify devices, and pausing or going back a song on your phone is followed',
+    '<b>Lighter</b>: the GRADIENT backdrop stands still while the window can&rsquo;t be seen, and a booklet keeps only the pages next to the one you&rsquo;re reading (an album of 89 songs was more than a graphics card&rsquo;s memory took)',
+    '<b>Fixed</b>: the album name over the queue is the disc that&rsquo;s in, not the one before',
+  ], changesIn: { ru: [
+    '<b>Spotify на полке</b>: альбомы, сохранённые в Spotify, стоят среди ваших на букве исполнителя, с зелёной полосой на корешке. в ПОКАЗ на полке есть В SPOTIFY и ТВОИ ФАЙЛЫ; если такой же альбом есть в файлах, показывается ваш',
+    '<b>&hearts; лайки</b>: лайк песни в плеере или альбома с футляра и из панели Spotify сохраняется в вашу библиотеку Spotify. ЛЮБИМЫЕ ТРЕКИ первыми среди плейлистов, а НЕДАВНО ИГРАЛО показывает, что вы слушали где угодно. (Один раз подключите Spotify заново в его панели, чтобы CDPlayer мог сохранять лайки)',
+    '<b>Песни в поиске Spotify</b>: он находит и песни, раньше альбомов и плейлистов. Выбранная песня ставит свой альбом в лоток и играет с неё',
+    '<b>Буклеты дисков Spotify</b>: у альбома полный &mdash; слова песен, история, сканы, дата, лейбл и мелкий шрифт; у плейлиста его список и слова играющей песни. Открываются сразу',
+    '<b>ИГРАТЬ НА&hellip;</b> отправляет музыку на другое ваше устройство Spotify, а пауза или песня назад на телефоне подхватываются',
+    '<b>Легче</b>: фон GRADIENT стоит, пока окно не видно, а буклет держит только страницы рядом с открытой (альбом на 89 песен не помещался в память видеокарты)',
+    '<b>Исправлено</b>: название альбома над очередью &mdash; диска, который стоит, а не предыдущего',
+  ] } },
   { version: '2.24.3', changes: [
     '<b>Spotify&rsquo;s setup shows where you are</b>: the four dots under its steps were plain grey buttons; the one for the step you&rsquo;re on is lit again',
   ], changesIn: { ru: [
