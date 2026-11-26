@@ -323,3 +323,10 @@ test('a list of music folders that can\'t be read for a moment isn\'t started ov
   } finally { fs.chmodSync(list, 0o644); }
   assert.deepStrictEqual(store.readMusicFolders(), [music]);
 });
+
+test('albums from elsewhere (saved on Spotify) stand among the folder\'s in the shelf\'s own order', () => {
+  const { byArtist } = require('../src/main/shelf');
+  const list = [{ artist: 'Radiohead', title: 'OK Computer' }, { artist: 'Muse', title: 'Absolution', year: '2003' }, { artist: '', title: 'Untitled' },
+    { artist: 'The Beatles', title: 'Abbey Road' }, { artist: 'Muse', title: 'Origin of Symmetry', year: '2001' }].sort(byArtist);
+  assert.deepStrictEqual(list.map((a) => a.title), ['Abbey Road', 'Origin of Symmetry', 'Absolution', 'OK Computer', 'Untitled']);
+});

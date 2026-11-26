@@ -114,10 +114,14 @@ function groupAlbums(found) {
       tracks: g.items.map((t) => ({ path: t.path, title: t.info.title, artist: t.info.artist, duration: t.info.duration, track: t.info.track, disc: t.info.disc })),
     };
   });
-  const sortName = (s) => String(s || '').replace(/^the\s+/i, '').toLowerCase();
-  return albums.sort((a, b) => (!a.artist - !b.artist) // albums nobody's named the artist of go at the end
+  return albums.sort(byArtist);
+}
+// The shelf's own order: by artist ("The" not counted), then year, then title.
+const sortName = (s) => String(s || '').replace(/^the\s+/i, '').toLowerCase();
+function byArtist(a, b) {
+  return (!a.artist - !b.artist) // albums nobody's named the artist of go at the end
     || sortName(a.artist).localeCompare(sortName(b.artist), undefined, { numeric: true })
-    || String(a.year || '').localeCompare(String(b.year || '')) || sortName(a.title).localeCompare(sortName(b.title), undefined, { numeric: true }));
+    || String(a.year || '').localeCompare(String(b.year || '')) || sortName(a.title).localeCompare(sortName(b.title), undefined, { numeric: true });
 }
 
 // The cache file as it is, with the folders it was read from (one `folder` in a cache from before there could be more).
@@ -377,4 +381,4 @@ async function albumCoverFull(firstTrack) {
 /** A file's tags changed: its album's cover thumbnail is made again next time. */
 function forget(filePath) { thumbs.delete(filePath); fromWeb.delete(filePath); onShelf = null; } // its tags changed: it may be on another album now
 
-module.exports = { toThumb, COVER_FILE, scanAlbums, trackInfo, trackNumbers, albumOf, albumById, albumTracks, isLastOfDisc, touchedAt, isWrapped, readCache, cacheHas, folderNames, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };
+module.exports = { toThumb, COVER_FILE, scanAlbums, byArtist, trackInfo, trackNumbers, albumOf, albumById, albumTracks, isLastOfDisc, touchedAt, isWrapped, readCache, cacheHas, folderNames, addedAt, albumCover, albumCoverFull, onlineCover, groupAlbums, albumFolder, forget };

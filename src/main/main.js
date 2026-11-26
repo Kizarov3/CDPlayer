@@ -880,7 +880,7 @@ async function shelfListing() {
   watchMusicFolder();
   const result = await shelf.scanAlbums((done, total) => { if (win && !win.isDestroyed()) win.webContents.send('shelf-progress', { done, total }); });
   const files = result.albums;
-  result.albums = [...files, ...spotifyShelf.albumsBeside(files)];
+  result.albums = [...files, ...spotifyShelf.albumsBeside(files)].sort(shelf.byArtist); // (Spotify's among them, each at its letter)
   refreshSpotifyShelf();
   // How many times each album's songs have been played, for the shelf's MOST PLAYED order.
   const counts = plays();
