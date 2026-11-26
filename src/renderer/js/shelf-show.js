@@ -5,7 +5,7 @@
 
 import { dustLevel } from './shelf-dust.js';
 
-export const SHOWS = ['ALL', 'DUSTY', 'WRAPPED', 'LEFT', 'NOTE', 'UNPLAYED'];
+export const SHOWS = ['ALL', 'DUSTY', 'WRAPPED', 'LEFT', 'NOTE', 'UNPLAYED', 'SPOTIFY', 'FILES'];
 const MAX_GENRES = 12;
 
 const fold = (s) => String(s || '').trim().toLowerCase();
@@ -22,6 +22,8 @@ export function showsAlbum(a, show, now = Date.now()) {
     case 'LEFT': return !!a.bookmark;
     case 'NOTE': return !!a.note;
     case 'UNPLAYED': return !a.plays;
+    case 'SPOTIFY': return !!a.spotify; // saved on Spotify (main/spotify-shelf.js)
+    case 'FILES': return !a.spotify;
     default:
       if (show.startsWith('Y')) return decadeOf(a) === Number(show.slice(1));
       if (show.startsWith('G')) return fold(a.genre) === show.slice(1);
@@ -33,7 +35,8 @@ export function showsAlbum(a, show, now = Date.now()) {
 /** What SHOW can pick for these albums: [{ show, count }] for each kind there is, then decades, then genres (most
  * first), then the user's dividers (by name). */
 export function showChoices(albums, now = Date.now()) {
-  const kinds = SHOWS.slice(1).map((show) => ({ show, count: albums.filter((a) => showsAlbum(a, show, now)).length })).filter((c) => c.count);
+  // (SPOTIFY and FILES only when the shelf has both: else one of them is all of it)
+  const kinds = SHOWS.slice(1).map((show) => ({ show, count: albums.filter((a) => showsAlbum(a, show, now)).length })).filter((c) => c.count && (!['SPOTIFY', 'FILES'].includes(c.show) || c.count < albums.length));
   const decades = new Map(), genres = new Map(), dividers = new Map();
   for (const a of albums) {
     const d = decadeOf(a);

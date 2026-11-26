@@ -701,6 +701,8 @@ async function discArtFor(q, name) {
 // The real booklet's scans (online.findBookletScans), kept once found — or once found not to be there (looked for
 // again in a month). One lookup per album at a time.
 const scansDir = () => path.join(store.dataDir(), 'booklet-scans');
+const { pruneFolders } = require('./booklet-words');
+const SCANS_KEPT = 40; // albums' scans: some 10 MB each, got as a disc goes in
 const scanLookups = new Map();
 handle('online:bookletScans', (q) => {
   if (!q || !q.artist || !q.album || shotsDir) return null;
@@ -711,7 +713,12 @@ handle('online:bookletScans', (q) => {
 async function scansFor(q, name) {
   const dir = path.join(scansDir(), name), list = path.join(dir, 'scans.json'), none = path.join(scansDir(), `${name}.none`);
   const read = (s) => ({ ...s, art: `data:image/jpeg;base64,${fs.readFileSync(path.join(dir, s.file)).toString('base64')}` });
-  try { return JSON.parse(fs.readFileSync(list, 'utf8')).map(read); } catch {}
+  try {
+    const kept = JSON.parse(fs.readFileSync(list, 'utf8')).map(read);
+    const now = new Date();
+    fs.utimes(dir, now, now, () => {}); // (used: among the last to go)
+    return kept;
+  } catch {}
   if (fs.existsSync(none) && Date.now() - fs.statSync(none).mtimeMs < 30 * 86400000) return [];
   let scans;
   try { scans = await online.findBookletScans(q); } catch { return null; } // (offline: looked for another time)
@@ -724,9 +731,13 @@ async function scansFor(q, name) {
     return { file, kind: s.kind, width: s.width, height: s.height };
   });
   fs.writeFileSync(list, JSON.stringify(kept)); // (last: a half-written folder isn't taken for a whole one)
+  pruneFolders(scansDir(), SCANS_KEPT);
   fs.rmSync(none, { force: true });
   return scans;
 }
+// Its songs' words (booklet-words.js), kept once found.
+const bookletWords = require('./booklet-words').createBookletWords({ dir: () => path.join(store.dataDir(), 'booklet-words'), find: (q) => online.findBookletLyrics(q) });
+handle('online:bookletLyrics', (q) => (shotsDir ? null : bookletWords(q)));
 handle('online:lyrics', (details) => (shotsDir ? null : online.findLyrics(details))); // (the screenshots' run is offline: the test song's own lyrics)
 handle('spotify:classify', (text) => spotify.classifySpotifyLink(text));
 handle('spotify:resolve', async (text) => {
@@ -747,6 +758,23 @@ handle('spotify:albums', (offset) => spotify.savedAlbums(offset));
 handle('spotify:playlists', (offset) => spotify.playlists(offset));
 handle('spotify:search', (query) => spotify.search(query));
 handle('spotify:discTracks', (which) => spotify.discTracks(which));
+handle('spotify:recent', () => spotify.recentAlbums());
+handle('spotify:tracksInfo', (uris) => spotify.tracksInfo(Array.isArray(uris) ? uris.filter((u) => /^spotify:track:[A-Za-z0-9]+$/.test(u)).slice(0, 100) : []));
+handle('spotify:savedIn', (uris) => spotify.savedIn(Array.isArray(uris) ? uris.filter((u) => /^spotify:(track|album):/.test(u)) : []));
+// ♥: saved to (or taken out of) the library — and the shelf has the album, or hasn't, at once.
+handle('spotify:setSaved', async ({ uris, on }) => {
+  const list = (Array.isArray(uris) ? uris : []).filter((u) => /^spotify:(track|album):/.test(u));
+  const r = await spotify.setSaved(list, !!on);
+  if (r.ok && list.some((u) => u.startsWith('spotify:album:'))) {
+    if (on) spotifyShelf.markStale(); else for (const u of list) spotifyShelf.forget(u);
+    if (win && !win.isDestroyed()) win.webContents.send('library-changed');
+  }
+  return r;
+});
+handle('spotify:playerState', () => spotify.playerState());
+handle('spotify:devices', () => spotify.devices());
+handle('spotify:transfer', (q) => spotify.transfer(q || {}));
+handle('spotify:remote', (q) => spotify.remote(q || {}));
 handle('spotify:play', (request) => spotify.startPlayback(request));
 handle('spotify:cover', (url) => spotify.coverDataUrl(url));
 handle('spotify:drmReady', () => drmReady());
@@ -837,15 +865,29 @@ const libraryWatch = require('./library-watch').createLibraryWatch({ onChange: (
 } });
 const watchMusicFolder = () => { if (!smokeDir) libraryWatch.start(store.musicFolders()); };
 // The shelf's albums with plays, dust, notes and shrink-wrap added; the handler and the phone remote both read it.
+// The albums saved on Spotify, on the shelf beside the folder's (spotify-shelf.js).
+const spotifyShelf = require('./spotify-shelf').createSpotifyShelf({
+  fetchAlbums: () => spotify.libraryAlbums(), read: () => store.readText('spotify-shelf.json'), write: (text) => store.writeText('spotify-shelf.json', text),
+  connected: () => { const s = spotify.status(); return s.connected && !s.reconnectNeeded; },
+});
+let spotifyShelfAsking = null;
+function refreshSpotifyShelf() {
+  if (smokeDir || shotsDir || spotifyShelfAsking || !spotifyShelf.stale()) return;
+  spotifyShelfAsking = spotifyShelf.refresh().then((changed) => { if (changed && win && !win.isDestroyed()) win.webContents.send('library-changed'); })
+    .catch(() => {}).finally(() => { spotifyShelfAsking = null; });
+}
 async function shelfListing() {
   watchMusicFolder();
   const result = await shelf.scanAlbums((done, total) => { if (win && !win.isDestroyed()) win.webContents.send('shelf-progress', { done, total }); });
+  const files = result.albums;
+  result.albums = [...files, ...spotifyShelf.albumsBeside(files)];
+  refreshSpotifyShelf();
   // How many times each album's songs have been played, for the shelf's MOST PLAYED order.
   const counts = plays();
   for (const a of result.albums) a.plays = a.tracks.reduce((n, t) => n + (counts.get(t.path) || 0), 0);
   // …and when each was last played or wiped, for its dust.
   const touch = { ...dust(), lastPlayed: playedAt() };
-  for (const a of result.albums) a.touched = shelf.touchedAt(a, touch);
+  for (const a of result.albums) a.touched = shelf.touchedAt(a.spotify ? { ...a, added: Math.max(a.added || 0, spotifyShelf.onShelfSince(a.id) || Date.now()) } : a, touch); // (a saved album: from when it came on the shelf)
   // …and when a song of it was last played, for LAST PLAYED.
   for (const a of result.albums) a.lastPlayed = a.tracks.reduce((m, t) => Math.max(m, touch.lastPlayed.get(t.path) || 0), 0) || null;
   const notes = store.readNotes();
@@ -856,7 +898,7 @@ async function shelfListing() {
   const w = wrap();
   for (const a of result.albums) a.wrapped = shelf.isWrapped(a, w);
   // …and which turned up off the WANT LIST: crossed off, and FOUND IT on them until they're played.
-  wantFound(wantList.crossOff(result.albums));
+  wantFound(wantList.crossOff(files)); // (saved on Spotify isn't found: the WANT LIST is of discs and files)
   const foundIt = wantList.foundIds();
   for (const a of result.albums) a.foundIt = foundIt.has(a.id) && !a.plays;
   // …and where one was left part-way through (a bookmark), and how many times each was played through.
@@ -906,7 +948,7 @@ let movesFound = null;
 let shelfIds = new Set(); // the albums on the shelf when the moves were found, by id
 function movedSongs(albums) {
   const present = new Set(albums.flatMap((a) => a.tracks.map((t) => t.path)));
-  const known = new Set([...plays().keys(), ...playedAt().keys(), ...firstPlayedAt().keys(), ...store.readHistoryAll(), ...skipped()]); // (a song marked SKIP may never have played)
+  const known = new Set([...plays().keys(), ...playedAt().keys(), ...firstPlayedAt().keys(), ...store.readHistoryAll(), ...skipped()].filter((p) => !/^spotify:/.test(p))); // (a song on Spotify doesn't move) // (a song marked SKIP may never have played)
   movesFound = relocate.findMoves([...known].filter((p) => !present.has(p) && !cue.entryExists(p)), present);
   shelfIds = new Set(albums.map((a) => a.id));
   const declined = store.readMovesDeclined();
@@ -1043,7 +1085,7 @@ const discography = require('./discography').createDiscography({
 handle('discography:want', (artists) => discography.want(Array.isArray(artists) ? artists.slice(0, 200) : []));
 handle('discography:tracklist', (groupId) => discography.tracklist(groupId));
 // The booklet's "About the album" pages (album-story.js), in the interface's language.
-const albumStory = require('./album-story').createAlbumStory({ mbFetch: (q) => online.mbFetch(q), fetchJson: (url, init) => online.fetchJson(url, init), findGroup: (q) => online.musicBrainzAlbum(q) });
+const albumStory = require('./album-story').createAlbumStory({ mbFetch: (q) => online.mbOnce(q), fetchJson: (url, init) => online.fetchJson(url, init), findGroup: (q) => online.musicBrainzAlbum(q) });
 // MusicBrainz or Wikipedia busy or out of reach: { unavailable } (nothing's remembered; the booklet asks again).
 handle('story:album', (q) => albumStory.storyFor({ ...(q || {}), lang: i18n.current().code }).catch(() => ({ unavailable: true })));
 handle('story:open', (url) => { if (/^https:\/\/[a-z-]+\.wikipedia\.org\/wiki\//.test(String(url))) shell.openExternal(url); });
@@ -1147,11 +1189,21 @@ handle('library:check', async () => {
   return { ...issues, noCover, folder: scanned.folder };
 });
 handle('shell:showFile', (p) => { if (typeof p === 'string' && fs.existsSync(cue.parseRef(p) ? cue.parseRef(p).cuePath : p)) shell.showItemInFolder(cue.parseRef(p) ? cue.parseRef(p).cuePath : p); });
-handle('shelf:cover', (firstTrack, opts) => shelf.albumCover(firstTrack, { online: !(opts && opts.online === false) }));
+// A saved Spotify album's cover: Spotify's own picture of it (small for the spine and case, whole for the booklet).
+const spotifyCovers = new Map();
+async function spotifyShelfCover(uri, full) {
+  const key = `${full ? 'full' : 'thumb'}\n${uri}`;
+  if (spotifyCovers.has(key)) return spotifyCovers.get(key);
+  const url = spotifyShelf.coverOf(uri), data = url ? await spotify.coverDataUrl(url) : null;
+  const cover = data && !full ? shelf.toThumb(nativeImage.createFromDataURL(data)) : data;
+  if (data) { if (spotifyCovers.size > 600) spotifyCovers.delete(spotifyCovers.keys().next().value); spotifyCovers.set(key, cover); }
+  return cover;
+}
+handle('shelf:cover', (firstTrack, opts) => (/^spotify:track:/.test(firstTrack) ? (opts && opts.online === false ? null : spotifyShelfCover(firstTrack, false)) : shelf.albumCover(firstTrack, { online: !(opts && opts.online === false) })));
 // The colours the shelf worked out from covers (spines, and SORT: COLOR), kept between launches.
 handle('shelf:colors', () => store.readShelfColors());
 handle('shelf:saveColors', (colors) => { if (colors && typeof colors === 'object') store.writeShelfColors(colors); });
-handle('shelf:coverFull', (firstTrack) => shelf.albumCoverFull(firstTrack));
+handle('shelf:coverFull', (firstTrack) => (/^spotify:track:/.test(firstTrack) ? spotifyShelfCover(firstTrack, true) : shelf.albumCoverFull(firstTrack)));
 // The shelf's FOLDER…: the folders it reads. `add`: one more (an external drive, say) — one inside a folder already
 // read changes nothing, and the folders inside a new one become part of it; otherwise the one picked replaces them.
 handle('dialog:pickMusicFolder', async (mode) => {
@@ -1403,6 +1455,7 @@ async function phoneCover(key) {
   if (!album || !album.tracks.length) return null;
   // What's on this computer, or was found online before — the phone's scrolling never sends the web a search, nor
   // pushes the desktop shelf's thumbnails out of their cache (the phone keeps its covers itself, for a day).
+  if (album.spotify) return remoteWiring.dataUrlBytes(await spotifyShelfCover(album.tracks[0].path, false)); // (Spotify's own picture)
   return remoteWiring.dataUrlBytes(await shelf.albumCover(album.tracks[0].path, { online: false, cached: true, keep: false }));
 }
 

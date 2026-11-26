@@ -161,7 +161,10 @@ html.light #backdrop.has-flow::before { background: linear-gradient(to bottom, r
   background-size: cover;
   will-change: transform;
   animation: flow 30s linear infinite;
+  animation-play-state: paused; /* (only while it's seen: a running animation, even unseen, keeps the window drawing 60 times a second — on a computer without a graphics card all of it, by the processor) */
 }
+#backdrop.has-flow #backdrop-flow i { animation-play-state: running; }
+body.window-hidden #backdrop.has-flow #backdrop-flow i { animation-play-state: paused; }
 #backdrop-flow i:nth-child(1) { --x: -30vw; --y: -18vh; --s: 17; --spin: 1turn; }
 #backdrop-flow i:nth-child(2) { --x: 30vw; --y: -14vh; --s: 16; --spin: -1turn; animation-duration: 38s; }
 #backdrop-flow i:nth-child(3) { --x: -28vw; --y: 22vh; --s: 15; --spin: -1turn; animation-duration: 34s; }
@@ -237,6 +240,10 @@ body.cd-view #cd-info { display: block !important; }
 #source-row { margin-top: 6px; display: flex; align-items: center; gap: 8px; min-width: 0; }
 #hidden-badge, #quality-badge, #soundcheck-badge { flex: none; height: 16px; line-height: 16px; padding: 0 6px; border-radius: 4px; font-size: 10px; letter-spacing: 0.06em; color: rgb(var(--text)); background: rgba(var(--text), 0.12); cursor: default; }
 #quality-badge.dim, #soundcheck-badge.dim { opacity: 0.45; }
+/* ♥ for the Spotify song playing: in your Spotify library or not (app.js showLike). */
+#like-button { flex: none; height: 16px; padding: 0 2px; border: 0; background: none; color: rgb(var(--muted)); font: inherit; font-size: 13px; line-height: 16px; cursor: pointer; }
+#like-button.on, #like-button:hover { color: #1db954; }
+body.look-hifi #like-button { color: rgba(var(--lcd-ink), .7); }
 #track-source { min-width: 0; height: 16px; line-height: 16px; font-size: 12px; font-weight: normal; color: rgb(var(--muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fit { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .fade-in { animation: fadeIn 420ms var(--ease-out) backwards; }
@@ -1046,6 +1053,8 @@ html.light .card-preview { background: rgba(0, 0, 0, .05); box-shadow: 0 6px 18p
 .github-link svg { width: 15px; height: 15px; }
 
 .list-row { display: flex; align-items: center; gap: 8px; min-height: 34px; margin-bottom: 4px; font-size: 11px; color: rgb(var(--text)); cursor: pointer; }
+.spotify-heart { flex: none; width: 22px; padding: 0; border: 0; background: none; color: rgb(var(--muted)); font: inherit; font-size: 14px; line-height: 1; cursor: pointer; }
+.spotify-heart.on, .spotify-heart:hover { color: #1db954; }
 .list-row .entry { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; font-weight: normal; }
 .command-row { border-bottom: 1px solid rgba(var(--text), .08); padding-bottom: 4px; }
 .command-row .command-kind { flex: none; width: 14px; text-align: center; color: rgb(var(--accent)); }
@@ -1728,6 +1737,8 @@ html.light .ghost-cover { background: rgba(0, 0, 0, .03); }
 /* A rare album: a gold sticker on its case, a gold dot on its spine. */
 .sticker-rare { position: absolute; top: 14px; left: 14px; z-index: 3; padding: 5px 9px; border-radius: 12px; transform: rotate(-8deg);
   background: linear-gradient(135deg, #f3d77a, #c8992e); color: #3a2a05; font-size: 11px; font-weight: bold; letter-spacing: .04em; box-shadow: 0 2px 6px rgba(0, 0, 0, .45); }
+/* Saved on Spotify (spotify-shelf.js): a thin green band at the foot of the spine, as a store's sticker on a case. */
+.spine-spotify { position: absolute; left: 3px; right: 3px; bottom: 2px; height: 3px; border-radius: 2px; background: #1db954; opacity: 0.85; pointer-events: none; }
 .spine.rare::after { content: ""; position: absolute; left: 50%; bottom: 6px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%;
   background: #d8b24a; box-shadow: 0 0 4px rgba(216, 178, 74, .8); }
 .case-tracks { flex: 1 1 auto; min-height: 92px; max-height: 300px; margin: 14px 0; } /* (a few songs always seen, however long the text above) */

@@ -10,7 +10,7 @@ import { Particles } from './particles.js';
 import { TerminalLook } from './look-terminal.js';
 import { traySlide, TRAY_TRAVEL, TRAY_GROW } from './tray-motion.js';
 import { anim, EASE, el, pill, roundButton, modeButton, Slider, fitText, pulse, followPlaying, keepFollowing, smooth, pathFrames, swingLid } from './widgets.js';
-import { openBooklet, closeBooklet, isBookletOpen } from './booklet.js';
+import { openBooklet, closeBooklet, isBookletOpen, warmPlaying, warmSpotify } from './booklet.js';
 import { setLookLyrics, showLookSongs, followLookLyrics } from './look-lyrics.js';
 import { needsRoman, prepareRoman, romanOn, setRomanOn, backingText } from './romanize.js';
 import { VuMeters } from './vu-meters.js';
@@ -274,10 +274,27 @@ function pulseClass(node, cls) {
 
 // ---- Details cache (queue labels & durations) ----------------------------------------------------------------
 
+// A Spotify song in the queue that nothing has said what it is of (put in by a path alone): asked of Spotify, a few
+// together a moment later, and made known as a disc's song would be.
+const spotifyAsked = new Set();
+let spotifyNamesTimer = null;
+function askSpotifyNames(p) {
+  if (spotifyAsked.has(p)) return;
+  spotifyAsked.add(p);
+  clearTimeout(spotifyNamesTimer);
+  spotifyNamesTimer = setTimeout(async () => {
+    const uris = [...spotifyAsked].filter((u) => !detailsCache.has(u) && !spotifyTracks.has(u));
+    if (!uris.length) return;
+    const r = await cdp.spotifyTracksInfo(uris).catch(() => null);
+    if (r && r.tracks) { for (const track of r.tracks) if (!spotifyTracks.has(track.uri)) knowSpotifyTracks([track], track.album || 'Spotify'); scheduleQueueRender(); }
+    setTimeout(() => { for (const u of uris) if (!detailsCache.has(u)) spotifyAsked.delete(u); }, 60000); // (not had: asked again a minute on)
+  }, 150);
+}
 const detailQueue = [];
 let detailWorkers = 0;
 function ensureDetails(p) {
   if (detailsCache.has(p) || detailQueue.includes(p)) return;
+  if (isSpotifyUri(p)) { askSpotifyNames(p); return; }
   detailQueue.push(p);
   pumpDetails();
 }
@@ -285,8 +302,8 @@ function pumpDetails() {
   while (detailWorkers < 4 && detailQueue.length) {
     const p = detailQueue.shift();
     detailWorkers++;
-    cdp.details(p, { withCover: false }).then((d) => { detailsCache.set(p, d); scheduleQueueRender(); panels.refreshHistoryIfOpen(app); })
-      .catch(() => detailsCache.set(p, { title: displayName(p), artist: null, duration: 0 }))
+    cdp.details(p, { withCover: false }).then((d) => { if (!detailsCache.has(p)) detailsCache.set(p, d); scheduleQueueRender(); panels.refreshHistoryIfOpen(app); })
+      .catch(() => { if (!detailsCache.has(p)) detailsCache.set(p, { title: displayName(p), artist: null, duration: 0 }); })
       .finally(() => { detailWorkers--; pumpDetails(); });
   }
 }
@@ -945,6 +962,7 @@ function resetToIdle(message) {
   showInPlayer(null);
   setTrackTitle(t('Pick a track to get started.'), null);
   $('track-source').textContent = t('YOUR MUSIC LIBRARY');
+  $('like-button').hidden = true;
   document.title = 'CDPlayer';
   deckDisplay.setTime(0, 0);
   progress.setValue(0); progress.setWaveform(null);
@@ -1028,6 +1046,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   showSoundCheck(null); // until it's known (and hidden for Spotify and CDs)
   showInPlayer(path);
   $('tags-button').hidden = isStream(path); // (no file to write tags to)
+  if (!isSpotifyUri(path)) $('like-button').hidden = true;
   if (isSpotifyUri(path)) { progress.setWaveform(null); await loadSpotify(path, token, { autoPlay, startAt }); return; }
   progress.setWaveform(null);
   const detailsPromise = cdp.details(path, { withCover: true }).catch(() => null);
@@ -1123,6 +1142,7 @@ async function load(path, { autoPlay = true, allowCrossfade = false, startAt = 0
   if (looksOnlineFor(state.lyrics) && details.title && !details.unnamed) lookUpLyrics(details, token);
   lyricsChanged();
   renderQueue();
+  warmSoon(token, 2000);
   // Waveform last — it decodes the whole file, so it shouldn't hold up anything the user sees first. (Not for a cue
   // track: that would mean decoding the entire album file for one song's outline. Nor for a CD track: it would read
   // the whole track off the disc first.)
@@ -1647,6 +1667,7 @@ async function toggle() {
   if (jog) { jog.wasPlaying = !jog.wasPlaying; setPlaying(jog.wasPlaying); return; } // plays on (or not) once the disc is let go
   if (discEnded && !engine.playing && state.queue.length) { const first = state.queue.findIndex((_, i) => !isSkipped(i)); goTo(first < 0 ? 0 : first); return; }
   if (engine.playing) { engine.pause(); setPlaying(false); }
+  else if (spotifyActive() && spotifySession && spotifySession.lost) await bringBack();
   else { await engine.play(); setPlaying(engine.playing); } // a Spotify track can be refused
 }
 // The changer stands on queue position `index` and plays it (the tray turns when it's on another disc).
@@ -1823,6 +1844,7 @@ function setTransition(mode) {
 }
 function trackFinished(deck) {
   if (deck !== engine.deck) return;
+  if (spotifyJump !== null && spotifyActive()) { const j = spotifyJump; spotifyJump = null; notePlayed(); goTo(j); return; } // (the phone picked it)
   const sleeps = sleepsAfterThis();
   notePlayed();
   if (sleeps) { engine.pause(); setPlaying(false); armSleepAtEnd(false); setStatus(t('END OF DISC · SLEEP WELL')); panels.refreshSettingsIfOpen(app); return; }
@@ -2009,6 +2031,7 @@ function spotify() {
     getToken: () => cdp.spotifyAccessToken(),
     startPlayback: (request) => cdp.spotifyPlay(request),
     drmReady: () => cdp.spotifyDrmReady(),
+    knows: (uri) => state.queue.includes(uri),
     log: (text) => cdp.spotifyLog(text),
     volume: state.volume / 100,
   });
@@ -2017,14 +2040,96 @@ function spotify() {
 }
 const spotifyActive = () => isSpotifyUri(state.loadedPath);
 const spotifyDiscIn = () => state.queue.some(isSpotifyUri);
+// The phone (Spotify Connect) at the controls: CDPlayer paused or played there, a song gone back to or picked there
+// (the queue goes there when this one ends — not on to the next), the music taken there, and sent back here.
+let spotifyJump = null;
 function onSpotifyEvent(e) {
   if (!spotifyActive()) return;
-  if (e.type === 'lost') { setPlaying(false); setStatus(t('PLAYING ON ANOTHER DEVICE · PRESS PLAY TO BRING IT BACK')); return; }
+  if (e.type === 'paused') { setPlaying(!e.paused); setStatus(stateStatus()); return; }
+  if (e.type === 'trackchange') {
+    const j = state.queue.indexOf(e.to);
+    spotifyJump = e.from === state.loadedPath && j >= 0 && j !== upcomingIndex() ? j : null;
+    return;
+  }
+  if (e.type === 'returned') { spotifyReturned(e); return; }
+  if (e.type === 'foreign') { spotifyForeign(e); return; }
+  if (e.type === 'lost') { setPlaying(false); setStatus(t('PLAYING ON ANOTHER DEVICE · PRESS PLAY TO BRING IT BACK')); watchElsewhere(); return; }
   if (e.type !== 'error') return;
   spotifyTrouble = `${SPOTIFY_ERRORS[e.reason] || SPOTIFY_ERRORS.playback}${e.detail ? ` · ${e.detail}` : ''}`; // the detail is Spotify's own words
   if (e.reason !== 'playback') { engine.pause(); setPlaying(false); }
   setStatus(spotifyTrouble);
 }
+// Sent back here from the phone: the player goes to the song it plays (on this disc), there in it; a song that isn't
+// on the disc goes in as a disc of its own.
+async function spotifyReturned({ uri, positionMs, paused }) {
+  const j = state.queue.indexOf(uri);
+  if (j >= 0) {
+    if (j !== state.index) goTo(j, { autoPlay: !paused, startAt: positionMs / 1000 });
+    else { setPlaying(!paused); spotifyResync(); }
+    setStatus(t('BACK FROM YOUR PHONE'));
+    return;
+  }
+  const s = await cdp.spotifyPlayerState().catch(() => null);
+  if (!s || !s.track || s.track.uri !== uri) return;
+  playSpotifyDisc([{ uri, title: s.track.title, artist: s.track.artist, album: s.track.album, durationMs: s.track.durationMs, cover: s.track.cover, credits: {} }], s.track.album || 'Spotify');
+}
+// Another album or playlist put on from the phone, playing here: it goes in as the disc — at its song and moment,
+// playing or not, as the phone has it (Spotify plays it already: nothing's asked of it). Its whole track list when
+// Spotify gives it (a playlist you only follow, an artist's songs: just the song).
+async function spotifyForeign({ context, track, paused }) {
+  const [, kind, id] = context.split(':');
+  const which = kind === 'album' || kind === 'playlist' ? { kind, id } : /:collection$/.test(context) ? { kind: 'liked' } : null;
+  const r = which ? await cdp.spotifyDiscTracks(which).catch(() => null) : null;
+  const tracks = r && r.tracks && r.tracks.some((x) => x.uri === track.uri) ? r.tracks : [{ ...track, credits: {} }];
+  if (!spotifySession || spotifySession.currentUri !== track.uri) return; // moved on meanwhile
+  const name = kind === 'album' ? track.album : kind === 'playlist' ? t('SPOTIFY PLAYLIST') : which ? t('♥ LIKED SONGS') : track.album;
+  knowSpotifyTracks(tracks, name || 'Spotify');
+  const paths = tracks.map((x) => x.uri), start = Math.max(0, paths.indexOf(track.uri));
+  spotifyJump = null;
+  if (!state.changerMode) {
+    state.nextUp = null; state.queue = paths; state.index = start; upcomingCache = null;
+    disc.discPresent = true;
+  } else {
+    const placed = await loadDisc(await discOf(paths, { kind: 'spotify', title: name }), paths, { play: true, startPlayback: false, remote: true });
+    if (placed.full || placed.cancelled) return;
+    const run = state.changer.slots[placed.slot];
+    apply(changer.moveTo(ch(), run.start + start));
+  }
+  renderQueue(); saveQueueSoon();
+  await load(state.queue[state.index], { autoPlay: !paused });
+  setStatus(t('PUT ON FROM YOUR PHONE'));
+}
+// While the music plays on another device: what it is and where, in the status line, every few seconds.
+let elsewhereTimer = null;
+function watchElsewhere() {
+  clearTimeout(elsewhereTimer);
+  elsewhereTimer = setTimeout(async () => {
+    if (!spotifyActive() || !spotifySession || !spotifySession.lost) return;
+    const s = await cdp.spotifyPlayerState().catch(() => null);
+    if (!spotifyActive() || !spotifySession.lost) return;
+    if (s && s.device && s.track) setStatus(t('ON {device} · {song} · PRESS PLAY TO BRING IT BACK', { device: s.device.name.toUpperCase(), song: `${s.track.title}${s.track.artist ? ` — ${s.track.artist}` : ''}` }));
+    watchElsewhere();
+  }, 3000);
+}
+/** PLAY ON…: the Spotify devices there are, this computer among them; picking one moves the music there. */
+async function spotifyDevices() { return cdp.spotifyDevices().catch(() => ({ error: 'OFFLINE' })); }
+async function playOnDevice(device) {
+  const here = spotifySession && device.id === spotifySession.deviceId;
+  if (here) { if (spotifySession.lost) { await bringBack(); } return { ok: true }; }
+  if (spotifyActive() && engine.playing) engine.pause(); // (Spotify moves it; ours mustn't send it back)
+  const r = await cdp.spotifyTransfer({ deviceId: device.id, play: true }).catch(() => ({ error: 'OFFLINE' }));
+  if (!r.error) setStatus(t('PLAYING ON {device}', { device: device.name.toUpperCase() }));
+  return r;
+}
+// PLAY while it plays elsewhere: back here at the song and the moment it's at there (when that song's on this disc).
+async function bringBack() {
+  const s = await cdp.spotifyPlayerState().catch(() => null);
+  const j = s && s.track ? state.queue.indexOf(s.track.uri) : -1;
+  if (j >= 0 && j !== state.index) { goTo(j, { autoPlay: true, startAt: s.positionMs / 1000 }); return; }
+  if (j === state.index && s) engine.seek(s.positionMs / 1000);
+  await engine.play(); setPlaying(engine.playing);
+}
+
 /** Tells Spotify the order after the current track again, after shuffle, repeat or the queue changed. */
 function spotifyResync() {
   if (spotifyActive() && spotifySession) spotifySession.resync(spotifyUpcoming(state.queue, state.index, modes(), discEnd()));
@@ -2040,19 +2145,54 @@ function stopSpotify() {
   }
   spotifyTracks.clear();
 }
-async function playSpotifyDisc(tracks, name) {
-  if (!tracks.length) return;
+/** Spotify songs made known to the player (what each is, its cover, what its album says), to be put in by path. */
+function knowSpotifyTracks(tracks, name) {
   for (const track of tracks) {
     // The same song on two discs in the changer: what the album's own disc said of it isn't lost to a playlist's.
     const known = spotifyTracks.get(track.uri), credits = { ...((known && known.credits) || {}), ...(track.credits || {}) };
     spotifyTracks.set(track.uri, { ...track, credits, disc: name || null });
     detailsCache.set(track.uri, { title: track.title, artist: track.artist, album: track.album, duration: track.durationMs / 1000, credits });
   }
+}
+async function playSpotifyDisc(tracks, name, { start = 0 } = {}) {
+  if (!tracks.length) return;
+  knowSpotifyTracks(tracks, name);
+  warmSpotify(app, tracks.map((track) => track.uri)).catch(() => {}); // (while the tray comes out and goes in)
   if (isShelfOpen()) closeShelf();
-  await insertDisc(tracks.map((track) => track.uri), { status: t('{disc} ON THE TRAY', { disc: String(name || 'SPOTIFY').toUpperCase() }), kind: 'spotify', title: name || 'Spotify' });
+  await insertDisc(tracks.map((track) => track.uri), { start, status: t('{disc} ON THE TRAY', { disc: String(name || 'SPOTIFY').toUpperCase() }), kind: 'spotify', title: name || 'Spotify' });
+}
+// ♥ beside the Spotify song playing: saved in your Spotify library (Liked Songs) or not — said by Spotify, so a song
+// liked on the phone shows ♥ here; clicked, it's liked or unliked there too.
+const liked = new Map(); // uri -> bool, as last said
+async function showLike(path) {
+  const b = $('like-button');
+  b.hidden = !isSpotifyUri(path);
+  if (b.hidden) return;
+  const paint = () => { const on = !!liked.get(path); b.textContent = on ? '♥' : '♡'; b.classList.toggle('on', on); b.title = on ? t('In your Liked Songs on Spotify — click to take it out') : t('Add to your Liked Songs on Spotify'); };
+  paint();
+  b.onclick = async () => {
+    const on = !liked.get(path);
+    liked.set(path, on); paint();
+    const r = await cdp.spotifySetSaved({ uris: [path], on }).catch(() => ({ error: 'OFFLINE' }));
+    if (r.error) { liked.set(path, !on); if (state.loadedPath === path) paint(); setStatus(r.error === 'SCOPE' ? t('CONNECT SPOTIFY AGAIN (SPOTIFY PANEL) TO SAVE TO YOUR LIBRARY') : t("COULDN'T REACH SPOTIFY")); return; }
+    setStatus(on ? t('ADDED TO YOUR LIKED SONGS') : t('TAKEN OUT OF YOUR LIKED SONGS'));
+  };
+  const r = await cdp.spotifySavedIn([path]).catch(() => null);
+  if (r && r.saved && state.loadedPath === path) { liked.set(path, r.saved[0]); paint(); }
+}
+
+// The booklet's looked up ahead of being opened (booklet-warm.js): once the song has stayed in a moment — not each one
+// skipped past. (A Spotify album's, all of it, as its disc goes in: playSpotifyDisc.)
+function warmSoon(token, ms) {
+  setTimeout(() => { if (token === state.loadToken && !isStream(state.loadedPath)) warmPlaying(app).catch(() => {}); }, ms);
 }
 async function loadSpotify(path, token, { autoPlay, startAt }) {
-  const track = spotifyTracks.get(path);
+  let track = spotifyTracks.get(path);
+  if (!track) { // (put in by its path alone — the phone remote, a queue from before): what it is, asked of Spotify
+    const r = await cdp.spotifyTracksInfo([path]).catch(() => null);
+    if (token !== state.loadToken) return;
+    if (r && r.tracks && r.tracks[0]) { knowSpotifyTracks(r.tracks, r.tracks[0].album || 'Spotify'); track = spotifyTracks.get(path); }
+  }
   if (!track) { engine.stop(); setPlaying(false); setStatus(t('THAT SPOTIFY DISC IS NO LONGER IN')); return; }
   $('tags-button').hidden = true;
   const element = new SpotifyTrackElement(spotify(), path, track.durationMs, () => spotifyUpcoming(state.queue, state.index, modes(), discEnd()));
@@ -2076,9 +2216,11 @@ async function loadSpotify(path, token, { autoPlay, startAt }) {
   updateQualityBadge();
   fadeInNowPlaying();
   $('track-source').textContent = `SPOTIFY${track.album ? ` · ${track.album.toUpperCase()}` : ''}`;
+  showLike(path);
   state.lyrics = null; state.lyricsSource = null;
   lyricsChanged();
   renderQueue(); // (once more, with this song's details: the album's heading over it)
+  warmSoon(token, 0);
   if (details.title) lookUpLyrics(details, token);
   details.cover = track.cover ? await cdp.spotifyCover(track.cover).catch(() => null) : null;
   if (token !== state.loadToken) return;
@@ -3059,6 +3201,10 @@ async function remoteCommand(cmd) {
 // An album from the phone's shelf (main has turned its key into the shelf album, paths and all), as the case's buttons
 // do it on the desktop: PLAY puts it in and plays (from `track`), PLAY NEXT and ADD as theirs; then its shrink-wrap comes off.
 async function remoteAlbum({ how, track = 0, slot, album }) {
+  if (album.spotify) { // saved on Spotify (on the shelf beside the files): its songs, and what each is, from Spotify
+    const r = await cdp.spotifyDiscTracks({ kind: 'album', id: album.spotify.id }).catch(() => null);
+    if (r && r.tracks) { knowSpotifyTracks(r.tracks, album.title); album = { ...album, paths: r.tracks.map((x) => x.uri) }; }
+  }
   const item = { id: album.id, kind: 'album', title: album.title, artist: album.artist }; // the shelf's own disc (discOfAlbum)
   let r;
   if (how === 'play') r = await remoteInsert(album.paths, track, item, slot);
@@ -3701,7 +3847,7 @@ function stepLookInset(dt) {
 }
 
 let last = performance.now(), idleCheck = 0, windowShown = true;
-cdp.onWindowShown((shown) => { windowShown = shown; if (shown) wakeFrames(); });
+cdp.onWindowShown((shown) => { windowShown = shown; document.body.classList.toggle('window-hidden', !shown); if (shown) wakeFrames(); }); // (styles.css: the GRADIENT backdrop stops too)
 // While you're in another app, the window only needs to look alive: drawing it at 30 frames a second instead of 60
 // roughly halves what the spinning disc and visualizer cost. Watched — CDPlayer in front, or CD View, Visualizer Mode
 // or Karaoke on screen — it stays at full rate.
@@ -3817,7 +3963,7 @@ export const app = {
   coverSource: () => state.coverFrom || null,
   switchTheme, previewTheme, restoreTheme, shownTheme: () => shownTheme, saveTheme, importTheme, pasteThemeCode, exportTheme, copyThemeCode, deleteTheme,
   copyReport, noteScrobbling, setQuality, setSoundCheck, setMono, setSpatial, setSpatialAmount, setWaveform, setAmbient, setRipFormat, setAnimations, setCrossfade, setTransition, setEq, armSleepTimer, armSleepAtEnd, setDisplay, setLook, setMiniMode, setDiscord, setDiscNoise, setDiscWear, setDiscShine, setTaskbarDisc, setOutput, listOutputs, currentOutputName,
-  insertDisc, playSpotifyDisc, spotifyActive, spotifyDiscName: (p) => (spotifyTracks.get(p) || {}).disc || 'Spotify', stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
+  insertDisc, playSpotifyDisc, knowSpotifyTracks, spotifyDevices, playOnDevice, spotifyActive, spotifyDiscName: (p) => (spotifyTracks.get(p) || {}).disc || 'Spotify', stopSpotify, saveTags, setSaveFound, setLyricsOffset, lyricsPosition, seekToLyric,
   setShelfSort: (sort) => { state.shelfSort = sort; saveSettingsSoon(); },
   menu: (anchor, items, opts) => panels.menu(anchor, items, opts),
   choosePressingFor: (album, anchor, onChosen) => choosePressing(album, anchor, null, onChosen),

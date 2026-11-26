@@ -111,7 +111,7 @@ function albumCommand(cmd, album) {
   const value = { how };
   if (track !== undefined) value.track = track;
   if (slot !== undefined) value.slot = slot;
-  value.album = { id: album.id, title: album.title, artist: album.artist, year: album.year, paths: album.tracks.map((t) => t.path) };
+  value.album = { id: album.id, title: album.title, artist: album.artist, year: album.year, paths: album.tracks.map((t) => t.path), ...(album.spotify ? { spotify: { id: album.spotify.id } } : {}) };
   return { action: 'album', value, rev: cmd.rev };
 }
 

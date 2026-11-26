@@ -405,3 +405,67 @@ test('no answer from Spotify says why, when the network told us', async () => {
   await s2.play(A);
   assert.deepStrictEqual(ev2.at(-1), { type: 'error', reason: 'offline', detail: 'ERR_PROXY_CONNECTION_FAILED' });
 });
+
+test('the phone pausing and playing CDPlayer: said, so the player shows it; our own pause is not said back', async () => {
+  const { session, events } = setup();
+  const el = new SpotifyTrackElement(session, A, 200000, () => [B]);
+  await el.play();
+  session.onState(st(A, 1000));
+  events.length = 0;
+  session.onState(st(A, 5000, { paused: true }));
+  assert.deepStrictEqual(events, [{ type: 'paused', paused: true }]);
+  session.onState(st(A, 5000));
+  assert.deepStrictEqual(events.at(-1), { type: 'paused', paused: false });
+  events.length = 0;
+  el.pause();
+  session.onState(st(A, 5200, { paused: true }));
+  assert.deepStrictEqual(events, []);
+});
+
+test('the phone going back a song: the move is said with where to (the queue follows it, not on to the next)', async () => {
+  const { session, events } = setup();
+  const el = new SpotifyTrackElement(session, B, 200000, () => [C]);
+  await el.play();
+  session.onState(st(B, 1000));
+  session.sent = [A, B, C]; session.sentIndex = 1; // (the disc as Spotify was given it, from A)
+  const seen = ended(el);
+  session.onState(st(A, 0));
+  assert.deepStrictEqual(events.at(-1), { type: 'trackchange', from: B, to: A });
+  assert.deepStrictEqual(seen, ['ended']);
+});
+
+test('the music sent back from the phone: said with the song and where it is, not taken for the next of the disc', async () => {
+  const { session, events } = setup();
+  const el = new SpotifyTrackElement(session, A, 200000, () => [B, C]);
+  await el.play();
+  session.onState(st(A, 1000));
+  session.onState(null); // to the phone
+  assert.strictEqual(events.at(-1).type, 'lost');
+  session.onState(st(C, 42000)); // back, playing C
+  assert.deepStrictEqual(events.at(-1), { type: 'returned', uri: C, positionMs: 42000, paused: false });
+  assert.strictEqual(session.currentUri, C);
+  assert.strictEqual(session.lost, false);
+});
+
+test('the phone putting on another album here: said with what it is, and the songs of it that follow are its own, not taken for this disc', async () => {
+  const clock = { t: 1000 };
+  const disc = new Set([A, B]);
+  const session = new SpotifySession({ loadPlayer: async () => FakePlayer, getToken: async () => 'tok', startPlayback: async () => ({ ok: true, status: 204 }), now: () => clock.t, wait: async () => {}, knows: (u) => disc.has(u) });
+  const events = [];
+  session.on((e) => events.push(e));
+  const el = new SpotifyTrackElement(session, A, 200000, () => [B]);
+  await el.play();
+  session.onState(st(A, 1000));
+  const X = 'spotify:track:X', Y = 'spotify:track:Y';
+  const other = (uri, position) => ({ ...st(uri, position), context: { uri: 'spotify:album:other' },
+    track_window: { current_track: { uri, name: 'Song X', duration_ms: 180000, artists: [{ name: 'Someone' }], album: { uri: 'spotify:album:other', name: 'Other', images: [{ url: 'small', width: 64 }, { url: 'big', width: 640 }] } } } });
+  const seen = ended(el);
+  session.onState(other(X, 3000));
+  assert.deepStrictEqual(events.at(-1), { type: 'foreign', context: 'spotify:album:other', positionMs: 3000, paused: false,
+    track: { uri: X, title: 'Song X', artist: 'Someone', album: 'Other', durationMs: 180000, cover: 'big' } });
+  assert.deepStrictEqual(seen, [], 'this disc\'s song is not ended into the next of it');
+  assert.strictEqual(session.currentUri, X);
+  disc.add(X); disc.add(Y); // (the player put the album in)
+  session.onState(other(Y, 0));
+  assert.deepStrictEqual(events.at(-1), { type: 'trackchange', from: X, to: Y });
+});

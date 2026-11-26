@@ -16,7 +16,7 @@ const TIMEOUT_MS = 8000;
 
 async function fetchJson(url, { timeout = TIMEOUT_MS, ...init } = {}) {
   const res = await httpFetch(url, { ...init, headers: { 'User-Agent': USER_AGENT, ...(init.headers || {}) }, signal: AbortSignal.timeout(timeout) });
-  if (!res.ok) { const err = new Error(`HTTP ${res.status}`); err.status = res.status; throw err; }
+  if (!res.ok) { const err = new Error(`HTTP ${res.status}`); err.status = res.status; err.retryAfter = Number(res.headers && res.headers.get('retry-after')) || null; throw err; }
   return res.json();
 }
 async function fetchImageDataUrl(url, timeout = TIMEOUT_MS) {
@@ -86,20 +86,42 @@ function sameLyricsSong(hit, artist, title) {
 // stores don't carry. MusicBrainz asks for a User-Agent that says who is calling and at most one request a second.
 const MB_USER_AGENT = 'CDPlayer/2 ( https://github.com/Kizarov3/CDPlayer )';
 let mbNextSlot = 0;
-// A 503 is MusicBrainz saying "slow down" (other requests from the same address count too), not "no": asked again,
-// after a longer pause each time, before giving up.
-async function mbFetch(pathAndQuery, tries = 4) {
+// A 503 is MusicBrainz saying "slow down" (other requests from the same address count too) or that it's busy with
+// everyone's, not "no": asked again before giving up — when it says to (Retry-After, a second as a rule), else after a
+// longer pause each time. Not to the second: what it lets in is counted in spells of two seconds, and asking again 2, 4
+// and 8 s on came at the same moment of each, when it had let in all it would.
+const MB_TRIES = 4, MB_TRIES_SOON = 8;
+async function mbFetch(pathAndQuery, tried = 0) {
   const wait = mbNextSlot - Date.now();
   mbNextSlot = Math.max(Date.now(), mbNextSlot) + 1100;
   if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
   try {
     return await fetchJson(`https://musicbrainz.org/ws/2/${pathAndQuery}`, { headers: { 'User-Agent': MB_USER_AGENT } });
   } catch (e) {
-    if (e.status !== 503 || tries <= 1) throw e;
-    mbNextSlot = Math.max(mbNextSlot, Date.now() + 1000 * 2 ** (5 - tries)); // (2, 4, 8 s)
-    return mbFetch(pathAndQuery, tries - 1);
+    if (e.status !== 503 || tried + 1 >= (e.retryAfter ? MB_TRIES_SOON : MB_TRIES)) throw e;
+    const pause = e.retryAfter ? Math.min(e.retryAfter, 10) * 1000 + 100 + Math.random() * 500 : 1000 * 2 ** (tried + 1);
+    mbNextSlot = Math.max(mbNextSlot, Date.now() + pause);
+    return mbFetch(pathAndQuery, tried + 1);
   }
 }
+// The same question asked by several at once (a disc going in: its photo, its booklet's scans and its story each want
+// the album found) goes out once, and its answer's kept a while.
+const ONCE_MS = 10 * 60 * 1000;
+function onceFor(ask) {
+  const kept = new Map();
+  return (what) => {
+    const had = kept.get(what);
+    if (had && had.until > Date.now()) return had.answer;
+    const answer = ask(what);
+    for (const [k, v] of kept) if (v.until <= Date.now()) kept.delete(k);
+    kept.set(what, { answer, until: Date.now() + ONCE_MS });
+    answer.catch(() => kept.delete(what));
+    return answer;
+  };
+}
+const mbOnce = onceFor((pathAndQuery) => mbFetch(pathAndQuery));
+/** What the Cover Art Archive has of a release. */
+const caaIndex = onceFor((id) => fetchJson(`https://coverartarchive.org/release/${id}`, { timeout: 20000 }));
 const musicBrainz = (entity, query) => mbFetch(`${entity}?query=${encodeURIComponent(query)}&fmt=json&limit=25`);
 const musicBrainzGet = (what, inc) => mbFetch(`${what}?inc=${inc}&fmt=json`);
 const phrase = (text) => `"${String(text).replace(/[\\"]/g, '\\$&')}"`;
@@ -111,7 +133,7 @@ const MB_TYPE_RANK = { Album: 0, EP: 1, Single: 2 };
 // artist — so a song gets its album's cover, not a compilation's or a live bootleg's. → { id, title } or null.
 /** The artist's release group of this name (the album itself, not a remix, live or fan-made one) → { id, title } | null. */
 async function releaseGroupNamed(artist, album) {
-  const json = await musicBrainz('release-group', `releasegroup:${phrase(album)} AND artist:${phrase(artist)}`);
+  const json = await mbOnce(`release-group?query=${encodeURIComponent(`releasegroup:${phrase(album)} AND artist:${phrase(artist)}`)}&fmt=json&limit=25`);
   // (the search may put one of those first: no secondary type before one, an album before an EP, then the most releases)
   const groups = (json['release-groups'] || []).filter((g) => g.score >= 90 && sameSong({ title: g.title, artist: credited(g) }, artist, album));
   const rank = (g) => [(g['secondary-types'] || []).length ? 1 : 0, MB_TYPE_RANK[g['primary-type']] ?? 3, -(g.count || 0)];
@@ -306,7 +328,7 @@ async function findDiscArt({ artist, album, releaseId, found = null }) {
   let failed = false; // (a lookup that went wrong, not one that found nothing: tried again another time, not "none")
   const lost = (e) => { if (!e || e.status !== 404) failed = true; return null; };
   if (group) {
-    const json = await mbFetch(`release?release-group=${group.id}&inc=media&fmt=json&limit=100`).catch(lost);
+    const json = await mbOnce(`release?release-group=${group.id}&inc=media&fmt=json&limit=100`).catch(lost);
     const isCd = (r) => (r.media || []).some((m) => /\bCD\b/.test(m.format || '') && m.format !== 'CD-R');
     const rank = (r) => [isCd(r) ? 0 : 1, (r.media || []).length > 1 ? 1 : 0, -((r['cover-art-archive'] || {}).count || 0)]; // (a one-disc edition's photo shows one disc, not a CD and its DVD side by side)
     ((json && json.releases) || []).filter((r) => ((r['cover-art-archive'] || {}).count || 0) > 1)
@@ -315,7 +337,7 @@ async function findDiscArt({ artist, album, releaseId, found = null }) {
   // The archive takes seconds to answer for each release (and now and then fails): all of them asked at once, the
   // biggest photo of the disc taken (disc-photo.js).
   const discOf = async (id) => {
-    const index = await fetchJson(`https://coverartarchive.org/release/${id}`, { timeout: 20000 }).catch(lost);
+    const index = await caaIndex(id).catch(lost);
     const images = (index && index.images) || [];
     const disc = images.find((i) => (i.types || []).length === 1 && i.types[0] === 'Medium') || images.find((i) => (i.types || []).includes('Medium'));
     if (!disc) throw new Error('no disc');
@@ -357,10 +379,10 @@ async function findBookletScans({ artist, album, releaseId }) {
   if (!group && artist && bare !== album) group = await releaseGroupNamed(artist, bare);
   let failed = false;
   const lost = (e) => { if (!e || e.status !== 404) failed = true; return null; };
-  const json = group ? await mbFetch(`release?release-group=${group.id}&inc=media&fmt=json&limit=100`).catch(lost) : null;
+  const json = group ? await mbOnce(`release?release-group=${group.id}&inc=media&fmt=json&limit=100`).catch(lost) : null;
   const ids = scans.scanReleases((json && json.releases) || [], releaseId || null);
   const found = await Promise.all(ids.map(async (id) => {
-    const index = await fetchJson(`https://coverartarchive.org/release/${id}`, { timeout: 20000 }).catch(lost);
+    const index = await caaIndex(id).catch(lost);
     return { id, picks: scans.scanPicks(index && index.images) };
   }));
   const picks = scans.bestScans(found, releaseId || null);
@@ -535,6 +557,48 @@ async function unisonLyrics({ artist, title, album, duration }) {
 
 const wordTimed = (lrc) => /<\d{1,3}:\d{2}/.test(lrc);
 
+// lrclib.net lets in some twenty requests at once, then two a second; a 429 is "in a moment" (Retry-After: a second),
+// not "no lyrics" — for everyone asking, as they're counted together.
+let lrclibFrom = 0;
+async function lrclib(pathAndQuery, tries = 5) {
+  const wait = lrclibFrom - Date.now();
+  if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait + Math.random() * 400)); // (not all at once again)
+  try {
+    return await fetchJson(`https://lrclib.net/api/${pathAndQuery}`);
+  } catch (e) {
+    if (e.status !== 429 || tries <= 1) throw e;
+    lrclibFrom = Math.max(lrclibFrom, Date.now() + Math.min(e.retryAfter || 1, 5) * 1000);
+    return lrclib(pathAndQuery, tries - 1);
+  }
+}
+// Its exact entry for the name as given (with album and length). → { lyrics, name, source } or null.
+async function lrclibExact(first, { album, duration }) {
+  if (!first.artist) return null;
+  let q = `get?track_name=${encodeURIComponent(first.title)}&artist_name=${encodeURIComponent(first.artist)}`;
+  if (album) q += `&album_name=${encodeURIComponent(album)}`;
+  if (duration > 0) q += `&duration=${Math.round(duration)}`;
+  const lyrics = await lrclib(q).then((json) => pickLrclib(json, { ...first, duration })).catch(() => null); // (404 = no exact match)
+  return lyrics ? { lyrics, name: first, source: 'lrclib.net' } : null;
+}
+// A search of it for every guess. → { lyrics, name, source } or null.
+async function lrclibSearch(variants, { duration }) {
+  for (const v of variants) {
+    const q = `search?track_name=${encodeURIComponent(v.title)}${v.artist ? `&artist_name=${encodeURIComponent(v.artist)}` : ''}`;
+    const lyrics = await lrclib(q).then((json) => pickLrclib(json, { ...v, duration })).catch(() => null);
+    if (lyrics) return { lyrics, name: v, source: 'lrclib.net' };
+  }
+  return null;
+}
+/**
+ * A booklet's: lrclib's when it has them — it answers in a tenth of a second, and print has no use for word timing —
+ * by one search a song (an album's are asked for all together); else findLyrics'. → { lyrics, source } or null.
+ */
+async function findBookletLyrics(q) {
+  const variants = nameVariants(q);
+  const got = (variants.length ? await lrclibSearch(variants, q) : null) || await findLyrics(q);
+  return got ? { lyrics: got.lyrics, source: got.source } : null;
+}
+
 /**
  * Lyrics for { title, artist, album, duration, guessed }: word-timed first — Karaoke fills them word by word —
  * Unison's (timed by hand, with duets and backing vocals), then NetEase Music's, then Kugou's (checked against
@@ -560,24 +624,7 @@ async function findLyrics({ title, artist, album, duration, guessed }) {
     if (lyrics) return { lyrics, name: v, source: 'NetEase' };
   }
   // lrclib's (timed by the line) — which Kugou's word timing is checked against (else Unison's), as Kugou's versions vary.
-  let lined = null;
-  if (first.artist) {
-    let url = `https://lrclib.net/api/get?track_name=${encodeURIComponent(first.title)}&artist_name=${encodeURIComponent(first.artist)}`;
-    if (album) url += `&album_name=${encodeURIComponent(album)}`;
-    if (duration > 0) url += `&duration=${Math.round(duration)}`;
-    try {
-      const lyrics = pickLrclib(await fetchJson(url), { ...first, duration });
-      if (lyrics) lined = { lyrics, name: first, source: 'lrclib.net' };
-    } catch { /* 404 = no exact match; search below */ }
-  }
-  for (const v of lined ? [] : variants) {
-    try {
-      let url = `https://lrclib.net/api/search?track_name=${encodeURIComponent(v.title)}`;
-      if (v.artist) url += `&artist_name=${encodeURIComponent(v.artist)}`;
-      const lyrics = pickLrclib(await fetchJson(url), { ...v, duration });
-      if (lyrics) { lined = { lyrics, name: v, source: 'lrclib.net' }; break; }
-    } catch { /* try the next guess */ }
-  }
+  const lined = await lrclibExact(first, { album, duration }) || await lrclibSearch(variants, { duration });
   const { kugouLyrics } = require('./kugou');
   for (const v of variants.filter((x) => x.artist)) {
     const lyrics = await kugouLyrics({ ...v, duration, reference: (lined || unisonLines || {}).lyrics });
@@ -587,10 +634,10 @@ async function findLyrics({ title, artist, album, duration, guessed }) {
   if (lined) return lined;
   if (unisonLines) return unisonLines;
   try {
-    const lyrics = pickLrclib(await fetchJson(`https://lrclib.net/api/search?q=${encodeURIComponent(searchText(first))}`), { ...first, duration });
+    const lyrics = pickLrclib(await lrclib(`search?q=${encodeURIComponent(searchText(first))}`), { ...first, duration });
     if (lyrics) return { lyrics, name: first, source: 'lrclib.net' };
   } catch { /* nothing */ }
   return null;
 }
 
-module.exports = { bareAlbum, shorterTitles, findDiscArt, findBookletScans, fetchJson, musicBrainzAlbum, sameSong, hiddenNameFrom, findHiddenName, findCover, findCoverUrl, findAlbumCover, findAlbumCoverUrl, findLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, wordOverlapRatio, sameLyricsSong };
+module.exports = { bareAlbum, shorterTitles, findDiscArt, findBookletScans, fetchJson, musicBrainzAlbum, sameSong, hiddenNameFrom, findHiddenName, findCover, findCoverUrl, findAlbumCover, findAlbumCoverUrl, findLyrics, findBookletLyrics, lookupTags, pickRecording, coverFromUrl, mbFetch, mbOnce, wordOverlapRatio, sameLyricsSong };

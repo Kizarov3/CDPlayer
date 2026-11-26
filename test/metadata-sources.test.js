@@ -314,3 +314,53 @@ test('MusicBrainz busy (503, its "slow down"): asked again after a pause, not ta
   calls = -10;
   await assert.rejects(mbFetch('recording?query=y&fmt=json'), /HTTP 503/, 'and given up on after a few tries');
 });
+
+test('MusicBrainz says how long it is busy for (Retry-After): asked again then, not seconds later', async () => {
+  const { mbFetch } = require('../src/main/online');
+  let calls = 0;
+  global.fetch = async () => (++calls < 4
+    ? { ok: false, status: 503, headers: new Headers({ 'retry-after': '1' }), json: async () => ({}) }
+    : { ok: true, status: 200, json: async () => ({ ok: calls }) });
+  const start = Date.now();
+  assert.deepStrictEqual(await mbFetch('recording?query=z&fmt=json'), { ok: 4 });
+  assert.ok(Date.now() - start > 3000 && Date.now() - start < 7500, `${Date.now() - start} ms`); // (2 + 4 + 8 s without it)
+});
+
+test('the same question to MusicBrainz, asked by the disc, the scans and the story at once, goes out once', async () => {
+  const { mbOnce } = require('../src/main/online');
+  let calls = 0, ok = false;
+  global.fetch = async () => { calls++; if (!ok) throw new TypeError('fetch failed'); return { ok: true, status: 200, json: async () => ({ calls }) }; };
+  await assert.rejects(mbOnce('release-group?query=once'));
+  ok = true;
+  assert.deepStrictEqual(await Promise.all([mbOnce('release-group?query=once'), mbOnce('release-group?query=once')]), [{ calls: 2 }, { calls: 2 }]);
+  assert.deepStrictEqual(await mbOnce('release-group?query=once'), { calls: 2 });
+});
+
+test("a booklet's words: lrclib's at once (no word timing needed in print), the other sources only without them", async () => {
+  const { findBookletLyrics } = require('../src/main/online');
+  const asked = [];
+  let has = true;
+  global.fetch = async (url) => {
+    asked.push(new URL(url).host);
+    if (has && /lrclib\.net\/api\/search/.test(url)) return { ok: true, status: 200, json: async () => [{ trackName: 'Business', artistName: 'Eminem', duration: 251, syncedLyrics: '[00:01.00]Marshall!' }] };
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+  const song = { artist: 'Eminem', title: 'Business', album: 'The Eminem Show', duration: 251 };
+  assert.deepStrictEqual(await findBookletLyrics(song), { lyrics: '[00:01.00]Marshall!', source: 'lrclib.net' });
+  assert.deepStrictEqual(asked, ['lrclib.net'], 'one request a song: it lets in some twenty at once');
+  has = false; asked.length = 0;
+  assert.strictEqual(await findBookletLyrics(song), null);
+  assert.ok(asked.includes('unison.boidu.dev'));
+});
+
+test('lrclib turning a request away (429: too many at once) is not "no lyrics": asked again when it says', async () => {
+  const { findBookletLyrics } = require('../src/main/online');
+  const asked = [];
+  global.fetch = async (url) => {
+    asked.push(new URL(url).host);
+    if (asked.length < 3) return { ok: false, status: 429, headers: new Headers({ 'retry-after': '1' }), json: async () => ({}) };
+    return { ok: true, status: 200, json: async () => [{ trackName: 'Drips', artistName: 'Eminem', duration: 285, plainLyrics: 'Obie…' }] };
+  };
+  assert.deepStrictEqual(await findBookletLyrics({ artist: 'Eminem', title: 'Drips', duration: 285 }), { lyrics: 'Obie…', source: 'lrclib.net' });
+  assert.deepStrictEqual(asked, ['lrclib.net', 'lrclib.net', 'lrclib.net']);
+});

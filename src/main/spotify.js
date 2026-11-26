@@ -16,7 +16,10 @@ const { t } = require('./i18n');
 
 const REDIRECT_URI = 'http://127.0.0.1:8080/callback';
 const SCOPES = ['streaming', 'user-read-email', 'user-read-private', 'user-library-read', 'user-modify-playback-state',
-  'user-read-playback-state', 'playlist-read-private', 'playlist-read-collaborative'];
+  'user-read-playback-state', 'playlist-read-private', 'playlist-read-collaborative', 'user-library-modify', 'user-read-recently-played'];
+// Asked for since 2.25 (♥ saved to Spotify, RECENT): a sign-in from before still plays — they're asked for again only
+// when one of those is used.
+const LATER_SCOPES = ['user-library-modify', 'user-read-recently-played'];
 const USER_AGENT = 'CDPlayer/2.0';
 const TIMEOUT_MS = 8000;
 // invalid: Spotify stopped honouring the sign-in (revoked, expired) — the panel asks to connect again.
@@ -46,7 +49,10 @@ function writeCredentials(c) {
 function status() {
   const c = credentials();
   const connected = !!c.refreshToken;
-  return { configured: !!(c.clientId && c.clientSecret), connected, reconnectNeeded: connected && (tokens.invalid || !SCOPES.every((s) => c.scopes.includes(s))) };
+  const missing = SCOPES.filter((s) => !c.scopes.includes(s));
+  const out = { configured: !!(c.clientId && c.clientSecret), connected, reconnectNeeded: connected && (tokens.invalid || missing.some((s) => !LATER_SCOPES.includes(s))) };
+  if (connected && !out.reconnectNeeded && missing.length) out.missing = missing;
+  return out;
 }
 /** The Client ID and Secret from the SPOTIFY panel. A different app's sign-in isn't valid for this one: dropped. */
 function saveCredentials({ clientId, clientSecret }) {
@@ -337,13 +343,157 @@ async function playlistTracks(id) {
 /** An album's or playlist's songs, as a disc. A playlist the user only follows comes back empty: 'NOT_SHARED'. */
 async function discTracks({ kind, id }) {
   try {
-    const tracks = kind === 'album' ? await albumTracks(id) : await playlistTracks(id);
+    const tracks = kind === 'liked' ? await likedTracks() : kind === 'album' ? await albumTracks(id) : await playlistTracks(id);
     if (!tracks.length) return { error: kind === 'playlist' ? 'NOT_SHARED' : 'EMPTY' };
     return { tracks };
   } catch (e) {
     if (kind === 'playlist' && (e.status === 403 || e.status === 404)) return { error: 'NOT_SHARED' };
     return asError(e);
   }
+}
+
+// ---- The shelf, Liked Songs, lately played ----------------------------------------------------------------------
+
+const yearOf = (date) => { const y = parseInt(String(date || ''), 10); return y > 0 ? y : null; };
+// A saved album as the shelf has its albums (main/shelf.js groupAlbums): its songs' spotify: links for paths. Spotify
+// sends the first fifty songs with it (a longer one's rest come as it's played: discTracks).
+function shelfAlbum(entry) {
+  const a = entry.album, added = Date.parse(entry.added_at) || null;
+  const tracks = ((a.tracks || {}).items || []).filter((x) => x && x.uri).map((x) => ({
+    path: x.uri, title: x.name, artist: artistNames(x.artists) || artistNames(a.artists), duration: Math.round((x.duration_ms || 0) / 1000), track: x.track_number || null, disc: x.disc_number || 1,
+  }));
+  return {
+    id: `spotify:album:${a.id}`, spotify: { id: a.id, cover: biggest(a.images), total: a.total_tracks || tracks.length }, title: a.name, artist: artistNames(a.artists) || null,
+    year: yearOf(a.release_date), released: a.release_date || null, discs: new Set(tracks.map((x) => x.disc)).size || 1,
+    duration: tracks.reduce((s, x) => s + x.duration, 0), added, arrived: added, tracks,
+  };
+}
+/** Every album saved in the library (up to 2000), as the shelf's albums. */
+async function libraryAlbums() {
+  try {
+    const albums = [];
+    let offset = 0;
+    for (let pages = 0; offset !== null && pages < 40; pages++) {
+      const json = await userApi(`/me/albums?limit=50&offset=${offset}`);
+      albums.push(...(json.items || []).filter((i) => i && i.album && i.album.id).map(shelfAlbum));
+      offset = nextOffset(json);
+    }
+    return { albums };
+  } catch (e) { return asError(e); }
+}
+// Liked Songs: up to 2000 of them, the latest liked first, each with its own album's name and cover.
+async function likedTracks() {
+  const tracks = [];
+  let url = '/me/tracks?limit=50';
+  for (let pages = 0; url && pages < 40; pages++) {
+    const page = await userApi(url);
+    for (const entry of page.items || []) {
+      const song = entry && entry.track;
+      if (!song || song.is_local || !/^spotify:track:/.test(song.uri || '')) continue;
+      tracks.push(discTrack(song, { name: (song.album || {}).name || '', artist: '', cover: biggest((song.album || {}).images), credits: albumCredits(song.album || {}) }));
+    }
+    url = page.next;
+  }
+  return tracks;
+}
+/** The albums of what was played lately (on any device), the latest first, each once. */
+async function recentAlbums() {
+  try {
+    const json = await userApi('/me/player/recently-played?limit=50');
+    const seen = new Set(), items = [];
+    for (const entry of json.items || []) {
+      const a = entry && entry.track && entry.track.album;
+      if (!a || !a.id || seen.has(a.id)) continue;
+      seen.add(a.id);
+      items.push(albumItem(a));
+    }
+    return { items };
+  } catch (e) { return asError(scopeError(e)); }
+}
+
+/** Songs known by their links alone (a queue from before, the phone remote): what each is, one by one (February 2026: no
+ * asking for several at once), four at a time. → { tracks } (those Spotify had). */
+async function tracksInfo(uris) {
+  const tracks = new Array(uris.length).fill(null);
+  let next = 0, failed = null;
+  const worker = async () => {
+    while (next < uris.length && !failed) {
+      const i = next++, id = uris[i].split(':')[2];
+      try {
+        const song = await userApi(`/tracks/${encodeURIComponent(id)}`);
+        if (song && song.uri) tracks[i] = discTrack(song, { name: (song.album || {}).name || '', artist: '', cover: biggest((song.album || {}).images), credits: albumCredits(song.album || {}) });
+      } catch (e) { if (!e.status || e.status === 401 || e.code) failed = e; }
+    }
+  };
+  await Promise.all(Array.from({ length: 4 }, worker));
+  const got = tracks.filter(Boolean);
+  return failed && !got.length ? asError(failed) : { tracks: got };
+}
+
+// ---- ♥: the library, by spotify: links (February 2026: /me/library for tracks and albums alike) -----------------
+
+const LIBRARY_AT_ONCE = 40;
+const scopeError = (e) => e.status === 403 ? new SpotifyError('SCOPE') : e;
+/** Which of `uris` are saved. → { saved: [bool] } */
+async function savedIn(uris) {
+  try {
+    const saved = [];
+    for (let i = 0; i < uris.length; i += LIBRARY_AT_ONCE) {
+      const part = uris.slice(i, i + LIBRARY_AT_ONCE);
+      const json = await userApi(`/me/library/contains?uris=${encodeURIComponent(part.join(','))}`);
+      saved.push(...part.map((_, k) => !!(Array.isArray(json) && json[k])));
+    }
+    return { saved };
+  } catch (e) { return asError(scopeError(e)); }
+}
+/** Saves `uris` to the library (on) or takes them out. */
+async function setSaved(uris, on) {
+  try {
+    for (let i = 0; i < uris.length; i += LIBRARY_AT_ONCE) {
+      await userApi(`/me/library?uris=${encodeURIComponent(uris.slice(i, i + LIBRARY_AT_ONCE).join(','))}`, { method: on ? 'PUT' : 'DELETE' });
+    }
+    return { ok: true };
+  } catch (e) { return asError(scopeError(e)); }
+}
+
+// ---- Spotify Connect: what plays on the phone (or a speaker), and its buttons ------------------------------------
+
+const deviceOf = (d) => ({ id: d.id, name: d.name || '', type: d.type || '', volume: typeof d.volume_percent === 'number' ? d.volume_percent : null });
+/** What's playing, wherever: { playing, positionMs, device, track } — null when nothing is. */
+async function playerState() {
+  try {
+    const s = await userApi('/me/player');
+    if (!s || !s.device) return null;
+    const song = s.item && s.item.type !== 'episode' ? s.item : null;
+    return {
+      playing: !!s.is_playing, positionMs: s.progress_ms || 0, device: deviceOf(s.device),
+      track: song ? { uri: song.uri, title: song.name, artist: artistNames(song.artists), album: (song.album || {}).name || '', durationMs: song.duration_ms || 0, cover: biggest((song.album || {}).images) } : null,
+    };
+  } catch (e) { return asError(e); }
+}
+/** The devices it can play on (a restricted one, without an id, can't be told to). */
+async function devices() {
+  try {
+    const json = await userApi('/me/player/devices');
+    return { devices: ((json && json.devices) || []).filter((d) => d && d.id).map((d) => ({ ...deviceOf(d), active: !!d.is_active })) };
+  } catch (e) { return asError(e); }
+}
+/** The music moved to `deviceId`, playing there (play) or as it was. */
+async function transfer({ deviceId, play }) {
+  try {
+    await userApi('/me/player', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_ids: [deviceId], play: !!play }) });
+    return { ok: true };
+  } catch (e) { return asError(e); }
+}
+const REMOTE = { play: ['PUT', 'play'], pause: ['PUT', 'pause'], next: ['POST', 'next'], previous: ['POST', 'previous'], seek: ['PUT', 'seek'], volume: ['PUT', 'volume'] };
+/** A button pressed for the device that plays: play, pause, next, previous, seek (ms), volume (0–100). */
+async function remote({ command, ms, volume }) {
+  const r = REMOTE[command];
+  if (!r) return { error: 'UNKNOWN' };
+  let q = '';
+  if (command === 'seek') q = `?position_ms=${Math.max(0, Math.round(ms || 0))}`;
+  if (command === 'volume') q = `?volume_percent=${Math.max(0, Math.min(100, Math.round(volume || 0)))}`;
+  try { await userApi(`/me/player/${r[1]}${q}`, { method: r[0] }); return { ok: true }; } catch (e) { return asError(e); }
 }
 
 /** Plays `uris` in order on the SDK's device from `positionMs` into the first. Spotify answers 403 without Premium. */
@@ -383,5 +533,5 @@ module.exports = {
   SCOPES, REDIRECT_URI, credentials, status, saveCredentials, disconnect, authorizeUrl, resetForTests,
   getSpotifyAppToken, getSpotifyUserToken, accessToken, forgetUserToken, fetchJson,
   classifySpotifyLink, resolveSpotifyLink, spotifySignIn,
-  savedAlbums, playlists, search, discTracks, startPlayback, coverDataUrl, keyLooksRight, checkCredentials, verifyAccount, diagnose,
+  savedAlbums, playlists, search, discTracks, tracksInfo, libraryAlbums, recentAlbums, savedIn, setSaved, playerState, devices, transfer, remote, startPlayback, coverDataUrl, keyLooksRight, checkCredentials, verifyAccount, diagnose,
 };

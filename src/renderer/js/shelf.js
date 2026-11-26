@@ -10,7 +10,7 @@
 // want-list.js); when it turns up in the music folder it's crossed off, and its case says FOUND IT until it's played.
 import { el, pill, anim, EASE, growFrom, swingLid } from './widgets.js';
 import { labelImage, printedDisc } from './disc.js';
-import { openBooklet, closeBooklet, albumBooklet, isBookletOpen } from './booklet.js';
+import { openBooklet, closeBooklet, albumBooklet, warmAlbum, isBookletOpen } from './booklet.js';
 import { stickersFor } from './shelf-stickers.js';
 import { todaySticker, todayLine, pullToday } from './on-this-day.js';
 import { arrange, SORTS, matchesFilter, dominantColor, jumpTargets, shelfSignature } from './shelf-order.js';
@@ -57,7 +57,7 @@ const noteOf = (a) => (group(a).find((e) => e.note) || {}).note || null;
 const bookmarkOf = (a) => group(a).some((e) => e.bookmark);
 // ON THIS DAY (on-this-day.js): the sticker today puts on the spine — any of its editions'.
 const todayOf = (a, now = Date.now()) => group(a).map((e) => todaySticker(e, now)).find(Boolean) || null;
-const spineTitle = (a) => [a.artist, a.title, a.year, spineHolds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ')
+const spineTitle = (a) => [a.artist, a.title, a.year, a.spotify ? t('SAVED ON SPOTIFY') : null, spineHolds(a, shelf.inPlayer) ? IN_PLAYER : null].filter(Boolean).join(' · ')
   + (a.editions ? `\n${t('{n} EDITIONS', { n: a.editions.length })}` : '')
   + (todayOf(a) ? `\n${todayOf(a).label}` : '')
   + (group(a).some((e) => e.bookmark) ? `\n${leftAt(group(a).find((e) => e.bookmark))}` : '') + (noteOf(a) ? `\n\n${noteOf(a)}` : '');
@@ -360,13 +360,14 @@ function render() {
     if (a.divider) return el('div', { class: `shelf-divider${[...a.divider].length <= 2 ? ' short' : ''}`, 'aria-hidden': 'true', 'data-section': a.divider }, el('span', {}, a.divider));
     const st = a.stickers = stickersFor(a, now);
     const kind = caseKind(a.discs);
-    const spine = el('button', { class: `spine${kind ? ` ${kind}` : ''}${st.obi ? ' obi' : ''}${st.isNew ? ' new' : ''}${a.foundIt ? ' found' : ''}${spineHolds(a, shelf.inPlayer) ? ' in-player' : ''}${isRare(a.pressing) ? ' rare' : ''}`, title: spineTitle(a), onClick: () => { if (!shelf.dragged) openCase(a, spine); } },
+    const spine = el('button', { class: `spine${kind ? ` ${kind}` : ''}${st.obi ? ' obi' : ''}${st.isNew ? ' new' : ''}${a.foundIt ? ' found' : ''}${spineHolds(a, shelf.inPlayer) ? ' in-player' : ''}${isRare(a.pressing) ? ' rare' : ''}${a.spotify ? ' spotify' : ''}`, title: spineTitle(a), onClick: () => { if (!shelf.dragged) openCase(a, spine); } },
       el('span', { class: 'spine-text' }, a.artist ? el('b', {}, a.artist) : null, a.artist ? ' · ' : null, a.title),
       st.obi ? el('span', { class: 'obi-cat' }, st.obi.catalog) : null,
       a.foundIt ? el('span', { class: 'sticker-new sticker-found' }, t('FOUND IT')) : st.isNew ? el('span', { class: 'sticker-new' }, t('NEW')) : null,
       todayOf(a, now) ? el('span', { class: `sticker-today ${todayOf(a, now).kind}` }, todayOf(a, now).label) : null,
       a.wrapped ? el('span', { class: 'spine-film' }) : null,
       bookmarkOf(a) ? el('span', { class: 'spine-bookmark' }) : null,
+      a.spotify ? el('span', { class: 'spine-spotify' }) : null,
       a.editions ? el('span', { class: `spine-editions${a.editions.length > 2 ? ' more' : ''}` }) : null,
       kind ? el('span', { class: 'spine-discs', title: t('{n} DISCS', { n: a.discs }) }, t('{n} CD', { n: a.discs })) : null);
     spine.album = a;
@@ -395,7 +396,7 @@ function setShow(show, label = null) {
   render();
   $('shelf-body').scrollTop = 0;
 }
-const SHOW_LABELS = { DUSTY: t('DUSTY'), WRAPPED: t('STILL WRAPPED'), LEFT: t('LEFT PART-WAY'), NOTE: t('WITH A NOTE'), UNPLAYED: t('NEVER PLAYED') };
+const SHOW_LABELS = { DUSTY: t('DUSTY'), WRAPPED: t('STILL WRAPPED'), LEFT: t('LEFT PART-WAY'), NOTE: t('WITH A NOTE'), UNPLAYED: t('NEVER PLAYED'), SPOTIFY: t('ON SPOTIFY'), FILES: t('YOUR FILES') };
 function showMenu() {
   const c = showChoices(shelf.albums);
   const item = (show, label, count) => ({ label: `${label} · ${count}`, current: shelf.show === show, pick: () => setShow(shelf.show === show ? 'ALL' : show, label) });
@@ -965,7 +966,7 @@ async function openCase(a, spine) {
   // One case at a time, even while the first one's cover is still being fetched.
   shelf.opening = true;
   let cover;
-  try { cover = await coverFor(a); } finally { shelf.opening = false; }
+  try { [cover] = await Promise.all([coverFor(a), a.spotify ? spotifyReady(a) : null]); } finally { shelf.opening = false; }
   if (!shelf.open || shelf.caseOpen) return;
   if (!spine.isConnected) spine = spineFor(a) || spine; // the shelf was redrawn meanwhile
   const from = spine.getBoundingClientRect();
@@ -1054,6 +1055,7 @@ async function openCase(a, spine) {
   // Into the queue or the changer; the case goes back once it's in — not when a full changer's question was turned
   // down (Esc there closes the question, and the case stays out).
   const putIn = async (opts) => {
+    if (a.spotify) await spotifyReady(a);
     const r = await app.loadDisc(discOfAlbum(a), a.tracks.map((t) => t.path), opts);
     if (r && r.cancelled) return;
     closeCase();
@@ -1094,7 +1096,7 @@ async function openCase(a, spine) {
       a.arrived ? el('div', { class: 'case-since' }, t('ON YOUR SHELF SINCE {date}', { date: new Date(a.arrived).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' }) }).toLocaleUpperCase()) : null,
       // (small, in one row with its editions: the actions underneath keep the track list its room in a small window)
       el('div', { class: 'case-tools' }, ...editionButtons(a, spine), addNote, fileButton,
-        pill(t('TAKE ALONG'), () => app.takeAlong({ album: { title: a.title, paths: a.tracks.map((tr) => tr.path) } }), t('Copy this album to a portable player, a phone or an SD card'))),
+        a.spotify ? savedPill(a) : pill(t('TAKE ALONG'), () => app.takeAlong({ album: { title: a.title, paths: a.tracks.map((tr) => tr.path) } }), t('Copy this album to a portable player, a phone or an SD card'))),
       pressingBlock(a, rare, (entry) => { if (receipt) receipt.showPressing(entry); showTag(entry); }),
       trackList,
       similarRow(a),
@@ -1107,6 +1109,8 @@ async function openCase(a, spine) {
         a.bookmark ? pill(t('CONTINUE · TRACK {n}', { n: a.bookmark.track + 1 }), () => play(a, a.bookmark.track), leftAt(a)) : null,
         el('button', { class: 'pill go', onClick: unwrapped(() => play(a, 0)) }, t('PLAY')))));
   showCase(card, spine, from, shelf.colors.get(a.id) || hashColor(a.title + a.artist));
+  // Its booklet got ready while the case is looked at (not each one a shelf is leafed through).
+  setTimeout(() => { if (shelf.caseOpen && shelf.caseOpen.card === card) warmAlbum(app, a).catch(() => {}); }, 600);
 }
 
 // IF YOU LIKE THIS (similar-shelf.js): up to five albums of yours by artists Last.fm finds like this one's — the row
@@ -1274,10 +1278,45 @@ function closeCase(instant = false) {
 }
 
 // PLAY: the album goes into the player as a disc (from track `from`, when a track in the list was clicked).
-function play(a, from) {
+async function play(a, from) {
+  if (a.spotify) { const disc = await spotifyReady(a); closeShelf(); shelf.app.playSpotifyDisc(disc, a.title, { start: from }); return; }
   const paths = a.tracks.map((t) => t.path);
   closeShelf();
   shelf.app.insertDisc(paths, { start: from, status: t('{disc} ON THE TRAY', { disc: a.title.toUpperCase() }), disc: discOfAlbum(a) });
+}
+
+// ---- Saved on Spotify (main/spotify-shelf.js) ---------------------------------------------------------------------
+
+/**
+ * A Spotify album's songs, all of them, with what Spotify says of each (for the booklet), made known to the player —
+ * before it's played, put in or its case opened. Spotify not answering: the songs the shelf has, as they are.
+ */
+async function spotifyReady(a) {
+  if (!a.spotifyDisc) {
+    const r = await shelf.app.cdp.spotifyDiscTracks({ kind: 'album', id: a.spotify.id }).catch(() => ({ error: 'OFFLINE' }));
+    if (r.tracks) {
+      a.spotifyDisc = r.tracks;
+      a.tracks = r.tracks.map((x, i) => ({ path: x.uri, title: x.title, artist: x.artist, duration: Math.round(x.durationMs / 1000), track: (x.credits && x.credits.track && x.credits.track.no) || i + 1, disc: (x.credits && x.credits.disc && x.credits.disc.no) || 1 }));
+      a.duration = a.tracks.reduce((s, x) => s + x.duration, 0);
+    }
+  }
+  const disc = a.spotifyDisc || a.tracks.map((x) => ({ uri: x.path, title: x.title, artist: x.artist, album: a.title, durationMs: (x.duration || 0) * 1000, cover: a.spotify.cover, credits: { albumArtist: a.artist, ...(x.track ? { track: { no: x.track, of: null } } : {}) } }));
+  shelf.app.knowSpotifyTracks(disc, a.title);
+  return disc;
+}
+// ♥ on a Spotify album's case: it stays in your Spotify library; taken off, it leaves the shelf (and Spotify's library).
+function savedPill(a) {
+  let saved = true;
+  const b = pill(t('♥ SAVED ON SPOTIFY'), async () => {
+    b.disabled = true;
+    const r = await shelf.app.cdp.spotifySetSaved({ uris: [a.id], on: !saved }).catch(() => ({ error: 'OFFLINE' }));
+    b.disabled = false;
+    if (r.error) { say(r.error === 'SCOPE' ? t('CONNECT SPOTIFY AGAIN (SPOTIFY PANEL) TO SAVE TO YOUR LIBRARY') : t("COULDN'T REACH SPOTIFY")); return; }
+    saved = !saved;
+    b.textContent = saved ? t('♥ SAVED ON SPOTIFY') : t('♡ SAVE ON SPOTIFY');
+    say(saved ? t('BACK IN YOUR SPOTIFY LIBRARY') : t('TAKEN OUT OF YOUR SPOTIFY LIBRARY · IT LEAVES THE SHELF'));
+  }, t('In your Spotify library: click to take it out (it leaves the shelf), again to put it back'));
+  return b;
 }
 
 // ---- Discogs (main/discogs.js): the pressing on the case, the shelf appraised -------------------------------------

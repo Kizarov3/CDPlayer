@@ -39,8 +39,8 @@ const STALE_MS = 3000;      // after a request, an unknown track this far from w
 
 export class SpotifySession {
   // `log(text)`: each step of connecting and playing, for the Spotify log (what went wrong where, on a PC we can't see).
-  constructor({ loadPlayer, getToken, startPlayback, drmReady = null, now = () => Date.now(), wait = (ms) => new Promise((r) => setTimeout(r, ms)), volume = 1, name = 'CDPlayer', connectTimeoutMs = 15000, log = () => {} }) {
-    Object.assign(this, { loadPlayer, getToken, startPlayback, drmReady, now, wait, volume, name, connectTimeoutMs, log });
+  constructor({ loadPlayer, getToken, startPlayback, drmReady = null, now = () => Date.now(), wait = (ms) => new Promise((r) => setTimeout(r, ms)), knows = () => true, volume = 1, name = 'CDPlayer', connectTimeoutMs = 15000, log = () => {} }) {
+    Object.assign(this, { loadPlayer, getToken, startPlayback, drmReady, knows, now, wait, volume, name, connectTimeoutMs, log });
     this.listeners = new Set();
     this.player = null; this.deviceId = null; this.ready = null;
     this.currentUri = null; this.lost = false;
@@ -203,9 +203,34 @@ export class SpotifySession {
     }
     const track = s.track_window && s.track_window.current_track;
     if (!track) return;
-    const before = this.position();
+    const before = this.position(), wasPaused = this.pos.paused;
+    // Another album or playlist put on from the phone (Spotify plays it here, in its own order — a context we never
+    // send: we send songs). Said with what it is, for the player to put it in; its songs after are the player's then.
+    const context = s.context && s.context.uri;
+    if (context && !this.awaiting && track.uri !== this.currentUri && !this.sent.includes(track.uri) && !this.aliases.has(track.uri)
+      && !(track.linked_from && track.linked_from.uri && this.sent.includes(track.linked_from.uri)) && !this.knows(track.uri)) {
+      const album = track.album || {}, images = (album.images || []).slice().sort((x, y) => (y.width || 0) - (x.width || 0));
+      this.lost = false; this.currentUri = track.uri; this.sent = [track.uri]; this.sentIndex = 0; this.pendingUpcoming = null;
+      this.durationMs = track.duration_ms || s.duration;
+      this.pos = { ms: s.position, at: this.now(), paused: s.paused };
+      this.emit({ type: 'foreign', context, positionMs: s.position, paused: s.paused, track: {
+        uri: track.uri, title: track.name || '', artist: (track.artists || []).map((x) => x.name).filter(Boolean).join(', '), album: album.name || '',
+        durationMs: this.durationMs, cover: (images[0] && images[0].url) || null,
+      } });
+      return;
+    }
     const raw = track.uri, linked = track.linked_from && track.linked_from.uri;
     let uri = this.aliases.get(raw) || (linked && this.sent.includes(linked) ? linked : raw);
+    if (this.lost) {
+      // Sent back here from the phone (Spotify Connect), playing what it played there: the player goes to that song.
+      // What's sent after it is the phone's list, not the disc's: told again (resync) once the player is there.
+      this.lost = false; this.awaiting = null;
+      this.currentUri = uri; this.sent = [uri]; this.sentIndex = 0; this.pendingUpcoming = null;
+      this.durationMs = s.duration;
+      this.pos = { ms: s.position, at: this.now(), paused: s.paused };
+      this.emit({ type: 'returned', uri, positionMs: s.position, paused: s.paused });
+      return;
+    }
     if (this.awaiting) {
       if (uri !== this.awaiting) {
         // The previous track's last word, or another track of the list: not the one asked for.
@@ -231,6 +256,8 @@ export class SpotifySession {
     if (s.position > 0 && !s.paused) this.everPlayed = true;
     this.durationMs = s.duration;
     this.pos = { ms: s.position, at: this.now(), paused: s.paused };
+    // Paused or played from the phone (our own pause() said so before Spotify did: not said again).
+    if (s.paused !== wasPaused) this.emit({ type: 'paused', paused: s.paused });
   }
 }
 

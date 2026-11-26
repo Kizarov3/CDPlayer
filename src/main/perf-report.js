@@ -170,8 +170,8 @@ async function run({ win, app, seconds = 5, bisect = null, profile = false }) {
   await look('CLASSIC'); await wait(1500);
   key('C'); await wait(2000); await measure('playing CD VIEW', S); key('C'); await wait(2000);
   key('V'); await wait(2000); await measure('VISUALIZER MODE', S); key('Escape'); await wait(2000);
-  await js('document.hasFocus = () => false; 0'); await measure('playing, behind others', S); await js('document.hasFocus = () => true; 0');
-  win.minimize(); await wait(1500); await measure('playing, minimised', S); win.restore(); win.showInactive(); win.setAlwaysOnTop(true, 'floating'); await wait(2000);
+  await js('document.hasFocus = () => false; 0'); await measure('playing, behind others', S); await js('delete document.hasFocus; 0'); // (the page's own again: a minimised window must find out for itself)
+  win.minimize(); await wait(1500); await measure('playing, minimised', S); win.restore(); win.showInactive(); win.setAlwaysOnTop(true, 'floating'); await js('document.hasFocus = () => true; 0'); await wait(2000); // (the rest as if looked at)
   // the things people press: how soon the window answers, and whether its moves stay smooth
   await measure('open+close panels', S * 2, async () => {
     for (const [open, sel] of [['#settings-button', '.settings-tab'], ['#history-button', '.overlay .card'], ['#lyrics-button', '.overlay .card']]) {
@@ -189,7 +189,8 @@ async function run({ win, app, seconds = 5, bisect = null, profile = false }) {
   await js('window.__perf.app.setPet(true); 0'); await wait(2500);
   await measure('playing + DECK PET', S);
   await js('window.__perf.app.setPet(false); 0');
-  fs.rmSync(dir, { recursive: true, force: true });
+  // (on Windows the song still playing can't be deleted yet: tried a few times, and else left to the temp folder's own cleaning — the report matters more)
+  try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch { /* left behind */ }
   return { results, profiles, playing: await playing() };
 }
 
